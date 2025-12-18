@@ -1,0 +1,16 @@
+services:
+  stellar:
+    image: stellar:latest
+    build:
+      context: ../../
+      dockerfile: deploy/docker/Dockerfile
+    container_name: stellar
+    ports:
+      - "6060:8080"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

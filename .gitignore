@@ -1,0 +1,75 @@
+# Rust (from backend)
+backend/target/
+**/*.rs.bk
+backend/Cargo.lock
+
+# Database
+backend/*.db
+backend/*.db-shm
+backend/*.db-wal
+backend/data/
+backend/tmp/
+backend/logs/
+backend/sqlite*
+
+
+
+# Frontend (from frontend)
+frontend/node_modules/
+frontend/.angular/
+frontend/dist/
+frontend/tmp/
+frontend/frontend.log
+frontend/*.log
+frontend/out-tsc/
+frontend/.sass-cache/
+frontend/connect.lock
+frontend/coverage/
+frontend/libpeerconnection.log
+frontend/npm-debug.log
+frontend/testem.log
+frontend/typings/
+frontend/docs/
+frontend/e2e/*.js
+frontend/e2e/*.map
+# Note: package-lock.json is needed for npm ci in Docker builds
+# frontend/package-lock.json
+
+# Backend runtime (from testing)
+backend/conf/
+backend/logs/
+
+# Runtime directories (should not be in project root)
+/data/
+/lib/
+/conf/
+/bin/
+/migrations/
+/logs/
+*.pid
+
+# Build artifacts
+/build/dist/
+/build/dist/web
+/web/
+*.tar.gz
+
+# Environment
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local config
+config.toml
+!config.toml.example
+target
+.kilocode

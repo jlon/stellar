@@ -1,0 +1,26 @@
+// ngx-admin compliant styles
+:host {
+  display: block;
+}
+
+.gap-2 {
+  gap: 0.5rem;
+}
+
+::ng-deep {
+  .badge {
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+  }
+
+  .badge-success {
+    background-color: #28a745;
+    color: white;
+  }
+
+  .badge-danger {
+    background-color: #dc3545;
+    color: white;
+  }
+}

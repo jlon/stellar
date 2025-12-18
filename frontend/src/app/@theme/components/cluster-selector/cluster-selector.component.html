@@ -1,0 +1,57 @@
+<div class="cluster-selector">
+  <div class="selector-wrapper">
+    <nb-icon icon="layers-outline" class="cluster-icon"></nb-icon>
+    
+    <nb-select 
+      *ngIf="!loading && clusters.length > 0"
+      [(selected)]="activeCluster"
+      [compareWith]="compareById"
+      (selectedChange)="onClusterChange($event)"
+      placeholder="选择集群"
+      size="small"
+      status="primary"
+      class="cluster-select">
+      <nb-option *ngFor="let cluster of clusters" [value]="cluster">
+        <div class="cluster-option">
+          <span class="cluster-name">{{ cluster.name }}</span>
+          <span class="cluster-host">{{ cluster.fe_host }}:{{ cluster.fe_http_port }}</span>
+        </div>
+      </nb-option>
+    </nb-select>
+
+    <div *ngIf="!loading && clusters.length === 0" class="no-clusters">
+      <span class="text-muted">暂无集群</span>
+      <button nbButton size="tiny" status="primary" (click)="goToClusterManagement()">
+        添加集群
+      </button>
+    </div>
+
+    <nb-spinner *ngIf="loading" size="tiny" status="primary"></nb-spinner>
+
+    <button 
+      nbButton 
+      ghost 
+      size="small" 
+      (click)="refreshClusters()"
+      nbTooltip="刷新集群列表"
+      class="refresh-btn">
+      <nb-icon icon="refresh-outline"></nb-icon>
+    </button>
+
+    <button 
+      nbButton 
+      ghost 
+      size="small" 
+      (click)="goToClusterManagement()"
+      nbTooltip="管理集群"
+      class="manage-btn">
+      <nb-icon icon="settings-outline"></nb-icon>
+    </button>
+  </div>
+
+  <div *ngIf="activeCluster" class="active-cluster-info">
+    <nb-icon icon="checkmark-circle" status="success"></nb-icon>
+    <span class="active-text">当前: {{ activeCluster.name }}</span>
+  </div>
+</div>
+

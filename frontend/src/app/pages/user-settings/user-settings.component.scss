@@ -1,0 +1,302 @@
+@import '../../@theme/styles/themes';
+
+@include nb-install-component() {
+  .form-group {
+    margin-bottom: 1.5rem;
+  }
+
+  .ml-2 {
+    margin-left: 0.5rem;
+  }
+
+  .mt-3 {
+    margin-top: 1rem;
+  }
+
+  nb-card-header {
+    h5 {
+      margin: 0 0 0.25rem 0;
+      font-weight: 600;
+    }
+
+    small {
+      color: nb-theme(text-hint-color);
+    }
+  }
+
+  nb-spinner {
+    margin: 2rem auto;
+  }
+
+  .d-flex {
+    display: flex;
+  }
+
+  .align-items-center {
+    align-items: center;
+  }
+
+  .justify-content-between {
+    justify-content: space-between;
+  }
+
+  // Avatar selection styles
+  .avatar-preview-container {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+
+    .current-avatar {
+      position: relative;
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      border: 2px solid nb-theme(border-basic-color-3);
+      cursor: pointer;
+      transition: all 0.3s ease;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: nb-theme(card-background-color);
+
+      &:hover {
+        border-color: nb-theme(color-primary-default);
+        transform: translateY(-2px);
+        box-shadow: nb-theme(card-shadow);
+      }
+
+      .avatar-preview {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .avatar-placeholder {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: nb-theme(background-basic-color-2);
+        color: nb-theme(text-hint-color);
+
+        nb-icon {
+          font-size: 2rem;
+        }
+      }
+
+      .avatar-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        color: white;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        font-size: 0.75rem;
+
+        nb-icon {
+          font-size: 1.2rem;
+          margin-bottom: 0.25rem;
+        }
+      }
+
+      &:hover .avatar-overlay {
+        opacity: 1;
+      }
+    }
+  }
+
+  .avatar-selection-panel {
+    background: nb-theme(background-basic-color-1);
+    border: 1px solid nb-theme(border-basic-color-3);
+    border-radius: nb-theme(card-border-radius);
+    padding: 1.5rem;
+    margin-top: 1rem;
+
+    .avatar-style-selector {
+      margin-bottom: 1.5rem;
+
+      .label {
+        margin-bottom: 0.5rem;
+        font-size: 0.9rem;
+        color: nb-theme(text-hint-color);
+      }
+    }
+
+    .avatar-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+
+      .avatar-option {
+        position: relative;
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        border: 2px solid nb-theme(border-basic-color-3);
+        cursor: pointer;
+        transition: all 0.3s ease;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: nb-theme(card-background-color);
+
+        &:hover {
+          border-color: nb-theme(color-primary-default);
+          transform: translateY(-2px);
+          box-shadow: nb-theme(card-shadow);
+        }
+
+        &.selected {
+          border-color: nb-theme(color-success-default);
+          border-width: 3px;
+          box-shadow: 0 0 0 3px rgba(nb-theme(color-success-default), 0.2);
+        }
+
+        .avatar-img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .check-icon {
+          position: absolute;
+          top: 2px;
+          right: 2px;
+          font-size: 1rem;
+          background: nb-theme(card-background-color);
+          border-radius: 50%;
+        }
+      }
+    }
+
+    .avatar-actions {
+      display: flex;
+      justify-content: center;
+    }
+  }
+
+  // Avatar selection styles - using ngx-admin native styles
+  .subtitle {
+    color: nb-theme(text-hint-color);
+    font-size: 0.875rem;
+    margin-bottom: 1.5rem;
+    margin-top: 0.25rem;
+  }
+
+        .avatar-preview-section {
+          display: flex;
+          justify-content: center;
+          margin-bottom: 1.5rem;
+
+          .current-avatar-large {
+            width: 84px; // 缩小30% (120px * 0.7)
+            height: 84px; // 缩小30% (120px * 0.7)
+            border-radius: nb-theme(card-border-radius);
+            border: 2px solid nb-theme(border-basic-color-3);
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: nb-theme(card-background-color);
+            box-shadow: nb-theme(card-shadow);
+
+            .preview-image {
+              width: 100%;
+              height: 100%;
+              object-fit: cover;
+            }
+
+            .avatar-placeholder-large {
+              width: 100%;
+              height: 100%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              background: nb-theme(background-basic-color-2);
+              color: nb-theme(text-hint-color);
+
+              nb-icon {
+                font-size: 2.1rem; // 缩小30% (3rem * 0.7)
+              }
+            }
+          }
+        }
+
+        // 隐藏头像风格说明文字
+        .subtitle {
+          display: none !important;
+        }
+
+  .avatar-options-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.7rem; // 缩小30% (1rem * 0.7)
+    margin-bottom: 1.4rem; // 缩小30% (2rem * 0.7)
+    max-width: 210px; // 缩小30% (300px * 0.7)
+    margin-left: auto;
+    margin-right: auto;
+
+    .avatar-option-small {
+      width: 56px; // 缩小30% (80px * 0.7)
+      height: 56px; // 缩小30% (80px * 0.7)
+      border-radius: nb-theme(card-border-radius);
+      border: 2px solid nb-theme(border-basic-color-3);
+      cursor: pointer;
+      transition: all 0.3s ease;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: nb-theme(card-background-color);
+      margin: 0 auto;
+
+      &:hover {
+        border-color: nb-theme(color-primary-default);
+        transform: translateY(-2px);
+        box-shadow: nb-theme(card-shadow);
+      }
+
+      &.selected {
+        border-color: nb-theme(color-success-default);
+        border-width: 3px;
+        box-shadow: 0 0 0 3px rgba(nb-theme(color-success-default), 0.2);
+      }
+
+      .option-image {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+    }
+  }
+
+  .refresh-section {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 1rem;
+
+    button {
+      margin-top: 0;
+    }
+  }
+
+  .avatar-selection {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-top: 0.5rem;
+  }
+}
+

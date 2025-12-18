@@ -1,0 +1,41 @@
+// Cluster form styles
+:host {
+  display: block;
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// Fix nb-option left padding - remove checkbox space
+::ng-deep {
+  nb-option {
+    padding-left: 1rem !important;
+    
+    .option-content,
+    .option-list-item {
+      padding-left: 0 !important;
+    }
+  }
+  
+  // Remove checkbox/icon space in dropdown
+  .select-button + .options-list {
+    nb-option {
+      padding-left: 1rem !important;
+    }
+  }
+}

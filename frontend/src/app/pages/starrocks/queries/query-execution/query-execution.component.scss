@@ -1,0 +1,1509 @@
+// Copy styles from the original queries component
+@use '@nebular/theme/styles/theming' as *;
+
+// Adjust card body padding to align content with edges
+:host ::ng-deep nb-card-body {
+  padding: 0 !important;
+}
+
+:host ::ng-deep body.resizing-tree {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+// Tab header wrapper with toggle button
+.tab-header-wrapper {
+  position: relative;
+  width: 100%;
+  
+  .sql-editor-toggle-btn {
+    position: absolute;
+    right: 15px; // Match Bootstrap col-12 padding to align with content
+    top: 8px;
+    z-index: 100;
+    padding: 0.25rem 0.5rem;
+    min-width: auto;
+    
+    // Nebular ghost button native styles
+    background: transparent;
+    border: 1px solid transparent;
+    transition: all 0.2s ease;
+    
+    &:hover {
+      background-color: nb-theme(background-basic-color-2);
+      border-color: nb-theme(border-basic-color-3);
+    }
+    
+    &:active {
+      background-color: nb-theme(background-basic-color-3);
+    }
+    
+    nb-icon {
+      font-size: 1.25rem;
+      color: nb-theme(text-hint-color);
+    }
+  }
+}
+
+// Tab header with toggle button layout
+.tab-header-with-toggle {
+  display: block;
+  width: 100%;
+  padding-right: 0; // No extra padding; handled within tabset styles
+}
+
+// Collapsed SQL bar (inspired by metric-card-group)
+.collapsed-sql-bar {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  width: 100%; // Full width
+  background-color: nb-theme(background-basic-color-2);
+  border: 1px solid nb-theme(border-basic-color-3);
+  border-radius: nb-theme(border-radius);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: 1rem;
+  user-select: none;
+  gap: 0.75rem;
+  
+  &:hover {
+    background-color: nb-theme(background-basic-color-3);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+  
+  .collapsed-sql-preview {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1;
+    overflow: hidden;
+    
+    nb-icon {
+      font-size: 1.25rem;
+      flex-shrink: 0;
+    }
+    
+    .sql-text {
+      color: nb-theme(text-hint-color);
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+      font-size: 0.875rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      
+      &.sql-placeholder {
+        font-family: inherit;
+        font-style: italic;
+      }
+    }
+  }
+}
+
+:host ::ng-deep nb-tabset {
+  width: 100% !important;
+  
+  .tabset {
+    padding: 0;
+    margin-bottom: 0;
+    width: 100% !important;
+
+    .tabs {
+      padding-right: 55px; // Reserve space in the tab header for the toggle button
+    }
+  }
+  
+  // Reduce tab content padding
+  .tab-content {
+    padding: 0 !important;
+    width: 100% !important;
+    
+    // Each tab pane should be full width when active
+    .tab-pane {
+      width: 100% !important;
+      
+      &.active {
+        display: block !important;
+      }
+    }
+  }
+  
+  // Reduce spacing between tabs and content
+  nb-tab {
+    padding: 0 !important;
+    width: 100% !important;
+    // Don't force display: block, let Nebular handle visibility
+  }
+}
+
+.realtime-query-container {
+  padding: 0.3rem; // Uniform padding on all sides
+  width: 100%; // Ensure full width
+
+  .query-split-layout {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    min-height: 100%;
+    width: 100%;
+  }
+
+  .nav-tree-wrapper {
+    flex: 0 0 auto;
+    min-width: 220px;
+    max-width: 480px;
+    display: flex;
+    height: 100%;
+    position: relative;
+    transition: width 0.2s ease;
+
+    &.collapsed {
+      min-width: 28px !important;
+      max-width: 28px !important;
+      width: 28px !important;
+      justify-content: flex-start;
+    }
+  }
+
+  .nav-tree-card {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    height: 100%;
+    min-height: 420px;
+
+    nb-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      padding: 0.5rem 0.75rem;
+      border-bottom: 1px solid nb-theme(border-basic-color-3);
+
+      .tree-collapse-toggle.header-button {
+        margin-left: auto;
+      }
+    }
+
+    .nav-tree-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-weight: 600;
+
+      nb-icon {
+        font-size: 1.1rem;
+        color: nb-theme(color-info-500);
+      }
+    }
+
+    ::ng-deep nb-card-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 0.25rem 0.25rem 0.25rem 0.5rem;
+    }
+  }
+
+  .tree-scroll {
+    flex: 1;
+    overflow: auto;
+    padding-right: 0.35rem;
+  }
+
+  .tree-loading,
+  .empty-tree {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    gap: 0.5rem;
+    color: nb-theme(text-hint-color);
+
+    nb-icon {
+      font-size: 1.4rem;
+      color: nb-theme(text-disabled-color);
+    }
+  }
+
+  .nav-tree {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .tree-node {
+    list-style: none;
+
+    &.selected > .tree-node-row {
+      background-color: nb-theme(color-primary-100);
+      border: 1px solid nb-theme(color-primary-200);
+      color: nb-theme(color-primary-700);
+      box-shadow: 0 3px 14px rgba(255, 186, 102, 0.25);
+      animation: subtleGlow 2s ease-in-out infinite;
+
+      nb-icon {
+        color: inherit;
+      }
+    }
+  }
+
+  @keyframes subtleGlow {
+    0% {
+      box-shadow: 0 3px 14px rgba(255, 186, 102, 0.18);
+    }
+    50% {
+      box-shadow: 0 6px 18px rgba(255, 200, 120, 0.4);
+    }
+    100% {
+      box-shadow: 0 3px 14px rgba(255, 186, 102, 0.18);
+    }
+  }
+
+  .tree-node-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.5rem;
+    margin: 0.15rem 0.3rem;
+    border-radius: nb-theme(border-radius);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    color: nb-theme(text-basic-color);
+
+    &:hover {
+      background-color: nb-theme(background-basic-color-2);
+      border-color: nb-theme(border-basic-color-3);
+      box-shadow: 0 2px 8px rgba(31, 43, 58, 0.08);
+    }
+
+    nb-icon {
+      color: inherit;
+    }
+
+    .toggle-btn {
+      min-width: 1.6rem;
+      width: 1.6rem;
+      height: 1.6rem;
+      padding: 0;
+      margin-right: 0.1rem;
+      border-radius: nb-theme(border-radius);
+      border: 1px solid transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      ::ng-deep button {
+        width: 100%;
+        height: 100%;
+        padding: 0;
+        min-width: auto;
+      }
+
+      nb-icon {
+        font-size: 1.1rem;
+      }
+
+      &.expanded {
+        background-color: nb-theme(background-basic-color-3);
+      }
+    }
+
+    .node-icon nb-icon {
+      font-size: 1rem;
+    }
+
+    .node-text {
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: 0.92rem;
+      font-weight: 500;
+    }
+
+    &.type-catalog {
+      .node-icon nb-icon {
+        color: #f3c76b;
+      }
+
+      .node-text {
+        color: nb-theme(text-basic-color);
+        font-weight: 600;
+      }
+    }
+
+    &.type-database {
+      .node-icon nb-icon {
+        color: #5a8dee;
+      }
+
+      .node-text {
+        color: #3f5f9f;
+      }
+    }
+
+    &.type-table {
+      .node-icon nb-icon {
+        color: #2ecc71;
+      }
+
+      .node-text {
+        color: nb-theme(text-basic-color);
+      }
+    }
+
+    .node-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 34px;
+      padding: 0.1rem 0.35rem;
+      border-radius: 6px;
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      background: nb-theme(border-basic-color-3);
+      color: nb-theme(text-hint-color);
+
+      &.node-badge-view {
+        background: nb-theme(color-info-100);
+        color: nb-theme(color-info-600);
+      }
+
+      &.node-badge-mv {
+        background: nb-theme(color-warning-100);
+        color: nb-theme(color-warning-600);
+      }
+    }
+  }
+
+  .tree-children {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .tree-resizer {
+    flex: 0 0 6px;
+    cursor: col-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 0.25rem;
+    border-radius: 6px;
+    transition: background-color 0.2s ease;
+    background-color: nb-theme(border-basic-color-4);
+
+    &:hover {
+      background-color: nb-theme(border-basic-color-5);
+    }
+
+    .resizer-grip {
+      width: 2px;
+      height: 24px;
+      border-radius: 2px;
+      background: linear-gradient(
+        to bottom,
+        nb-theme(text-disabled-color) 0%,
+        nb-theme(text-disabled-color) 20%,
+        transparent 20%,
+        transparent 40%,
+        nb-theme(text-disabled-color) 40%,
+        nb-theme(text-disabled-color) 60%,
+        transparent 60%,
+        transparent 80%,
+        nb-theme(text-disabled-color) 80%,
+        nb-theme(text-disabled-color) 100%
+      );
+    }
+  }
+
+  .editor-panel {
+    flex: 1;
+    min-width: 0;
+    padding-left: 0.75rem;
+    display: flex;
+    flex-direction: column;
+
+    .results-section {
+      margin-top: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .sql-editor-section {
+      margin-bottom: 0.5rem;
+      width: 100%;
+      overflow: hidden;
+      transition: padding 200ms ease, margin 200ms ease;
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+
+      .selection-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.35rem 0.75rem;
+      border: 1px solid nb-theme(border-basic-color-4);
+      border-radius: nb-theme(border-radius);
+      background-color: nb-theme(background-basic-color-2);
+      margin-bottom: 0.75rem;
+
+      .selection-path {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        font-size: 0.85rem;
+        color: nb-theme(text-basic-color);
+
+        nb-icon {
+          font-size: 1rem;
+          color: nb-theme(text-hint-color);
+        }
+
+        .path-segment {
+          max-width: 160px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          font-weight: 600;
+
+          &.inactive {
+            color: nb-theme(text-disabled-color);
+            font-weight: 400;
+          }
+        }
+
+        .loading-indicator {
+          margin-left: 0.5rem;
+        }
+      }
+    }
+
+    .editor-wrapper {
+      position: relative;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      gap: 0;
+
+      .codemirror-container {
+        width: 100%;
+        border: 1px solid nb-theme(border-basic-color-4);
+        border-radius: nb-theme(border-radius);
+        overflow: hidden;
+        background-color: nb-theme(background-basic-color-1);
+        padding: 1px;
+        box-sizing: border-box;
+        background-image:
+          linear-gradient(rgba(128, 128, 128, 0.08) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(128, 128, 128, 0.08) 1px, transparent 1px);
+        background-size: 20px 20px;
+        background-position: 0 0;
+        font-size: 20px;
+        flex: 1;
+        min-height: 0;
+
+        :host-context(.dark-theme) & {
+          border-color: nb-theme(border-basic-color-3);
+        }
+
+      ::ng-deep .cm-editor {
+        font-size: 20px;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        height: 100% !important;
+        background-color: transparent !important;
+
+          .cm-content {
+            font-size: 20px;
+            width: 100% !important;
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+            background-color: transparent !important;
+          }
+
+          .cm-line {
+            font-size: 20px;
+            word-wrap: break-word !important;
+            white-space: pre-wrap !important;
+          }
+
+          .cm-scroller {
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow-x: hidden !important;
+            overflow-y: auto !important;
+            box-sizing: border-box !important;
+            height: 100% !important;
+            background-color: transparent !important;
+          }
+        }
+      }
+
+      .loading-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1rem;
+        z-index: 100;
+        pointer-events: none;
+
+        .loading-text {
+          color: nb-theme(text-hint-color);
+          font-size: 0.9rem;
+          margin-top: 0.5rem;
+        }
+
+        ::ng-deep nb-spinner {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
+      }
+
+      .editor-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.1rem 0 0;
+        border: none;
+        margin-top: auto;
+
+        .right-actions {
+          display: flex;
+          align-items: center;
+          gap: 0.25rem;
+
+          .limit-label {
+            font-size: 12px;
+            color: nb-theme(text-hint-color);
+            margin-right: 0.25rem;
+          }
+
+          nb-select {
+            margin-right: 0;
+            background-color: nb-theme(background-basic-color-2);
+            border-radius: nb-theme(border-radius);
+
+            ::ng-deep .select-button {
+              background-color: nb-theme(background-basic-color-2) !important;
+              color: nb-theme(text-hint-color) !important;
+              border-color: nb-theme(border-basic-color-3) !important;
+            }
+
+            ::ng-deep nb-option {
+              margin: 0;
+              padding-right: 0;
+            }
+          }
+        }
+
+        .hint-text {
+          color: nb-theme(text-hint-color);
+          margin-left: 0.4rem;
+        }
+      }
+    }
+
+    .editor-action-buttons {
+      flex-shrink: 0;
+    }
+
+    .hint-text {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      color: var(--text-hint-color);
+      font-size: 12px;
+    }
+  }
+
+  &.editor-collapsed {
+    .collapsed-sql-bar {
+      margin-bottom: 0;
+    }
+
+    .results-section {
+      margin-top: 0.5rem;
+    }
+
+    .sql-editor-section {
+      margin-bottom: 0;
+      flex: 0 0 auto;
+      height: 0;
+      padding: 0;
+      overflow: hidden;
+
+      .selection-toolbar,
+      .editor-wrapper {
+        opacity: 0;
+        height: 0;
+        min-height: 0;
+        flex: 0 0 auto;
+        padding: 0;
+        margin: 0;
+      }
+
+      .editor-wrapper {
+        display: flex;
+        pointer-events: none;
+
+        .codemirror-container {
+          height: 0;
+          min-height: 0;
+        }
+
+        .editor-footer {
+          display: none;
+        }
+      }
+    }
+  }
+}
+
+  @media (max-width: 992px) {
+    .query-split-layout {
+      flex-direction: column;
+    }
+
+    .nav-tree-wrapper {
+      width: 100% !important;
+      max-width: none;
+      min-height: 320px;
+    }
+
+    .tree-resizer {
+      display: none;
+    }
+
+    .editor-panel {
+      padding-left: 0;
+      margin-top: 1rem;
+    }
+  }
+
+  .result-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    
+    .result-actions {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      
+      .result-stat-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        background-color: nb-theme(background-basic-color-2);
+        border-radius: nb-theme(border-radius);
+        border: 1px solid nb-theme(border-basic-color-3);
+        
+        .stat-icon {
+          font-size: 1.25rem;
+        }
+        
+        .stat-label {
+          color: nb-theme(text-hint-color);
+          font-size: 0.875rem;
+        }
+        
+        .stat-value {
+          font-weight: 600;
+          font-size: 1rem;
+          
+          &.stat-time {
+            color: nb-theme(color-success-default);
+          }
+          
+          &.stat-count {
+            color: nb-theme(color-info-default);
+          }
+        }
+      }
+    }
+  }
+  
+  .no-data-message {
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-hint-color);
+    
+    nb-icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+    }
+    
+    p {
+      margin: 0;
+      font-size: 1.1rem;
+    }
+  }
+  
+  .result-card {
+    margin-bottom: 1rem;
+    width: 100%; // Full width
+  }
+  
+  .error-message {
+    padding: 1rem;
+  }
+  
+  .tabset-with-export {
+    position: relative;
+    
+    .result-tabset {
+      width: 100%;
+      
+      // Access tabset's tab bar to add padding for button space
+      :deep(.tabset) {
+        .tabs {
+          padding-right: 120px;
+        }
+      }
+      
+      // Ensure tab content aligns with card edges
+      :deep(.tab-content) {
+        padding: 0;
+      }
+    }
+    
+    .export-button-wrapper {
+      position: absolute;
+      top: 0;
+      right: 0;
+      display: flex;
+      align-items: center;
+      // Match tab bar height exactly (48px is standard for Nebular tabs)
+      height: 48px;
+      z-index: 10;
+      
+      .export-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.375rem;
+        white-space: nowrap;
+        
+        nb-icon {
+          font-size: 0.875rem !important;
+          line-height: 1;
+          margin: 0;
+        }
+      }
+    }
+  }
+  
+  .tab-content-wrapper {
+    padding: 0;
+    position: relative;
+  }
+  
+  // Result statistics at bottom right of each result tab
+  .result-stats-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    margin-top: 0.5rem;
+    background: nb-theme(background-basic-color-2);
+    border-top: 1px solid nb-theme(border-basic-color-3);
+    border-radius: 0 0 nb-theme(border-radius) nb-theme(border-radius);
+    
+    .stats-text {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+      color: nb-theme(text-hint-color);
+      font-weight: 500;
+      
+      .stats-icon {
+        font-size: 1rem;
+        color: nb-theme(text-hint-color);
+      }
+      
+      .stats-separator {
+        margin: 0 0.25rem;
+        color: nb-theme(border-basic-color-4);
+      }
+    }
+  }
+  
+  .result-stats-header {
+    padding: 0.5rem 0;
+    
+    nb-badge {
+      font-size: 0.75rem;
+    }
+  }
+  
+  // Style for tab titles and badges
+  :deep(.result-tabset) {
+    .tabset {
+      .tabs {
+        .tab {
+          a {
+            font-weight: 500;
+            font-size: 0.875rem;
+            letter-spacing: 0.01em;
+          }
+        }
+        
+        .tab.active {
+          a {
+            font-weight: 600;
+            color: nb-theme(color-primary-default);
+          }
+        }
+        
+        // Inactive tab styling
+        .tab:not(.active) {
+          a {
+            color: nb-theme(text-hint-color);
+            font-weight: 400;
+            
+            &:hover {
+              color: nb-theme(text-basic-color);
+              font-weight: 500;
+            }
+          }
+        }
+      }
+    }
+    
+  }
+}
+
+  .tree-collapse-toggle {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background-color: nb-theme(background-basic-color-1) !important;
+    border: none !important;
+    color: nb-theme(text-hint-color);
+    box-shadow: none;
+    transition: color 0.2s ease;
+
+  nb-icon {
+    font-size: 1rem;
+    color: inherit;
+  }
+
+    &:hover {
+      color: nb-theme(text-basic-color);
+  }
+
+  &.collapsed-button {
+    position: absolute;
+    top: 0.55rem;
+      left: 0;
+  }
+}
+
+.table-schema-dialog {
+  width: min(70vw, 960px);
+  border-radius: 0.9rem;
+  overflow: hidden;
+  border: 1px solid rgba(120, 125, 140, 0.25);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+
+  nb-card-header {
+    padding: 1rem 1.25rem;
+    background: linear-gradient(135deg, rgba(59, 66, 82, 0.12), rgba(59, 66, 82, 0.04));
+    border-bottom: 1px solid rgba(120, 125, 140, 0.2);
+  }
+
+  nb-card-body {
+    padding: 1.1rem 1.4rem 1.3rem;
+    background: nb-theme(background-basic-color-1);
+  }
+}
+
+.schema-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.schema-dialog-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+
+  nb-icon {
+    font-size: 1.5rem;
+    color: nb-theme(color-primary-500);
+  }
+}
+
+.schema-text-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.schema-title-text {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: nb-theme(text-basic-color);
+}
+
+.schema-subtitle-text {
+  font-size: 0.85rem;
+  color: nb-theme(text-hint-color);
+}
+
+.schema-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 0;
+  text-align: center;
+}
+
+.schema-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.schema-scroll {
+  max-height: 65vh;
+  overflow: auto;
+  border-radius: 0.6rem;
+  background: linear-gradient(145deg, rgba(34, 40, 49, 0.92), rgba(46, 52, 64, 0.88));
+  border: 1px solid rgba(120, 125, 140, 0.35);
+  padding: 1.1rem 1.15rem;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+.schema-text {
+  font-family: 'Fira Code', 'Menlo', 'Consolas', 'Courier New', monospace;
+  font-size: 0.87rem;
+  line-height: 1.52;
+  color: rgba(233, 235, 245, 0.95);
+  margin: 0;
+  white-space: pre;
+  word-break: normal;
+  letter-spacing: 0.01em;
+  tab-size: 2;
+  overflow: auto;
+}
+
+.schema-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.schema-scroll::-webkit-scrollbar-thumb {
+  background: rgba(143, 150, 170, 0.45);
+  border-radius: 4px;
+}
+
+.schema-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(143, 150, 170, 0.65);
+}
+
+.empty-schema {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 2rem 0;
+  color: nb-theme(text-hint-color);
+
+  nb-icon {
+    font-size: 2rem;
+  }
+}
+
+.tree-context-menu {
+  position: fixed;
+  z-index: 1100;
+  min-width: 180px;
+  background: nb-theme(background-basic-color-1);
+  border: 1px solid nb-theme(border-basic-color-4);
+  border-radius: 0.5rem;
+  box-shadow: 0 18px 24px rgba(20, 20, 20, 0.25);
+  padding: 0.5rem 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.55rem 1.1rem;
+  background: transparent;
+  border: none;
+  color: nb-theme(text-basic-color);
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+
+  nb-icon {
+    font-size: 1.1rem;
+    color: nb-theme(text-hint-color);
+  }
+
+  &:hover,
+  &:focus {
+    outline: none;
+    background-color: nb-theme(color-primary-100);
+    color: nb-theme(color-primary-600);
+
+    nb-icon {
+      color: nb-theme(color-primary-600);
+    }
+  }
+}
+
+// Page-level loading overlay for info dialogs
+.info-dialog-loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1050;
+  
+  .loading-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    background: nb-theme(background-basic-color-1);
+    border-radius: nb-theme(border-radius);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    
+    p {
+      margin-top: 1rem;
+      color: nb-theme(text-hint-color);
+      font-size: 0.9rem;
+    }
+  }
+}
+
+// Info dialog card styles - limit size and make scrollable
+.info-dialog-card {
+  max-width: 90vw;
+  max-height: 85vh;
+  width: min(90vw, 1200px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  
+  nb-card-header {
+    flex-shrink: 0;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid nb-theme(border-basic-color-3);
+    
+    h5 {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+  }
+  
+  .info-dialog-body {
+    flex: 1;
+    overflow: auto;
+    padding: 1rem 1.25rem;
+    min-height: 0;
+    
+    .info-dialog-toolbar {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      margin-bottom: 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid nb-theme(border-basic-color-3);
+      
+      .per-page-selector {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        
+        label {
+          font-size: 0.875rem;
+          color: nb-theme(text-hint-color);
+          margin: 0;
+        }
+        
+        nb-select {
+          min-width: 80px;
+        }
+      }
+    }
+    
+    // Style for ng2-smart-table to ensure it fits
+    ::ng-deep ng2-smart-table {
+      .ng2-smart-table {
+        table-layout: auto;
+        
+        th, td {
+          max-width: 300px;
+          position: relative; // For tooltip positioning
+          
+          // For cells with HTML content (spans), let the span handle truncation
+          span {
+            display: inline-block;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            vertical-align: middle;
+            
+            // Ensure tooltip works - title attribute should work natively
+            &[title] {
+              cursor: help;
+            }
+          }
+          
+          // For cells without spans, apply ellipsis directly
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        
+        // Allow horizontal scroll for wide tables
+        .ng2-smart-table-container {
+          overflow-x: auto;
+        }
+      }
+    }
+  }
+  
+  nb-card-footer {
+    flex-shrink: 0;
+    padding: 0.75rem 1.25rem;
+    border-top: 1px solid nb-theme(border-basic-color-3);
+  }
+}
+
+// Running query filters bar - ngx-admin style
+.running-query-filters,
+.blacklist-header {
+  padding: 0.75rem 1rem;
+  background-color: nb-theme(background-basic-color-2);
+  border-radius: nb-theme(border-radius);
+  border: 1px solid nb-theme(border-basic-color-3);
+  
+  .filter-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    
+    .filter-options {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      gap: 1.5rem;
+      
+      .filter-checkbox {
+        ::ng-deep {
+          .text-hint {
+            font-size: 0.875rem;
+            color: nb-theme(text-hint-color);
+            font-weight: 400;
+          }
+          
+          label {
+            margin-bottom: 0;
+          }
+        }
+      }
+      
+      .clear-filter-btn {
+        ::ng-deep {
+          .text-hint {
+            font-size: 0.875rem;
+            color: nb-theme(text-hint-color);
+          }
+        }
+      }
+    }
+    
+    .filter-actions {
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+  }
+}
+
+// Query detail dialog styles
+.query-detail-dialog {
+  min-width: 600px;
+  max-width: 900px;
+  
+  .query-detail-content {
+    padding: 1rem 0;
+    
+    .detail-row {
+      display: flex;
+      align-items: flex-start;
+      margin-bottom: 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid nb-theme(border-basic-color-3);
+      
+      &:last-child {
+        border-bottom: none;
+        margin-bottom: 0;
+        padding-bottom: 0;
+      }
+      
+      &.detail-row-full {
+        flex-direction: column;
+        
+        .detail-label {
+          margin-bottom: 0.5rem;
+        }
+      }
+      
+      .detail-label {
+        min-width: 120px;
+        font-weight: 600;
+        color: nb-theme(text-basic-color);
+        margin-right: 1rem;
+        flex-shrink: 0;
+      }
+      
+      .detail-value {
+        flex: 1;
+        color: nb-theme(text-hint-color);
+        word-break: break-word;
+      }
+      
+      .sql-content {
+        width: 100%;
+        margin-top: 0.5rem;
+        
+        .sql-text {
+          background: nb-theme(background-basic-color-2);
+          padding: 1rem;
+          border-radius: nb-theme(border-radius);
+          border: 1px solid nb-theme(border-basic-color-3);
+          font-family: 'Courier New', monospace;
+          font-size: 0.875rem;
+          line-height: 1.6;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+          max-height: 400px;
+          overflow-y: auto;
+          color: nb-theme(text-basic-color);
+        }
+      }
+    }
+  }
+}
+
+
+
+// ============================================
+// SQL Diagnosis Dialog - Pure ngx-admin Style
+// ============================================
+
+// 对于ng-template中的对话框，样式直接应用在nb-card类上
+.sql-diag-dialog {
+  width: min(90vw, 700px);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  
+  nb-card-header {
+    flex-shrink: 0;
+    padding: 1rem;
+    
+    h5 {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+    
+    // 关闭按钮缩小
+    .diag-close-btn {
+      padding: 0.25rem;
+      min-width: auto;
+      
+      nb-icon {
+        font-size: 1rem;
+      }
+    }
+  }
+  
+  nb-card-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem !important;
+    min-height: 0;
+    
+    // 内部卡片去除多余边距，保持对称
+    > .mb-3:last-child {
+      margin-bottom: 0 !important;
+    }
+    
+    nb-card {
+      margin: 0;
+      
+      nb-card-header {
+        padding: 0.75rem 1rem;
+      }
+      
+      nb-card-body {
+        padding: 1rem !important;
+      }
+    }
+  }
+  
+  nb-card-footer {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    border-top: 1px solid nb-theme(border-basic-color-3);
+  }
+}
+
+// 通用样式
+.cursor-pointer {
+  cursor: pointer;
+  user-select: none;
+}
+
+// 确保代码区域有合适的字体和换行
+pre {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', Consolas, monospace;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+
+// 问题项样式
+.issue-item {
+  padding: 1rem;
+  background: nb-theme(background-basic-color-2);
+  border-radius: nb-theme(border-radius);
+  border-left: 3px solid nb-theme(border-basic-color-4);
+  
+  .fix-box {
+    padding: 0.5rem 1rem;
+    background: nb-theme(background-basic-color-1);
+    border-radius: nb-theme(border-radius);
+    border: 1px solid nb-theme(color-success-200);
+    color: nb-theme(color-success-600);
+    font-size: 0.875rem;
+  }
+}
+
+// SQL代码框样式
+.sql-code-box {
+  max-height: 260px;
+  overflow: auto;
+  background: nb-theme(background-basic-color-2);
+  border: 1px solid nb-theme(border-basic-color-3);
+  border-radius: nb-theme(border-radius);
+  
+  // 统一滚动条样式
+  &::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(143, 150, 170, 0.3);
+    border-radius: 2px;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: rgba(143, 150, 170, 0.45);
+  }
+  
+  pre {
+    margin: 0;
+    padding: 1rem;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', Consolas, monospace;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: nb-theme(text-basic-color);
+    overflow: visible;
+  }
+}
+
+// 响应式设计
+@media (max-width: 768px) {
+  :host ::ng-deep .sql-diag-dialog {
+    width: calc(100vw - 1rem);
+    max-height: calc(100vh - 1rem);
+  }
+}
+
+// SQL Blacklist dialog
+.blacklist-dialog {
+  width: 500px;
+  max-width: 90vw;
+
+  .form-group {
+    .label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+    }
+
+    textarea {
+      font-family: var(--font-family-mono);
+      font-size: 0.875rem;
+    }
+
+    .hint-text {
+      display: block;
+      margin-top: 0.5rem;
+      font-size: 0.75rem;
+      color: nb-theme(text-hint-color);
+    }
+  }
+}

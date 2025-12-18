@@ -1,0 +1,147 @@
+@import './themes';
+
+@mixin nb-overrides() {
+  nb-select.size-medium button {
+    padding: 0.4375rem 2.2rem 0.4375rem 1.125rem !important;
+
+    nb-icon {
+      right: 0.41rem !important;
+    }
+  }
+
+  // ng2-smart-table Actions column alignment - minimal fix for ngx-admin
+  ng2-smart-table {
+    .ng2-smart-actions {
+      text-align: center;
+      vertical-align: middle;
+    }
+    
+    // 表格列宽自适应
+    table {
+      table-layout: auto;
+      width: 100%;
+    }
+    
+    th, td {
+      white-space: nowrap;
+      min-width: fit-content;
+    }
+  }
+
+  // Menu icon color enhancements - using ngx-admin native style
+  nb-menu {
+    .menu-item {
+      // Menu icon with subtle color
+      nb-icon {
+        color: nb-theme(color-primary-default);
+        opacity: 0.65;
+        transition: all 0.3s ease;
+      }
+
+      // Active menu item icon
+      &.active nb-icon {
+        color: nb-theme(color-primary-default);
+        opacity: 1;
+      }
+
+      // Hover effect
+      &:hover nb-icon {
+        opacity: 0.85;
+        transform: scale(1.05);
+      }
+
+      // Expanded menu item icon
+      &.expanded > a nb-icon {
+        opacity: 0.8;
+      }
+    }
+
+    // Different colors for different menu items to enhance visual distinction
+    .menu-item:nth-child(1) nb-icon { color: nb-theme(color-primary-default); }
+    .menu-item:nth-child(2) nb-icon { color: nb-theme(color-info-default); }
+    .menu-item:nth-child(3) nb-icon { color: nb-theme(color-success-default); }
+    .menu-item:nth-child(4) nb-icon { color: nb-theme(color-warning-default); }
+    .menu-item:nth-child(5) nb-icon { color: nb-theme(color-primary-500); }
+    .menu-item:nth-child(6) nb-icon { color: nb-theme(color-info-500); }
+    .menu-item:nth-child(7) nb-icon { color: nb-theme(color-success-500); }
+    .menu-item:nth-child(8) nb-icon { color: nb-theme(color-danger-500); }
+  }
+
+  // Global compact layout optimizations - inspired by modern SaaS dashboards
+  nb-card {
+    // Reduce card header padding for tighter layout
+    nb-card-header {
+      padding: 0.875rem 1.25rem; // Reduced from default 1.25rem
+      
+      // Optimize header title sizes
+      h5 {
+        font-size: 1.125rem; // Reduced from 1.25rem (20px to 18px)
+        font-weight: 600;
+        margin-bottom: 0;
+      }
+      
+      h6 {
+        font-size: 1rem; // Reduced from 1.125rem (18px to 16px)
+        font-weight: 600;
+        margin-bottom: 0;
+      }
+    }
+    
+    // Reduce card body padding
+    nb-card-body {
+      padding: 1rem 1.25rem; // Reduced top/bottom from 1.25rem
+    }
+    
+    // Reduce card footer padding
+    nb-card-footer {
+      padding: 0.875rem 1.25rem; // Reduced from 1.25rem
+    }
+  }
+  
+  // Profile Dialog - Fixed size defined in template, internal scroll only
+  .cdk-overlay-pane.profile-dialog-lg,
+  .cdk-overlay-pane.profile-detail-dialog {
+    // Remove default constraints - let nb-card define its own size
+    max-width: unset !important;
+    max-height: unset !important;
+  }
+  
+  // Profile dialog card - flex layout for fixed height scrolling
+  nb-card.profile-dialog-card {
+    // Size is controlled via inline style in template (width: 90vw; height: 85vh)
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    
+    > nb-card-header {
+      flex-shrink: 0;
+    }
+    
+    > nb-card-body {
+      padding: 0;
+      flex: 1;
+      min-height: 0;  // Critical: allow flex child to shrink
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    nb-tabset {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      
+      .tabset {
+        flex-shrink: 0;
+      }
+      
+      .tab-content {
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+      }
+    }
+  }
+}

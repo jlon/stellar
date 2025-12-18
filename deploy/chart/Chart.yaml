@@ -1,0 +1,33 @@
+apiVersion: v2
+name: stellar
+description: A Helm chart for deploying Stellar on Kubernetes
+
+# Chart type: application or library
+type: application
+
+# Chart version - follows SemVer (https://semver.org/)
+version: 1.0.0
+
+# Application version deployed by this chart
+appVersion: "1.0.0"
+
+# Minimum Kubernetes version required
+kubeVersion: ">=1.16.0-0"
+
+# Keywords for better discoverability
+keywords:
+  - starrocks
+  - kubernetes
+
+# Maintainer information
+maintainers:
+  - name: Stellar Team
+    email: wang.t.ince@gmail.com
+    url: https://github.com/jlon/stellar
+
+# Source code locations
+sources:
+  - https://github.com/jlon/stellar
+
+# Home page URL
+home: https://github.com/jlon/stellar

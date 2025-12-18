@@ -1,0 +1,27 @@
+# Rustfmt configuration for Stellar Backend
+# Following Rust community standard style guide
+
+# Edition (must match Cargo.toml)
+edition = "2021"
+
+# Maximum line width
+max_width = 100
+
+# Use hard tabs for indentation
+hard_tabs = false
+tab_spaces = 4
+
+# Import organization (stable features only)
+reorder_imports = true
+reorder_modules = true
+
+# Formatting preferences
+newline_style = "Unix"
+use_small_heuristics = "Max"
+
+# Match formatting
+match_block_trailing_comma = true
+
+# Chain formatting
+chain_width = 60
+

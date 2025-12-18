@@ -1,0 +1,54 @@
+<div class="tab-bar">
+  <div class="tab-container">
+    <div 
+      *ngFor="let tab of tabs; trackBy: trackByTabId"
+      class="tab-item"
+      [class.active]="tab.active"
+      [class.pinned]="tab.pinned"
+      (click)="onTabClick(tab)"
+      (contextmenu)="onTabContextMenu(tab, $event)">
+      
+      <!-- 固定图标 -->
+      <nb-icon 
+        *ngIf="tab.pinned" 
+        icon="pin-outline" 
+        class="pin-icon">
+      </nb-icon>
+      
+      <!-- Tab图标 -->
+      <nb-icon 
+        *ngIf="tab.icon && !tab.pinned" 
+        [icon]="tab.icon" 
+        class="tab-icon">
+      </nb-icon>
+      
+      <!-- Tab标题 -->
+      <span class="tab-title">{{ tab.title }}</span>
+      
+      <!-- 关闭按钮 -->
+      <nb-icon 
+        *ngIf="tab.closable" 
+        icon="close-outline" 
+        class="close-icon"
+        (click)="onCloseTab($event, tab.id)">
+      </nb-icon>
+    </div>
+  </div>
+</div>
+
+<div 
+  class="tab-context-menu"
+  *ngIf="contextMenuVisible"
+  [style.left.px]="contextMenuX"
+  [style.top.px]="contextMenuY"
+  (contextmenu)="$event.preventDefault()">
+  <button 
+    type="button"
+    class="menu-item"
+    *ngFor="let item of contextMenuItems"
+    [class.disabled]="item.disabled"
+    (click)="onContextMenuItemClick(item, $event)">
+    <nb-icon [icon]="item.icon" [ngClass]="['menu-item-icon', 'icon-' + item.action]"></nb-icon>
+    <span>{{ item.label }}</span>
+  </button>
+</div>

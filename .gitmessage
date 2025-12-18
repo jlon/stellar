@@ -1,0 +1,29 @@
+# Git Commit Convention
+
+## Format
+`type(scope): description`
+
+## Types
+- feat: new feature
+- fix: bug fix
+- docs: documentation changes
+- style: code formatting (no logic changes)
+- refactor: code refactoring
+- test: adding tests
+- chore: maintenance tasks
+
+## Examples
+- feat(auth): add JWT authentication
+- fix(api): resolve CORS issue
+- docs(readme): update installation guide
+- style(frontend): fix indentation
+- refactor(backend): extract common utilities
+- test(api): add integration tests
+- chore(deps): update dependencies
+
+## Rules
+- Use English only
+- Use imperative mood (add, fix, update)
+- Keep description under 50 characters
+- Use lowercase for type and scope
+- No need to write a long description, just a short title

@@ -1,0 +1,134 @@
+// Open Sans font - local files
+// Use relative path from SCSS file location for Angular build compatibility
+// Path: src/app/@theme/styles/styles.scss -> src/assets/fonts/ = ../../../assets/fonts/
+@font-face {
+  font-family: 'Open Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../../../assets/fonts/OpenSans-Regular.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Open Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('../../../assets/fonts/OpenSans-SemiBold.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Open Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../../../assets/fonts/OpenSans-Bold.ttf') format('truetype');
+}
+
+// themes - our custom or/and out of the box themes
+@import 'themes';
+
+// framework component themes (styles tied to theme variables)
+@import '@nebular/theme/styles/globals';
+@import '@nebular/auth/styles/globals';
+
+@import 'bootstrap/scss/functions';
+@import 'bootstrap/scss/variables';
+@import 'bootstrap/scss/mixins';
+@import 'bootstrap/scss/grid';
+
+// loading progress bar theme
+@import './pace.theme';
+
+@import './layout';
+@import './overrides';
+
+// install the framework and custom global styles
+@include nb-install() {
+
+  // framework global styles
+  @include nb-theme-global();
+  @include nb-auth-global();
+
+  @include ngx-layout();
+  // loading progress bar
+  @include ngx-pace-theme();
+
+  @include nb-overrides();
+};
+
+// Dialog size classes (Bootstrap-compatible) with higher specificity
+nb-dialog-container.modal-lg,
+.modal-lg nb-dialog-container,
+.cdk-overlay-pane.modal-lg {
+  max-width: 1200px !important;
+  width: 1200px !important;
+}
+
+nb-dialog-container.modal-xl,
+.modal-xl nb-dialog-container,
+.cdk-overlay-pane.modal-xl {
+  max-width: 1140px !important;
+  width: 1140px !important;
+}
+
+nb-dialog-container.modal-sm,
+.modal-sm nb-dialog-container,
+.cdk-overlay-pane.modal-sm {
+  max-width: 300px !important;
+  width: 300px !important;
+}
+
+// Metric badge helpers
+.metric-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.metric-badge--good {
+  background: rgba(56, 193, 114, 0.16);
+  color: #2f9d5d;
+}
+
+.metric-badge--info {
+  background: rgba(0, 123, 255, 0.16);
+  color: #0066cc;
+}
+
+.metric-badge--warn {
+  background: rgba(255, 173, 0, 0.18);
+  color: #c97a0c;
+}
+
+.metric-badge--alert {
+  background: rgba(220, 53, 69, 0.16);
+  color: #b51d37;
+}
+
+.metric-badge--neutral {
+  background: rgba(145, 153, 175, 0.14);
+  color: #6f7785;
+}
+
+// Profile dialog scroll container - must be global for overlay
+.profile-scroll-container {
+  max-height: 70vh !important;
+  overflow-y: auto !important;
+  overflow-x: auto !important;
+
+  .profile-content-text {
+    white-space: pre-wrap !important;
+    word-wrap: break-word !important;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace !important;
+    font-size: 13px !important;
+    line-height: 1.6 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+}

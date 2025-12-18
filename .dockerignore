@@ -1,0 +1,53 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Build artifacts
+build/
+target/
+frontend/dist/
+frontend/node_modules/
+frontend/.angular/
+
+# Development
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Documentation
+docs/
+README.md
+LICENSE
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing (exclude test files but keep necessary source files)
+# Note: Don't use broad patterns like **/*test* as it excludes valid source files
+backend/tests/**/*test*.rs
+frontend/**/*spec*.ts
+frontend/e2e/
+
+# Scripts (except those needed for build)
+scripts/
+
+# Deploy files (we're already in deploy)
+deploy/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+

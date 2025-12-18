@@ -1,0 +1,144 @@
+<nb-layout>
+  <nb-layout-column>
+    <div class="auth-background">
+      <div class="login-container">
+        <div class="login-card">
+          <!-- Left Side - Illustration -->
+          <div class="illustration-section">
+            <div class="tech-illustration">
+              <div class="geometric-shapes">
+                <div class="shape rocket-shape"></div>
+                <div class="shape circle-shape"></div>
+                <div class="shape triangle-shape"></div>
+                <div class="shape line-shape"></div>
+                <div class="shape dot-shape"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Side - Login Form -->
+          <div class="form-section">
+            <div class="form-content">
+              <!-- Header -->
+              <div class="brand-header">
+                <div class="brand-logo">
+                  <div class="logo-icon">
+                    <nb-icon icon="database-outline"></nb-icon>
+                  </div>
+                  <h1 class="brand-name">Stellar</h1>
+                </div>
+                <p class="brand-tagline">A professional StarRocks cluster management Platform</p>
+              </div>
+
+              <!-- Alert Messages -->
+              <nb-alert *ngFor="let error of errors" status="danger" closable (close)="errors = []">
+                {{ error }}
+              </nb-alert>
+              <nb-alert *ngFor="let message of messages" status="success" closable (close)="messages = []">
+                {{ message }}
+              </nb-alert>
+
+              <!-- Login Form -->
+              <form (ngSubmit)="login()" #form="ngForm" class="login-form">
+                <!-- Email Field -->
+                <div class="form-group">
+                  <label class="form-label" for="input-username">Username</label>
+                  <input 
+                    nbInput
+                    fullWidth
+                    [(ngModel)]="user.username"
+                    #username="ngModel"
+                    id="input-username"
+                    name="username"
+                    placeholder="Enter your username"
+                    autofocus
+                    [status]="username.dirty ? (username.invalid  ? 'danger' : 'success') : 'basic'"
+                    [required]="true"
+                    [attr.aria-invalid]="username.invalid && username.touched ? true : null">
+                  <ng-container *ngIf="username.invalid && username.touched">
+                    <p class="error-message" *ngIf="username.errors?.['required']">
+                      Username is required!
+                    </p>
+                  </ng-container>
+                </div>
+
+                <!-- Password Field -->
+                <div class="form-group">
+                  <label class="form-label" for="input-password">Password</label>
+                  <input 
+                    nbInput
+                    fullWidth
+                    [(ngModel)]="user.password"
+                    #password="ngModel"
+                    type="password"
+                    id="input-password"
+                    name="password"
+                    placeholder="Enter your password"
+                    [status]="password.dirty ? (password.invalid  ? 'danger' : 'success') : 'basic'"
+                    [required]="true"
+                    [attr.aria-invalid]="password.invalid && password.touched ? true : null">
+                  <ng-container *ngIf="password.invalid && password.touched">
+                    <p class="error-message" *ngIf="password.errors?.['required']">
+                      Password is required!
+                    </p>
+                  </ng-container>
+                </div>
+
+                <!-- Options Row -->
+                <div class="options-row">
+                  <label class="checkbox-label">
+                    <input type="checkbox" class="checkbox-input" [(ngModel)]="rememberMe" name="rememberMe">
+                    <span class="checkbox-text">Remember me</span>
+                  </label>
+                  <a href="#" class="forgot-link">Forget Password?</a>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="action-buttons">
+                  <button 
+                    nbButton 
+                    fullWidth
+                    status="primary"
+                    size="large"
+                    [disabled]="submitted || !form.valid"
+                    [class.btn-pulse]="submitted"
+                    class="login-button">
+                    <nb-icon *ngIf="submitted" icon="loader-outline" [options]="{animation: {type: 'pulse'}}"></nb-icon>
+                    <nb-icon *ngIf="!submitted" icon="log-in-outline"></nb-icon>
+                    <span *ngIf="!submitted">Login</span>
+                    <span *ngIf="submitted">Logging in...</span>
+                  </button>
+                  
+                  <button 
+                    nbButton 
+                    status="basic"
+                    size="large"
+                    class="signup-button"
+                    routerLink="../register">
+                    <nb-icon icon="person-add-outline"></nb-icon>
+                    Sign Up
+                  </button>
+                </div>
+
+                <!-- Social Login -->
+                <div class="social-login">
+                  <p class="social-text">Or login with</p>
+                  <div class="social-buttons">
+                    <button nbButton status="basic" size="medium" class="social-btn google-btn">
+                      <nb-icon icon="google-outline"></nb-icon>
+                      Google
+                    </button>
+                    <button nbButton status="basic" size="medium" class="social-btn facebook-btn">
+                      <nb-icon icon="facebook-outline"></nb-icon>
+                      Facebook
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </nb-layout-column>
+</nb-layout>

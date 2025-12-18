@@ -1,0 +1,126 @@
+@import '../../../../@theme/styles/themes';
+
+@include nb-install-component() {
+:host {
+  display: block;
+    width: 36rem;
+    max-width: calc(100vw - 2rem);
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  h5 {
+    margin: 0;
+      font-size: 1rem;
+    font-weight: 600;
+  }
+}
+
+  .form-row {
+  display: flex;
+    gap: 1rem;
+    margin-bottom: 0.875rem;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+}
+
+.form-group {
+    flex: 1;
+    min-width: 0;
+
+    &.full {
+      flex: 0 0 100%;
+    }
+
+  .label {
+    display: block;
+      margin-bottom: 0.25rem;
+      font-size: 0.8125rem;
+    font-weight: 500;
+      color: nb-theme(text-basic-color);
+
+      .hint {
+    font-weight: normal;
+        color: nb-theme(text-hint-color);
+    font-size: 0.75rem;
+  }
+
+      .required {
+        color: nb-theme(color-danger-default);
+        margin-left: 0.125rem;
+      }
+    }
+
+    .hint-text {
+      display: block;
+      margin-top: 0.25rem;
+      font-size: 0.75rem;
+      color: nb-theme(text-hint-color);
+    }
+
+    .error-text {
+      display: block;
+      margin-top: 0.25rem;
+      font-size: 0.75rem;
+      color: nb-theme(color-danger-default);
+    }
+  }
+
+  nb-accordion {
+    margin-top: 0.5rem;
+    border: 1px solid nb-theme(border-basic-color-3);
+    border-radius: nb-theme(border-radius);
+    overflow: hidden;
+
+    nb-accordion-item-header {
+      font-size: 0.875rem;
+      font-weight: 500;
+      padding: 0.625rem 1rem;
+      background: nb-theme(background-basic-color-2);
+    }
+
+    nb-accordion-item-body {
+      padding: 0.875rem;
+  }
+}
+
+  .advanced-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem;
+
+    .form-group {
+      margin-bottom: 0;
+  }
+
+    input[type='number'] {
+      text-align: center;
+  }
+}
+
+  nb-card-footer {
+  display: flex;
+  justify-content: flex-end;
+    padding: 0.75rem 1rem;
+}
+
+  @media (max-width: 600px) {
+  :host {
+      width: calc(100vw - 1rem);
+  }
+
+  .form-row {
+    flex-direction: column;
+      gap: 0.875rem;
+  }
+
+    .advanced-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+}

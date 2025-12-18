@@ -1,0 +1,74 @@
+@use '@nebular/theme/styles/theming' as *;
+
+.metric-card-group {
+  margin-bottom: 1.25rem; // 减少组件间距 (从1.5rem到1.25rem)
+
+  .group-header-clickable {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s ease;
+
+    &:hover {
+      background-color: nb-theme(background-basic-color-2);
+    }
+  }
+
+  .group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+
+    .group-title {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+
+      .group-icon {
+        font-size: 1.375rem; // 轻微减小图标 (从1.5rem到1.375rem)
+      }
+
+      h6 {
+        margin: 0;
+        font-size: 0.9375rem; // 轻微减小标题 (从1rem到0.9375rem = 15px)
+        font-weight: 600;
+        color: nb-theme(text-basic-color);
+      }
+
+      .badge-count {
+        margin-left: 0.5rem;
+      }
+    }
+
+    .toggle-icon {
+      font-size: 1.25rem;
+      color: nb-theme(text-hint-color);
+      transition: transform 0.3s ease;
+    }
+  }
+
+  .group-body {
+    padding: 0.875rem 1rem; // 减少垂直padding，保持水平padding
+    position: relative;
+    z-index: 1;
+    
+    // 确保子元素可以接收点击事件
+    ::ng-deep * {
+      pointer-events: auto !important;
+    }
+  }
+}
+
+// 分组分隔线
+.metric-card-group + .metric-card-group {
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  margin-top: -1px;
+}
+
+// 暗色主题适配
+:host-context(.nb-theme-dark) {
+  .metric-card-group + .metric-card-group {
+    border-top-color: rgba(255, 255, 255, 0.08);
+  }
+}
+

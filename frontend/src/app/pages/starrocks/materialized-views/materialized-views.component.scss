@@ -1,0 +1,185 @@
+.filter-section {
+  margin-bottom: 1rem;
+}
+
+.advanced-filters {
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.stats-section {
+  nb-alert {
+    margin-bottom: 0;
+  }
+}
+
+.detail-section {
+  padding: 0.75rem 0;
+  height: 350px;
+  overflow: hidden;
+
+  .row {
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  .col-md-6 {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  label.label {
+    font-weight: 600;
+    color: nb-theme(text-hint-color);
+    margin-bottom: 0.25rem;
+    font-size: 0.875rem;
+  }
+
+  p {
+    margin-bottom: 0;
+    font-size: 0.875rem;
+  }
+
+  .mb-3 {
+    margin-bottom: 0.75rem !important;
+  }
+}
+
+.ddl-section {
+  padding: 0.75rem 0;
+  height: 350px;
+  display: flex;
+  flex-direction: column;
+
+  textarea {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    flex: 1;
+    resize: none;
+  }
+}
+
+.template-section {
+  h6 {
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    
+    &:first-child {
+      margin-top: 0;
+    }
+  }
+
+  .code-template {
+    background-color: nb-theme(background-basic-color-2);
+    border: 1px solid nb-theme(border-basic-color-3);
+    border-radius: 0.25rem;
+    padding: 0.75rem;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.875rem;
+    overflow-x: auto;
+    margin-bottom: 0.5rem;
+  }
+}
+
+.gap-2 {
+  gap: 0.5rem;
+}
+
+.badge {
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+
+  &.badge-success {
+    background-color: #00d68f;
+    color: #ffffff;
+  }
+
+  &.badge-info {
+    background-color: #0095ff;
+    color: #ffffff;
+  }
+
+  &.badge-warning {
+    background-color: #ffaa00;
+    color: #ffffff;
+  }
+
+  &.badge-danger {
+    background-color: #ff3d71;
+    color: #ffffff;
+  }
+
+  &.badge-primary {
+    background-color: #8f7ee6;
+    color: #ffffff;
+  }
+
+  &.badge-basic {
+    background-color: #edf1f7;
+    color: #2e3a59;
+  }
+}
+
+::ng-deep {
+  .nb-theme-default {
+    ng2-smart-table {
+      table {
+        tr {
+          td,
+          th {
+            vertical-align: middle;
+          }
+        }
+      }
+
+      // Action buttons in table
+      .btn-xs {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+        line-height: 1.2;
+      }
+    }
+  }
+
+  // Detail dialog optimization
+  nb-dialog-container {
+    nb-card {
+      width: 900px;
+      max-width: 95vw;
+
+      nb-card-body {
+        overflow-x: hidden;
+      }
+    }
+
+    // Fix tabset content height to prevent dialog resize
+    nb-tabset {
+      .tab-content {
+        min-height: 350px;
+        overflow: hidden;
+      }
+    }
+  }
+}
+

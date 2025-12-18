@@ -1,0 +1,269 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Triggers on version tags like v1.0.0, v2.1.3, etc.
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  verify-version:
+    name: Verify Version Consistency
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Get version from tag
+      id: get_version
+      run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+    - name: Verify version consistency
+      run: |
+        TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+        echo "Tag version: $TAG_VERSION"
+        
+        # Check Cargo.toml
+        CARGO_VERSION=$(grep '^version' backend/Cargo.toml | head -1 | cut -d'"' -f2)
+        echo "Cargo.toml version: $CARGO_VERSION"
+        
+        # Check package.json
+        NPM_VERSION=$(grep '"version"' frontend/package.json | head -1 | cut -d'"' -f4)
+        echo "package.json version: $NPM_VERSION"
+        
+        # Check Chart.yaml
+        CHART_VERSION=$(grep '^version:' deploy/chart/Chart.yaml | head -1 | awk '{print $2}')
+        echo "Chart.yaml version: $CHART_VERSION"
+        
+        # Verify all versions match
+        if [ "$TAG_VERSION" != "$CARGO_VERSION" ]; then
+          echo "❌ Version mismatch: Tag ($TAG_VERSION) != Cargo.toml ($CARGO_VERSION)"
+          exit 1
+        fi
+        
+        if [ "$TAG_VERSION" != "$NPM_VERSION" ]; then
+          echo "❌ Version mismatch: Tag ($TAG_VERSION) != package.json ($NPM_VERSION)"
+          exit 1
+        fi
+        
+        if [ "$TAG_VERSION" != "$CHART_VERSION" ]; then
+          echo "❌ Version mismatch: Tag ($TAG_VERSION) != Chart.yaml ($CHART_VERSION)"
+          exit 1
+        fi
+        
+        echo "✅ All versions are consistent: $TAG_VERSION"
+
+  create-release:
+    name: Create Release
+    needs: verify-version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      version: ${{ needs.verify-version.outputs.version }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Extract CHANGELOG for this version
+      id: changelog
+      run: |
+        VERSION="${GITHUB_REF#refs/tags/v}"
+        echo "Extracting CHANGELOG for version $VERSION"
+        
+        # Extract content between this version and the next version header
+        CHANGELOG=$(awk "/## \[$VERSION\]/,/## \[/" CHANGELOG.md | sed '$d' | tail -n +2)
+        
+        # If extraction failed, use a default message
+        if [ -z "$CHANGELOG" ]; then
+          CHANGELOG="Please see the [CHANGELOG](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details."
+        fi
+        
+        # Save to output using heredoc to handle multiline
+        {
+          echo 'content<<EOF'
+          echo "$CHANGELOG"
+          echo 'EOF'
+        } >> $GITHUB_OUTPUT
+
+    - name: Create Release
+      id: create_release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: Stellar ${{ github.ref_name }}
+        draft: false
+        prerelease: false
+        body: |
+          ## Stellar ${{ github.ref_name }}
+          
+          ### 🚀 What's New
+          
+          ${{ steps.changelog.outputs.content }}
+          
+          ### 📦 Installation
+          
+          #### Quick Start (Recommended)
+          ```bash
+          # Download and extract
+          wget https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/stellar-${{ needs.verify-version.outputs.version }}-linux-amd64.tar.gz
+          tar -xzf stellar-${{ needs.verify-version.outputs.version }}-linux-amd64.tar.gz
+          cd stellar
+          
+          # Start the service
+          ./bin/stellar.sh start
+          
+          # Access the application
+          open http://localhost:8080
+          ```
+          
+          #### Docker (Multi-platform: amd64/arm64)
+          ```bash
+          # Pull the image (automatically built by docker-publish workflow)
+          docker pull ghcr.io/${{ github.repository }}:${{ needs.verify-version.outputs.version }}
+          
+          # Or use latest tag
+          docker pull ghcr.io/${{ github.repository }}:latest
+          
+          # Run the container
+          docker run -d -p 8080:8080 \
+            -v $(pwd)/data:/app/data \
+            -v $(pwd)/logs:/app/logs \
+            ghcr.io/${{ github.repository }}:${{ needs.verify-version.outputs.version }}
+          ```
+          
+          > **Note:** Docker images are built automatically by the `docker-publish` workflow and support both amd64 and arm64 architectures.
+          
+          ### 📋 System Requirements
+          - Linux x86_64 (macOS users please use Docker)
+          - 2GB RAM minimum
+          - 1GB disk space
+          
+          ### 🔗 Links
+          - [Documentation](https://github.com/${{ github.repository }}/blob/main/README.md)
+          - [Quick Start Guide](https://github.com/${{ github.repository }}/blob/main/docs/QUICK_START_RELEASE.md)
+          - [Full CHANGELOG](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)
+
+  build-and-upload:
+    name: Build and Upload Assets
+    needs: create-release
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Cache Rust dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          backend/target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+
+    - name: Build application
+      run: make build
+
+    - name: Verify build artifacts
+      run: |
+        echo "Verifying build artifacts..."
+        
+        # Check if binary exists and is executable
+        if [ ! -f "build/dist/bin/stellar" ]; then
+          echo "❌ Binary not found"
+          exit 1
+        fi
+        
+        # Check if binary is executable
+        if [ ! -x "build/dist/bin/stellar" ]; then
+          echo "❌ Binary is not executable"
+          exit 1
+        fi
+        
+        # Check if required directories exist
+        for dir in conf data logs migrations; do
+          if [ ! -d "build/dist/$dir" ]; then
+            echo "❌ Directory $dir not found"
+            exit 1
+          fi
+        done
+        
+        echo "✅ Build artifacts verified"
+
+    - name: Create release package
+      run: |
+        VERSION="${{ needs.create-release.outputs.version }}"
+        ARTIFACT_NAME="stellar-${VERSION}-linux-amd64"
+        
+        cd build/dist
+        tar -czf ${ARTIFACT_NAME}.tar.gz \
+          --transform 's,^,stellar/,' \
+          bin conf lib data logs migrations
+        
+        # Verify tar package
+        echo "Verifying tar package..."
+        echo "Package name: ${ARTIFACT_NAME}.tar.gz"
+        tar -tzf ${ARTIFACT_NAME}.tar.gz | head -20
+        
+        # Check package size
+        SIZE=$(du -h ${ARTIFACT_NAME}.tar.gz | cut -f1)
+        echo "Package size: $SIZE"
+
+    - name: Upload Release Asset
+      uses: softprops/action-gh-release@v1
+      with:
+        files: build/dist/stellar-${{ needs.create-release.outputs.version }}-linux-amd64.tar.gz
+
+  publish-helm-chart:
+    name: Publish Helm Chart
+    needs: create-release
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: 'latest'
+
+    - name: Package Helm chart
+      run: |
+        cd deploy/chart
+        helm package . --version ${{ needs.create-release.outputs.version }}
+
+    - name: Upload Helm chart to release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: deploy/chart/stellar-${{ needs.create-release.outputs.version }}.tgz
+
+  # Note: Docker image building is handled by docker-publish.yml workflow
+  # which is automatically triggered when a tag is pushed.
+  # The docker-publish workflow runs in parallel with this release workflow.

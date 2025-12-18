@@ -1,0 +1,212 @@
+<div class="row">
+  <div class="col-12">
+    <nb-card>
+      <nb-card-header>
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="d-flex align-items-center gap-2">
+            <h5 class="mb-0">审计日志</h5>
+            <span class="text-hint">|</span>
+            <span class="text-hint" style="font-size: 13px;">
+              集群: <strong>{{ activeCluster?.name || '未选择集群' }}</strong>
+            </span>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <button nbButton status="primary" size="small" (click)="loadHistoryQueries()" [disabled]="loading || !clusterId">
+              <nb-icon icon="refresh-outline"></nb-icon>
+              刷新
+            </button>
+            
+            <nb-select 
+              [(selected)]="selectedRefreshInterval" 
+              size="small" 
+              placeholder="自动刷新"
+              (selectedChange)="onRefreshIntervalChange($event)"
+              [disabled]="!clusterId"
+              style="min-width: 100px;"
+            >
+              <nb-option *ngFor="let option of refreshIntervalOptions" [value]="option.value">
+                {{ option.label }}
+              </nb-option>
+            </nb-select>
+          </div>
+        </div>
+      </nb-card-header>
+      <nb-card-body>
+        <!-- Search Filters -->
+        <div class="search-filters">
+          <nb-card status="basic" class="filter-card">
+            <nb-card-body>
+              <div class="row align-items-center">
+                <div class="col-md-4">
+                  <nb-form-field>
+                    <input 
+                      nbInput 
+                      fullWidth 
+                      placeholder="搜索 Query ID / SQL / 用户"
+                      [(ngModel)]="searchKeyword"
+                      (keyup.enter)="searchHistory()">
+                  </nb-form-field>
+                </div>
+                <div class="col-md-3">
+                  <nb-form-field>
+                    <nb-icon nbPrefix icon="calendar-outline"></nb-icon>
+                    <input 
+                      nbInput 
+                      fullWidth 
+                      placeholder="开始时间"
+                      type="datetime-local"
+                      [(ngModel)]="searchStartTime">
+                  </nb-form-field>
+                </div>
+                <div class="col-md-3">
+                  <nb-form-field>
+                    <nb-icon nbPrefix icon="calendar-outline"></nb-icon>
+                    <input 
+                      nbInput 
+                      fullWidth 
+                      placeholder="结束时间"
+                      type="datetime-local"
+                      [(ngModel)]="searchEndTime">
+                  </nb-form-field>
+                </div>
+                <div class="col-md-2">
+                  <button 
+                    nbButton 
+                    status="primary" 
+                    fullWidth
+                    size="small"
+                    (click)="searchHistory()">
+                    搜索
+                  </button>
+                </div>
+              </div>
+              <div class="row mt-2" *ngIf="hasActiveFilters()">
+                <div class="col-12">
+                  <div class="active-filters">
+                    <span class="filter-label">当前筛选条件：</span>
+                    <nb-badge 
+                      *ngIf="searchKeyword" 
+                      status="info" 
+                      text="{{ '关键词: ' + searchKeyword }}"
+                      class="filter-badge">
+                    </nb-badge>
+                    <nb-badge 
+                      *ngIf="searchStartTime" 
+                      status="warning" 
+                      text="{{ '开始时间: ' + searchStartTime }}"
+                      class="filter-badge">
+                    </nb-badge>
+                    <nb-badge 
+                      *ngIf="searchEndTime" 
+                      status="warning" 
+                      text="{{ '结束时间: ' + searchEndTime }}"
+                      class="filter-badge">
+                    </nb-badge>
+                    <button 
+                      nbButton 
+                      ghost 
+                      status="basic" 
+                      size="tiny"
+                      (click)="clearFilters()"
+                      class="clear-filters-btn">
+                      <nb-icon icon="close-outline"></nb-icon>
+                      清除筛选
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </nb-card-body>
+          </nb-card>
+        </div>
+
+        <div *ngIf="loading" class="text-center mt-3"><nb-spinner status="primary"></nb-spinner></div>
+        
+        <ng2-smart-table 
+          *ngIf="!loading" 
+          [settings]="historySettings" 
+          [source]="historySource"
+          (edit)="onEditProfile($event)">
+        </ng2-smart-table>
+
+        <!-- Custom pagination -->
+        <div *ngIf="!loading && historyTotalCount > 0" class="pagination-container">
+          <div class="pagination-info">
+            <span>显示第 {{ (historyCurrentPage - 1) * historyPageSize + 1 }} - {{ Math.min(historyCurrentPage * historyPageSize, historyTotalCount) }} 条，共 {{ historyTotalCount }} 条</span>
+            <nb-select 
+              [(selected)]="historyPageSize" 
+              size="tiny"
+              (selectedChange)="onHistoryPageSizeChange($event)"
+              class="page-size-select">
+              <nb-option [value]="5">5 条/页</nb-option>
+              <nb-option [value]="10">10 条/页</nb-option>
+              <nb-option [value]="20">20 条/页</nb-option>
+              <nb-option [value]="50">50 条/页</nb-option>
+              <nb-option [value]="100">100 条/页</nb-option>
+            </nb-select>
+          </div>
+          <div class="pagination-controls">
+            <button 
+              nbButton 
+              size="tiny" 
+              status="basic"
+              [disabled]="historyCurrentPage === 1"
+              (click)="onHistoryPageChange(1)">
+              <nb-icon icon="chevron-left-outline"></nb-icon><nb-icon icon="chevron-left-outline"></nb-icon>
+            </button>
+            <button 
+              nbButton 
+              size="tiny" 
+              status="basic"
+              [disabled]="historyCurrentPage === 1"
+              (click)="onHistoryPageChange(historyCurrentPage - 1)">
+              <nb-icon icon="chevron-left-outline"></nb-icon>
+            </button>
+            <span class="page-info">第 {{ historyCurrentPage }} / {{ historyTotalPages }} 页</span>
+            <button 
+              nbButton 
+              size="tiny" 
+              status="basic"
+              [disabled]="historyCurrentPage === historyTotalPages"
+              (click)="onHistoryPageChange(historyCurrentPage + 1)">
+              <nb-icon icon="chevron-right-outline"></nb-icon>
+            </button>
+            <button 
+              nbButton 
+              size="tiny" 
+              status="basic"
+              [disabled]="historyCurrentPage === historyTotalPages"
+              (click)="onHistoryPageChange(historyTotalPages)">
+              <nb-icon icon="chevron-right-outline"></nb-icon><nb-icon icon="chevron-right-outline"></nb-icon>
+            </button>
+          </div>
+        </div>
+      </nb-card-body>
+    </nb-card>
+  </div>
+</div>
+
+<!-- Profile Dialog Template -->
+<ng-template #profileDialog let-data let-ref="dialogRef">
+  <nb-card>
+    <nb-card-header>
+      <div class="d-flex justify-content-between align-items-center">
+        <h6>Query Profile</h6>
+        <button nbButton ghost status="basic" size="tiny" (click)="ref.close()">
+          <nb-icon icon="close-outline"></nb-icon>
+        </button>
+      </div>
+    </nb-card-header>
+    <nb-card-body *ngIf="currentProfile">
+      <div class="profile-info">
+        <p><strong>Query ID:</strong> {{ currentProfile.query_id }}</p>
+        <p><strong>SQL:</strong></p>
+        <pre class="sql-statement">{{ currentProfile.sql }}</pre>
+        <p><strong>执行时间:</strong> {{ currentProfile.execution_time_ms }} ms</p>
+        <p><strong>状态:</strong> {{ currentProfile.status }}</p>
+        <hr>
+        <p><strong>Profile 内容:</strong></p>
+        <pre class="profile-content">{{ currentProfile.profile_content }}</pre>
+      </div>
+    </nb-card-body>
+  </nb-card>
+</ng-template>

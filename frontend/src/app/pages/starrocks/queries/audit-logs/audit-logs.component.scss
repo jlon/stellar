@@ -1,0 +1,123 @@
+@import '../../../../@theme/styles/themes';
+
+@include nb-install-component() {
+  .search-filters {
+    margin-bottom: 1.5rem;
+    
+    .filter-card {
+      border: 1px solid nb-theme(border-basic-color-3);
+      box-shadow: none;
+      
+      nb-card-body {
+        padding: 1rem;
+      }
+    }
+    
+    // 确保所有表单元素高度一致
+    .row {
+      display: flex;
+      align-items: center;
+      
+      nb-form-field {
+        height: 2.5rem;
+        display: flex;
+        align-items: center;
+        
+        input {
+          height: 2.5rem;
+          line-height: 2.5rem;
+        }
+        
+        nb-icon {
+          height: 2.5rem;
+          display: flex;
+          align-items: center;
+        }
+      }
+      
+      button {
+        height: 2.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+        
+        nb-icon {
+          height: 1rem;
+          width: 1rem;
+        }
+      }
+    }
+    
+    .active-filters {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      padding: 0.75rem;
+      background-color: nb-theme(background-basic-color-2);
+      border-radius: nb-theme(border-radius);
+      border: 1px solid nb-theme(border-basic-color-3);
+      
+      .filter-label {
+        font-size: 0.875rem;
+        color: nb-theme(text-hint-color);
+        margin-right: 0.5rem;
+        font-weight: 500;
+      }
+      
+      .filter-badge {
+        margin-right: 0.25rem;
+      }
+      
+      .clear-filters-btn {
+        margin-left: auto;
+      }
+    }
+  }
+
+  .pagination-container {
+    margin-top: 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    
+    .pagination-info {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      
+      .page-size-select {
+        min-width: 100px;
+      }
+    }
+    
+    .pagination-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      
+      .page-info {
+        margin: 0 0.5rem;
+        font-size: 14px;
+        color: nb-theme(text-hint-color);
+      }
+    }
+  }
+
+  .profile-info {
+    .sql-statement, .profile-content {
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+      font-size: 12px;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      word-break: break-all;
+      background-color: nb-theme(background-basic-color-1);
+      padding: 0.75rem;
+      border-radius: nb-theme(border-radius);
+      margin: 0.5rem 0;
+    }
+  }
+}

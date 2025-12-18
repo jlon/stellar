@@ -1,0 +1,191 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: stellar
+  labels:
+    name: stellar
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stellar-config
+  namespace: stellar
+  labels:
+    app: stellar
+data:
+  config.toml: |
+    [server]
+    host = "0.0.0.0"
+    port = 8080
+
+    [database]
+    url = "sqlite://data/stellar.db"
+
+    [auth]
+    # JWT secret will be overridden by environment variable from Secret
+    jwt_secret = "will-be-overridden"
+    jwt_expires_in = "24h"
+
+    [logging]
+    level = "info,starrocks_admin=info"
+    # Log file path (relative to working directory /app)
+    # Logs will be written to both file and console (stdout/stderr)
+    file = "logs/stellar.log"
+
+    [metrics]
+    interval_secs = "30s"
+    retention_days = "7d"
+    enabled = true
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: stellar-secret
+  namespace: stellar
+  labels:
+    app: stellar
+type: Opaque
+stringData:
+  # IMPORTANT: Change this in production!
+  # Generate secure random string: openssl rand -base64 32
+  jwt-secret: "CHANGE-THIS-IN-PRODUCTION-USE-openssl-rand-base64-32"
+  
+  # Add other secrets as needed
+  # database-password: "your-db-password"
+  # api-key: "your-api-key"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: stellar-data
+  namespace: stellar
+  labels:
+    app: stellar
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  # storageClassName: ""  # 使用默认存储类，如需指定请取消注释并填写
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stellar
+  namespace: stellar
+  labels:
+    app: stellar
+spec:
+  replicas: 1  # SQLite only supports single writer, use 1 replica
+  selector:
+    matchLabels:
+      app: stellar
+  template:
+    metadata:
+      labels:
+        app: stellar
+    spec:
+      containers:
+      - name: stellar
+        image: stellar:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        - name: APP_SERVER_HOST
+          value: "0.0.0.0"
+        - name: APP_SERVER_PORT
+          value: "8080"
+        - name: APP_DATABASE_URL
+          value: "sqlite://data/stellar.db"
+        - name: APP_JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: stellar-secret
+              key: jwt-secret
+        - name: APP_LOG_LEVEL
+          value: "info,starrocks_admin=info"
+        - name: APP_METRICS_ENABLED
+          value: "true"
+        volumeMounts:
+        - name: data
+          mountPath: /app/data
+        - name: logs
+          mountPath: /app/logs
+        - name: config
+          mountPath: /app/conf
+          readOnly: true
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 3
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: stellar-data
+      - name: config
+        configMap:
+          name: stellar-config
+      - name: logs
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stellar
+  namespace: stellar
+  labels:
+    app: stellar
+spec:
+  type: ClusterIP
+  selector:
+    app: stellar
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: stellar
+  namespace: stellar
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  rules:
+  - host: starrocks-domain.com
+    http:
+      paths:
+      - pathType: Prefix
+        path: /stellar(/|$)(.*)
+        backend:
+          service:
+            name: stellar
+            port:
+              number: 8080
+
