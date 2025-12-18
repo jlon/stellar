@@ -21,7 +21,7 @@ module.exports = function (config) {
       clearContext: false,
     },
     coverageIstanbulReporter: {
-      dir: require('path').join(__dirname, './coverage/starrocks-admin'),
+      dir: require('path').join(__dirname, './coverage/stellar'),
       subdir: '.',
       reporters: [
         { type: 'html' },

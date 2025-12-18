@@ -64,7 +64,7 @@ jwt_secret = "dev-secret-key-change-in-production"
 jwt_expires_in = "24h"
 
 [logging]
-level = "info,starrocks_admin_backend=debug"
+level = "info,stellar_backend=debug"
 file = "logs/stellar.log"
 
 

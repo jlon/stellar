@@ -4,7 +4,7 @@
 -- 最后更新: 2025-11-21
 -- ========================================
 
--- 前置检查：确保 starrocks_admin 角色已创建
+-- 前置检查：确保 stellar 角色已创建
 -- 如果未创建，请先执行 setup_monitor_role_v3.5.sql
 
 -- 1. 创建监控用户
@@ -21,11 +21,11 @@ CREATE USER 'starrocks_monitor'@'%'
 
 -- 2. 授予角色
 -- ========================================
-GRANT starrocks_admin TO USER 'starrocks_monitor'@'%';
+GRANT stellar TO USER 'starrocks_monitor'@'%';
 
 -- 3. 设置默认角色
 -- ========================================
-SET DEFAULT ROLE starrocks_admin TO 'starrocks_monitor'@'%';
+SET DEFAULT ROLE stellar TO 'starrocks_monitor'@'%';
 
 -- 4. 验证用户权限
 -- ========================================

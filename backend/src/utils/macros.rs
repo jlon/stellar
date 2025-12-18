@@ -6,7 +6,7 @@
 /// # Example
 ///
 /// ```rust
-/// use starrocks_admin::defer;
+/// use stellar::defer;
 ///
 /// fn process_file() -> Result<(), std::io::Error> {
 ///     let file = std::fs::File::open("test.txt")?;

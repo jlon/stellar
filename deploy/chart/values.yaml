@@ -206,7 +206,7 @@ configuration: |-
     jwt_expires_in = "24h"
 
     [logging]
-    level = "info,starrocks_admin=info"
+    level = "info,stellar=info"
     # Log file path (relative to working directory /app)
     # Logs will be written to both file and console (stdout/stderr)
     file = "logs/stellar.log"

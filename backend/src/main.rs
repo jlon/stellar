@@ -11,17 +11,17 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
-use starrocks_admin::config::Config;
-use starrocks_admin::db;
-use starrocks_admin::embedded::WebAssets;
-use starrocks_admin::models;
-use starrocks_admin::services::{
+use stellar::config::Config;
+use stellar::db;
+use stellar::embedded::WebAssets;
+use stellar::models;
+use stellar::services::{
     AuthService, CasbinService, ClusterService, DataStatisticsService, LLMServiceImpl,
     MetricsCollectorService, MySQLPoolManager, OrganizationService, OverviewService,
     PermissionService, RoleService, SystemFunctionService, UserRoleService, UserService,
 };
-use starrocks_admin::utils::{JwtUtil, ScheduledExecutor};
-use starrocks_admin::{AppState, handlers, middleware, services};
+use stellar::utils::{JwtUtil, ScheduledExecutor};
+use stellar::{AppState, handlers, middleware, services};
 
 #[derive(OpenApi)]
 #[openapi(

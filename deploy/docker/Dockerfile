@@ -50,7 +50,7 @@ COPY --from=builder /app/backend/target/release/stellar ./bin/
 COPY --from=builder /app/backend/migrations ./migrations
 
 # Create default config
-RUN echo '[server]\nhost = "0.0.0.0"\nport = 8080\n\n[database]\nurl = "sqlite://data/stellar.db"\n\n[auth]\njwt_secret = "dev-secret-key-change-in-production"\njwt_expires_in = "24h"\n\n[logging]\nlevel = "info,starrocks_admin_backend=debug"\nfile = "logs/stellar.log"\n\n[metrics]\ninterval_secs = "30s"\nretention_days = "7d"\nenabled = true\n\n[audit]\ndatabase = "starrocks_audit_db__"\ntable = "starrocks_audit_tbl__"' > ./conf/config.toml
+RUN echo '[server]\nhost = "0.0.0.0"\nport = 8080\n\n[database]\nurl = "sqlite://data/stellar.db"\n\n[auth]\njwt_secret = "dev-secret-key-change-in-production"\njwt_expires_in = "24h"\n\n[logging]\nlevel = "info,stellar_backend=debug"\nfile = "logs/stellar.log"\n\n[metrics]\ninterval_secs = "30s"\nretention_days = "7d"\nenabled = true\n\n[audit]\ndatabase = "starrocks_audit_db__"\ntable = "starrocks_audit_tbl__"' > ./conf/config.toml
 
 # Set permissions
 RUN chown -R starrocks:starrocks /app

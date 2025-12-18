@@ -118,7 +118,7 @@ pub struct CommandLineArgs {
     #[arg(long, value_name = "DURATION")]
     pub jwt_expires_in: Option<String>,
 
-    /// Logging level (overrides config file, e.g., "info,starrocks_admin_backend=debug")
+    /// Logging level (overrides config file, e.g., "info,stellar_backend=debug")
     #[arg(long, value_name = "LEVEL")]
     pub log_level: Option<String>,
 
@@ -184,7 +184,7 @@ impl Config {
     /// - APP_DATABASE_URL: Database URL (default: sqlite://data/stellar.db)
     /// - APP_JWT_SECRET: JWT secret key
     /// - APP_JWT_EXPIRES_IN: JWT expiration time (e.g., "24h")
-    /// - APP_LOG_LEVEL: Logging level (e.g., "info,starrocks_admin_backend=debug")
+    /// - APP_LOG_LEVEL: Logging level (e.g., "info,stellar_backend=debug")
     /// - APP_METRICS_INTERVAL_SECS: Metrics collection interval in seconds (accepts "30s", "5m", "1h")
     /// - APP_METRICS_RETENTION_DAYS: Retention days for metrics (accepts "7d")
     /// - APP_METRICS_ENABLED: Enable/disable metrics collector (true/false)
@@ -438,7 +438,7 @@ impl Default for AuthConfig {
 impl Default for LoggingConfig {
     fn default() -> Self {
         Self {
-            level: "info,starrocks_admin_backend=debug".to_string(),
+            level: "info,stellar_backend=debug".to_string(),
             file: Some("logs/stellar.log".to_string()),
         }
     }

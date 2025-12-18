@@ -938,9 +938,9 @@ mod llm_integration_tests {
         // Try multiple possible database paths
         let db_paths = [
             "data/stellar.db",
-            "starrocks_admin.db",
+            "stellar.db",
             "/home/oppo/Documents/stellar/backend/data/stellar.db",
-            "/home/oppo/Documents/stellar/backend/starrocks_admin.db",
+            "/home/oppo/Documents/stellar/backend/stellar.db",
         ];
         let db_path = db_paths
             .iter()
@@ -2012,9 +2012,9 @@ mod sql_diag_tests {
         // Connect to real database
         let db_paths = [
             "data/stellar.db",
-            "starrocks_admin.db",
+            "stellar.db",
             "/home/oppo/Documents/stellar/backend/data/stellar.db",
-            "/home/oppo/Documents/stellar/backend/starrocks_admin.db",
+            "/home/oppo/Documents/stellar/backend/stellar.db",
         ];
         let db_path = db_paths
             .iter()
@@ -2154,9 +2154,9 @@ PLAN FRAGMENT 2
         // Connect to real database
         let db_paths = [
             "data/stellar.db",
-            "starrocks_admin.db",
+            "stellar.db",
             "/home/oppo/Documents/stellar/backend/data/stellar.db",
-            "/home/oppo/Documents/stellar/backend/starrocks_admin.db",
+            "/home/oppo/Documents/stellar/backend/stellar.db",
         ];
         let db_path = db_paths
             .iter()
@@ -2289,9 +2289,9 @@ LIMIT 50000"#;
         // Connect to real database
         let db_paths = [
             "data/stellar.db",
-            "starrocks_admin.db",
+            "stellar.db",
             "/home/oppo/Documents/stellar/backend/data/stellar.db",
-            "/home/oppo/Documents/stellar/backend/starrocks_admin.db",
+            "/home/oppo/Documents/stellar/backend/stellar.db",
         ];
         let db_path = db_paths
             .iter()

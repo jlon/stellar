@@ -125,7 +125,7 @@ chmod +x test-multi-tenant-*.sh
 
 ```bash
 # 删除数据库文件
-rm /home/oppo/Documents/stellar/backend/starrocks_admin.db
+rm /home/oppo/Documents/stellar/backend/stellar.db
 
 # 重启后端
 ./scripts/dev/restart-backend.sh

@@ -18,7 +18,7 @@ export interface TabItem {
   providedIn: 'root'
 })
 export class TabService {
-  private readonly STORAGE_KEY = 'starrocks_admin_tabs';
+  private readonly STORAGE_KEY = 'stellar_tabs';
   private tabsSubject = new BehaviorSubject<TabItem[]>([]);
   public tabs$ = this.tabsSubject.asObservable();
 

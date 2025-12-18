@@ -33,7 +33,7 @@
 //! # Usage
 //!
 //! ```ignore
-//! use starrocks_admin_backend::services::profile_analyzer::analyze_profile;
+//! use stellar_backend::services::profile_analyzer::analyze_profile;
 //!
 //! let profile_text = "..."; // Raw profile text from StarRocks
 //! let result = analyze_profile(profile_text)?;

@@ -118,28 +118,28 @@ import { PermissionService } from '../../../../@core/data/permission.service';
 
       .action-btn {
         transition: all 0.2s ease;
+      }
 
-        &:hover:not(:disabled) {
-          transform: translateY(-1px);
-        }
+      .action-btn:hover:not(:disabled) {
+        transform: translateY(-1px);
+      }
 
-        &:active:not(:disabled) {
-          transform: translateY(0);
-        }
+      .action-btn:active:not(:disabled) {
+        transform: translateY(0);
+      }
 
-        &--activate {
-          padding-left: 0.5rem;
-          padding-right: 0.625rem;
+      .action-btn--activate {
+        padding-left: 0.5rem;
+        padding-right: 0.625rem;
+      }
 
-          ::ng-deep nb-icon {
-            margin-right: 0.25rem;
-          }
-        }
+      .action-btn--activate ::ng-deep nb-icon {
+        margin-right: 0.25rem;
+      }
 
-        &--loading {
-          pointer-events: none;
-          opacity: 0.7;
-        }
+      .action-btn--loading {
+        pointer-events: none;
+        opacity: 0.7;
       }
 
       /* Spin animation for loading icon */

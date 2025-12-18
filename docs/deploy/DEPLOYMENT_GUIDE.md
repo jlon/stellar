@@ -226,7 +226,7 @@ docker run -d \
   -p 8080:8080 \
   -e APP_SERVER_PORT=8080 \
   -e APP_JWT_SECRET="your-secure-jwt-secret" \
-  -e APP_LOG_LEVEL="info,starrocks_admin=debug" \
+  -e APP_LOG_LEVEL="info,stellar=debug" \
   -e APP_METRICS_ENABLED=true \
   -e APP_METRICS_INTERVAL_SECS=30s \
   -e APP_METRICS_RETENTION_DAYS=7d \
@@ -643,7 +643,7 @@ jwt_secret = "your-secret-key"  # JWT 密钥（生产环境必须修改）
 jwt_expires_in = "24h"          # Token 过期时间
 
 [logging]
-level = "info,starrocks_admin=debug"  # 日志级别
+level = "info,stellar=debug"  # 日志级别
 file = "logs/stellar.log"     # 日志文件
 
 [metrics]

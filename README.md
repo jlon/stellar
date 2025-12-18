@@ -159,7 +159,7 @@ Define and manage user roles with customizable permission sets.
 ```bash
 # Execute the permission setup script
 cd scripts
-mysql -h <fe_host> -P 9030 -u root -p < setup_starrocks_admin_role.sql
+mysql -h <fe_host> -P 9030 -u root -p < setup_stellar_role.sql
 
 # Verify permissions
 mysql -h <fe_host> -P 9030 -u starrocks_monitor -p < verify_permissions.sql
@@ -184,7 +184,7 @@ jwt_secret = "your-secret-key-change-in-production"
 jwt_expires_in = "24h"
 
 [logging]
-level = "info,starrocks_admin_backend=debug"
+level = "info,stellar_backend=debug"
 file = "logs/stellar.log"
 
 [static_config]
@@ -396,7 +396,7 @@ Stellar 提供了直观、美观的 Web 管理界面，涵盖集群管理的各�
 ```bash
 # 执行权限配置脚本
 cd scripts
-mysql -h <fe_host> -P 9030 -u root -p < setup_starrocks_admin_role.sql
+mysql -h <fe_host> -P 9030 -u root -p < setup_stellar_role.sql
 
 # 验证权限配置
 mysql -h <fe_host> -P 9030 -u starrocks_monitor -p < verify_permissions.sql
@@ -421,7 +421,7 @@ jwt_secret = "your-secret-key-change-in-production"
 jwt_expires_in = "24h"
 
 [logging]
-level = "info,starrocks_admin_backend=debug"
+level = "info,stellar_backend=debug"
 file = "logs/stellar.log"
 
 [static_config]
