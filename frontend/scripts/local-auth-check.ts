@@ -189,7 +189,7 @@ function assertEqual(actual: unknown, expected: unknown, message: string): void 
   assertEqual(isAuthError, true, 'JWT interceptor auth error detection');
   if (interceptorAuthStub.isAuthenticated() && isAuthError) {
     toastrStub.danger('登录已过期，请重新登录', '认证失败');
-    const safeUrl = interceptorAuthStub.normalizeReturnUrl(routerStub.url);
+    const safeUrl = interceptorAuthStub.normalizeReturnUrl();
     interceptorAuthStub.logout({ returnUrl: safeUrl });
   }
   assertEqual(toastrStub.dangerCalls.length, 1, 'JWT interceptor toast count');

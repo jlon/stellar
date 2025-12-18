@@ -131,7 +131,7 @@ import { PermissionService } from '../../../../@core/data/permission.service';
           padding-left: 0.5rem;
           padding-right: 0.625rem;
 
-          nb-icon {
+          ::ng-deep nb-icon {
             margin-right: 0.25rem;
           }
         }

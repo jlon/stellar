@@ -63,7 +63,7 @@ import { LLMProvider } from '../../../../@core/data/llm-provider.service';
         background: linear-gradient(135deg, rgba(var(--color-success-rgb, 0, 214, 143), 0.15) 0%, rgba(var(--color-success-rgb, 0, 214, 143), 0.08) 100%);
         color: var(--color-success-default);
 
-        .status-badge__dot {
+        ::ng-deep .status-badge__dot {
           background: var(--color-success-default);
           box-shadow: 0 0 0 2px rgba(var(--color-success-rgb, 0, 214, 143), 0.2);
           animation: pulse-success 2s infinite;
@@ -74,7 +74,7 @@ import { LLMProvider } from '../../../../@core/data/llm-provider.service';
         background: var(--background-basic-color-3);
         color: var(--text-hint-color);
 
-        .status-badge__dot {
+        ::ng-deep .status-badge__dot {
           background: var(--text-hint-color);
           opacity: 0.5;
         }
@@ -93,9 +93,9 @@ import { LLMProvider } from '../../../../@core/data/llm-provider.service';
         letter-spacing: 0.025em;
         transition: all 0.2s ease;
 
-        nb-icon {
+        ::ng-deep nb-icon {
           font-size: 0.75rem;
-      }
+        }
       }
 
       .status-tag--enabled {
