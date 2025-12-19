@@ -52,6 +52,9 @@ pub enum ApiError {
     #[error("Invalid input: {0}")]
     InvalidInput(String),
 
+    #[error("Not implemented: {0}")]
+    NotImplemented(String),
+
     // System errors 5xxx
     #[error("Internal error: {0}")]
     InternalError(String),
@@ -150,6 +153,11 @@ impl ApiError {
         Self::SQLSafetyViolation(message.into())
     }
 
+    /// Helper to create not implemented error
+    pub fn not_implemented(message: impl Into<String>) -> Self {
+        Self::NotImplemented(message.into())
+    }
+
     /// Get legacy error code for backward compatibility
     pub fn error_code(&self) -> i32 {
         match self {
@@ -172,6 +180,7 @@ impl ApiError {
             // Validation errors 4xxx
             Self::ValidationError(_) => 4001,
             Self::InvalidInput(_) => 4002,
+            Self::NotImplemented(_) => 4003,
 
             // System errors 5xxx
             Self::InternalError(_) => 5001,

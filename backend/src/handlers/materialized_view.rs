@@ -13,7 +13,7 @@ use crate::models::{
     AlterMaterializedViewRequest, CreateMaterializedViewRequest, MaterializedView,
     MaterializedViewDDL, RefreshMaterializedViewRequest,
 };
-use crate::services::{MaterializedViewService, MySQLClient};
+use crate::services::{create_adapter, MaterializedViewService, MySQLClient};
 use crate::utils::ApiResult;
 
 #[derive(Debug, Deserialize)]
@@ -62,13 +62,9 @@ pub async fn list_materialized_views(
             .await?
     };
 
-    let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
-    let mysql_client = MySQLClient::from_pool(pool);
-    let mv_service = MaterializedViewService::new(mysql_client);
-
-    let mvs = mv_service
-        .list_materialized_views(params.database.as_deref())
-        .await?;
+    // Use cluster adapter to list materialized views (supports both StarRocks and Doris)
+    let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
+    let mvs = adapter.list_materialized_views(params.database.as_deref()).await?;
 
     Ok(Json(mvs))
 }
@@ -139,11 +135,9 @@ pub async fn get_materialized_view_ddl(
             .await?
     };
 
-    let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
-    let mysql_client = MySQLClient::from_pool(pool);
-    let mv_service = MaterializedViewService::new(mysql_client);
-
-    let ddl = mv_service.get_materialized_view_ddl(&mv_name).await?;
+    // Use cluster adapter to get MV DDL (supports both StarRocks and Doris)
+    let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
+    let ddl = adapter.get_materialized_view_ddl(&mv_name).await?;
     Ok(Json(MaterializedViewDDL { mv_name: mv_name.clone(), ddl }))
 }
 
@@ -174,11 +168,9 @@ pub async fn create_materialized_view(
             .await?
     };
 
-    let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
-    let mysql_client = MySQLClient::from_pool(pool);
-    let mv_service = MaterializedViewService::new(mysql_client);
-
-    mv_service.create_materialized_view(&request.sql).await?;
+    // Use cluster adapter to create MV (supports both StarRocks and Doris)
+    let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
+    adapter.create_materialized_view(&request.sql).await?;
 
     Ok((StatusCode::CREATED, Json(json!({ "message": "Materialized view created successfully" }))))
 }
@@ -214,13 +206,9 @@ pub async fn delete_materialized_view(
             .await?
     };
 
-    let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
-    let mysql_client = MySQLClient::from_pool(pool);
-    let mv_service = MaterializedViewService::new(mysql_client);
-
-    mv_service
-        .drop_materialized_view(&mv_name, params.if_exists)
-        .await?;
+    // Use cluster adapter to drop MV (supports both StarRocks and Doris)
+    let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
+    adapter.drop_materialized_view(&mv_name).await?;
 
     Ok((StatusCode::OK, Json(json!({ "message": "Materialized view deleted successfully" }))))
 }
@@ -252,19 +240,9 @@ pub async fn refresh_materialized_view(
             .await?
     };
 
-    let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
-    let mysql_client = MySQLClient::from_pool(pool);
-    let mv_service = MaterializedViewService::new(mysql_client);
-
-    mv_service
-        .refresh_materialized_view(
-            &mv_name,
-            request.partition_start.as_deref(),
-            request.partition_end.as_deref(),
-            request.force,
-            &request.mode,
-        )
-        .await?;
+    // Use cluster adapter to refresh MV (supports both StarRocks and Doris)
+    let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
+    adapter.refresh_materialized_view(&mv_name).await?;
 
     Ok((StatusCode::OK, Json(json!({ "message": "Refresh initiated" }))))
 }
@@ -336,13 +314,9 @@ pub async fn alter_materialized_view(
             .await?
     };
 
-    let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
-    let mysql_client = MySQLClient::from_pool(pool);
-    let mv_service = MaterializedViewService::new(mysql_client);
-
-    mv_service
-        .alter_materialized_view(&mv_name, &request.alter_clause)
-        .await?;
+    // Use cluster adapter to alter MV (supports both StarRocks and Doris)
+    let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
+    adapter.alter_materialized_view(&mv_name, &request.alter_clause).await?;
 
     Ok((StatusCode::OK, Json(json!({ "message": "Materialized view altered successfully" }))))
 }

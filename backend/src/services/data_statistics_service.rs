@@ -571,13 +571,18 @@ impl DataStatisticsService {
 
     /// Get materialized view statistics
     async fn get_mv_statistics(&self, cluster: &Cluster) -> ApiResult<(i32, i32, i32, i32)> {
-        // Create MV service for this cluster
-        let pool = self.mysql_pool_manager.get_pool(cluster).await?;
-        let mysql_client = MySQLClient::from_pool(pool);
-        let mv_service = MaterializedViewService::new(mysql_client);
-
-        // Get all materialized views
-        let mvs = mv_service.list_materialized_views(None).await?;
+        // Use cluster adapter to get materialized views (supports both StarRocks and Doris)
+        let adapter = crate::services::create_adapter(cluster.clone(), self.mysql_pool_manager.clone());
+        
+        // Get all materialized views - for Doris, this may return empty list if not supported
+        let mvs = match adapter.list_materialized_views(None).await {
+            Ok(mvs) => mvs,
+            Err(e) => {
+                tracing::warn!("Failed to list materialized views for cluster {}: {}. Returning zero stats.", cluster.name, e);
+                // Return zero stats if MV listing fails (e.g., Doris doesn't have the table)
+                return Ok((0, 0, 0, 0));
+            }
+        };
 
         let mv_total = mvs.len() as i32;
 

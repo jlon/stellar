@@ -405,6 +405,139 @@ impl ClusterAdapter for DorisAdapter {
         Ok(databases)
     }
 
+    async fn list_materialized_views(&self, database: Option<&str>) -> ApiResult<Vec<crate::models::MaterializedView>> {
+        use crate::services::MaterializedViewService;
+        
+        tracing::debug!("[Doris] Listing materialized views from cluster: {}", self.cluster.name);
+        
+        // Try to use MaterializedViewService - it will query information_schema
+        // If Doris doesn't have the table, it will naturally fail with a clear error
+        let mysql_client = self.mysql_client().await?;
+        let mv_service = MaterializedViewService::new(mysql_client);
+        
+        match mv_service.list_materialized_views(database).await {
+            Ok(mvs) => {
+                tracing::info!("[Doris] Retrieved {} materialized views", mvs.len());
+                Ok(mvs)
+            },
+            Err(e) => {
+                tracing::warn!("[Doris] Failed to list materialized views: {}. This is expected for Doris 2.x", e);
+                // Return empty list with a warning in logs, but don't block the API
+                Ok(Vec::new())
+            }
+        }
+    }
+
+    async fn get_materialized_view_ddl(&self, mv_name: &str) -> ApiResult<String> {
+        tracing::debug!("[Doris] Getting MV DDL for {} from cluster: {}", mv_name, self.cluster.name);
+        
+        // In Doris, Rollup is part of the table, not a standalone object
+        // We need to find which table this rollup belongs to
+        let mysql_client = self.mysql_client().await?;
+        
+        // First, try to find the table that has this rollup
+        // Query all tables and check their rollups
+        let databases = <Self as ClusterAdapter>::list_databases(self, None).await?;
+        
+        for db in databases {
+            // Skip system databases
+            if db.starts_with("__") || db == "information_schema" || db == "mysql" {
+                continue;
+            }
+            
+            // Get all tables in this database
+            let tables_sql = format!("SHOW TABLES FROM {}", db);
+            let (_, table_rows) = mysql_client.query_raw(&tables_sql).await?;
+            
+            for table_row in table_rows {
+                if let Some(table_name) = table_row.first() {
+                    // Check if this table has the rollup
+                    let sql = format!("DESC {}.{} ALL", db, table_name);
+                    if let Ok((_, rows)) = mysql_client.query_raw(&sql).await {
+                        // Check if any row has IndexName matching mv_name
+                        for row in rows {
+                            if let Some(index_name) = row.first() {
+                                if index_name == mv_name {
+                                    // Found the table, now get its DDL
+                                    let ddl_sql = format!("SHOW CREATE TABLE {}.{}", db, table_name);
+                                    let (_, ddl_rows) = mysql_client.query_raw(&ddl_sql).await?;
+                                    if let Some(ddl_row) = ddl_rows.first() {
+                                        if let Some(ddl) = ddl_row.get(1) {
+                                            return Ok(ddl.clone());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        Err(ApiError::not_found(format!("Materialized view '{}' not found or DDL unavailable", mv_name)))
+    }
+
+    async fn create_materialized_view(&self, ddl: &str) -> ApiResult<()> {
+        tracing::debug!("[Doris] Creating materialized view on cluster: {}", self.cluster.name);
+        
+        // Simply execute the DDL - let Doris handle the syntax
+        let mysql_client = self.mysql_client().await?;
+        mysql_client.execute(ddl).await?;
+        
+        tracing::info!("[Doris] Materialized view created successfully");
+        Ok(())
+    }
+
+    async fn drop_materialized_view(&self, mv_name: &str) -> ApiResult<()> {
+        tracing::debug!("[Doris] Dropping materialized view {} from cluster: {}", mv_name, self.cluster.name);
+        
+        // Try DROP MATERIALIZED VIEW first (for async MVs in Doris 3.0+)
+        let mysql_client = self.mysql_client().await?;
+        let sql = format!("DROP MATERIALIZED VIEW IF EXISTS {}", mv_name);
+        
+        match mysql_client.execute(&sql).await {
+            Ok(_) => {
+                tracing::info!("[Doris] Materialized view {} dropped successfully", mv_name);
+                Ok(())
+            },
+            Err(e) => {
+                // If that fails, try DROP TABLE (for sync MVs or older versions)
+                tracing::debug!("[Doris] DROP MATERIALIZED VIEW failed, trying DROP TABLE: {}", e);
+                let sql = format!("DROP TABLE IF EXISTS {}", mv_name);
+                mysql_client.execute(&sql).await?;
+                tracing::info!("[Doris] Table {} dropped successfully", mv_name);
+                Ok(())
+            }
+        }
+    }
+
+    async fn refresh_materialized_view(&self, mv_name: &str) -> ApiResult<()> {
+        tracing::debug!("[Doris] Refreshing materialized view {} on cluster: {}", mv_name, self.cluster.name);
+        
+        // Doris 3.0+ uses REFRESH MATERIALIZED VIEW
+        let mysql_client = self.mysql_client().await?;
+        let sql = format!("REFRESH MATERIALIZED VIEW {}", mv_name);
+        
+        mysql_client.execute(&sql).await.map_err(|e| {
+            tracing::warn!("[Doris] Refresh MV failed: {}. This feature requires Doris 3.0+", e);
+            e
+        })?;
+        
+        tracing::info!("[Doris] Materialized view {} refreshed successfully", mv_name);
+        Ok(())
+    }
+
+    async fn alter_materialized_view(&self, _mv_name: &str, ddl: &str) -> ApiResult<()> {
+        tracing::debug!("[Doris] Altering materialized view on cluster: {}", self.cluster.name);
+        
+        // Simply execute the ALTER statement - let Doris handle it
+        let mysql_client = self.mysql_client().await?;
+        mysql_client.execute(ddl).await?;
+        
+        tracing::info!("[Doris] Materialized view altered successfully");
+        Ok(())
+    }
+
     async fn list_sql_blacklist(&self) -> ApiResult<Vec<crate::models::SqlBlacklistItem>> {
         use crate::models::SqlBlacklistItem;
         

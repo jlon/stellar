@@ -311,27 +311,15 @@ pub async fn list_catalogs_with_databases(
             .await?
     };
 
-    // Use MySQL client
-    let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
-    let mysql_client = MySQLClient::from_pool(pool);
-
-    // Step 1: Get all catalogs
-    let (_, catalog_rows) = mysql_client.query_raw("SHOW CATALOGS").await?;
-
-    let mut catalogs = Vec::new();
-
-    // Extract catalog names
-    let mut catalog_names = Vec::new();
-    for row in catalog_rows {
-        if let Some(catalog_name) = row.first() {
-            let name = catalog_name.trim().to_string();
-            if !name.is_empty() {
-                catalog_names.push(name);
-            }
-        }
-    }
+    // Use cluster adapter to get catalogs (supports both StarRocks and Doris)
+    let adapter = crate::services::create_adapter(cluster.clone(), state.mysql_pool_manager.clone());
+    let catalog_names = adapter.list_catalogs().await?;
 
     tracing::debug!("Found {} catalogs, fetching databases for each...", catalog_names.len());
+
+    let mut catalogs = Vec::new();
+    let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
+    let mysql_client = MySQLClient::from_pool(pool);
 
     // Step 2: For each catalog, switch to it and get databases
     let mut session = mysql_client.create_session().await?;

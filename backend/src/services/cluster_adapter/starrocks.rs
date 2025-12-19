@@ -305,6 +305,53 @@ impl ClusterAdapter for StarRocksAdapter {
         Ok(databases)
     }
 
+    async fn list_materialized_views(&self, database: Option<&str>) -> ApiResult<Vec<crate::models::MaterializedView>> {
+        use crate::services::MaterializedViewService;
+        
+        let mysql_client = self.mysql_client().await?;
+        let mv_service = MaterializedViewService::new(mysql_client);
+        mv_service.list_materialized_views(database).await
+    }
+
+    async fn get_materialized_view_ddl(&self, mv_name: &str) -> ApiResult<String> {
+        use crate::services::MaterializedViewService;
+        
+        let mysql_client = self.mysql_client().await?;
+        let mv_service = MaterializedViewService::new(mysql_client);
+        mv_service.get_materialized_view_ddl(mv_name).await
+    }
+
+    async fn create_materialized_view(&self, ddl: &str) -> ApiResult<()> {
+        use crate::services::MaterializedViewService;
+        
+        let mysql_client = self.mysql_client().await?;
+        let mv_service = MaterializedViewService::new(mysql_client);
+        mv_service.create_materialized_view(ddl).await
+    }
+
+    async fn drop_materialized_view(&self, mv_name: &str) -> ApiResult<()> {
+        use crate::services::MaterializedViewService;
+        
+        let mysql_client = self.mysql_client().await?;
+        let mv_service = MaterializedViewService::new(mysql_client);
+        mv_service.drop_materialized_view(mv_name, false).await
+    }
+
+    async fn refresh_materialized_view(&self, mv_name: &str) -> ApiResult<()> {
+        use crate::services::MaterializedViewService;
+        
+        let mysql_client = self.mysql_client().await?;
+        let mv_service = MaterializedViewService::new(mysql_client);
+        mv_service.refresh_materialized_view(mv_name, None, None, false, "ASYNC").await
+    }
+
+    async fn alter_materialized_view(&self, _mv_name: &str, ddl: &str) -> ApiResult<()> {
+        // Simply execute the ALTER statement
+        let mysql_client = self.mysql_client().await?;
+        mysql_client.execute(ddl).await?;
+        Ok(())
+    }
+
     async fn list_sql_blacklist(&self) -> ApiResult<Vec<crate::models::SqlBlacklistItem>> {
         use crate::models::SqlBlacklistItem;
         

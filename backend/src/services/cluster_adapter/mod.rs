@@ -80,6 +80,28 @@ pub trait ClusterAdapter: Send + Sync {
     async fn list_databases(&self, catalog: Option<&str>) -> ApiResult<Vec<String>>;
 
     // ========================================
+    // Materialized View Management
+    // ========================================
+
+    /// List materialized views
+    async fn list_materialized_views(&self, database: Option<&str>) -> ApiResult<Vec<crate::models::MaterializedView>>;
+
+    /// Get materialized view DDL
+    async fn get_materialized_view_ddl(&self, mv_name: &str) -> ApiResult<String>;
+
+    /// Create materialized view
+    async fn create_materialized_view(&self, ddl: &str) -> ApiResult<()>;
+
+    /// Drop materialized view
+    async fn drop_materialized_view(&self, mv_name: &str) -> ApiResult<()>;
+
+    /// Refresh materialized view
+    async fn refresh_materialized_view(&self, mv_name: &str) -> ApiResult<()>;
+
+    /// Alter materialized view
+    async fn alter_materialized_view(&self, mv_name: &str, ddl: &str) -> ApiResult<()>;
+
+    // ========================================
     // SQL Blacklist Management
     // ========================================
 
