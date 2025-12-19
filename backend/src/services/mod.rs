@@ -2,6 +2,7 @@ pub mod auth_service;
 pub mod baseline_refresh_task;
 pub mod baseline_service;
 pub mod casbin_service;
+pub mod cluster_adapter;
 pub mod cluster_service;
 pub mod data_statistics_service;
 pub mod llm;
@@ -56,3 +57,9 @@ pub use starrocks_client::StarRocksClient;
 pub use system_function_service::SystemFunctionService;
 pub use user_role_service::UserRoleService;
 pub use user_service::UserService;
+
+// Cluster adapters for multi-engine support
+pub use cluster_adapter::{
+    create_adapter, create_doris_adapter, create_starrocks_adapter, ClusterAdapter, DorisAdapter,
+    StarRocksAdapter,
+};

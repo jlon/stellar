@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::AppState;
 use crate::models::RuntimeInfo;
-use crate::services::StarRocksClient;
+use crate::services::create_adapter;
 use crate::utils::ApiResult;
 
 // Get runtime info for a cluster
@@ -32,7 +32,7 @@ pub async fn get_runtime_info(
             .get_active_cluster_by_org(org_ctx.organization_id)
             .await?
     };
-    let client = StarRocksClient::new(cluster, state.mysql_pool_manager.clone());
-    let runtime_info = client.get_runtime_info().await?;
+    let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
+    let runtime_info = adapter.get_runtime_info().await?;
     Ok(Json(runtime_info))
 }

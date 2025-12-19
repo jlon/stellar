@@ -1,7 +1,7 @@
 use crate::models::{
     Cluster, ClusterHealth, CreateClusterRequest, HealthCheck, HealthStatus, UpdateClusterRequest,
 };
-use crate::services::{MySQLPoolManager, StarRocksClient};
+use crate::services::{create_adapter, MySQLPoolManager};
 use crate::utils::{ApiError, ApiResult};
 use chrono::Utc;
 use sqlx::SqlitePool;
@@ -78,8 +78,8 @@ impl ClusterService {
         let result = sqlx::query(
             "INSERT INTO clusters (name, description, fe_host, fe_http_port, fe_query_port, 
              username, password_encrypted, enable_ssl, connection_timeout, tags, catalog, 
-             is_active, created_by, organization_id, deployment_mode)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             is_active, created_by, organization_id, deployment_mode, cluster_type)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&req.name)
         .bind(&req.description)
@@ -96,6 +96,7 @@ impl ClusterService {
         .bind(user_id)
         .bind(target_org_id)
         .bind(req.deployment_mode.to_string())
+        .bind(req.cluster_type.to_string())
         .execute(&self.pool)
         .await?;
 
@@ -297,6 +298,10 @@ impl ClusterService {
             updates.push("deployment_mode = ?");
             params.push(mode.to_string());
         }
+        if let Some(cluster_type) = &req.cluster_type {
+            updates.push("cluster_type = ?");
+            params.push(cluster_type.to_string());
+        }
 
         if updates.is_empty() {
             return self.get_cluster(cluster_id).await;
@@ -413,12 +418,12 @@ impl ClusterService {
     pub async fn get_cluster_health(&self, cluster_id: i64) -> ApiResult<ClusterHealth> {
         let cluster = self.get_cluster(cluster_id).await?;
         let is_shared_data = cluster.is_shared_data();
-        let client = StarRocksClient::new(cluster, self.mysql_pool_manager.clone());
+        let adapter = create_adapter(cluster, self.mysql_pool_manager.clone());
 
         let mut checks = Vec::new();
         let mut overall_status = HealthStatus::Healthy;
 
-        match client.get_frontends().await {
+        match adapter.get_frontends().await {
             Ok(frontends) => {
                 let alive_count = frontends.iter().filter(|f| f.alive == "true").count();
                 let total_count = frontends.len();
@@ -466,7 +471,7 @@ impl ClusterService {
 
         // Check compute nodes (BE in shared-nothing, CN in shared-data)
         let node_type = if is_shared_data { "CN" } else { "BE" };
-        match client.get_backends().await {
+        match adapter.get_backends().await {
             Ok(backends) => {
                 let alive_count = backends.iter().filter(|b| b.alive == "true").count();
                 let total_count = backends.len();
@@ -538,9 +543,9 @@ impl ClusterService {
                         });
 
                         // Try to check FE availability via HTTP
-                        let client =
-                            StarRocksClient::new(cluster.clone(), self.mysql_pool_manager.clone());
-                        match client.get_runtime_info().await {
+                        let adapter =
+                            create_adapter(cluster.clone(), self.mysql_pool_manager.clone());
+                        match adapter.get_runtime_info().await {
                             Ok(_) => {
                                 checks.push(HealthCheck {
                                     name: "FE Availability".to_string(),
@@ -562,7 +567,7 @@ impl ClusterService {
 
                         // Try to check compute nodes (BE in shared-nothing, CN in shared-data)
                         let node_type = if cluster.is_shared_data() { "CN" } else { "BE" };
-                        match client.get_backends().await {
+                        match adapter.get_backends().await {
                             Ok(backends) => {
                                 let alive_count =
                                     backends.iter().filter(|b| b.alive == "true").count();

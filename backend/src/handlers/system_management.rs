@@ -6,7 +6,7 @@ use axum::{
 use serde::Deserialize;
 use std::sync::Arc;
 
-use crate::{services::starrocks_client::StarRocksClient, utils::error::ApiResult};
+use crate::{services::{create_adapter, ClusterAdapter}, utils::error::ApiResult};
 
 #[derive(Debug, Deserialize)]
 pub struct SystemQueryParams {
@@ -49,11 +49,11 @@ pub async fn get_system_functions(
             .await?
     };
 
-    // Create StarRocks client (reserved for future extensions)
-    let client = StarRocksClient::new(cluster, state.mysql_pool_manager.clone());
+    // Create cluster adapter (supports both StarRocks and Doris)
+    let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
 
     // Get all system functions using SHOW PROC (currently static list)
-    let functions = get_all_system_functions(&client, &params).await?;
+    let functions = get_all_system_functions(&adapter, &params).await?;
 
     Ok(Json(functions))
 }
@@ -91,8 +91,8 @@ pub async fn get_system_function_detail(
             .await?
     };
 
-    // Create StarRocks client
-    let client = StarRocksClient::new(cluster, state.mysql_pool_manager.clone());
+    // Create cluster adapter (supports both StarRocks and Doris)
+    let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
 
     // Build complete PROC path
     let proc_path = if let Some(nested_path) = params.path {
@@ -101,14 +101,14 @@ pub async fn get_system_function_detail(
         format!("/{}", function_name)
     };
 
-    // Get function details using HTTP REST API
-    let detail = get_function_details(&client, &proc_path).await?;
+    // Get function details using cluster adapter
+    let detail = get_function_details(&adapter, &proc_path).await?;
 
     Ok(Json(detail))
 }
 
 async fn get_all_system_functions(
-    _client: &StarRocksClient,
+    _adapter: &Box<dyn ClusterAdapter>,
     params: &SystemQueryParams,
 ) -> ApiResult<Vec<SystemFunction>> {
     // Define all 25 system functions based on the screenshot
@@ -299,11 +299,11 @@ async fn get_all_system_functions(
 }
 
 async fn get_function_details(
-    client: &StarRocksClient,
+    adapter: &Box<dyn ClusterAdapter>,
     proc_path: &str,
 ) -> ApiResult<SystemFunctionDetail> {
     let mut detail_data = Vec::new();
-    let rows = client.show_proc_raw(proc_path).await?;
+    let rows = adapter.show_proc_raw(proc_path).await?;
     for value in rows {
         if let serde_json::Value::Object(obj) = value {
             let mut row_data = std::collections::HashMap::new();

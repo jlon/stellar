@@ -3,7 +3,28 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use utoipa::ToSchema;
 
-/// Deployment mode for StarRocks cluster
+/// Cluster type for OLAP engine
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema, sqlx::Type, Default)]
+#[serde(rename_all = "lowercase")]
+#[sqlx(type_name = "TEXT", rename_all = "lowercase")]
+pub enum ClusterType {
+    /// StarRocks OLAP engine
+    #[default]
+    StarRocks,
+    /// Apache Doris OLAP engine
+    Doris,
+}
+
+impl std::fmt::Display for ClusterType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ClusterType::StarRocks => write!(f, "starrocks"),
+            ClusterType::Doris => write!(f, "doris"),
+        }
+    }
+}
+
+/// Deployment mode for cluster
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema, sqlx::Type, Default)]
 #[serde(rename_all = "snake_case")]
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
@@ -46,6 +67,8 @@ pub struct Cluster {
     pub organization_id: Option<i64>,
     #[serde(default)]
     pub deployment_mode: DeploymentMode,
+    #[serde(default)]
+    pub cluster_type: ClusterType,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -70,6 +93,8 @@ pub struct CreateClusterRequest {
     pub organization_id: Option<i64>,
     #[serde(default)]
     pub deployment_mode: DeploymentMode,
+    #[serde(default)]
+    pub cluster_type: ClusterType,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -87,6 +112,7 @@ pub struct UpdateClusterRequest {
     pub catalog: Option<String>,
     pub organization_id: Option<i64>,
     pub deployment_mode: Option<DeploymentMode>,
+    pub cluster_type: Option<ClusterType>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -108,6 +134,7 @@ pub struct ClusterResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub organization_id: Option<i64>,
     pub deployment_mode: DeploymentMode,
+    pub cluster_type: ClusterType,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -173,6 +200,7 @@ impl From<Cluster> for ClusterResponse {
             updated_at: cluster.updated_at,
             organization_id: cluster.organization_id,
             deployment_mode: cluster.deployment_mode,
+            cluster_type: cluster.cluster_type,
         }
     }
 }
@@ -186,5 +214,15 @@ impl Cluster {
     /// Check if cluster is using shared-nothing (storage-compute integrated) architecture
     pub fn is_shared_nothing(&self) -> bool {
         self.deployment_mode == DeploymentMode::SharedNothing
+    }
+
+    /// Check if cluster is StarRocks type
+    pub fn is_starrocks(&self) -> bool {
+        self.cluster_type == ClusterType::StarRocks
+    }
+
+    /// Check if cluster is Doris type
+    pub fn is_doris(&self) -> bool {
+        self.cluster_type == ClusterType::Doris
     }
 }

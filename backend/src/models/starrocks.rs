@@ -33,6 +33,24 @@ where
     s.parse().map_err(serde::de::Error::custom)
 }
 
+// Helper function to deserialize string to i64 with default
+fn deserialize_string_to_i64_default<'de, D>(deserializer: D) -> Result<i64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    Ok(s.parse().unwrap_or(0))
+}
+
+// Helper function to deserialize string to i32 with default
+fn deserialize_string_to_i32_default<'de, D>(deserializer: D) -> Result<i32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    Ok(s.parse().unwrap_or(0))
+}
+
 // Helper function for default empty string
 fn default_empty_string() -> String {
     "0".to_string()
@@ -340,15 +358,15 @@ pub struct QueryHistoryResponse {
 }
 
 // System runtime information
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema, Default)]
 pub struct RuntimeInfo {
     #[serde(default)]
     pub fe_node: String,
-    #[serde(deserialize_with = "deserialize_string_to_i64")]
+    #[serde(default, deserialize_with = "deserialize_string_to_i64_default")]
     pub total_mem: i64,
-    #[serde(deserialize_with = "deserialize_string_to_i64")]
+    #[serde(default, deserialize_with = "deserialize_string_to_i64_default")]
     pub free_mem: i64,
-    #[serde(deserialize_with = "deserialize_string_to_i32")]
+    #[serde(default, deserialize_with = "deserialize_string_to_i32_default")]
     pub thread_cnt: i32,
 }
 

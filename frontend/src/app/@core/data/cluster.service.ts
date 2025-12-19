@@ -3,6 +3,7 @@ import { Observable } from 'rxjs';
 import { ApiService } from './api.service';
 
 export type DeploymentMode = 'shared_nothing' | 'shared_data';
+export type ClusterType = 'starrocks' | 'doris';
 
 export interface Cluster {
   id: number;
@@ -19,6 +20,7 @@ export interface Cluster {
   is_active: boolean;
   organization_id?: number;
   deployment_mode: DeploymentMode;
+  cluster_type: ClusterType;
   created_at: string;
   updated_at: string;
 }
@@ -37,6 +39,7 @@ export interface CreateClusterRequest {
   catalog?: string;
   organization_id?: number;
   deployment_mode?: DeploymentMode;
+  cluster_type?: ClusterType;
 }
 
 export interface ClusterHealth {

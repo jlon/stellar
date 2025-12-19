@@ -14,7 +14,7 @@ use crate::models::{
     QueryExecuteRequest, QueryExecuteResponse, SingleQueryResult, SqlBlacklistItem, TableMetadata,
     TableObjectType,
 };
-use crate::services::StarRocksClient;
+use crate::services::create_adapter;
 use crate::services::mysql_client::MySQLClient;
 use crate::utils::{ApiError, ApiResult};
 
@@ -45,23 +45,11 @@ pub async fn list_catalogs(
             .await?
     };
 
-    // Use MySQL client to execute SHOW CATALOGS
-    let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
-    let mysql_client = MySQLClient::from_pool(pool);
+    // Use cluster adapter to list catalogs (supports both StarRocks and Doris)
+    let adapter = crate::services::create_adapter(cluster, state.mysql_pool_manager.clone());
+    let catalogs = adapter.list_catalogs().await?;
 
-    let (_, rows) = mysql_client.query_raw("SHOW CATALOGS").await?;
-
-    let mut catalogs = Vec::new();
-    for row in rows {
-        if let Some(catalog_name) = row.first() {
-            let name = catalog_name.trim().to_string();
-            if !name.is_empty() {
-                catalogs.push(name);
-            }
-        }
-    }
-
-    tracing::debug!("Found {} catalogs via MySQL client", catalogs.len());
+    tracing::debug!("Found {} catalogs via adapter", catalogs.len());
     Ok(Json(catalogs))
 }
 
@@ -96,32 +84,15 @@ pub async fn list_databases(
             .await?
     };
 
-    // Use MySQL client
-    let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
-    let mysql_client = MySQLClient::from_pool(pool);
+    // Use cluster adapter to list databases (supports both StarRocks and Doris)
+    let adapter = crate::services::create_adapter(cluster, state.mysql_pool_manager.clone());
+    let catalog = params.get("catalog").map(|s| s.as_str());
+    let mut databases = adapter.list_databases(catalog).await?;
 
-    // Get catalog parameter if provided
-    let query_sql = if let Some(catalog_name) = params.get("catalog") {
-        format!("SHOW DATABASES FROM {}", catalog_name)
-    } else {
-        "SHOW DATABASES".to_string()
-    };
+    // Filter out system databases
+    databases.retain(|name| name != "information_schema" && name != "_statistics_");
 
-    let mut session = mysql_client.create_session().await?;
-    let (_, rows, _) = session.execute(&query_sql).await?;
-
-    let mut databases = Vec::new();
-    for row in rows {
-        if let Some(db_name) = row.first() {
-            let name = db_name.trim().to_string();
-            // Skip system databases
-            if !name.is_empty() && name != "information_schema" && name != "_statistics_" {
-                databases.push(name);
-            }
-        }
-    }
-
-    tracing::debug!("Found {} databases via MySQL client", databases.len());
+    tracing::debug!("Found {} databases via adapter", databases.len());
     Ok(Json(databases))
 }
 
@@ -424,8 +395,8 @@ pub async fn list_queries(
             .get_active_cluster_by_org(org_ctx.organization_id)
             .await?
     };
-    let client = StarRocksClient::new(cluster, state.mysql_pool_manager.clone());
-    let queries = client.get_queries().await?;
+    let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
+    let queries = adapter.get_queries().await?;
     Ok(Json(queries))
 }
 
@@ -677,20 +648,9 @@ pub async fn list_sql_blacklist(
         state.cluster_service.get_active_cluster_by_org(org_ctx.organization_id).await?
     };
 
-    let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
-    let mysql_client = MySQLClient::from_pool(pool);
-    let rows = mysql_client.query("SHOW SQLBLACKLIST").await?;
-
-    let items: Vec<SqlBlacklistItem> = rows
-        .into_iter()
-        .filter_map(|row| {
-            let obj = row.as_object()?;
-            Some(SqlBlacklistItem {
-                id: obj.get("Id")?.as_str()?.to_string(),
-                pattern: obj.get("Forbidden SQL")?.as_str()?.to_string(),
-            })
-        })
-        .collect();
+    // Use cluster adapter to list SQL blacklist (supports both StarRocks and Doris)
+    let adapter = crate::services::create_adapter(cluster, state.mysql_pool_manager.clone());
+    let items = adapter.list_sql_blacklist().await?;
 
     Ok(Json(items))
 }
@@ -726,13 +686,9 @@ pub async fn add_sql_blacklist(
         return Err(ApiError::validation_error("Pattern cannot be empty"));
     }
 
-    let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
-    let mysql_client = MySQLClient::from_pool(pool);
-
-    // Escape double quotes in pattern
-    let escaped_pattern = pattern.replace('"', "\\\"");
-    let sql = format!("ADD SQLBLACKLIST \"{}\"", escaped_pattern);
-    mysql_client.execute(&sql).await?;
+    // Use cluster adapter to add SQL blacklist (supports both StarRocks and Doris)
+    let adapter = crate::services::create_adapter(cluster, state.mysql_pool_manager.clone());
+    adapter.add_sql_blacklist(pattern).await?;
 
     Ok((StatusCode::OK, Json(json!({ "message": "SQL blacklist added successfully" }))))
 }
@@ -761,16 +717,14 @@ pub async fn delete_sql_blacklist(
         state.cluster_service.get_active_cluster_by_org(org_ctx.organization_id).await?
     };
 
-    // Validate ID format (should be numeric)
-    if !id.chars().all(|c| c.is_ascii_digit()) || id.is_empty() {
+    // Validate ID is not empty
+    if id.is_empty() {
         return Err(ApiError::validation_error("Invalid blacklist ID format"));
     }
 
-    let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
-    let mysql_client = MySQLClient::from_pool(pool);
-
-    let sql = format!("DELETE SQLBLACKLIST {}", id);
-    mysql_client.execute(&sql).await?;
+    // Use cluster adapter to delete SQL blacklist (supports both StarRocks and Doris)
+    let adapter = crate::services::create_adapter(cluster, state.mysql_pool_manager.clone());
+    adapter.delete_sql_blacklist(&id).await?;
 
     Ok((StatusCode::OK, Json(json!({ "message": "SQL blacklist deleted successfully" }))))
 }

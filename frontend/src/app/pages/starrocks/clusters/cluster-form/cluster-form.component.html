@@ -60,6 +60,31 @@
 
             <div class="col-md-6">
               <div class="form-group">
+                <label for="cluster_type" class="label">集群类型 *</label>
+                <nb-form-field>
+                  <nb-select
+                    formControlName="cluster_type"
+                    id="cluster_type"
+                    placeholder="请选择集群类型"
+                    [status]="clusterForm.get('cluster_type')?.invalid && clusterForm.get('cluster_type')?.touched ? 'danger' : 'basic'"
+                    fullWidth
+                  >
+                    <nb-option value="starrocks">StarRocks</nb-option>
+                    <nb-option value="doris">Apache Doris</nb-option>
+                  </nb-select>
+                </nb-form-field>
+                <ng-container *ngIf="clusterForm.get('cluster_type')?.invalid && clusterForm.get('cluster_type')?.touched">
+                  <small class="form-text text-danger">
+                    请选择集群类型
+                  </small>
+                </ng-container>
+              </div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-6">
+              <div class="form-group">
                 <label for="catalog" class="label">Catalog</label>
                 <input
                   nbInput

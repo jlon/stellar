@@ -388,6 +388,7 @@ pub async fn get_cluster_health(
             created_by: None,
             organization_id: None,
             deployment_mode: crate::models::cluster::DeploymentMode::default(),
+            cluster_type: crate::models::cluster::ClusterType::default(),
         };
 
         let health = state
@@ -470,6 +471,7 @@ pub async fn test_cluster_connection(
         created_by: None,
         organization_id: None,
         deployment_mode: crate::models::cluster::DeploymentMode::default(),
+        cluster_type: crate::models::cluster::ClusterType::default(),
     };
 
     let health = state

@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::AppState;
 use crate::models::Backend;
-use crate::services::StarRocksClient;
+use crate::services::create_adapter;
 use crate::utils::ApiResult;
 
 // Get all backends for a cluster (BE nodes in shared-nothing, CN nodes in shared-data)
@@ -35,8 +35,8 @@ pub async fn list_backends(
             .get_active_cluster_by_org(org_ctx.organization_id)
             .await?
     };
-    let client = StarRocksClient::new(cluster, state.mysql_pool_manager.clone());
-    let backends = client.get_backends().await?;
+    let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
+    let backends = adapter.get_backends().await?;
     Ok(Json(backends))
 }
 
@@ -74,8 +74,8 @@ pub async fn delete_backend(
     };
     tracing::info!("Deleting backend {}:{} from cluster {}", host, port, cluster.id);
 
-    let client = StarRocksClient::new(cluster, state.mysql_pool_manager.clone());
-    client.drop_backend(&host, &port).await?;
+    let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
+    adapter.drop_backend(&host, &port).await?;
 
     Ok(Json(serde_json::json!({
         "message": format!("Backend {}:{} deleted successfully", host, port)

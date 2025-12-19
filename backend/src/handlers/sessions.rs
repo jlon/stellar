@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use crate::{
     models::starrocks::Session,
-    services::mysql_client::MySQLClient,
+    services::{create_adapter, mysql_client::MySQLClient},
     utils::error::{ApiError, ApiResult},
 };
 
@@ -40,12 +40,9 @@ pub async fn get_sessions(
             .await?
     };
 
-    // Get MySQL client from pool
-    let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
-    let mysql_client = MySQLClient::from_pool(pool);
-
-    // Get sessions using MySQL SHOW PROCESSLIST
-    let sessions = get_sessions_from_starrocks(&mysql_client).await?;
+    // Use cluster adapter to get sessions (supports both StarRocks and Doris)
+    let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
+    let sessions = adapter.get_sessions().await?;
 
     Ok(Json(sessions))
 }
