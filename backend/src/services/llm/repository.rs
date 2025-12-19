@@ -25,10 +25,6 @@ impl LLMRepository {
         &self.pool
     }
 
-    // ========================================================================
-    // Provider Operations
-    // ========================================================================
-
     /// Get the currently active provider
     pub async fn get_active_provider(&self) -> Result<Option<LLMProvider>, LLMError> {
         sqlx::query_as::<_, LLMProvider>(
@@ -55,12 +51,10 @@ impl LLMRepository {
     pub async fn activate_provider(&self, provider_id: i64) -> Result<(), LLMError> {
         let mut tx = self.pool.begin().await?;
 
-        // Deactivate all providers
         sqlx::query("UPDATE llm_providers SET is_active = FALSE")
             .execute(&mut *tx)
             .await?;
 
-        // Activate the specified provider
         let result = sqlx::query(
             "UPDATE llm_providers SET is_active = TRUE WHERE id = ? AND enabled = TRUE",
         )
@@ -90,7 +84,6 @@ impl LLMRepository {
         &self,
         req: CreateProviderRequest,
     ) -> Result<LLMProvider, LLMError> {
-        // TODO: Encrypt API key before storing
         let api_key_encrypted = Some(req.api_key);
 
         let result = sqlx::query(
@@ -126,7 +119,6 @@ impl LLMRepository {
         id: i64,
         req: UpdateProviderRequest,
     ) -> Result<LLMProvider, LLMError> {
-        // Build a deterministic, valid UPDATE statement without extra separators
         let mut sql = String::from("UPDATE llm_providers SET updated_at = CURRENT_TIMESTAMP");
         let mut args = SqliteArguments::default();
 
@@ -185,7 +177,6 @@ impl LLMRepository {
 
     /// Delete provider
     pub async fn delete_provider(&self, id: i64) -> Result<(), LLMError> {
-        // Check if provider exists and is not active
         let provider = self.get_provider(id).await?;
         match provider {
             None => return Err(LLMError::ProviderNotFound(id.to_string())),
@@ -197,20 +188,16 @@ impl LLMRepository {
             _ => {},
         }
 
-        // Delete related records first (foreign key constraints)
-        // 1. Delete usage statistics
         sqlx::query("DELETE FROM llm_usage_stats WHERE provider_id = ?")
             .bind(id)
             .execute(&self.pool)
             .await?;
 
-        // 2. Set provider_id to NULL in analysis sessions (preserve history)
         sqlx::query("UPDATE llm_analysis_sessions SET provider_id = NULL WHERE provider_id = ?")
             .bind(id)
             .execute(&self.pool)
             .await?;
 
-        // 3. Delete the provider
         let result = sqlx::query("DELETE FROM llm_providers WHERE id = ?")
             .bind(id)
             .execute(&self.pool)
@@ -253,7 +240,6 @@ impl LLMRepository {
             return Err(LLMError::ProviderNotFound(id.to_string()));
         }
 
-        // If disabling, also deactivate
         if !enabled {
             sqlx::query("UPDATE llm_providers SET is_active = FALSE WHERE id = ?")
                 .bind(id)
@@ -267,10 +253,6 @@ impl LLMRepository {
             .await
             .map_err(LLMError::from)
     }
-
-    // ========================================================================
-    // Session Operations
-    // ========================================================================
 
     /// Create a new analysis session
     pub async fn create_session(
@@ -352,10 +334,6 @@ impl LLMRepository {
             .map_err(LLMError::from)
     }
 
-    // ========================================================================
-    // Request Operations (for debugging)
-    // ========================================================================
-
     /// Save request for debugging
     pub async fn save_request(
         &self,
@@ -379,10 +357,6 @@ impl LLMRepository {
         Ok(result.last_insert_rowid())
     }
 
-    // ========================================================================
-    // Result Operations
-    // ========================================================================
-
     /// Save analysis result
     pub async fn save_result(
         &self,
@@ -390,7 +364,6 @@ impl LLMRepository {
         response_json: &str,
         confidence: Option<f64>,
     ) -> Result<i64, LLMError> {
-        // Parse response to extract structured fields
         let parsed: serde_json::Value = serde_json::from_str(response_json)?;
 
         let root_causes = parsed
@@ -459,10 +432,6 @@ impl LLMRepository {
         .map_err(LLMError::from)
     }
 
-    // ========================================================================
-    // Cache Operations
-    // ========================================================================
-
     /// Get cached response
     pub async fn get_cached_response(&self, cache_key: &str) -> Result<Option<String>, LLMError> {
         let result = sqlx::query_scalar::<_, String>(
@@ -473,7 +442,6 @@ impl LLMRepository {
         .fetch_optional(&self.pool)
         .await?;
 
-        // Update hit count if found
         if result.is_some() {
             sqlx::query(
                 r#"UPDATE llm_cache SET 
@@ -521,10 +489,6 @@ impl LLMRepository {
             .await?;
         Ok(result.rows_affected())
     }
-
-    // ========================================================================
-    // Usage Statistics
-    // ========================================================================
 
     /// Record usage for statistics
     pub async fn record_usage(

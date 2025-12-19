@@ -6,7 +6,10 @@ use axum::{
 use serde::Deserialize;
 use std::sync::Arc;
 
-use crate::{services::{create_adapter, ClusterAdapter}, utils::error::ApiResult};
+use crate::{
+    services::{ClusterAdapter, create_adapter},
+    utils::error::ApiResult,
+};
 
 #[derive(Debug, Deserialize)]
 pub struct SystemQueryParams {
@@ -39,7 +42,6 @@ pub async fn get_system_functions(
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Query(params): Query<SystemQueryParams>,
 ) -> ApiResult<impl IntoResponse> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -49,10 +51,8 @@ pub async fn get_system_functions(
             .await?
     };
 
-    // Create cluster adapter (supports both StarRocks and Doris)
     let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
 
-    // Get all system functions using SHOW PROC (currently static list)
     let functions = get_all_system_functions(&adapter, &params).await?;
 
     Ok(Json(functions))
@@ -81,7 +81,6 @@ pub async fn get_system_function_detail(
     Path(function_name): Path<String>,
     Query(params): Query<SystemQueryParams>,
 ) -> ApiResult<impl IntoResponse> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -91,17 +90,14 @@ pub async fn get_system_function_detail(
             .await?
     };
 
-    // Create cluster adapter (supports both StarRocks and Doris)
     let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
 
-    // Build complete PROC path
     let proc_path = if let Some(nested_path) = params.path {
         format!("/{}/{}", function_name, nested_path)
     } else {
         format!("/{}", function_name)
     };
 
-    // Get function details using cluster adapter
     let detail = get_function_details(&adapter, &proc_path).await?;
 
     Ok(Json(detail))
@@ -111,7 +107,6 @@ async fn get_all_system_functions(
     _adapter: &Box<dyn ClusterAdapter>,
     params: &SystemQueryParams,
 ) -> ApiResult<Vec<SystemFunction>> {
-    // Define all 25 system functions based on the screenshot
     let mut functions = vec![
         SystemFunction {
             name: "brokers".to_string(),
@@ -283,12 +278,10 @@ async fn get_all_system_functions(
         },
     ];
 
-    // Apply filtering
     if let Some(filter) = &params.filter {
         functions.retain(|f| f.name.contains(filter));
     }
 
-    // Apply pagination
     let offset = params.offset.unwrap_or(0) as usize;
     let limit = params.limit.unwrap_or(25) as usize;
 
@@ -314,7 +307,6 @@ async fn get_function_details(
         }
     }
 
-    // Extract function name from proc_path (e.g., "/brokers" -> "brokers")
     let function_name = proc_path
         .trim_start_matches('/')
         .split('/')

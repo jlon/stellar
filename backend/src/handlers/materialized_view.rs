@@ -13,7 +13,7 @@ use crate::models::{
     AlterMaterializedViewRequest, CreateMaterializedViewRequest, MaterializedView,
     MaterializedViewDDL, RefreshMaterializedViewRequest,
 };
-use crate::services::{create_adapter, MaterializedViewService, MySQLClient};
+use crate::services::{MaterializedViewService, MySQLClient, create_adapter};
 use crate::utils::ApiResult;
 
 #[derive(Debug, Deserialize)]
@@ -52,7 +52,6 @@ pub async fn list_materialized_views(
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Query(params): Query<ListMVParams>,
 ) -> ApiResult<Json<Vec<MaterializedView>>> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -62,9 +61,10 @@ pub async fn list_materialized_views(
             .await?
     };
 
-    // Use cluster adapter to list materialized views (supports both StarRocks and Doris)
     let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
-    let mvs = adapter.list_materialized_views(params.database.as_deref()).await?;
+    let mvs = adapter
+        .list_materialized_views(params.database.as_deref())
+        .await?;
 
     Ok(Json(mvs))
 }
@@ -88,7 +88,6 @@ pub async fn get_materialized_view(
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path(mv_name): Path<String>,
 ) -> ApiResult<Json<MaterializedView>> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -125,7 +124,6 @@ pub async fn get_materialized_view_ddl(
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path(mv_name): Path<String>,
 ) -> ApiResult<Json<MaterializedViewDDL>> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -135,7 +133,6 @@ pub async fn get_materialized_view_ddl(
             .await?
     };
 
-    // Use cluster adapter to get MV DDL (supports both StarRocks and Doris)
     let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
     let ddl = adapter.get_materialized_view_ddl(&mv_name).await?;
     Ok(Json(MaterializedViewDDL { mv_name: mv_name.clone(), ddl }))
@@ -158,7 +155,6 @@ pub async fn create_materialized_view(
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Json(request): Json<CreateMaterializedViewRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -168,7 +164,6 @@ pub async fn create_materialized_view(
             .await?
     };
 
-    // Use cluster adapter to create MV (supports both StarRocks and Doris)
     let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
     adapter.create_materialized_view(&request.sql).await?;
 
@@ -194,9 +189,8 @@ pub async fn delete_materialized_view(
     State(state): State<Arc<AppState>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path(mv_name): Path<String>,
-    Query(params): Query<DeleteMVParams>,
+    Query(_params): Query<DeleteMVParams>,
 ) -> ApiResult<impl IntoResponse> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -206,7 +200,6 @@ pub async fn delete_materialized_view(
             .await?
     };
 
-    // Use cluster adapter to drop MV (supports both StarRocks and Doris)
     let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
     adapter.drop_materialized_view(&mv_name).await?;
 
@@ -230,7 +223,6 @@ pub async fn refresh_materialized_view(
     Path(mv_name): Path<String>,
     Json(request): Json<RefreshMaterializedViewRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -240,15 +232,16 @@ pub async fn refresh_materialized_view(
             .await?
     };
 
-    // Use cluster adapter to refresh MV (supports both StarRocks and Doris)
     let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
-    adapter.refresh_materialized_view(
+    adapter
+        .refresh_materialized_view(
             &mv_name,
             request.partition_start.as_deref(),
             request.partition_end.as_deref(),
             request.force,
-        &request.mode
-    ).await?;
+            &request.mode,
+        )
+        .await?;
 
     Ok((StatusCode::OK, Json(json!({ "message": "Refresh initiated" }))))
 }
@@ -272,7 +265,6 @@ pub async fn cancel_refresh_materialized_view(
     Path(mv_name): Path<String>,
     Query(params): Query<CancelRefreshParams>,
 ) -> ApiResult<impl IntoResponse> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -310,7 +302,6 @@ pub async fn alter_materialized_view(
     Path(mv_name): Path<String>,
     Json(request): Json<AlterMaterializedViewRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -320,9 +311,10 @@ pub async fn alter_materialized_view(
             .await?
     };
 
-    // Use cluster adapter to alter MV (supports both StarRocks and Doris)
     let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
-    adapter.alter_materialized_view(&mv_name, &request.alter_clause).await?;
+    adapter
+        .alter_materialized_view(&mv_name, &request.alter_clause)
+        .await?;
 
     Ok((StatusCode::OK, Json(json!({ "message": "Materialized view altered successfully" }))))
 }

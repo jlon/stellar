@@ -12,10 +12,8 @@ use std::time::Duration;
 static TIME_COMPONENT_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(-?\d+(?:\.\d+)?)\s*(ms|us|μs|ns|h|m|s)").unwrap());
 
-static BYTES_REGEX: Lazy<Regex> = Lazy::new(|| {
-    // Support formats: "558.156 GB", "2.167KB", "1024B", "0.000 B"
-    Regex::new(r"^(-?\d+\.?\d*)\s*(TB|GB|MB|KB|K|M|G|T|B)\b").unwrap()
-});
+static BYTES_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^(-?\d+\.?\d*)\s*(TB|GB|MB|KB|K|M|G|T|B)\b").unwrap());
 
 static NUMBER_WITH_PAREN_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^[\d,.]+[KMGB]?\s*\((-?\d+(?:\.\d+)?)\)").unwrap());
@@ -38,7 +36,6 @@ impl ValueParser {
     pub fn parse_duration(input: &str) -> ParseResult<Duration> {
         let input = input.trim();
 
-        // Handle zero case
         if input == "0" {
             return Ok(Duration::from_nanos(0));
         }
@@ -46,7 +43,6 @@ impl ValueParser {
         let mut total_ns: f64 = 0.0;
         let mut found_any = false;
 
-        // Extract all time components
         for cap in TIME_COMPONENT_REGEX.captures_iter(input) {
             found_any = true;
 
@@ -60,7 +56,6 @@ impl ValueParser {
 
             let unit = cap.get(2).unwrap().as_str();
 
-            // Convert to nanoseconds based on unit
             let ns = match unit {
                 "h" => num * 3600.0 * 1_000_000_000.0,
                 "m" => num * 60.0 * 1_000_000_000.0,
@@ -102,7 +97,6 @@ impl ValueParser {
         let original = input.trim();
         let input = original.to_uppercase();
 
-        // Check for parenthesized raw value first: "2.174K (2174)"
         if let Some(cap) = NUMBER_WITH_PAREN_REGEX.captures(&input) {
             let raw = cap.get(1).unwrap().as_str();
             return raw.parse::<u64>().map_err(|e| {
@@ -110,7 +104,6 @@ impl ValueParser {
             });
         }
 
-        // Try standard byte format
         if let Some(cap) = BYTES_REGEX.captures(&input) {
             let num_str = cap.get(1).unwrap().as_str().replace(",", "");
             let num: f64 = num_str.parse().map_err(|e| {
@@ -136,7 +129,6 @@ impl ValueParser {
             return Ok((num * multiplier).floor() as u64);
         }
 
-        // Try plain number
         let temp = input.replace(",", "");
         let cleaned = temp.split_whitespace().next().unwrap_or(&input);
         cleaned.parse::<u64>().map_err(|e| {
@@ -154,7 +146,6 @@ impl ValueParser {
     {
         let input = input.trim();
 
-        // Check for parenthesized raw value
         if let Some(cap) = NUMBER_WITH_PAREN_REGEX.captures(input) {
             let raw = cap.get(1).unwrap().as_str();
             return raw.parse::<T>().map_err(|e| {
@@ -165,7 +156,6 @@ impl ValueParser {
             });
         }
 
-        // Try standard number format
         if let Some(cap) = NUMBER_REGEX.captures(input) {
             let num_str = cap.get(1).unwrap().as_str().replace(",", "");
             return num_str.parse::<T>().map_err(|e| {

@@ -15,7 +15,6 @@ pub async fn create_pool(database_url: &str) -> Result<SqlitePool, sqlx::Error> 
         })?;
     }
 
-    // Ensure database file exists
     let db_path = database_url.trim_start_matches("sqlite://");
     if !std::path::Path::new(db_path).exists() {
         tracing::debug!("Creating database file: {}", db_path);
@@ -36,12 +35,11 @@ pub async fn create_pool(database_url: &str) -> Result<SqlitePool, sqlx::Error> 
             e
         })?;
 
-    // Find migrations directory
     let migrations_path = find_migrations_dir();
     tracing::info!("Using migrations from: {}", migrations_path);
 
     tracing::debug!("Running database migrations...");
-    // Run migrations
+
     sqlx::migrate::Migrator::new(Path::new(&migrations_path))
         .await
         .map_err(|e| {
@@ -61,12 +59,7 @@ pub async fn create_pool(database_url: &str) -> Result<SqlitePool, sqlx::Error> 
 }
 
 fn find_migrations_dir() -> String {
-    // Try different possible locations for migrations
-    let possible_paths = [
-        "./migrations",  // Production mode (when running from dist root)
-        "../migrations", // When running from bin/
-        "migrations",    // When running from project root
-    ];
+    let possible_paths = ["./migrations", "../migrations", "migrations"];
 
     for path in &possible_paths {
         if Path::new(path).exists() {
@@ -75,7 +68,6 @@ fn find_migrations_dir() -> String {
         }
     }
 
-    // Default fallback
     tracing::warn!("No migrations directory found, using default: ./migrations");
     "./migrations".to_string()
 }

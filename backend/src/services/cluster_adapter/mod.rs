@@ -26,10 +26,6 @@ pub trait ClusterAdapter: Send + Sync {
     /// Get base HTTP URL for FE
     fn get_base_url(&self) -> String;
 
-    // ========================================
-    // Node Management
-    // ========================================
-
     /// Get backend/compute nodes list
     async fn get_backends(&self) -> ApiResult<Vec<Backend>>;
 
@@ -39,23 +35,11 @@ pub trait ClusterAdapter: Send + Sync {
     /// Drop a backend node
     async fn drop_backend(&self, host: &str, heartbeat_port: &str) -> ApiResult<()>;
 
-    // ========================================
-    // Session Management
-    // ========================================
-
     /// Get all active sessions
     async fn get_sessions(&self) -> ApiResult<Vec<crate::models::Session>>;
 
-    // ========================================
-    // Query Management
-    // ========================================
-
     /// Get current running queries
     async fn get_queries(&self) -> ApiResult<Vec<Query>>;
-
-    // ========================================
-    // Metrics & Monitoring
-    // ========================================
 
     /// Get runtime info
     async fn get_runtime_info(&self) -> ApiResult<RuntimeInfo>;
@@ -69,22 +53,17 @@ pub trait ClusterAdapter: Send + Sync {
         metrics_text: &str,
     ) -> ApiResult<std::collections::HashMap<String, f64>>;
 
-    // ========================================
-    // Catalog & Database Management
-    // ========================================
-
     /// List all catalogs
     async fn list_catalogs(&self) -> ApiResult<Vec<String>>;
 
     /// List databases in a catalog
     async fn list_databases(&self, catalog: Option<&str>) -> ApiResult<Vec<String>>;
 
-    // ========================================
-    // Materialized View Management
-    // ========================================
-
     /// List materialized views
-    async fn list_materialized_views(&self, database: Option<&str>) -> ApiResult<Vec<crate::models::MaterializedView>>;
+    async fn list_materialized_views(
+        &self,
+        database: Option<&str>,
+    ) -> ApiResult<Vec<crate::models::MaterializedView>>;
 
     /// Get materialized view DDL
     async fn get_materialized_view_ddl(&self, mv_name: &str) -> ApiResult<String>;
@@ -96,21 +75,24 @@ pub trait ClusterAdapter: Send + Sync {
     async fn drop_materialized_view(&self, mv_name: &str) -> ApiResult<()>;
 
     /// Refresh materialized view
-    /// 
+    ///
     /// # Parameters
     /// - `mv_name`: Materialized view name
     /// - `partition_start`: Optional partition start (for partition refresh)
     /// - `partition_end`: Optional partition end (for partition refresh)
     /// - `force`: Force refresh (StarRocks specific)
     /// - `mode`: Refresh mode ("complete", "auto", etc.)
-    async fn refresh_materialized_view(&self, mv_name: &str, partition_start: Option<&str>, partition_end: Option<&str>, force: bool, mode: &str) -> ApiResult<()>;
+    async fn refresh_materialized_view(
+        &self,
+        mv_name: &str,
+        partition_start: Option<&str>,
+        partition_end: Option<&str>,
+        force: bool,
+        mode: &str,
+    ) -> ApiResult<()>;
 
     /// Alter materialized view
     async fn alter_materialized_view(&self, mv_name: &str, ddl: &str) -> ApiResult<()>;
-
-    // ========================================
-    // SQL Blacklist Management
-    // ========================================
 
     /// List SQL blacklist rules
     async fn list_sql_blacklist(&self) -> ApiResult<Vec<crate::models::SqlBlacklistItem>>;
@@ -121,10 +103,6 @@ pub trait ClusterAdapter: Send + Sync {
     /// Delete SQL blacklist rule
     async fn delete_sql_blacklist(&self, id: &str) -> ApiResult<()>;
 
-    // ========================================
-    // SQL Execution
-    // ========================================
-
     /// Execute SQL command via HTTP API
     async fn execute_sql(&self, sql: &str) -> ApiResult<()>;
 
@@ -133,7 +111,10 @@ pub trait ClusterAdapter: Send + Sync {
 }
 
 /// Create adapter based on cluster type (factory method)
-pub fn create_adapter(cluster: Cluster, pool_manager: Arc<MySQLPoolManager>) -> Box<dyn ClusterAdapter> {
+pub fn create_adapter(
+    cluster: Cluster,
+    pool_manager: Arc<MySQLPoolManager>,
+) -> Box<dyn ClusterAdapter> {
     match cluster.cluster_type {
         ClusterType::Doris => Box::new(DorisAdapter::new(cluster, pool_manager)),
         ClusterType::StarRocks => Box::new(StarRocksAdapter::new(cluster, pool_manager)),
@@ -141,11 +122,13 @@ pub fn create_adapter(cluster: Cluster, pool_manager: Arc<MySQLPoolManager>) -> 
 }
 
 /// Create adapter with specific type (for compile-time type safety)
-pub fn create_starrocks_adapter(cluster: Cluster, pool_manager: Arc<MySQLPoolManager>) -> StarRocksAdapter {
+pub fn create_starrocks_adapter(
+    cluster: Cluster,
+    pool_manager: Arc<MySQLPoolManager>,
+) -> StarRocksAdapter {
     StarRocksAdapter::new(cluster, pool_manager)
 }
 
 pub fn create_doris_adapter(cluster: Cluster, pool_manager: Arc<MySQLPoolManager>) -> DorisAdapter {
     DorisAdapter::new(cluster, pool_manager)
 }
-

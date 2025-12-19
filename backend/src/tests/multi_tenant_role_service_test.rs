@@ -17,7 +17,7 @@ async fn test_role_organization_filtering() {
 
     let test_data = setup_multi_tenant_test_data(&pool).await;
 
-    // Create additional role in org1
+
     let org1_role_id = create_role(
         &pool,
         "org1_custom_role",
@@ -27,7 +27,7 @@ async fn test_role_organization_filtering() {
     )
     .await;
 
-    // Update role to belong to org1
+
     sqlx::query("UPDATE roles SET organization_id = ? WHERE id = ?")
         .bind(test_data.org1_id)
         .bind(org1_role_id)
@@ -35,15 +35,15 @@ async fn test_role_organization_filtering() {
         .await
         .expect("Failed to assign role to organization");
 
-    // Test: Super admin can see all roles
+
     let all_roles = role_service
         .list_roles(None, true)
         .await
         .expect("Super admin should see all roles");
 
-    assert!(all_roles.len() >= 4); // super_admin, org_admin, regular_user, org1_custom_role
+    assert!(all_roles.len() >= 4);
 
-    // Test: Org1 admin can only see org1 roles
+
     let org1_roles = role_service
         .list_roles(Some(test_data.org1_id), false)
         .await
@@ -54,7 +54,7 @@ async fn test_role_organization_filtering() {
         role.organization_id == Some(test_data.org1_id) || role.organization_id.is_none()
     }));
 
-    // Test: Org2 admin cannot see org1 custom role
+
     let org2_roles = role_service
         .list_roles(Some(test_data.org2_id), false)
         .await
@@ -77,7 +77,7 @@ async fn test_role_creation_organization_scoping() {
 
     let test_data = setup_multi_tenant_test_data(&pool).await;
 
-    // Test: Super admin can create system role (no organization)
+
     let system_role_req = CreateRoleRequest {
         code: "system_role".to_string(),
         name: "System Role".to_string(),
@@ -93,7 +93,7 @@ async fn test_role_creation_organization_scoping() {
     assert_eq!(system_role.code, "system_role");
     assert_eq!(system_role.organization_id, None);
 
-    // Test: Org admin can create organization-scoped role
+
     let org_role_req = CreateRoleRequest {
         code: "org1_role".to_string(),
         name: "Org1 Role".to_string(),
@@ -109,7 +109,7 @@ async fn test_role_creation_organization_scoping() {
     assert_eq!(org_role.code, "org1_role");
     assert_eq!(org_role.organization_id, Some(test_data.org1_id));
 
-    // Test: Org admin cannot create role without organization context
+
     let no_org_role_req = CreateRoleRequest {
         code: "no_org_role".to_string(),
         name: "No Org Role".to_string(),
@@ -132,7 +132,7 @@ async fn test_role_update_organization_validation() {
 
     let test_data = setup_multi_tenant_test_data(&pool).await;
 
-    // Create role in org1
+
     let org1_role_id =
         create_role(&pool, "org1_test_role", "Org1 Test Role", "Test role in org1", false).await;
 
@@ -143,7 +143,7 @@ async fn test_role_update_organization_validation() {
         .await
         .expect("Failed to assign role to organization");
 
-    // Test: Org1 admin can update org1 role
+
     let update_req = UpdateRoleRequest {
         name: Some("Updated Org1 Role".to_string()),
         description: Some("Updated description".to_string()),
@@ -157,7 +157,7 @@ async fn test_role_update_organization_validation() {
 
     assert_eq!(updated_role.name, "Updated Org1 Role");
 
-    // Test: Org2 admin cannot update org1 role
+
     let update_req = UpdateRoleRequest {
         name: Some("Hijacked Role".to_string()),
         description: Some("This should not work".to_string()),
@@ -170,7 +170,7 @@ async fn test_role_update_organization_validation() {
 
     assert!(result.is_err(), "Org2 admin should not update org1 role");
 
-    // Test: Super admin can update any role
+
     let update_req = UpdateRoleRequest {
         name: Some("Super Admin Updated".to_string()),
         description: Some("Updated by super admin".to_string()),
@@ -195,7 +195,7 @@ async fn test_role_deletion_organization_validation() {
 
     let test_data = setup_multi_tenant_test_data(&pool).await;
 
-    // Create role in org1
+
     let org1_role_id = create_role(
         &pool,
         "org1_deletable_role",
@@ -212,19 +212,19 @@ async fn test_role_deletion_organization_validation() {
         .await
         .expect("Failed to assign role to organization");
 
-    // Test: Org1 admin can delete org1 role
+
     role_service
         .delete_role(org1_role_id, Some(test_data.org1_id), false)
         .await
         .expect("Org1 admin should delete org1 role");
 
-    // Verify role is deleted
+
     let result = role_service
         .get_role(org1_role_id, Some(test_data.org1_id), false)
         .await;
     assert!(result.is_err());
 
-    // Create another role for cross-org deletion test
+
     let org2_role_id = create_role(
         &pool,
         "org2_protected_role",
@@ -241,14 +241,14 @@ async fn test_role_deletion_organization_validation() {
         .await
         .expect("Failed to assign role to organization");
 
-    // Test: Org1 admin cannot delete org2 role
+
     let result = role_service
         .delete_role(org2_role_id, Some(test_data.org1_id), false)
         .await;
 
     assert!(result.is_err(), "Org1 admin should not delete org2 role");
 
-    // Test: Super admin can delete any role
+
     role_service
         .delete_role(org2_role_id, None, true)
         .await
@@ -265,13 +265,13 @@ async fn test_role_permission_assignment_organization_validation() {
 
     let test_data = setup_multi_tenant_test_data(&pool).await;
 
-    // Create permissions for testing
+
     let permission_ids: Vec<i64> = sqlx::query_scalar("SELECT id FROM permissions LIMIT 3")
         .fetch_all(&pool)
         .await
         .expect("Failed to fetch permissions");
 
-    // Create role in org1
+
     let org1_role_id = create_role(
         &pool,
         "org1_permission_role",
@@ -288,7 +288,7 @@ async fn test_role_permission_assignment_organization_validation() {
         .await
         .expect("Failed to assign role to organization");
 
-    // Test: Org1 admin can assign permissions to org1 role
+
     role_service
         .assign_permissions_to_role(
             org1_role_id,
@@ -299,7 +299,7 @@ async fn test_role_permission_assignment_organization_validation() {
         .await
         .expect("Org1 admin should assign permissions to org1 role");
 
-    // Verify permissions are assigned
+
     let assigned_permissions = role_service
         .get_role_permissions(org1_role_id, Some(test_data.org1_id), false)
         .await
@@ -307,7 +307,7 @@ async fn test_role_permission_assignment_organization_validation() {
 
     assert_eq!(assigned_permissions.len(), permission_ids.len());
 
-    // Create role in org2 for cross-org test
+
     let org2_role_id = create_role(
         &pool,
         "org2_permission_role",
@@ -324,7 +324,7 @@ async fn test_role_permission_assignment_organization_validation() {
         .await
         .expect("Failed to assign role to organization");
 
-    // Test: Org1 admin cannot assign permissions to org2 role
+
     let result = role_service
         .assign_permissions_to_role(
             org2_role_id,
@@ -336,7 +336,7 @@ async fn test_role_permission_assignment_organization_validation() {
 
     assert!(result.is_err(), "Org1 admin should not assign permissions to org2 role");
 
-    // Test: Super admin can assign permissions to any role
+
     role_service
         .assign_permissions_to_role(
             org2_role_id,
@@ -358,14 +358,14 @@ async fn test_system_role_protection() {
 
     let test_data = setup_multi_tenant_test_data(&pool).await;
 
-    // Test: System roles cannot be deleted by non-super-admin
+
     let result = role_service
         .delete_role(test_data.super_admin_role_id, Some(test_data.org1_id), false)
         .await;
 
     assert!(result.is_err(), "Non-super-admin should not delete system role");
 
-    // Test: System roles can be updated by super admin
+
     let update_req = UpdateRoleRequest {
         name: Some("Updated System Role".to_string()),
         description: Some("Updated by super admin".to_string()),
@@ -389,7 +389,7 @@ async fn test_role_organization_isolation() {
 
     let test_data = setup_multi_tenant_test_data(&pool).await;
 
-    // Create roles with same display name (codes must remain unique globally)
+
     let org1_role_id = create_role(
         &pool,
         "duplicate_role_org1",
@@ -408,7 +408,7 @@ async fn test_role_organization_isolation() {
     )
     .await;
 
-    // Assign roles to different organizations
+
     sqlx::query("UPDATE roles SET organization_id = ? WHERE id = ?")
         .bind(test_data.org1_id)
         .bind(org1_role_id)
@@ -423,7 +423,7 @@ async fn test_role_organization_isolation() {
         .await
         .expect("Failed to assign role to org2");
 
-    // Test: Org1 admin can only see org1 version of duplicate role
+
     let org1_roles = role_service
         .list_roles(Some(test_data.org1_id), false)
         .await
@@ -437,7 +437,7 @@ async fn test_role_organization_isolation() {
     assert_eq!(org1_duplicate_roles.len(), 1);
     assert_eq!(org1_duplicate_roles[0].organization_id, Some(test_data.org1_id));
 
-    // Test: Org2 admin can only see org2 version of duplicate role
+
     let org2_roles = role_service
         .list_roles(Some(test_data.org2_id), false)
         .await
@@ -451,7 +451,7 @@ async fn test_role_organization_isolation() {
     assert_eq!(org2_duplicate_roles.len(), 1);
     assert_eq!(org2_duplicate_roles[0].organization_id, Some(test_data.org2_id));
 
-    // Test: Super admin can see both versions
+
     let all_roles = role_service
         .list_roles(None, true)
         .await

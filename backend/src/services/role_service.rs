@@ -94,7 +94,6 @@ impl RoleService {
         organization_id: Option<i64>,
         is_super_admin: bool,
     ) -> ApiResult<RoleResponse> {
-        // Enforce organization scope for role creation
         if !is_super_admin && organization_id.is_none() {
             return Err(ApiError::forbidden("Organization context required for role creation"));
         }
@@ -102,7 +101,6 @@ impl RoleService {
         let target_org =
             if is_super_admin { req.organization_id.or(organization_id) } else { organization_id };
 
-        // Check if role code already exists
         let base_query = "SELECT * FROM roles WHERE code = ?";
         let (filtered_query, _) =
             apply_organization_filter(base_query, is_super_admin, organization_id);
@@ -117,9 +115,7 @@ impl RoleService {
             ));
         }
 
-        // Insert new role
         let result = if is_super_admin && target_org.is_none() {
-            // Super admin can create system-wide roles
             sqlx::query(
                 "INSERT INTO roles (code, name, description, is_system) VALUES (?, ?, ?, 0)",
             )
@@ -165,7 +161,6 @@ impl RoleService {
         requestor_org: Option<i64>,
         is_super_admin: bool,
     ) -> ApiResult<RoleResponse> {
-        // Check if role exists and within org scope
         let base_query = "SELECT * FROM roles WHERE id = ?";
         let (filtered_query, _) =
             apply_organization_filter(base_query, is_super_admin, requestor_org);
@@ -175,15 +170,12 @@ impl RoleService {
             .await?
             .ok_or_else(|| ApiError::not_found("Role not found"))?;
 
-        // System roles cannot be modified (except description)
         if role.is_system {
-            // Only allow description update for system roles
             if req.name.is_some() {
                 return Err(ApiError::validation_error("Cannot modify system role name"));
             }
         }
 
-        // Build update query
         let mut update_parts = Vec::new();
         let mut bind_values: Vec<Box<dyn sqlx::Encode<'_, sqlx::Sqlite> + Send>> = Vec::new();
 
@@ -201,7 +193,6 @@ impl RoleService {
             return self.get_role(role_id, requestor_org, is_super_admin).await;
         }
 
-        // Direct update approach
         if let Some(name) = req.name {
             if let Some(description) = req.description {
                 sqlx::query("UPDATE roles SET name = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
@@ -254,7 +245,6 @@ impl RoleService {
         requestor_org: Option<i64>,
         is_super_admin: bool,
     ) -> ApiResult<()> {
-        // Check if role exists and within org scope
         let base_query = "SELECT * FROM roles WHERE id = ?";
         let (filtered_query, _) =
             apply_organization_filter(base_query, is_super_admin, requestor_org);
@@ -268,13 +258,11 @@ impl RoleService {
             return Err(ApiError::validation_error("Cannot delete system role"));
         }
 
-        // Delete role (cascade will handle role_permissions and user_roles)
         sqlx::query("DELETE FROM roles WHERE id = ?")
             .bind(role_id)
             .execute(&self.pool)
             .await?;
 
-        // Reload Casbin policies
         self.casbin_service
             .reload_policies_from_db(&self.pool)
             .await?;
@@ -295,25 +283,20 @@ impl RoleService {
         requestor_org: Option<i64>,
         is_super_admin: bool,
     ) -> ApiResult<()> {
-        // Check if role exists and within org scope
         let _role = self
             .get_role(role_id, requestor_org, is_super_admin)
             .await?;
 
-        // Get all permissions to build relationships
-        // Get all permissions to build relationships
         let all_permissions: Vec<crate::models::Permission> =
             sqlx::query_as("SELECT * FROM permissions ORDER BY type, code")
                 .fetch_all(&self.pool)
                 .await?;
 
-        // Build permission_id -> Permission mapping for quick lookup
         let mut perm_map: HashMap<i64, &crate::models::Permission> = HashMap::new();
         for perm in &all_permissions {
             perm_map.insert(perm.id, perm);
         }
 
-        // Build menu->API mapping (for child API permissions)
         let mut menu_to_apis: HashMap<i64, Vec<i64>> = HashMap::new();
         for api_perm in all_permissions.iter().filter(|p| p.r#type == "api") {
             if let Some(parent_id) = api_perm.parent_id {
@@ -321,15 +304,8 @@ impl RoleService {
             }
         }
 
-        // Extend permission list with:
-        // 1. Associated API permissions (children of selected menus)
-        // 2. All parent menu permissions (parents of selected items)
-        // Extend permission list with:
-        // 1. Associated API permissions (children of selected menus)
-        // 2. All parent menu permissions (parents of selected items)
         let mut extended_permission_ids = req.permission_ids.clone();
 
-        // Step 1: Add child API permissions for selected menu permissions
         let mut api_count = 0;
         for permission_id in &req.permission_ids {
             if let Some(perm) = perm_map.get(permission_id)
@@ -347,15 +323,12 @@ impl RoleService {
             }
         }
 
-        // Step 2: Add all parent menu permissions recursively
         let mut parent_count = 0;
         for permission_id in req.permission_ids.clone() {
             let mut current_id = permission_id;
 
-            // Walk up the parent chain
             while let Some(perm) = perm_map.get(&current_id) {
                 if let Some(parent_id) = perm.parent_id {
-                    // Check if parent is a menu type
                     if let Some(parent_perm) = perm_map.get(&parent_id) {
                         if parent_perm.r#type == "menu"
                             && !extended_permission_ids.contains(&parent_id)
@@ -380,7 +353,6 @@ impl RoleService {
             }
         }
 
-        // Remove duplicates and sort for consistency
         use std::collections::HashSet;
         let mut final_permission_ids: Vec<i64> = extended_permission_ids
             .into_iter()
@@ -400,16 +372,13 @@ impl RoleService {
             );
         }
 
-        // Begin transaction
         let mut tx = self.pool.begin().await?;
 
-        // Delete existing role permissions
         sqlx::query("DELETE FROM role_permissions WHERE role_id = ?")
             .bind(role_id)
             .execute(&mut *tx)
             .await?;
 
-        // Insert new role permissions (including auto-associated API permissions)
         for permission_id in &final_permission_ids {
             sqlx::query("INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)")
                 .bind(role_id)
@@ -420,7 +389,6 @@ impl RoleService {
 
         tx.commit().await?;
 
-        // Reload Casbin policies
         self.casbin_service
             .reload_policies_from_db(&self.pool)
             .await?;
@@ -442,7 +410,6 @@ impl RoleService {
         requestor_org: Option<i64>,
         is_super_admin: bool,
     ) -> ApiResult<Vec<PermissionResponse>> {
-        // Verify role exists and within org scope
         let _role = self
             .get_role(role_id, requestor_org, is_super_admin)
             .await?;

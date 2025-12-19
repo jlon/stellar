@@ -46,44 +46,38 @@ pub struct AuditLogService {
 
 impl AuditLogService {
     pub fn new(mysql_pool_manager: Arc<MySQLPoolManager>, audit_config: AuditLogConfig) -> Self {
-        Self {
-            mysql_pool_manager,
-            audit_config,
-        }
+        Self { mysql_pool_manager, audit_config }
     }
 
     /// Get audit table name and field mappings based on cluster type
-    fn get_audit_config(&self, cluster: &Cluster) -> (String, &'static str, &'static str, &'static str, &'static str) {
+    fn get_audit_config(
+        &self,
+        cluster: &Cluster,
+    ) -> (String, &'static str, &'static str, &'static str, &'static str) {
         use crate::models::cluster::ClusterType;
-        
+
         match cluster.cluster_type {
-            ClusterType::StarRocks => {
-                // StarRocks: starrocks_audit_db__.starrocks_audit_tbl__
-                (
-                    self.audit_config.full_table_name(),
-                    "timestamp",     // time field
-                    "queryTime",     // query_time field
-                    "isQuery",       // is_query field
-                    "queryType"      // stmt_type field
-                )
-            },
-            ClusterType::Doris => {
-                // Doris: __internal_schema.audit_log
-                (
-                    "__internal_schema.audit_log".to_string(),
-                    "time",          // time field
-                    "query_time",    // query_time field (already in ms)
-                    "is_query",      // is_query field
-                    "stmt_type"      // stmt_type field
-                )
-            }
+            ClusterType::StarRocks => (
+                self.audit_config.full_table_name(),
+                "timestamp",
+                "queryTime",
+                "isQuery",
+                "queryType",
+            ),
+            ClusterType::Doris => (
+                "__internal_schema.audit_log".to_string(),
+                "time",
+                "query_time",
+                "is_query",
+                "stmt_type",
+            ),
         }
     }
 
     /// Get top tables by access count
-    /// 
+    ///
     /// This queries the audit log to find the most frequently accessed tables.
-    /// 
+    ///
     /// # Arguments
     /// * `cluster` - The StarRocks cluster
     /// * `hours` - Time window in hours (default: 24)
@@ -96,15 +90,15 @@ impl AuditLogService {
     ) -> ApiResult<Vec<TopTableByAccess>> {
         let pool = self.mysql_pool_manager.get_pool(cluster).await?;
         let mysql_client = MySQLClient::from_pool(pool);
-        let (audit_table, time_field, _query_time_field, is_query_field, stmt_type_field) = self.get_audit_config(cluster);
+        let (audit_table, time_field, _query_time_field, is_query_field, stmt_type_field) =
+            self.get_audit_config(cluster);
         let audit_table_filter = &self.audit_config.table;
-        
+
         use crate::models::cluster::ClusterType;
-        
-        // Different SQL for StarRocks (supports REGEXP_REPLACE) and Doris (uses SUBSTRING_INDEX)
+
         let query = match cluster.cluster_type {
             ClusterType::StarRocks => format!(
-            r#"
+                r#"
             SELECT 
                 COALESCE(NULLIF(`catalog`, 'default_catalog'), '') as catalog,
                     COALESCE(NULLIF(`db`, ''), '') as db_name,
@@ -199,17 +193,16 @@ impl AuditLogService {
                 "#,
             ),
         };
-        
+
         tracing::debug!("Querying top tables by access: hours={}, limit={}", hours, limit);
-        
+
         let (columns, rows) = mysql_client.query_raw(&query).await?;
-        
-        // Build column index map
+
         let mut col_idx = std::collections::HashMap::new();
         for (i, col) in columns.iter().enumerate() {
             col_idx.insert(col.clone(), i);
         }
-        
+
         let mut tables = Vec::new();
         for row in rows {
             if let (Some(full_table_name), Some(access_count_str)) = (
@@ -221,49 +214,39 @@ impl AuditLogService {
                     .get("last_access")
                     .and_then(|&i| row.get(i))
                     .cloned();
-                
+
                 let unique_users = col_idx
                     .get("unique_users")
                     .and_then(|&i| row.get(i))
                     .and_then(|s| s.parse::<i32>().ok())
                     .unwrap_or(0);
-                
+
                 let catalog = col_idx
                     .get("catalog")
                     .and_then(|&i| row.get(i))
                     .map(|s| s.as_str())
                     .unwrap_or("");
-                
+
                 let db_field = col_idx
                     .get("db_name")
                     .and_then(|&i| row.get(i))
                     .map(|s| s.as_str())
                     .unwrap_or("");
-                
-                // Parse full_table_name: could be "table", "db.table", or "catalog.db.table"
+
                 let parts: Vec<&str> = full_table_name.split('.').collect();
                 let (final_db, final_table) = match parts.len() {
-                    3 => {
-                        // catalog.database.table format (external catalog)
-                        (format!("{}.{}", parts[0], parts[1]), parts[2].to_string())
-                    },
+                    3 => (format!("{}.{}", parts[0], parts[1]), parts[2].to_string()),
                     2 => {
-                        // database.table format
                         if !catalog.is_empty() {
-                            // External catalog: catalog.database
                             (format!("{}.{}", catalog, parts[0]), parts[1].to_string())
                         } else {
-                            // Default catalog: database.table
                             (parts[0].to_string(), parts[1].to_string())
                         }
                     },
-                    1 => {
-                        // Just table name, use db field or empty
-                        (db_field.to_string(), parts[0].to_string())
-                    },
-                    _ => continue, // Invalid format, skip
+                    1 => (db_field.to_string(), parts[0].to_string()),
+                    _ => continue,
                 };
-                
+
                 tables.push(TopTableByAccess {
                     database: final_db,
                     table: final_table,
@@ -273,20 +256,16 @@ impl AuditLogService {
                 });
             }
         }
-        
-        tracing::info!(
-            "Found {} top tables by access ({}h window)",
-            tables.len(),
-            hours
-        );
-        
+
+        tracing::info!("Found {} top tables by access ({}h window)", tables.len(), hours);
+
         Ok(tables)
     }
 
     /// Get slow queries
-    /// 
+    ///
     /// This queries the audit log to find slow-running queries.
-    /// 
+    ///
     /// # Arguments
     /// * `cluster` - The StarRocks cluster
     /// * `hours` - Time window in hours (default: 24)
@@ -301,14 +280,14 @@ impl AuditLogService {
     ) -> ApiResult<Vec<SlowQuery>> {
         let pool = self.mysql_pool_manager.get_pool(cluster).await?;
         let mysql_client = MySQLClient::from_pool(pool);
-        let (audit_table, time_field, query_time_field, is_query_field, _stmt_type_field) = self.get_audit_config(cluster);
-        
+        let (audit_table, time_field, query_time_field, is_query_field, _stmt_type_field) =
+            self.get_audit_config(cluster);
+
         use crate::models::cluster::ClusterType;
-        
-        // Query audit logs for slow queries - field names differ between StarRocks and Doris
+
         let query = match cluster.cluster_type {
             ClusterType::StarRocks => format!(
-            r#"
+                r#"
             SELECT 
                 queryId as query_id,
                 `user`,
@@ -356,22 +335,21 @@ impl AuditLogService {
             "#,
             ),
         };
-        
+
         tracing::debug!(
             "Querying slow queries: hours={}, min_duration={}ms, limit={}",
             hours,
             min_duration_ms,
             limit
         );
-        
+
         let (columns, rows) = mysql_client.query_raw(&query).await?;
-        
-        // Build column index map
+
         let mut col_idx = std::collections::HashMap::new();
         for (i, col) in columns.iter().enumerate() {
             col_idx.insert(col.clone(), i);
         }
-        
+
         let mut slow_queries = Vec::new();
         for row in rows {
             if let (Some(query_id), Some(user), Some(database), Some(duration_ms_str)) = (
@@ -381,50 +359,50 @@ impl AuditLogService {
                 col_idx.get("duration_ms").and_then(|&i| row.get(i)),
             ) {
                 let duration_ms = duration_ms_str.parse::<i64>().unwrap_or(0);
-                
+
                 let scan_rows = col_idx
                     .get("scan_rows")
                     .and_then(|&i| row.get(i))
                     .and_then(|s| s.parse::<i64>().ok());
-                
+
                 let scan_bytes = col_idx
                     .get("scan_bytes")
                     .and_then(|&i| row.get(i))
                     .and_then(|s| s.parse::<i64>().ok());
-                
+
                 let return_rows = col_idx
                     .get("return_rows")
                     .and_then(|&i| row.get(i))
                     .and_then(|s| s.parse::<i64>().ok());
-                
+
                 let cpu_cost_ms = col_idx
                     .get("cpu_cost_ms")
                     .and_then(|&i| row.get(i))
                     .and_then(|s| s.parse::<i64>().ok());
-                
+
                 let mem_cost_bytes = col_idx
                     .get("mem_cost_bytes")
                     .and_then(|&i| row.get(i))
                     .and_then(|s| s.parse::<i64>().ok());
-                
+
                 let timestamp = col_idx
                     .get("timestamp")
                     .and_then(|&i| row.get(i))
                     .cloned()
                     .unwrap_or_default();
-                
+
                 let state = col_idx
                     .get("state")
                     .and_then(|&i| row.get(i))
                     .cloned()
                     .unwrap_or_else(|| "UNKNOWN".to_string());
-                
+
                 let query_preview = col_idx
                     .get("query_preview")
                     .and_then(|&i| row.get(i))
                     .cloned()
                     .unwrap_or_default();
-                
+
                 slow_queries.push(SlowQuery {
                     query_id: query_id.to_string(),
                     user: user.to_string(),
@@ -441,15 +419,14 @@ impl AuditLogService {
                 });
             }
         }
-        
+
         tracing::info!(
             "Found {} slow queries (>{}ms, {}h window)",
             slow_queries.len(),
             min_duration_ms,
             hours
         );
-        
+
         Ok(slow_queries)
     }
 }
-

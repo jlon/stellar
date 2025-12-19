@@ -39,14 +39,12 @@ impl UserRoleService {
         user_id: i64,
         req: AssignUserRoleRequest,
     ) -> ApiResult<()> {
-        // Check if role exists
         let role: Role = sqlx::query_as("SELECT * FROM roles WHERE id = ?")
             .bind(req.role_id)
             .fetch_optional(&self.pool)
             .await?
             .ok_or_else(|| ApiError::not_found("Role not found"))?;
 
-        // Check if user-role assignment already exists
         let existing: Option<(i64,)> =
             sqlx::query_as("SELECT id FROM user_roles WHERE user_id = ? AND role_id = ?")
                 .bind(user_id)
@@ -58,14 +56,12 @@ impl UserRoleService {
             return Err(ApiError::validation_error("User already has this role"));
         }
 
-        // Insert user-role assignment
         sqlx::query("INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)")
             .bind(user_id)
             .bind(req.role_id)
             .execute(&self.pool)
             .await?;
 
-        // Update Casbin
         self.casbin_service
             .add_role_for_user(user_id, req.role_id)
             .await?;
@@ -77,7 +73,6 @@ impl UserRoleService {
 
     /// Remove role from user
     pub async fn remove_role_from_user(&self, user_id: i64, role_id: i64) -> ApiResult<()> {
-        // Check if assignment exists
         let existing: Option<(i64,)> =
             sqlx::query_as("SELECT id FROM user_roles WHERE user_id = ? AND role_id = ?")
                 .bind(user_id)
@@ -89,14 +84,12 @@ impl UserRoleService {
             return Err(ApiError::not_found("User role assignment not found"));
         }
 
-        // Delete user-role assignment
         sqlx::query("DELETE FROM user_roles WHERE user_id = ? AND role_id = ?")
             .bind(user_id)
             .bind(role_id)
             .execute(&self.pool)
             .await?;
 
-        // Update Casbin
         self.casbin_service
             .remove_role_for_user(user_id, role_id)
             .await?;

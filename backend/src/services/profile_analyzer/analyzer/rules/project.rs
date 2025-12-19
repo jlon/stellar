@@ -23,7 +23,7 @@ impl DiagnosticRule for P001ProjectExprHigh {
 
     fn evaluate(&self, context: &RuleContext) -> Option<Diagnostic> {
         let expr_time = context.get_metric("ExprComputeTime")?;
-        let op_time = context.get_operator_time_ms()? * 1_000_000.0; // Convert to ns
+        let op_time = context.get_operator_time_ms()? * 1_000_000.0;
         if op_time == 0.0 {
             return None;
         }
@@ -72,24 +72,20 @@ impl DiagnosticRule for P002CommonSubExprHigh {
     }
 
     fn evaluate(&self, context: &RuleContext) -> Option<Diagnostic> {
-        // Check CommonSubExprComputeTime
         let common_sub_expr_time = context
             .get_metric("CommonSubExprComputeTime")
             .or_else(|| context.get_metric_duration("CommonSubExprComputeTime"))?;
 
-        // Convert to ms if needed (could be in ns)
         let time_ms = if common_sub_expr_time > 1_000_000.0 {
-            common_sub_expr_time / 1_000_000.0 // ns to ms
+            common_sub_expr_time / 1_000_000.0
         } else {
             common_sub_expr_time
         };
 
-        // Threshold: 500ms is significant
         if time_ms < 500.0 {
             return None;
         }
 
-        // Also get ExprComputeTime to calculate ratio
         let expr_time = context
             .get_metric("ExprComputeTime")
             .or_else(|| context.get_metric_duration("ExprComputeTime"))

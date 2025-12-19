@@ -161,7 +161,6 @@ pub async fn activate_cluster(
         org_ctx.is_super_admin
     );
 
-    // Verify user can activate this cluster (org scope or super admin)
     let target = state.cluster_service.get_cluster(id).await?;
     if !org_ctx.is_super_admin && target.organization_id != org_ctx.organization_id {
         return Err(crate::utils::ApiError::forbidden(
@@ -239,7 +238,7 @@ pub async fn update_cluster(
             "You can only update clusters within your organization",
         ));
     }
-    // Only check if organization_id is being changed (not just present)
+
     if !org_ctx.is_super_admin
         && req.organization_id.is_some()
         && req.organization_id != existing.organization_id
@@ -398,7 +397,6 @@ pub async fn get_cluster_health(
         return Ok(Json(health));
     }
 
-    // Mode 2: Use cluster ID (existing cluster mode)
     tracing::info!("Health check for existing cluster ID: {}", id);
     let health = state.cluster_service.get_cluster_health(id).await?;
 
@@ -427,7 +425,6 @@ pub async fn test_cluster_connection(
 ) -> ApiResult<Json<ClusterHealth>> {
     use crate::models::Cluster;
 
-    // Normalize inputs to avoid trailing/leading spaces causing DNS failures
     let fe_host = health_req
         .fe_host
         .as_ref()
@@ -445,7 +442,6 @@ pub async fn test_cluster_connection(
         fe_host.as_deref().unwrap_or("unknown")
     );
 
-    // Validate required fields
     if fe_host.is_none() {
         return Err(crate::utils::ApiError::validation_error("Missing required field: fe_host"));
     }

@@ -85,7 +85,6 @@ pub struct LLMProviderInfo {
 
 impl From<&LLMProvider> for LLMProviderInfo {
     fn from(p: &LLMProvider) -> Self {
-        // Mask API key for display
         let api_key_masked = p.api_key_encrypted.as_ref().map(|key| {
             if key.len() > 8 {
                 format!("{}...{}", &key[..4], &key[key.len() - 4..])

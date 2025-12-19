@@ -18,7 +18,7 @@ async fn create_test_role_service() -> RoleService {
 #[tokio::test]
 async fn test_list_roles_empty() {
     let pool = create_test_db().await;
-    // Ensure database is empty
+
     sqlx::query("DELETE FROM user_roles")
         .execute(&pool)
         .await
@@ -57,7 +57,7 @@ async fn test_list_roles() {
     let roles = result.unwrap();
     assert!(roles.len() >= 3, "Should return all roles");
 
-    // System roles should come first
+
     assert!(roles[0].is_system, "System roles should be first");
 }
 
@@ -225,14 +225,14 @@ async fn test_delete_role() {
     let operator_role_id = create_role(&pool, "ops", "Operator", "Operator role", false).await;
     let permission_ids = data.permission_ids.clone();
 
-    // Assign permissions
+
     let req = UpdateRolePermissionsRequest { permission_ids: permission_ids[0..3].to_vec() };
     let result = service
         .assign_permissions_to_role(operator_role_id, req, None, true)
         .await;
     assert!(result.is_ok());
 
-    // Verify permissions are assigned
+
     let role_with_perms = service
         .get_role_with_permissions(operator_role_id, None, true)
         .await
@@ -252,21 +252,21 @@ async fn test_assign_permissions_to_role_replace() {
     let operator_role_id = create_role(&pool, "ops", "Operator", "Operator role", false).await;
     let permission_ids = data.permission_ids.clone();
 
-    // First assignment
+
     let req1 = UpdateRolePermissionsRequest { permission_ids: permission_ids[0..3].to_vec() };
     service
         .assign_permissions_to_role(operator_role_id, req1, None, true)
         .await
         .unwrap();
 
-    // Second assignment (should replace)
+
     let req2 = UpdateRolePermissionsRequest { permission_ids: permission_ids[3..6].to_vec() };
     let result = service
         .assign_permissions_to_role(operator_role_id, req2, None, true)
         .await;
     assert!(result.is_ok());
 
-    // Verify old permissions are replaced
+
     let role_with_perms = service
         .get_role_with_permissions(operator_role_id, None, true)
         .await

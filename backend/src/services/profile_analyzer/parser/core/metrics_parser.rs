@@ -38,7 +38,6 @@ impl MetricsParser {
         unique_metrics: &HashMap<String, String>,
     ) {
         for (key, value) in unique_metrics {
-            // Only process memory-related metrics
             if key.contains("Memory") || key.contains("memory") {
                 Self::set_metric_value(metrics, key, value);
             }
@@ -90,7 +89,7 @@ impl MetricsParser {
             }
 
             let mut block_lines = Vec::new();
-            // Find the indent of the section marker line itself
+
             let marker_line_start = text[..start].rfind('\n').map(|p| p + 1).unwrap_or(0);
             let marker_line = &text[marker_line_start..start + section_marker.len()];
             let marker_indent = Self::get_indent_level(marker_line);
@@ -98,7 +97,6 @@ impl MetricsParser {
             for line in lines {
                 let trimmed = line.trim();
 
-                // Skip empty lines
                 if trimmed.is_empty() {
                     block_lines.push(line);
                     continue;
@@ -106,22 +104,18 @@ impl MetricsParser {
 
                 let current_indent = Self::get_indent_level(line);
 
-                // Stop at any section marker (CommonMetrics:, UniqueMetrics:) at same indent level
                 if trimmed.ends_with("Metrics:") && current_indent <= marker_indent {
                     break;
                 }
 
-                // Stop at new operator (contains plan_node_id) at same or lower indent
                 if trimmed.contains("(plan_node_id=") && !trimmed.starts_with("-") {
                     break;
                 }
 
-                // Stop at Pipeline section
                 if trimmed.starts_with("Pipeline (id=") {
                     break;
                 }
 
-                // Stop at Fragment section
                 if trimmed.starts_with("Fragment ") && trimmed.contains(":") {
                     break;
                 }
@@ -209,8 +203,7 @@ impl MetricsParser {
             "MemoryUsage" => {
                 metrics.memory_usage = ValueParser::parse_bytes(value).ok();
             },
-            // Handle various memory-related metrics and accumulate to memory_usage
-            // These are operator-level peak memory metrics
+
             "LocalExchangePeakMemoryUsage"
             | "HashTableMemoryUsage"
             | "PeakChunkBufferMemoryUsage"
@@ -220,7 +213,6 @@ impl MetricsParser {
             | "AggregatorMemoryUsage"
             | "SortMemoryUsage" => {
                 if let Ok(bytes) = ValueParser::parse_bytes(value) {
-                    // Accumulate memory usage from various sources
                     let current = metrics.memory_usage.unwrap_or(0);
                     metrics.memory_usage = Some(current + bytes);
                 }
@@ -228,9 +220,7 @@ impl MetricsParser {
             "OutputChunkBytes" => {
                 metrics.output_chunk_bytes = ValueParser::parse_bytes(value).ok();
             },
-            _ => {
-                // Unknown metric, ignore
-            },
+            _ => {},
         }
     }
 

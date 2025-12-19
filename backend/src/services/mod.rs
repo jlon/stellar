@@ -26,17 +26,9 @@ pub use auth_service::AuthService;
 pub use baseline_refresh_task::start_baseline_refresh_task;
 pub use casbin_service::CasbinService;
 pub use cluster_service::ClusterService;
-pub use data_statistics_service::{
-    DataStatistics, DataStatisticsService, TopTableBySize,
-};
+pub use data_statistics_service::{DataStatistics, DataStatisticsService, TopTableBySize};
 pub use llm::{
-    LLMAnalysisResult,
-    LLMError,
-    LLMProvider,
-    LLMProviderInfo,
-    LLMServiceImpl,
-    LLMUsageStats,
-    // Root cause analysis request/response for OpenAPI schema
+    LLMAnalysisResult, LLMError, LLMProvider, LLMProviderInfo, LLMServiceImpl, LLMUsageStats,
     RootCauseAnalysisRequest as LLMAnalysisRequest,
     RootCauseAnalysisResponse as LLMAnalysisResponse,
 };
@@ -62,6 +54,6 @@ pub use user_service::UserService;
 
 // Cluster adapters for multi-engine support
 pub use cluster_adapter::{
-    create_adapter, create_doris_adapter, create_starrocks_adapter, ClusterAdapter, DorisAdapter,
-    StarRocksAdapter,
+    ClusterAdapter, DorisAdapter, StarRocksAdapter, create_adapter, create_doris_adapter,
+    create_starrocks_adapter,
 };

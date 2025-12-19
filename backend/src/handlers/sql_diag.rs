@@ -69,19 +69,15 @@ pub async fn diagnose(
     let t0 = std::time::Instant::now();
     let ms = || t0.elapsed().as_millis() as u64;
 
-    // 1. Check LLM
     if !s.llm_service.is_available() {
         return Ok(Json(DiagResp::fail("LLM service unavailable", ms())));
     }
 
-    // 2. Get cluster
     let cluster = s.cluster_service.get_cluster(cid).await?;
 
-    // 3. Get MySQL client
     let pool = s.mysql_pool_manager.get_pool(&cluster).await?;
     let client = MySQLClient::from_pool(pool);
 
-    // 4. Parallel fetch: explain + schema + vars
     let db = req.database.as_deref().unwrap_or("");
     let cat = req.catalog.as_deref().unwrap_or("default_catalog");
     let tables = extract_tables(&req.sql);
@@ -94,7 +90,6 @@ pub async fn diagnose(
         fetch_vars(&client)
     );
 
-    // Log results for debugging
     match &explain {
         Ok(e) => tracing::info!("EXPLAIN success: {} chars", e.len()),
         Err(e) => tracing::warn!("EXPLAIN failed: {}", e),
@@ -108,7 +103,6 @@ pub async fn diagnose(
         Err(e) => tracing::warn!("Vars fetch failed: {}", e),
     }
 
-    // 5. Build LLM request
     let llm_req = SqlDiagReq {
         sql: req.sql.clone(),
         explain: explain.ok(),
@@ -116,7 +110,6 @@ pub async fn diagnose(
         vars: vars.ok(),
     };
 
-    // 6. Call LLM
     let qid = format!("diag_{:x}", t0.elapsed().as_nanos());
     match s
         .llm_service
@@ -128,7 +121,6 @@ pub async fn diagnose(
     }
 }
 
-
 /// Execute EXPLAIN VERBOSE
 async fn exec_explain(
     client: &MySQLClient,
@@ -139,29 +131,24 @@ async fn exec_explain(
 ) -> Result<String, String> {
     let mut sess = client.create_session().await.map_err(|e| e.to_string())?;
 
-    // Set catalog if not default
-    // Pass cluster_type for correct syntax (StarRocks: SET CATALOG, Doris: SWITCH)
     if !cat.is_empty() && cat != "default_catalog" {
         sess.use_catalog(cat, cluster_type)
             .await
             .map_err(|e| format!("Failed to use catalog {}: {}", cat, e))?;
     }
 
-    // Set database if provided
     if !db.is_empty() {
         sess.use_database(db)
             .await
             .map_err(|e| format!("Failed to use database {}: {}", db, e))?;
     }
 
-    // Execute EXPLAIN VERBOSE
     let explain_sql = format!("EXPLAIN VERBOSE {}", sql.trim().trim_end_matches(';'));
     let (_, rows, _) = sess
         .execute(&explain_sql)
         .await
         .map_err(|e| e.to_string())?;
 
-    // Collect results, limit to 1000 lines to avoid token overflow but keep enough context
     let result: String = rows
         .into_iter()
         .flat_map(|r| r.into_iter())
@@ -169,7 +156,6 @@ async fn exec_explain(
         .collect::<Vec<_>>()
         .join("\n");
 
-    // If result is too long, truncate but keep header and footer
     if result.len() > 8000 {
         let lines: Vec<&str> = result.lines().collect();
         let header = lines
@@ -201,7 +187,6 @@ async fn fetch_schema(
 ) -> Result<serde_json::Value, String> {
     let mut schema = serde_json::Map::new();
 
-    // Build table prefix based on catalog and database
     let prefix = match (cat, db) {
         ("", "") | ("default_catalog", "") => return Ok(serde_json::Value::Object(schema)),
         ("", db) | ("default_catalog", db) => format!("`{}`", db),
@@ -209,7 +194,6 @@ async fn fetch_schema(
         (cat, db) => format!("`{}`.`{}`", cat, db),
     };
 
-    // Determine if using external catalog
     let is_external_catalog = !cat.is_empty() && cat != "default_catalog";
 
     for t in tables.iter().take(5) {
@@ -217,38 +201,33 @@ async fn fetch_schema(
         tracing::debug!("Fetching schema: {}", show_sql);
 
         if let Ok((_, rows)) = client.query_raw(&show_sql).await
-            && let Some(ddl) = rows.first().and_then(|r| r.get(1)) {
-                let mut info = parse_ddl(ddl);
-                // Add table type info
-                if let serde_json::Value::Object(ref mut m) = info {
-                    let table_type = detect_table_type(ddl, is_external_catalog);
-                    m.insert("table_type".into(), table_type.into());
-                    m.insert(
-                        "ddl_preview".into(),
-                        ddl.chars().take(500).collect::<String>().into(),
-                    );
-                }
-                schema.insert(t.clone(), info);
+            && let Some(ddl) = rows.first().and_then(|r| r.get(1))
+        {
+            let mut info = parse_ddl(ddl);
+
+            if let serde_json::Value::Object(ref mut m) = info {
+                let table_type = detect_table_type(ddl, is_external_catalog);
+                m.insert("table_type".into(), table_type.into());
+                m.insert("ddl_preview".into(), ddl.chars().take(500).collect::<String>().into());
             }
+            schema.insert(t.clone(), info);
+        }
     }
     Ok(serde_json::Value::Object(schema))
 }
 
 /// Detect if table is internal (StarRocks native) or external
 fn detect_table_type(ddl: &str, is_external_catalog: bool) -> &'static str {
-    // External catalog tables are always external
     if is_external_catalog {
         return "external";
     }
 
-    // Normalize DDL: remove extra spaces around '='
     let ddl_norm = ddl
         .to_uppercase()
         .replace(" = ", "=")
         .replace("= ", "=")
         .replace(" =", "=");
 
-    // External table patterns (ENGINE=XXX without spaces)
     let external_engines = [
         "HIVE",
         "ICEBERG",
@@ -271,7 +250,6 @@ fn detect_table_type(ddl: &str, is_external_catalog: bool) -> &'static str {
         return "external";
     }
 
-    // Internal table patterns
     if ddl_norm.contains("ENGINE=OLAP")
         || ddl_norm.contains("PRIMARY KEY")
         || ddl_norm.contains("DUPLICATE KEY")
@@ -283,7 +261,6 @@ fn detect_table_type(ddl: &str, is_external_catalog: bool) -> &'static str {
         return "internal";
     }
 
-    // Default to internal for default_catalog
     "internal"
 }
 
@@ -291,10 +268,8 @@ fn detect_table_type(ddl: &str, is_external_catalog: bool) -> &'static str {
 fn parse_ddl(ddl: &str) -> serde_json::Value {
     let mut m = serde_json::Map::new();
 
-    // Helper to capture regex
     let cap = |pat: &str| Regex::new(pat).ok().and_then(|re| re.captures(ddl));
 
-    // Extract partition info
     if let Some(c) = cap(r"(?i)PARTITION\s+BY\s+(\w+)\s*\(([^)]+)\)") {
         m.insert(
             "partition".into(),
@@ -305,7 +280,6 @@ fn parse_ddl(ddl: &str) -> serde_json::Value {
         );
     }
 
-    // Extract distribution info (HASH or RANDOM)
     if let Some(c) = cap(r"(?i)DISTRIBUTED\s+BY\s+HASH\s*\(([^)]+)\)(?:\s+BUCKETS\s+(\d+))?") {
         m.insert(
             "dist".into(),
@@ -316,17 +290,17 @@ fn parse_ddl(ddl: &str) -> serde_json::Value {
             }),
         );
     } else if ddl.to_uppercase().contains("DISTRIBUTED BY RANDOM")
-        && let Some(c) = cap(r"(?i)DISTRIBUTED\s+BY\s+RANDOM(?:\s+BUCKETS\s+(\d+))?") {
-            m.insert(
-                "dist".into(),
-                serde_json::json!({
-                    "type": "RANDOM",
-                    "buckets": c.get(1).and_then(|x| x.as_str().parse::<u32>().ok())
-                }),
-            );
-        }
+        && let Some(c) = cap(r"(?i)DISTRIBUTED\s+BY\s+RANDOM(?:\s+BUCKETS\s+(\d+))?")
+    {
+        m.insert(
+            "dist".into(),
+            serde_json::json!({
+                "type": "RANDOM",
+                "buckets": c.get(1).and_then(|x| x.as_str().parse::<u32>().ok())
+            }),
+        );
+    }
 
-    // Extract key type (PRIMARY KEY, DUPLICATE KEY, etc.)
     if let Some(c) =
         cap(r"(?i)(PRIMARY\s+KEY|DUPLICATE\s+KEY|AGGREGATE\s+KEY|UNIQUE\s+KEY)\s*\(([^)]+)\)")
     {
@@ -339,7 +313,6 @@ fn parse_ddl(ddl: &str) -> serde_json::Value {
         );
     }
 
-    // Extract ENGINE type
     if let Some(c) = cap(r"(?i)ENGINE\s*=\s*(\w+)") {
         m.insert(
             "engine".into(),
@@ -350,7 +323,6 @@ fn parse_ddl(ddl: &str) -> serde_json::Value {
         );
     }
 
-    // Extract PROPERTIES for colocate_with (useful for colocate join detection)
     if let Some(c) = cap(r#"(?i)"colocate_with"\s*=\s*"([^"]+)""#) {
         m.insert("colocate_with".into(), c.get(1).map(|x| x.as_str()).unwrap_or_default().into());
     }
@@ -385,11 +357,6 @@ async fn fetch_vars(client: &MySQLClient) -> Result<serde_json::Value, String> {
 
 /// Extract table names from SQL (handles aliases, subqueries, CTEs)
 fn extract_tables(sql: &str) -> Vec<String> {
-    // Pattern: FROM/JOIN table_ref where table_ref can be:
-    // - table
-    // - db.table
-    // - catalog.db.table
-    // Followed by optional alias (AS alias or just alias)
     let re = Regex::new(
         r"(?i)\b(?:FROM|JOIN)\s+`?([a-zA-Z_][a-zA-Z0-9_]*)`?(?:\.`?([a-zA-Z_][a-zA-Z0-9_]*)`?(?:\.`?([a-zA-Z_][a-zA-Z0-9_]*)`?)?)?\s*(?:AS\s+\w+|\s+[a-zA-Z_]\w*)?(?:\s|,|ON|WHERE|LEFT|RIGHT|INNER|OUTER|CROSS|$)"
     ).ok();
@@ -398,9 +365,8 @@ fn extract_tables(sql: &str) -> Vec<String> {
         let mut tables: Vec<String> = re
             .captures_iter(sql)
             .filter_map(|c| {
-                // Get the table name (last non-None group)
                 let table = c.get(3).or(c.get(2)).or(c.get(1)).map(|m| m.as_str());
-                // Filter out SQL keywords that might be captured
+
                 table
                     .filter(|t| {
                         let upper = t.to_uppercase();
@@ -438,10 +404,6 @@ fn extract_tables(sql: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // ========================================================================
-    // DiagResp Tests
-    // ========================================================================
 
     #[test]
     fn test_diag_resp_ok() {
@@ -492,13 +454,8 @@ mod tests {
         assert_eq!(resp.err, Some("Timeout".into()));
     }
 
-    // ========================================================================
-    // detect_table_type Tests
-    // ========================================================================
-
     #[test]
     fn test_detect_table_type_external_catalog() {
-        // External catalog always returns external
         assert_eq!(detect_table_type("CREATE TABLE t (id INT)", true), "external");
         assert_eq!(detect_table_type("ENGINE = OLAP", true), "external");
     }
@@ -631,7 +588,6 @@ mod tests {
 
     #[test]
     fn test_detect_table_type_default_internal() {
-        // Unknown DDL defaults to internal
         let ddl = "CREATE TABLE t (id INT)";
         assert_eq!(detect_table_type(ddl, false), "internal");
     }
@@ -644,10 +600,6 @@ mod tests {
         let ddl2 = "CREATE TABLE t (id INT) engine=hive";
         assert_eq!(detect_table_type(ddl2, false), "external");
     }
-
-    // ========================================================================
-    // parse_ddl Tests
-    // ========================================================================
 
     #[test]
     fn test_parse_ddl_empty() {
@@ -813,10 +765,6 @@ mod tests {
         assert_eq!(obj["colocate_with"], "order_group");
     }
 
-    // ========================================================================
-    // extract_tables Tests
-    // ========================================================================
-
     #[test]
     fn test_extract_tables_simple_from() {
         let sql = "SELECT * FROM users";
@@ -975,14 +923,10 @@ mod tests {
     fn test_extract_tables_sorted() {
         let sql = "SELECT * FROM zebra z JOIN apple a ON z.id = a.id";
         let tables = extract_tables(sql);
-        // Should be sorted alphabetically and deduplicated
+
         assert!(tables.contains(&"zebra".to_string()));
         assert!(tables.contains(&"apple".to_string()));
     }
-
-    // ========================================================================
-    // Additional Edge Case Tests
-    // ========================================================================
 
     #[test]
     fn test_parse_ddl_distributed_hash_no_buckets() {
@@ -1038,21 +982,17 @@ mod tests {
 
     #[test]
     fn test_extract_tables_subquery() {
-        // Subquery tables are also extracted (FROM in subquery)
         let sql = "SELECT * FROM users WHERE id IN (SELECT user_id FROM orders)";
         let tables = extract_tables(sql);
         assert!(tables.contains(&"users".to_string()));
-        // Note: orders is extracted because regex matches "FROM orders"
-        // The current regex does extract subquery tables
     }
 
     #[test]
     fn test_extract_tables_cte() {
-        // CTE (WITH clause) - tables in CTE should be extracted
         let sql = "WITH active_users AS (SELECT * FROM users WHERE status = 1) SELECT * FROM active_users a JOIN orders o ON a.id = o.user_id";
         let tables = extract_tables(sql);
         assert!(tables.contains(&"users".to_string()));
-        // Note: active_users is a CTE alias, orders should be extracted
+
         assert!(tables.contains(&"orders".to_string()));
     }
 
@@ -1063,7 +1003,7 @@ mod tests {
         assert!(json.contains("\"ok\":true"));
         assert!(json.contains("\"cached\":false"));
         assert!(json.contains("\"ms\":10"));
-        // err should be skipped when None
+
         assert!(!json.contains("\"err\""));
     }
 
@@ -1073,7 +1013,7 @@ mod tests {
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("\"ok\":false"));
         assert!(json.contains("\"err\":\"test error\""));
-        // data should be skipped when None
+
         assert!(!json.contains("\"data\""));
     }
 }

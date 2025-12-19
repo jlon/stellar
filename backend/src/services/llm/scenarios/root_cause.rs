@@ -165,7 +165,6 @@ fn build_session_vars_prompt(session_vars: &HashMap<String, String>) -> String {
 
     let mut prompt = String::from("\n\n## ⚠️ 当前集群配置 (严格禁止重复建议!)\n");
 
-    // Dynamically separate: enable_* flags vs other settings
     let mut enabled_features = Vec::new();
     let mut disabled_features = Vec::new();
     let mut other_settings = Vec::new();
@@ -185,7 +184,6 @@ fn build_session_vars_prompt(session_vars: &HashMap<String, String>) -> String {
         }
     }
 
-    // Sort for stable output
     enabled_features.sort();
     disabled_features.sort();
     other_settings.sort_by_key(|(k, _)| *k);
@@ -341,24 +339,18 @@ const PROMPT_OUTPUT_FORMAT: &str = r#"
 pub fn build_system_prompt(request: &RootCauseAnalysisRequest) -> String {
     let mut prompt = String::from(PROMPT_BASE);
 
-    // Add table-type specific guidance
     if let Some(ref profile_data) = request.profile_data {
         prompt.push_str(&build_table_type_prompt(&profile_data.scan_details));
     }
 
-    // Add issue-focused guidance
     prompt.push_str(&build_issue_focused_prompt(&request.rule_diagnostics));
 
-    // Add current session variables
     prompt.push_str(&build_session_vars_prompt(&request.query_summary.session_variables));
 
-    // Add valid parameters reference
     prompt.push_str(PROMPT_VALID_PARAMS);
 
-    // Add output format specification
     prompt.push_str(PROMPT_OUTPUT_FORMAT);
 
-    // Add JSON schema
     prompt.push_str(PROMPT_JSON_FORMAT);
 
     prompt
@@ -467,13 +459,11 @@ impl LLMAnalysisRequestTrait for RootCauseAnalysisRequest {
     fn profile_hash(&self) -> String {
         use std::hash::{Hash, Hasher};
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        // Hash key metrics - use stable values only
-        // Don't hash total_time_seconds because it varies per execution!
-        // Instead, focus on data volume and structure which are stable
+
         self.query_summary.scan_bytes.hash(&mut hasher);
         self.query_summary.output_rows.hash(&mut hasher);
         self.rule_diagnostics.len().hash(&mut hasher);
-        // Hash query type for better uniqueness
+
         self.query_summary.query_type.hash(&mut hasher);
         format!("{:x}", hasher.finish())
     }
@@ -981,8 +971,13 @@ impl RootCauseAnalysisRequestBuilder {
 /// * "external" - External table (any non-default catalog)
 pub fn determine_table_type(table_name: &str) -> String {
     match table_name.split('.').collect::<Vec<_>>() {
-        parts if parts.len() >= 3 => if parts[0]
-            .eq_ignore_ascii_case("default_catalog") { "internal".to_string() } else { "external".to_string() },
+        parts if parts.len() >= 3 => {
+            if parts[0].eq_ignore_ascii_case("default_catalog") {
+                "internal".to_string()
+            } else {
+                "external".to_string()
+            }
+        },
         parts if parts.len() == 2 => "internal".to_string(),
         _ => "internal".to_string(),
     }

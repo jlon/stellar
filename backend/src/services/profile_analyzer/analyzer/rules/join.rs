@@ -29,8 +29,6 @@ impl DiagnosticRule for J001ResultExplosion {
             return None;
         }
 
-        // P0.2: Absolute value protection - only check if probe rows are significant
-        // v2.0: Use dynamic threshold from thresholds module
         let min_probe_rows = context.thresholds.get_min_rows_for_join();
         if probe_rows < min_probe_rows {
             return None;
@@ -138,7 +136,6 @@ impl DiagnosticRule for J003HashTableTooLarge {
             .get_metric("HashTableMemoryUsage")
             .or_else(|| context.get_memory_usage().map(|v| v as f64))?;
 
-        // v2.0: Use dynamic hash table memory threshold
         let memory_threshold = context.thresholds.get_hash_table_memory_threshold() as f64;
 
         if hash_memory > memory_threshold {
@@ -257,7 +254,6 @@ impl DiagnosticRule for J009NonEquiJoin {
         let probe_rows = context.get_metric("ProbeRows").unwrap_or(0.0);
         let build_rows = context.get_metric("BuildRows").unwrap_or(0.0);
 
-        // Only warn if significant data volume
         if probe_rows > 1000.0 || build_rows > 1000.0 {
             Some(Diagnostic {
                 rule_id: self.id().to_string(),
@@ -310,7 +306,6 @@ impl DiagnosticRule for J010ProbeCacheUnfriendly {
         let probe_rows = context.get_metric("ProbeRows")?;
         let build_rows = context.get_metric("BuildRows")?;
 
-        // L3 cache typically 30-50MB, use 50MB as threshold
         const L3_CACHE: f64 = 50.0 * 1024.0 * 1024.0;
 
         if hash_memory > L3_CACHE && probe_rows > build_rows * 100.0 {
@@ -573,19 +568,16 @@ impl DiagnosticRule for J011BroadcastNotRecommended {
     }
 
     fn evaluate(&self, context: &RuleContext) -> Option<Diagnostic> {
-        // Check if using Broadcast distribution
         let dist_mode = context.node.unique_metrics.get("DistributionMode")?;
         if !dist_mode.to_uppercase().contains("BROADCAST") {
             return None;
         }
 
-        // Check build side size
         let build_rows = context.get_metric("BuildRows").unwrap_or(0.0);
         let hash_table_memory = context.get_metric("HashTableMemoryUsage").unwrap_or(0.0);
 
-        // Thresholds: 1M rows or 100MB memory
         let rows_threshold = 1_000_000.0;
-        let memory_threshold = 100.0 * 1024.0 * 1024.0; // 100MB
+        let memory_threshold = 100.0 * 1024.0 * 1024.0;
 
         if build_rows > rows_threshold || hash_table_memory > memory_threshold {
             let join_pred = context

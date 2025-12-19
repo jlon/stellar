@@ -151,8 +151,6 @@ impl LLMService for LLMServiceImpl {
     }
 
     fn active_provider(&self) -> Option<LLMProviderInfo> {
-        // This is a sync method, so we can't query DB here
-        // The actual provider is fetched in analyze()
         None
     }
 
@@ -171,14 +169,12 @@ impl LLMService for LLMServiceImpl {
             return Err(LLMError::Disabled);
         }
 
-        // 1. Get active provider
         let provider = self
             .repository
             .get_active_provider()
             .await?
             .ok_or(LLMError::NoProviderConfigured)?;
 
-        // 2. Check cache (skip if force_refresh is true)
         let cache_key = request.cache_key();
         let sql_hash = request.sql_hash();
         let profile_hash = request.profile_hash();
@@ -202,24 +198,20 @@ impl LLMService for LLMServiceImpl {
 
         tracing::info!("❌ LLM cache MISS for key: {}, calling API...", cache_key);
 
-        // 3. Create session
         let session_id = self
             .repository
             .create_session(query_id, provider.id, cluster_id, request.scenario())
             .await?;
 
-        // 4. Save request for debugging
         let request_json = serde_json::to_string(request)?;
         self.repository
             .save_request(&session_id, &request_json, &request.sql_hash(), &request.profile_hash())
             .await?;
 
-        // 5. Update session to processing
         self.repository
             .update_session_status(&session_id, SessionStatus::Processing)
             .await?;
 
-        // 6. Call LLM API
         let start = std::time::Instant::now();
         let result = self
             .client
@@ -229,13 +221,11 @@ impl LLMService for LLMServiceImpl {
 
         match result {
             Ok((response, input_tokens, output_tokens)) => {
-                // 7. Save result
                 let response_json = serde_json::to_string(&response)?;
                 self.repository
                     .save_result(&session_id, &response_json, response.confidence())
                     .await?;
 
-                // 8. Update session to completed
                 self.repository
                     .complete_session(
                         &session_id,
@@ -247,7 +237,6 @@ impl LLMService for LLMServiceImpl {
                     )
                     .await?;
 
-                // 9. Cache response
                 self.repository
                     .cache_response(
                         &cache_key,
@@ -325,7 +314,6 @@ impl LLMService for LLMServiceImpl {
 
         let start = std::time::Instant::now();
 
-        // Simple test: send a minimal request to check connectivity
         let test_result = self.client.test_connection(&provider).await;
         let latency_ms = start.elapsed().as_millis() as i64;
 

@@ -165,10 +165,8 @@ pub async fn analyze_root_cause(
         RootCauseAnalysisResponse,
     };
 
-    // Calculate query complexity from SQL for LLM context
     let complexity = QueryComplexity::from_sql(&req.sql_statement);
 
-    // Build the LLM request
     let llm_request = RootCauseAnalysisRequest::builder()
         .query_summary(QuerySummaryForLLM {
             sql_statement: req.sql_statement.clone(), // Full SQL, not truncated
@@ -191,7 +189,6 @@ pub async fn analyze_root_cause(
         .build()
         .map_err(|e| LLMError::ApiError(e.to_string()))?;
 
-    // Call LLM service (no force_refresh for direct API calls)
     let llm_result: crate::services::llm::LLMAnalysisResult<RootCauseAnalysisResponse> = state
         .llm_service
         .analyze(&llm_request, &req.query_id, req.cluster_id, false)

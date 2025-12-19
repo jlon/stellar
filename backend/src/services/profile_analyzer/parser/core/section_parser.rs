@@ -36,14 +36,13 @@ impl SectionParser {
                     .unwrap_or("")
                     .to_string();
 
-                // Handle multi-line SQL Statement
                 if key == "Sql Statement" {
                     let mut sql_lines = vec![value.clone()];
                     i += 1;
-                    // Collect continuation lines (indented, not starting with "- ")
+
                     while i < lines.len() {
                         let next_line = lines[i].trim();
-                        // Stop at next field or empty line or new section
+
                         if next_line.starts_with("- ")
                             || next_line.is_empty()
                             || next_line.contains("Fragment")
@@ -54,7 +53,7 @@ impl SectionParser {
                         i += 1;
                     }
                     value = sql_lines.join("\n");
-                    i -= 1; // Adjust since we'll i += 1 at loop end
+                    i -= 1;
                 }
 
                 fields.insert(key.to_string(), value);
@@ -62,7 +61,6 @@ impl SectionParser {
             i += 1;
         }
 
-        // Parse NonDefaultSessionVariables JSON if present
         let non_default_variables = fields
             .get("NonDefaultSessionVariables")
             .and_then(|json_str| {
@@ -97,7 +95,6 @@ impl SectionParser {
                 .get("QueryExecutionWallTime")
                 .and_then(|time_str| Self::parse_total_time_ms(time_str)),
 
-            // Execution time metrics (will be filled from Execution section)
             query_cumulative_cpu_time: None,
             query_cumulative_cpu_time_ms: None,
             query_cumulative_scan_time: None,
@@ -109,13 +106,11 @@ impl SectionParser {
             result_deliver_time: None,
             result_deliver_time_ms: None,
 
-            // Planner metrics
             planner_total_time: None,
             planner_total_time_ms: None,
             collect_profile_time: None,
             collect_profile_time_ms: None,
 
-            // IO metrics (aggregated from scan nodes)
             io_seek_time: None,
             io_seek_time_ms: None,
             local_disk_read_io_time: None,
@@ -123,7 +118,6 @@ impl SectionParser {
             remote_read_io_time: None,
             remote_read_io_time_ms: None,
 
-            // Aggregated IO statistics
             total_raw_rows_read: None,
             total_bytes_read: None,
             total_bytes_read_display: None,
@@ -134,14 +128,11 @@ impl SectionParser {
             result_bytes: None,
             result_bytes_display: None,
 
-            // Memory metrics
             query_sum_memory_usage: None,
             query_deallocated_memory_usage: None,
 
-            // Spill metrics
             query_spill_bytes: None,
 
-            // DataCache metrics
             datacache_hit_rate: None,
             datacache_bytes_local: None,
             datacache_bytes_remote: None,
@@ -150,12 +141,11 @@ impl SectionParser {
 
             top_time_consuming_nodes: None,
 
-            // Profile completeness (parsed from Summary section)
             is_profile_async: fields
                 .get("IsProfileAsync")
                 .map(|v| v.eq_ignore_ascii_case("true")),
             retry_times: fields.get("Retry Times").and_then(|v| v.parse().ok()),
-            // These will be filled later from Fragment analysis
+
             missing_instance_count: None,
             total_instance_count: None,
             is_profile_complete: None,
@@ -176,7 +166,6 @@ impl SectionParser {
         for line in planner_block.lines() {
             let trimmed = line.trim().trim_start_matches('-').trim();
 
-            // Parse HMS metrics: "-- HMS.getTable[2] 29ms"
             if trimmed.contains("HMS.") {
                 if let Some((name, time)) = Self::parse_hms_metric(trimmed) {
                     match name.as_str() {
@@ -193,28 +182,21 @@ impl SectionParser {
                         _ => {},
                     }
                 }
-            }
-            // Parse Total time: "-- Total[1] 1s570ms"
-            else if trimmed.starts_with("Total[") {
+            } else if trimmed.starts_with("Total[") {
                 if let Some(time) = Self::parse_planner_time(trimmed) {
                     total_time_ms = time;
                 }
-            }
-            // Parse Optimizer time: "-- Optimizer[1] 1s529ms"
-            else if trimmed.starts_with("Optimizer[") {
+            } else if trimmed.starts_with("Optimizer[") {
                 if let Some(time) = Self::parse_planner_time(trimmed) {
                     optimizer_time_ms = time;
                 }
-            }
-            // Standard key-value pairs
-            else if let Some(cap) = SUMMARY_LINE_REGEX.captures(line) {
+            } else if let Some(cap) = SUMMARY_LINE_REGEX.captures(line) {
                 let key = cap.get(1).map(|m| m.as_str().trim()).unwrap_or("");
                 let value = cap.get(2).map(|m| m.as_str().trim()).unwrap_or("");
                 details.insert(key.to_string(), value.to_string());
             }
         }
 
-        // Calculate total HMS time
         hms_metrics.total_hms_time_ms = hms_metrics.get_database_ms
             + hms_metrics.get_table_ms
             + hms_metrics.get_partitions_ms
@@ -229,19 +211,15 @@ impl SectionParser {
     fn parse_hms_metric(line: &str) -> Option<(String, f64)> {
         use super::ValueParser;
 
-        // Pattern: HMS.name[count] time
         let hms_start = line.find("HMS.")?;
         let rest = &line[hms_start + 4..];
 
-        // Find the metric name (before [)
         let bracket_pos = rest.find('[')?;
         let name = rest[..bracket_pos].to_string();
 
-        // Find the time value (after ] )
         let close_bracket = rest.find(']')?;
         let time_str = rest[close_bracket + 1..].trim();
 
-        // Parse time value (e.g., "29ms", "1s46ms", "2s124ms")
         let duration = ValueParser::parse_duration(time_str).ok()?;
         let time_ms = duration.as_millis() as f64;
 
@@ -289,12 +267,11 @@ impl SectionParser {
             let rest = &text[start + section_marker.len()..];
             let lines: Vec<&str> = rest.lines().collect();
 
-            // Find end of section (next section at same or lower indent level)
             let mut end_pos = rest.len();
             for (i, line) in lines.iter().enumerate().skip(1) {
                 if !line.trim().is_empty() {
                     let curr_indent = Self::get_indent(line);
-                    // New section at same or lower indent level
+
                     if curr_indent <= marker_indent && line.trim().ends_with(':') {
                         let mut char_count = 0;
                         for l in lines.iter().take(i) {
@@ -319,7 +296,6 @@ impl SectionParser {
             if let Some(json_start) = after_label.find('{') {
                 let json_part = &after_label[json_start..];
 
-                // Find matching closing brace
                 let mut depth = 0;
                 let mut end_pos = 0;
 
@@ -358,7 +334,6 @@ impl SectionParser {
 
     /// Extract execution metrics and update summary
     pub fn extract_execution_metrics(execution_info: &ExecutionInfo, summary: &mut ProfileSummary) {
-        // Memory metrics
         if let Some(val) = execution_info.metrics.get("QueryAllocatedMemoryUsage") {
             summary.query_allocated_memory = ValueParser::parse_bytes(val).ok();
         }
@@ -372,7 +347,6 @@ impl SectionParser {
             summary.query_deallocated_memory_usage = Some(val.clone());
         }
 
-        // Time metrics
         if let Some(val) = execution_info.metrics.get("QueryCumulativeCpuTime") {
             summary.query_cumulative_cpu_time = Some(val.clone());
             summary.query_cumulative_cpu_time_ms = ValueParser::parse_time_to_ms(val).ok();
@@ -394,12 +368,10 @@ impl SectionParser {
             summary.result_deliver_time_ms = ValueParser::parse_time_to_ms(val).ok();
         }
 
-        // Spill metrics
         if let Some(val) = execution_info.metrics.get("QuerySpillBytes") {
             summary.query_spill_bytes = Some(val.clone());
         }
 
-        // Planner metrics
         if let Some(val) = execution_info.metrics.get("PlannerTotalTime") {
             summary.planner_total_time = Some(val.clone());
             summary.planner_total_time_ms = ValueParser::parse_time_to_ms(val).ok();

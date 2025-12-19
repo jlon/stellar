@@ -123,8 +123,6 @@ pub fn analyze_profile_with_context(
     let execution_tree = profile.execution_tree.clone();
     let mut summary = profile.summary.clone();
 
-    // Calculate DataCache hit rate directly from profile text
-    // This handles nested metrics like DataCache: -> DataCacheReadDiskBytes
     let (total_local, total_remote) = extract_datacache_from_text(profile_text);
     tracing::info!(
         "DataCache metrics - Local: {} bytes ({:.2} GB), Remote: {} bytes ({:.2} GB)",
@@ -144,7 +142,6 @@ pub fn analyze_profile_with_context(
         summary.datacache_bytes_remote_display = Some(format_bytes_display(total_remote));
     }
 
-    // Aggregate IO metrics from scan nodes
     if let Some(ref tree) = execution_tree {
         let io_stats = aggregate_io_statistics(&tree.nodes);
         summary.total_raw_rows_read = io_stats.raw_rows_read;
@@ -160,7 +157,7 @@ pub fn analyze_profile_with_context(
         if let Some(bytes) = io_stats.result_bytes {
             summary.result_bytes_display = Some(format_bytes_display(bytes));
         }
-        // IO time metrics
+
         if let Some(ms) = io_stats.io_seek_time_ms {
             summary.io_seek_time_ms = Some(ms);
             summary.io_seek_time = Some(format_duration_ms(ms));
@@ -178,7 +175,6 @@ pub fn analyze_profile_with_context(
     let summary = Some(summary);
     let mut execution_tree = execution_tree;
 
-    // Run RuleEngine for diagnostics with optional cluster variables and baseline
     let rule_engine = RuleEngine::new();
     let rule_diagnostics = rule_engine.analyze_with_baseline(
         &profile,
@@ -186,7 +182,6 @@ pub fn analyze_profile_with_context(
         context.cluster_id,
     );
 
-    // Convert rule diagnostics to API response format
     let diagnostics: Vec<DiagnosticResult> = rule_diagnostics
         .iter()
         .map(|d| DiagnosticResult {
@@ -211,7 +206,7 @@ pub fn analyze_profile_with_context(
                     impact: p.impact.clone(),
                 })
                 .collect(),
-            // Pass through threshold metadata for LLM traceability
+
             threshold_metadata: d
                 .threshold_metadata
                 .as_ref()
@@ -224,7 +219,6 @@ pub fn analyze_profile_with_context(
         })
         .collect();
 
-    // Build node_diagnostics mapping (plan_node_id -> diagnostics)
     let mut node_diagnostics: HashMap<i32, Vec<DiagnosticResult>> = HashMap::new();
     for diag in &diagnostics {
         if let Some(plan_node_id) = diag.plan_node_id {
@@ -235,7 +229,6 @@ pub fn analyze_profile_with_context(
         }
     }
 
-    // Update execution tree nodes with diagnostic info
     if let Some(ref mut tree) = execution_tree {
         for node in &mut tree.nodes {
             if let Some(plan_node_id) = node.plan_node_id
@@ -247,18 +240,14 @@ pub fn analyze_profile_with_context(
         }
     }
 
-    // Aggregate diagnostics by rule_id for overview display
     let aggregated_diagnostics = aggregate_diagnostics(&diagnostics);
 
-    // Generate hotspots from diagnostics for backward compatibility
     let hotspots: Vec<HotSpot> = rule_diagnostics.iter().map(|d| d.to_hotspot()).collect();
 
-    // Generate conclusion, suggestions and performance score using RuleEngine
     let conclusion = RuleEngine::generate_conclusion(&rule_diagnostics, &profile);
     let all_suggestions = RuleEngine::generate_suggestions(&rule_diagnostics);
     let performance_score = RuleEngine::calculate_performance_score(&rule_diagnostics, &profile);
 
-    // Perform root cause analysis (v5.0 - rule-based, without LLM)
     let root_cause_analysis = if !rule_diagnostics.is_empty() {
         Some(analyzer::RootCauseAnalyzer::analyze(&rule_diagnostics))
     } else {
@@ -287,13 +276,11 @@ pub fn analyze_profile_with_context(
 fn aggregate_diagnostics(diagnostics: &[DiagnosticResult]) -> Vec<AggregatedDiagnostic> {
     use std::collections::HashMap;
 
-    // Group by rule_id
     let mut groups: HashMap<String, Vec<&DiagnosticResult>> = HashMap::new();
     for diag in diagnostics {
         groups.entry(diag.rule_id.clone()).or_default().push(diag);
     }
 
-    // Convert groups to aggregated diagnostics
     let mut result: Vec<AggregatedDiagnostic> = groups
         .into_iter()
         .map(|(rule_id, diags)| {
@@ -301,17 +288,14 @@ fn aggregate_diagnostics(diagnostics: &[DiagnosticResult]) -> Vec<AggregatedDiag
             let affected_nodes: Vec<String> = diags.iter().map(|d| d.node_path.clone()).collect();
             let node_count = affected_nodes.len();
 
-            // Smart suggestion merging: dedupe by pattern, not exact match
             let suggestions = merge_suggestions(&diags, node_count);
 
-            // Merge parameter suggestions (take first non-empty)
             let parameter_suggestions = diags
                 .iter()
                 .find(|d| !d.parameter_suggestions.is_empty())
                 .map(|d| d.parameter_suggestions.clone())
                 .unwrap_or_default();
 
-            // Determine highest severity
             let severity = diags
                 .iter()
                 .map(|d| &d.severity)
@@ -319,7 +303,6 @@ fn aggregate_diagnostics(diagnostics: &[DiagnosticResult]) -> Vec<AggregatedDiag
                 .unwrap_or(&first.severity)
                 .clone();
 
-            // Generate aggregated message
             let message = if node_count > 1 {
                 format!("{} 个节点存在此问题", node_count)
             } else {
@@ -340,7 +323,6 @@ fn aggregate_diagnostics(diagnostics: &[DiagnosticResult]) -> Vec<AggregatedDiag
         })
         .collect();
 
-    // Sort by severity (Error > Warning > Info) then by node_count
     result.sort_by(|a, b| {
         let severity_cmp = severity_order(&b.severity).cmp(&severity_order(&a.severity));
         if severity_cmp != std::cmp::Ordering::Equal {
@@ -363,7 +345,6 @@ fn merge_suggestions(diags: &[&DiagnosticResult], node_count: usize) -> Vec<Stri
             .unwrap_or_default();
     }
 
-    // Extract table names from reason field (format: "外表「table_name」的 ORC...")
     let tables: Vec<String> = diags
         .iter()
         .filter_map(|d| extract_table_from_reason(&d.reason))
@@ -371,14 +352,12 @@ fn merge_suggestions(diags: &[&DiagnosticResult], node_count: usize) -> Vec<Stri
         .into_iter()
         .collect();
 
-    // Collect first suggestion to check pattern
     let first_sug = diags
         .first()
         .and_then(|d| d.suggestions.first())
         .map(|s| s.as_str())
         .unwrap_or("");
 
-    // Check if this looks like file fragmentation suggestion
     if first_sug.contains("外表小文件合并方案") || first_sug.contains("Compaction 合并碎片")
     {
         let tables_str = if tables.is_empty() {
@@ -403,7 +382,6 @@ fn merge_suggestions(diags: &[&DiagnosticResult], node_count: usize) -> Vec<Stri
         return vec![generic];
     }
 
-    // Default: dedupe by exact match but limit to 3
     let mut seen = std::collections::HashSet::new();
     diags
         .iter()
@@ -418,12 +396,7 @@ fn merge_suggestions(diags: &[&DiagnosticResult], node_count: usize) -> Vec<Stri
 fn extract_table_from_reason(reason: &str) -> Option<String> {
     let start = reason.find('「')?;
     let end = reason.find('」')?;
-    if end > start {
-        // Skip the 「 character (3 bytes in UTF-8)
-        Some(reason[start + 3..end].to_string())
-    } else {
-        None
-    }
+    if end > start { Some(reason[start + 3..end].to_string()) } else { None }
 }
 
 /// Get severity order for sorting (higher = more severe)
@@ -457,29 +430,23 @@ fn extract_datacache_from_text(profile_text: &str) -> (u64, u64) {
     use once_cell::sync::Lazy;
     use regex::Regex;
 
-    // ========== 存算分离 (Lake/Shared-Data) metrics ==========
-    // These are under IOStatistics: section in CONNECTOR_SCAN
     static COMPRESSED_LOCAL_REGEX: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(r"- CompressedBytesReadLocalDisk:\s*([0-9.]+)\s*(B|KB|MB|GB|TB)").unwrap()
+        Regex::new(r#"- CompressedBytesReadLocalDisk:\s*([0-9.]+)\s*(B|KB|MB|GB|TB)"#).unwrap()
     });
     static COMPRESSED_REMOTE_REGEX: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(r"- CompressedBytesReadRemote:\s*([0-9.]+)\s*(B|KB|MB|GB|TB)").unwrap()
+        Regex::new(r#"- CompressedBytesReadRemote:\s*([0-9.]+)\s*(B|KB|MB|GB|TB)"#).unwrap()
     });
 
-    // ========== 外部表 (Hive/Iceberg) DataCache metrics ==========
-    // These are under DataCache: section in CONNECTOR_SCAN/HDFS_SCAN
     static DATACACHE_DISK_REGEX: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(r"- DataCacheReadDiskBytes:\s*([0-9.]+)\s*(B|KB|MB|GB|TB)").unwrap()
+        Regex::new(r#"- DataCacheReadDiskBytes:\s*([0-9.]+)\s*(B|KB|MB|GB|TB)"#).unwrap()
     });
     static DATACACHE_MEM_REGEX: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(r"- DataCacheReadMemBytes:\s*([0-9.]+)\s*(B|KB|MB|GB|TB)").unwrap()
+        Regex::new(r#"- DataCacheReadMemBytes:\s*([0-9.]+)\s*(B|KB|MB|GB|TB)"#).unwrap()
     });
     static DATACACHE_SKIP_READ_REGEX: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(r"- DataCacheSkipReadBytes:\s*([0-9.]+)\s*(B|KB|MB|GB|TB)").unwrap()
+        Regex::new(r#"- DataCacheSkipReadBytes:\s*([0-9.]+)\s*(B|KB|MB|GB|TB)"#).unwrap()
     });
 
-    // ========== 外部表 InputStream metrics (cache miss indicator) ==========
-    // FSIOBytesRead = actual bytes read from remote HDFS when cache misses
     static FSIO_BYTES_READ_REGEX: Lazy<Regex> =
         Lazy::new(|| Regex::new(r"- FSIOBytesRead:\s*([0-9.]+)\s*(B|KB|MB|GB|TB)").unwrap());
 
@@ -489,7 +456,6 @@ fn extract_datacache_from_text(profile_text: &str) -> (u64, u64) {
     let mut datacache_skip_bytes: u64 = 0;
     let mut has_datacache_metrics = false;
 
-    // Helper function to parse bytes value with unit
     let parse_bytes = |value: &str, unit: &str| -> u64 {
         let v: f64 = value.parse().unwrap_or(0.0);
         let multiplier: u64 = match unit {
@@ -502,32 +468,25 @@ fn extract_datacache_from_text(profile_text: &str) -> (u64, u64) {
         (v * multiplier as f64) as u64
     };
 
-    // Parse each line, skip __MAX_OF_ and __MIN_OF_ (only count aggregated values)
     for line in profile_text.lines() {
         let trimmed = line.trim();
 
-        // Skip min/max variants, only count the main aggregated value
         if trimmed.contains("__MAX_OF_") || trimmed.contains("__MIN_OF_") {
             continue;
         }
 
-        // ===== 存算分离 (Lake) =====
-        // CompressedBytesReadLocalDisk - data read from local cache
         if let Some(caps) = COMPRESSED_LOCAL_REGEX.captures(trimmed) {
             let value = caps.get(1).map(|m| m.as_str()).unwrap_or("0");
             let unit = caps.get(2).map(|m| m.as_str()).unwrap_or("B");
             total_local += parse_bytes(value, unit);
         }
 
-        // CompressedBytesReadRemote - data read from remote storage
         if let Some(caps) = COMPRESSED_REMOTE_REGEX.captures(trimmed) {
             let value = caps.get(1).map(|m| m.as_str()).unwrap_or("0");
             let unit = caps.get(2).map(|m| m.as_str()).unwrap_or("B");
             total_remote += parse_bytes(value, unit);
         }
 
-        // ===== 外部表 (Hive/Iceberg) =====
-        // DataCacheReadDiskBytes - data read from local disk cache
         if let Some(caps) = DATACACHE_DISK_REGEX.captures(trimmed) {
             let value = caps.get(1).map(|m| m.as_str()).unwrap_or("0");
             let unit = caps.get(2).map(|m| m.as_str()).unwrap_or("B");
@@ -535,7 +494,6 @@ fn extract_datacache_from_text(profile_text: &str) -> (u64, u64) {
             has_datacache_metrics = true;
         }
 
-        // DataCacheReadMemBytes - data read from memory cache
         if let Some(caps) = DATACACHE_MEM_REGEX.captures(trimmed) {
             let value = caps.get(1).map(|m| m.as_str()).unwrap_or("0");
             let unit = caps.get(2).map(|m| m.as_str()).unwrap_or("B");
@@ -543,14 +501,12 @@ fn extract_datacache_from_text(profile_text: &str) -> (u64, u64) {
             has_datacache_metrics = true;
         }
 
-        // DataCacheSkipReadBytes - data that actively bypassed cache
         if let Some(caps) = DATACACHE_SKIP_READ_REGEX.captures(trimmed) {
             let value = caps.get(1).map(|m| m.as_str()).unwrap_or("0");
             let unit = caps.get(2).map(|m| m.as_str()).unwrap_or("B");
             datacache_skip_bytes += parse_bytes(value, unit);
         }
 
-        // FSIOBytesRead - actual bytes read from remote HDFS (cache miss)
         if let Some(caps) = FSIO_BYTES_READ_REGEX.captures(trimmed) {
             let value = caps.get(1).map(|m| m.as_str()).unwrap_or("0");
             let unit = caps.get(2).map(|m| m.as_str()).unwrap_or("B");
@@ -558,27 +514,13 @@ fn extract_datacache_from_text(profile_text: &str) -> (u64, u64) {
         }
     }
 
-    // For external tables with DataCache:
-    // - DataCacheReadDiskBytes/DataCacheReadMemBytes = cache hit (local)
-    // - FSIOBytesRead = actual bytes read from remote HDFS/S3 (cache miss!)
-    // - DataCacheSkipReadBytes = policy-based skipped reads (rare)
-    //
-    // The correct formula for cache hit rate:
-    //   hit_rate = DataCacheReadBytes / (DataCacheReadBytes + FSIOBytesRead)
-    //
-    // FSIOBytesRead is the TRUE cache miss indicator, NOT DataCacheSkipReadBytes!
     if has_datacache_metrics {
-        // FSIOBytesRead represents actual remote reads when cache misses
-        // This is the primary indicator of cache miss
         total_remote += fsio_bytes;
 
-        // DataCacheSkipReadBytes only adds if explicitly skipped (policy-based)
-        // Don't add it again if already counted in FSIOBytesRead
         if datacache_skip_bytes > 0 && fsio_bytes == 0 {
             total_remote += datacache_skip_bytes;
         }
     } else {
-        // For Lake storage without DataCache metrics, use skip bytes
         total_remote += datacache_skip_bytes;
     }
 
@@ -594,12 +536,10 @@ fn calculate_datacache_totals(nodes: &[ExecutionTreeNode]) -> (u64, u64) {
     let mut total_remote: u64 = 0;
 
     for node in nodes {
-        // Only check SCAN nodes
         if !node.operator_name.to_uppercase().contains("SCAN") {
             continue;
         }
 
-        // Try OLAP_SCAN metrics first (disaggregated storage-compute)
         if let Some(local_str) = node.unique_metrics.get("CompressedBytesReadLocalDisk")
             && let Ok(bytes) = parser::core::ValueParser::parse_bytes(local_str)
         {
@@ -611,10 +551,6 @@ fn calculate_datacache_totals(nodes: &[ExecutionTreeNode]) -> (u64, u64) {
             total_remote += bytes;
         }
 
-        // Try HDFS_SCAN / Hive Connector metrics (external tables with DataCache)
-        // DataCacheReadDiskBytes = bytes read from local disk cache
-        // DataCacheReadMemBytes = bytes read from memory cache
-        // Total cache hit = DataCacheReadDiskBytes + DataCacheReadMemBytes
         let mut hdfs_cache_hit: u64 = 0;
         if let Some(disk_str) = node.unique_metrics.get("DataCacheReadDiskBytes")
             && let Ok(bytes) = parser::core::ValueParser::parse_bytes(disk_str)
@@ -627,12 +563,9 @@ fn calculate_datacache_totals(nodes: &[ExecutionTreeNode]) -> (u64, u64) {
             hdfs_cache_hit += bytes;
         }
 
-        // For HDFS_SCAN, we need to calculate remote bytes from total - cache
-        // BytesRead or RawBytesRead = total bytes read
         if hdfs_cache_hit > 0 {
             total_local += hdfs_cache_hit;
 
-            // Try to get total bytes read to calculate remote
             let mut total_read: u64 = 0;
             if let Some(total_str) = node.unique_metrics.get("BytesRead")
                 && let Ok(bytes) = parser::core::ValueParser::parse_bytes(total_str)
@@ -646,7 +579,6 @@ fn calculate_datacache_totals(nodes: &[ExecutionTreeNode]) -> (u64, u64) {
                 total_read = bytes;
             }
 
-            // Remote = Total - CacheHit (if total > cache hit)
             if total_read > hdfs_cache_hit {
                 total_remote += total_read - hdfs_cache_hit;
             }
@@ -725,61 +657,51 @@ fn aggregate_io_statistics(nodes: &[ExecutionTreeNode]) -> IoStatistics {
     for node in nodes {
         let name = node.operator_name.to_uppercase();
 
-        // Aggregate from SCAN nodes
         if name.contains("SCAN") {
             has_any_scan = true;
 
-            // RawRowsRead
             if let Some(val) = node.unique_metrics.get("RawRowsRead")
                 && let Ok(rows) = val.parse::<u64>()
             {
                 total_raw_rows += rows;
             }
 
-            // BytesRead
             if let Some(val) = node.unique_metrics.get("BytesRead")
                 && let Ok(bytes) = parser::core::ValueParser::parse_bytes(val)
             {
                 total_bytes += bytes;
             }
 
-            // PagesCountMemory
             if let Some(val) = node.unique_metrics.get("PagesCountMemory")
                 && let Ok(pages) = val.parse::<u64>()
             {
                 total_pages_memory += pages;
             }
 
-            // PagesCountLocalDisk
             if let Some(val) = node.unique_metrics.get("PagesCountLocalDisk")
                 && let Ok(pages) = val.parse::<u64>()
             {
                 total_pages_local += pages;
             }
 
-            // PagesCountRemote
             if let Some(val) = node.unique_metrics.get("PagesCountRemote")
                 && let Ok(pages) = val.parse::<u64>()
             {
                 total_pages_remote += pages;
             }
 
-            // IO time metrics (for disaggregated storage)
-            // IoSeekTime
             if let Some(val) = node.unique_metrics.get("IoSeekTime")
                 && let Ok(ms) = parser::core::ValueParser::parse_time_to_ms(val)
             {
                 total_io_seek_ms += ms;
             }
 
-            // IOTimeLocalDisk
             if let Some(val) = node.unique_metrics.get("IOTimeLocalDisk")
                 && let Ok(ms) = parser::core::ValueParser::parse_time_to_ms(val)
             {
                 total_local_io_ms += ms;
             }
 
-            // IOTimeRemote
             if let Some(val) = node.unique_metrics.get("IOTimeRemote")
                 && let Ok(ms) = parser::core::ValueParser::parse_time_to_ms(val)
             {
@@ -787,11 +709,9 @@ fn aggregate_io_statistics(nodes: &[ExecutionTreeNode]) -> IoStatistics {
             }
         }
 
-        // Aggregate from SINK nodes for result metrics
         if name.contains("SINK") {
             has_any_sink = true;
 
-            // ResultRows / RowsReturned
             if let Some(val) = node
                 .unique_metrics
                 .get("RowsReturned")
@@ -801,7 +721,6 @@ fn aggregate_io_statistics(nodes: &[ExecutionTreeNode]) -> IoStatistics {
                 total_result_rows += rows;
             }
 
-            // ResultBytes
             if let Some(val) = node.unique_metrics.get("BytesSent")
                 && let Ok(bytes) = parser::core::ValueParser::parse_bytes(val)
             {
@@ -810,7 +729,6 @@ fn aggregate_io_statistics(nodes: &[ExecutionTreeNode]) -> IoStatistics {
         }
     }
 
-    // Only set values if we found relevant nodes
     if has_any_scan {
         if total_raw_rows > 0 {
             stats.raw_rows_read = Some(total_raw_rows);

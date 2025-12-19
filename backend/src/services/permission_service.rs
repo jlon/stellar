@@ -52,10 +52,8 @@ impl PermissionService {
                 .fetch_all(&self.pool)
                 .await?;
 
-        // Build tree structure
         let mut tree_map = std::collections::HashMap::<Option<i64>, Vec<PermissionTree>>::new();
 
-        // First pass: create all nodes
         for perm in permissions {
             let node = PermissionTree {
                 id: perm.id,
@@ -71,7 +69,6 @@ impl PermissionService {
             tree_map.entry(perm.parent_id).or_default().push(node);
         }
 
-        // Second pass: build tree by connecting children
         fn build_tree(
             parent_id: Option<i64>,
             tree_map: &std::collections::HashMap<Option<i64>, Vec<PermissionTree>>,
@@ -124,7 +121,6 @@ impl PermissionService {
         resource: &str,
         action: &str,
     ) -> ApiResult<bool> {
-        // Use Casbin to check permission
         self.casbin_service.enforce(user_id, resource, action).await
     }
 }

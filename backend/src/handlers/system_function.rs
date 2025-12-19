@@ -16,7 +16,6 @@ pub async fn get_system_functions(
     State(state): State<Arc<AppState>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
 ) -> ApiResult<impl IntoResponse> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -39,12 +38,10 @@ pub async fn create_system_function(
     Extension(user_id): Extension<i64>,
     Json(req): Json<CreateFunctionRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    // Validate request
     if let Err(validation_errors) = req.validate() {
         return Err(ApiError::validation_error(format!("请求参数验证失败：{}", validation_errors)));
     }
 
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -66,7 +63,6 @@ pub async fn execute_system_function(
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path(function_id): Path<i64>,
 ) -> ApiResult<impl IntoResponse> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -88,7 +84,6 @@ pub async fn update_function_orders(
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Json(req): Json<UpdateOrderRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -110,7 +105,6 @@ pub async fn toggle_function_favorite(
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path(function_id): Path<i64>,
 ) -> ApiResult<impl IntoResponse> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -132,7 +126,6 @@ pub async fn delete_system_function(
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path(function_id): Path<i64>,
 ) -> ApiResult<impl IntoResponse> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -155,12 +148,10 @@ pub async fn update_function(
     Path(function_id): Path<i64>,
     Json(req): Json<UpdateFunctionRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    // Validate request
     if let Err(validation_errors) = req.validate() {
         return Err(ApiError::validation_error(format!("请求参数验证失败：{}", validation_errors)));
     }
 
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {

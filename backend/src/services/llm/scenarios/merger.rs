@@ -154,8 +154,8 @@ impl ResultMerger {
             merged_recommendations: recommendations,
             summary: llm_response.summary.clone(),
             hidden_issues: llm_response.hidden_issues.clone(),
-            from_cache: false,     // Will be set by caller if needed
-            elapsed_time_ms: None, // Will be set by caller
+            from_cache: false,
+            elapsed_time_ms: None,
         }
     }
 
@@ -189,7 +189,6 @@ impl ResultMerger {
             })
             .collect();
 
-        // Add uncovered rule diagnostics as independent issues
         merged.extend(
             rule_diagnostics
                 .iter()
@@ -205,7 +204,7 @@ impl ResultMerger {
                         related_rule_ids: vec![diag.rule_id.clone()],
                         description: diag.message.clone(),
                         is_implicit: false,
-                        confidence: 1.0, // Rule-based = 100% confidence
+                        confidence: 1.0,
                         source: "rule".to_string(),
                         evidence: vec![diag.reason.clone()],
                         symptoms: vec![],
@@ -300,7 +299,6 @@ pub fn diagnostic_to_llm(diag: &DiagnosticResult) -> super::root_cause::Diagnost
     let mut evidence = HashMap::new();
     evidence.insert("reason".to_string(), diag.reason.clone());
 
-    // Convert threshold metadata if present
     let threshold_info =
         diag.threshold_metadata
             .as_ref()
@@ -349,7 +347,7 @@ pub fn aggregated_diagnostic_to_llm(
         plan_node_id: None,
         message: diag.message.clone(),
         evidence,
-        // AggregatedDiagnostic doesn't have threshold_metadata, so we set None
+
         threshold_info: None,
     }
 }

@@ -4,7 +4,7 @@
       <div class="overview-toolbar">
         <div class="overview-toolbar__info">
           <div class="overview-toolbar__title">
-            <span>{{ overview?.cluster_name || 'StarRocks 集群概览' }}</span>
+            <span>{{ overview?.cluster_name || '集群概览' }}</span>
             <nb-badge *ngIf="overview" text="当前激活" status="success"></nb-badge>
           </div>
           <div *ngIf="overview?.timestamp" class="overview-toolbar__timestamp">

@@ -23,7 +23,6 @@ pub async fn list_frontends(
     State(state): State<Arc<AppState>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
 ) -> ApiResult<Json<Vec<Frontend>>> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {

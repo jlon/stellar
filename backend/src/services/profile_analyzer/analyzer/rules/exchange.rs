@@ -48,11 +48,11 @@ impl DiagnosticRule for E001NetworkTransferLarge {
                 ],
                 parameter_suggestions: {
                     let mut suggestions = Vec::new();
-                    // Use smart recommendation for parallel_fragment_exec_instance_num
+
                     if let Some(s) = context.suggest_parameter_smart("parallel_fragment_exec_instance_num") {
                         suggestions.push(s);
                     }
-                    // Use smart recommendation for pipeline_dop
+
                     if let Some(s) = context.suggest_parameter_smart("pipeline_dop") {
                         suggestions.push(s);
                     }

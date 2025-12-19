@@ -27,7 +27,7 @@ use crate::utils::{ApiResult, error::ApiError};
 /// - Error messages (clarity)
 fn sanitize_query_id(query_id: &str) -> Result<String, ApiError> {
     let id = query_id.trim();
-    // Allow alphanumeric, hyphens, and underscores (UUID format)
+
     if id.is_empty()
         || id.len() > 64
         || !id
@@ -36,7 +36,7 @@ fn sanitize_query_id(query_id: &str) -> Result<String, ApiError> {
     {
         return Err(ApiError::invalid_data("Invalid query_id format"));
     }
-    // Return owned String to avoid lifetime issues and ensure consistency
+
     Ok(id.to_string())
 }
 
@@ -57,7 +57,6 @@ pub async fn list_profiles(
     State(state): State<Arc<crate::AppState>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
 ) -> ApiResult<Json<Vec<ProfileListItem>>> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -69,7 +68,6 @@ pub async fn list_profiles(
 
     tracing::info!("Fetching profile list for cluster {}", cluster.id);
 
-    // Get connection pool and execute SHOW PROFILELIST
     let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
     let mysql_client = MySQLClient::from_pool(pool);
 
@@ -81,23 +79,18 @@ pub async fn list_profiles(
         columns.len()
     );
 
-    // Convert rows to ProfileListItem, filtering out Aborted queries
     let profiles: Vec<ProfileListItem> = rows
         .into_iter()
         .filter(|row| {
-            // Filter out Aborted state (index 3 is State column)
             let state = row.get(3).map(|s| s.as_str()).unwrap_or("");
             !state.eq_ignore_ascii_case("aborted")
         })
-        .map(|row| {
-            // SHOW PROFILELIST returns: QueryId, StartTime, Time, State, Statement
-            ProfileListItem {
-                query_id: row.first().cloned().unwrap_or_default(),
-                start_time: row.get(1).cloned().unwrap_or_default(),
-                time: row.get(2).cloned().unwrap_or_default(),
-                state: row.get(3).cloned().unwrap_or_default(),
-                statement: row.get(4).cloned().unwrap_or_default(),
-            }
+        .map(|row| ProfileListItem {
+            query_id: row.first().cloned().unwrap_or_default(),
+            start_time: row.get(1).cloned().unwrap_or_default(),
+            time: row.get(2).cloned().unwrap_or_default(),
+            state: row.get(3).cloned().unwrap_or_default(),
+            statement: row.get(4).cloned().unwrap_or_default(),
         })
         .collect();
 
@@ -126,7 +119,6 @@ pub async fn get_profile(
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path(query_id): Path<String>,
 ) -> ApiResult<Json<ProfileDetail>> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -136,26 +128,20 @@ pub async fn get_profile(
             .await?
     };
 
-    // Sanitize query_id to prevent SQL injection
-    // Note: This trims whitespace and validates format. The sanitized version
-    // is used consistently for SQL queries, responses, and error messages.
     let safe_query_id = sanitize_query_id(&query_id)?;
 
-    // Log original vs sanitized if they differ (for debugging)
     if query_id.trim() != query_id {
         tracing::debug!("Query ID sanitized: '{}' -> '{}'", query_id, safe_query_id);
     }
 
     tracing::info!("Fetching profile detail for query {} in cluster {}", safe_query_id, cluster.id);
 
-    // Get connection pool and execute SELECT get_query_profile()
     let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
     let mysql_client = MySQLClient::from_pool(pool);
 
     let sql = format!("SELECT get_query_profile('{}')", safe_query_id);
     let (_, rows) = mysql_client.query_raw(&sql).await?;
 
-    // Extract profile content from result
     let profile_content = rows
         .first()
         .and_then(|row| row.first())
@@ -168,8 +154,6 @@ pub async fn get_profile(
 
     tracing::info!("Profile content length: {} bytes", profile_content.len());
 
-    // Return sanitized query_id in response for consistency
-    // This ensures the API contract is clear: responses use the sanitized (trimmed) version
     Ok(Json(ProfileDetail { query_id: safe_query_id, profile_content }))
 }
 
@@ -195,7 +179,6 @@ pub async fn analyze_profile_handler(
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path(query_id): Path<String>,
 ) -> ApiResult<Json<ProfileAnalysisResponse>> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -205,26 +188,19 @@ pub async fn analyze_profile_handler(
             .await?
     };
 
-    // Sanitize query_id to prevent SQL injection
-    // Note: This trims whitespace and validates format. The sanitized version
-    // is used consistently for SQL queries, responses, and error messages.
     let safe_query_id = sanitize_query_id(&query_id)?;
 
-    // Log original vs sanitized if they differ (for debugging)
     if query_id.trim() != query_id {
         tracing::debug!("Query ID sanitized: '{}' -> '{}'", query_id, safe_query_id);
     }
 
     tracing::info!("Analyzing profile for query {} in cluster {}", safe_query_id, cluster.id);
 
-    // Fetch profile content from StarRocks database (NOT from test files)
-    // This ensures each query_id gets its actual profile data
     let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
     let mysql_client = MySQLClient::from_pool(pool);
     let sql = format!("SELECT get_query_profile('{}')", safe_query_id);
     let (_, rows) = mysql_client.query_raw(&sql).await?;
 
-    // Extract profile content from database result
     let profile_content = rows
         .first()
         .and_then(|row| row.first())
@@ -241,19 +217,13 @@ pub async fn analyze_profile_handler(
         safe_query_id
     );
 
-    // Fetch live cluster session variables for smart parameter recommendations
-    // Graceful degradation: if fetching fails, analysis continues without variables
     let cluster_variables = fetch_cluster_variables(&mysql_client).await;
 
-    // Build analysis context with cluster variables and cluster_id for baseline lookup
     let context = AnalysisContext { cluster_variables, cluster_id: Some(cluster.id) };
 
-    // Step 1: Rule engine analysis (骨架 - skeleton, sync, < 100ms)
     let mut response = analyze_profile_with_context(&profile_content, &context)
         .map_err(|e| ApiError::internal_error(format!("Analysis failed: {}", e)))?;
 
-    // Step 2: Mark LLM as available but pending (frontend will call separate API)
-    // This allows fast response for DAG rendering while LLM analysis loads async
     if state.llm_service.is_available() {
         response.llm_analysis = Some(LLMEnhancedAnalysis {
             available: true,
@@ -286,7 +256,6 @@ pub async fn enhance_profile_handler(
 ) -> ApiResult<Json<LLMEnhancedAnalysis>> {
     let safe_query_id = sanitize_query_id(&query_id)?;
 
-    // Check LLM availability
     if !state.llm_service.is_available() {
         return Ok(Json(LLMEnhancedAnalysis {
             available: false,
@@ -295,7 +264,6 @@ pub async fn enhance_profile_handler(
         }));
     }
 
-    // Fetch cluster variables for LLM context (helps avoid redundant suggestions)
     let cluster_variables = {
         let cluster = state.cluster_service.get_cluster(cluster_id).await.ok();
         if let Some(ref c) = cluster {
@@ -310,7 +278,6 @@ pub async fn enhance_profile_handler(
         }
     };
 
-    // Use pre-analyzed data directly, no need to re-fetch profile
     match enhance_with_llm(
         &state.llm_service,
         &req.analysis_data,
@@ -348,15 +315,10 @@ async fn enhance_with_llm(
     };
     use std::collections::HashMap;
 
-    // Build LLM request from profile analysis
     let summary = response.summary.as_ref();
 
-    // Include cluster session variables so LLM knows current settings
-    let session_vars: HashMap<String, String> = cluster_variables
-        .cloned()
-        .unwrap_or_default();
+    let session_vars: HashMap<String, String> = cluster_variables.cloned().unwrap_or_default();
 
-    // Calculate query complexity for LLM context
     let sql = summary.map(|s| s.sql_statement.as_str()).unwrap_or("");
     let complexity = QueryComplexity::from_sql(sql);
 
@@ -385,7 +347,6 @@ async fn enhance_with_llm(
         session_variables: session_vars,
     };
 
-    // Build execution plan description from tree
     let dag_description = response
         .execution_tree
         .as_ref()
@@ -399,7 +360,6 @@ async fn enhance_with_llm(
         })
         .unwrap_or_else(|| "Unknown DAG".to_string());
 
-    // Extract hotspot nodes (time_percentage > 15%)
     let hotspot_nodes: Vec<HotspotNodeForLLM> = response
         .execution_tree
         .as_ref()
@@ -426,7 +386,6 @@ async fn enhance_with_llm(
 
     let execution_plan = ExecutionPlanForLLM { dag_description, hotspot_nodes };
 
-    // Convert diagnostics to LLM format
     let diagnostics: Vec<DiagnosticForLLM> = response
         .aggregated_diagnostics
         .iter()
@@ -447,12 +406,11 @@ async fn enhance_with_llm(
                 e.insert("affected_nodes".to_string(), d.affected_nodes.join(", "));
                 e
             },
-            // AggregatedDiagnostic doesn't have threshold_metadata
+
             threshold_info: None,
         })
         .collect();
 
-    // Extract scan details with table type info (CRITICAL for correct LLM suggestions)
     let scan_details: Vec<ScanDetailForLLM> = response
         .execution_tree
         .as_ref()
@@ -508,7 +466,6 @@ async fn enhance_with_llm(
         })
         .unwrap_or_default();
 
-    // Build profile data for LLM
     let operators: Vec<OperatorDetailForLLM> = response
         .execution_tree
         .as_ref()
@@ -538,7 +495,6 @@ async fn enhance_with_llm(
         exchange_details: vec![],
     };
 
-    // Build the LLM request with profile data
     let llm_request = RootCauseAnalysisRequest::builder()
         .query_summary(query_summary)
         .execution_plan(execution_plan)
@@ -548,7 +504,6 @@ async fn enhance_with_llm(
         .build()
         .map_err(|e| e.to_string())?;
 
-    // Call LLM service with timing
     let start_time = std::time::Instant::now();
     let llm_result = llm_service
         .analyze(&llm_request, query_id, cluster_id, force_refresh)
@@ -559,7 +514,6 @@ async fn enhance_with_llm(
     let llm_response = llm_result.response;
     let from_cache = llm_result.from_cache;
 
-    // Merge LLM response with rule diagnostics
     let root_causes = merge_root_causes(&response.aggregated_diagnostics, &llm_response);
     let recommendations = merge_recommendations(&response.aggregated_diagnostics, &llm_response);
 
@@ -595,12 +549,10 @@ fn merge_root_causes(
     let mut merged = Vec::new();
     let mut seen_ids: HashSet<String> = HashSet::new();
 
-    // First, add LLM root causes (higher priority)
     for llm_rc in &llm_response.root_causes {
         let id = llm_rc.root_cause_id.clone();
         seen_ids.insert(id.clone());
 
-        // Find related rule diagnostics
         let related_rules: Vec<String> = llm_rc
             .symptoms
             .iter()
@@ -622,7 +574,6 @@ fn merge_root_causes(
         });
     }
 
-    // Add uncovered rule diagnostics as independent issues
     for diag in rule_diagnostics {
         let is_covered = llm_response
             .root_causes
@@ -647,7 +598,6 @@ fn merge_root_causes(
         }
     }
 
-    // Sort by confidence (descending)
     merged.sort_by(|a, b| {
         b.confidence
             .partial_cmp(&a.confidence)
@@ -667,7 +617,6 @@ fn merge_recommendations(
     let mut merged = Vec::new();
     let mut seen_actions: HashSet<String> = HashSet::new();
 
-    // First, add LLM recommendations (root cause fixes)
     for rec in &llm_response.recommendations {
         let action_key = normalize_action(&rec.action);
         if !seen_actions.contains(&action_key) {
@@ -684,7 +633,6 @@ fn merge_recommendations(
         }
     }
 
-    // Add rule engine suggestions
     let mut rule_priority = merged.len() as u32 + 1;
     for diag in rule_diagnostics {
         for suggestion in &diag.suggestions {
@@ -704,9 +652,10 @@ fn merge_recommendations(
             } else if let Some(existing) = merged
                 .iter_mut()
                 .find(|r| normalize_action(&r.action) == action_key)
-                && existing.source == "llm" {
-                    existing.source = "both".to_string();
-                }
+                && existing.source == "llm"
+            {
+                existing.source = "both".to_string();
+            }
         }
     }
 
@@ -752,8 +701,6 @@ const CLUSTER_VARIABLE_NAMES: &[&str] = &[
 /// This allows analysis to continue even if variable fetching fails,
 /// though parameter recommendations may be less accurate.
 async fn fetch_cluster_variables(mysql_client: &MySQLClient) -> Option<ClusterVariables> {
-    // Build SQL query with parameterized variable names
-    // Note: Variable names are constants, so SQL injection is not a concern here
     let sql = format!(
         "SHOW VARIABLES WHERE Variable_name IN ({})",
         CLUSTER_VARIABLE_NAMES
@@ -767,7 +714,6 @@ async fn fetch_cluster_variables(mysql_client: &MySQLClient) -> Option<ClusterVa
         Ok((_, rows)) => {
             let mut variables = ClusterVariables::new();
             for row in rows {
-                // SHOW VARIABLES returns: Variable_name, Value
                 if row.len() >= 2 {
                     let var_name = row[0].clone();
                     let var_value = row[1].clone();

@@ -142,7 +142,7 @@ where
         {
             match value.parse::<u64>() {
                 Ok(n) => Ok(Some(n)),
-                Err(_) => Ok(None), // "unknown" or other non-numeric strings become None
+                Err(_) => Ok(None),
             }
         }
 

@@ -41,7 +41,6 @@ impl FragmentParser {
                 let start_idx = i;
                 let base_indent = Self::get_indent(line);
 
-                // Find end of fragment (next fragment at same indent level)
                 let mut end_idx = lines.len();
                 for (j, line) in lines.iter().enumerate().skip(i + 1) {
                     let next_indent = Self::get_indent(line);
@@ -80,7 +79,6 @@ impl FragmentParser {
                 let start_idx = i;
                 let base_indent = Self::get_indent(line);
 
-                // Find end of pipeline
                 let mut end_idx = lines.len();
                 for (j, line) in lines.iter().enumerate().skip(i + 1) {
                     let next_indent = Self::get_indent(line);
@@ -143,7 +141,6 @@ impl FragmentParser {
             if OperatorParser::is_operator_header(trimmed) {
                 let full_header = trimmed.trim_end_matches(':').to_string();
 
-                // Extract operator name (without plan_node_id suffix)
                 let operator_name = if let Some(pos) = full_header.find(" (plan_node_id=") {
                     full_header[..pos].to_string()
                 } else {
@@ -152,7 +149,6 @@ impl FragmentParser {
 
                 let base_indent = Self::get_indent(lines[i]);
 
-                // Collect operator lines
                 let mut operator_lines = vec![lines[i]];
                 i += 1;
 
@@ -174,7 +170,6 @@ impl FragmentParser {
 
                 let operator_text = operator_lines.join("\n");
 
-                // Extract plan_node_id
                 let plan_node_id = if full_header.contains("plan_node_id=") {
                     full_header
                         .split("plan_node_id=")
@@ -185,7 +180,6 @@ impl FragmentParser {
                     None
                 };
 
-                // Parse metrics
                 let common_metrics_text =
                     MetricsParser::extract_common_metrics_block(&operator_text);
                 let unique_metrics_text =
@@ -225,19 +219,14 @@ impl FragmentParser {
                     let key = rest[..colon_pos].trim().to_string();
                     let value = rest[colon_pos + 2..].trim().to_string();
 
-                    // Skip empty values (these are section headers like "ORC: " with empty value)
                     if value.is_empty() {
                         continue;
                     }
 
-                    // Include __MAX_OF_ metrics as they are needed for time percentage calculation
-                    // Skip __MIN_OF_ metrics for cleaner output
                     if !key.starts_with("__MIN_OF_") {
                         metrics.insert(key, value);
                     }
                 } else if !rest.is_empty() {
-                    // This is a section header like "DataCache:" - skip it
-                    // The nested metrics will be parsed in subsequent lines
                 }
             }
         }

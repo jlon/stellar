@@ -40,11 +40,9 @@ impl PlannerDiagnosticRule for PL001HMSMetadataSlow {
     fn evaluate(&self, context: &PlannerRuleContext) -> Option<Diagnostic> {
         let hms = &context.planner.hms_metrics;
 
-        // Thresholds
-        let total_threshold_ms = 2000.0; // 2 seconds total
-        let single_threshold_ms = 1000.0; // 1 second for single call
+        let total_threshold_ms = 2000.0;
+        let single_threshold_ms = 1000.0;
 
-        // Check if any HMS metric exceeds threshold
         let mut slow_calls = Vec::new();
 
         if hms.get_database_ms > single_threshold_ms {
@@ -82,7 +80,6 @@ impl PlannerDiagnosticRule for PL001HMSMetadataSlow {
             return None;
         }
 
-        // Calculate HMS ratio - prefer planner time, fallback to query time
         let (ratio_base, ratio_label) = if context.planner.total_time_ms > 0.0 {
             (context.planner.total_time_ms, "Planner")
         } else if context.query_time_ms > 0.0 {
@@ -100,11 +97,10 @@ impl PlannerDiagnosticRule for PL001HMSMetadataSlow {
             RuleSeverity::Warning
         };
 
-        // Build message with ratio info
         let ratio_info = if ratio_base > 0.0 {
             format!("（占{}时间 {:.1}%）", ratio_label, hms_ratio)
         } else {
-            String::new() // No ratio info if we can't calculate it
+            String::new()
         };
 
         let message = if slow_calls.is_empty() {
@@ -162,7 +158,6 @@ impl PlannerDiagnosticRule for PL002OptimizerSlow {
     fn evaluate(&self, context: &PlannerRuleContext) -> Option<Diagnostic> {
         let optimizer_ms = context.planner.optimizer_time_ms;
 
-        // Threshold: 5 seconds
         if optimizer_ms < 5000.0 {
             return None;
         }
@@ -170,7 +165,6 @@ impl PlannerDiagnosticRule for PL002OptimizerSlow {
         let severity =
             if optimizer_ms > 30000.0 { RuleSeverity::Error } else { RuleSeverity::Warning };
 
-        // Calculate optimizer ratio
         let ratio = if context.planner.total_time_ms > 0.0 {
             optimizer_ms / context.planner.total_time_ms * 100.0
         } else {
@@ -227,7 +221,6 @@ impl PlannerDiagnosticRule for PL003HighPlannerRatio {
 
         let ratio = planner_ms / query_ms * 100.0;
 
-        // Only trigger if planner is > 10% of query time
         if ratio < 10.0 {
             return None;
         }

@@ -840,11 +840,22 @@ feat: 完成 Apache Doris 集群全面兼容支持
      * 系统库过滤：跳过 `__internal_schema` 等
    - 测试结果：成功统计到 1 个 FINISHED 任务
 
+2. **实时查询表名大小写敏感问题** (18:00 - 19:00)
+   - 问题：Doris 表名大小写敏感，用户输入 `ORDERS` 但实际表名是 `orders`
+   - 解决方案：实现 SQL 表名规范化函数 + 智能重试机制 ✅
+   - 实现细节：
+     * 正则表达式匹配表名（FROM、JOIN、INTO、UPDATE 后）
+     * 规范化表名为小写（支持 `table`、`db.table`、`` `table` `` 格式）
+     * 错误时自动重试规范化后的 SQL
+     * 提供友好错误提示（说明大小写敏感）
+   - 测试结果：12/14 测试成功（85.7%），包括大写、大小写混合、JOIN、子查询等场景
+
 ### 当前状态
 - ✅ 集群概览页完全兼容
 - ✅ 所有核心功能测试通过
 - ✅ Load Job 统计完整实现（遍历方案）
 - ✅ 后端日志无错误
+- ✅ 实时查询表名大小写问题已解决（智能规范化 + 友好错误提示）
 - ⚠️ Compaction 统计返回 0（tablet 级别 API，无法全局聚合）
 
 ### 经验总结
@@ -1355,6 +1366,74 @@ user_order_summary             ASYNC      SUCCESS    2025-12-19 06:07:03  2025-1
 4. **友好提示**：对于确实无法实现的功能，返回空数组并添加详细注释说明原因
 5. **全面测试**：测试所有功能卡片功能，确保折中实现正常工作
 
+---
+
+### 问题 15: 审计日志 - StarRocks 集群字段名错误 ✅
+
+**解决时间**: 2025-12-19
+
+**问题描述**:
+切换到 StarRocks 集群后，点击审计日志报错：`Column "stmt_type" cannot be resolved`
+
+**根本原因分析**:
+在 `query_history.rs` 的 SQL 查询中，硬编码了 Doris 的字段名：
+- `stmt_type` - 应该是 StarRocks 的 `queryType`
+- `query_time` - 应该是 StarRocks 的 `queryTime`
+- `workload_group` - 应该是 StarRocks 的 `resourceGroup`
+
+虽然之前已经添加了部分字段映射（`time_field`, `query_id_field`, `db_field`, `is_query_field`），但遗漏了 `query_type_field`, `query_time_field`, `warehouse_field` 这三个字段。
+
+**实现方案**:
+
+1. **扩展字段映射**：
+   ```rust
+   let (audit_table, time_field, query_id_field, db_field, is_query_field, 
+        query_type_field, query_time_field, warehouse_field) = match cluster.cluster_type {
+       ClusterType::StarRocks => (
+           ...,
+           "queryType",      // StarRocks
+           "queryTime",      // StarRocks
+           "resourceGroup"   // StarRocks
+       ),
+       ClusterType::Doris => (
+           ...,
+           "stmt_type",      // Doris
+           "query_time",     // Doris
+           "workload_group"  // Doris
+       ),
+   };
+   ```
+
+2. **更新 SQL 查询**：
+   ```rust
+   SELECT 
+       `{}` as queryId,
+       `user`,
+       COALESCE(`{}`, '') AS db,
+       `stmt`,
+       COALESCE(`{}`, '') AS queryType,  // 使用 query_type_field
+       `{}` AS start_time,
+       `{}` AS total_ms,                  // 使用 query_time_field
+       `state`,
+       COALESCE(`{}`, '') AS warehouse   // 使用 warehouse_field
+   FROM {}
+   ```
+
+**修改文件**:
+- `backend/src/handlers/query_history.rs`:
+  - 扩展字段映射，添加 `query_type_field`, `query_time_field`, `warehouse_field`
+  - 更新 SQL 查询，使用映射的字段名而不是硬编码
+
+**测试结果**:
+- ✅ StarRocks 集群：成功返回 5 条记录
+- ✅ Doris 集群：成功返回 5 条记录
+- ✅ 两个集群的审计日志功能都正常工作
+
+**经验总结**:
+1. **字段映射完整性**：确保所有使用的字段都有对应的映射，不能遗漏
+2. **双向测试**：修复后必须同时测试 StarRocks 和 Doris 集群，确保兼容性
+3. **避免硬编码**：所有字段名都应该通过字段映射获取，不能硬编码
+
 **开发标准实践**:
 - ✅ **完全兼容**：对于有直接替代的功能（如 compute_nodes → backends）
 - ✅ **折中实现**：对于有间接替代的功能（如 compactions → cluster_health/tablet_health）
@@ -1425,4 +1504,284 @@ user_order_summary             ASYNC      SUCCESS    2025-12-19 06:07:03  2025-1
 2. **严格验证支持列表**：确保 `supported_paths` 数组中的路径都是实际支持的
 3. **全面测试**：必须测试所有功能卡片功能，不能遗漏
 4. **折中实现**：对于不支持的功能，返回空数组并说明原因
+
+---
+
+### 问题 17: 实时查询 - Doris 表名大小写敏感问题 ✅
+
+**解决时间**: 2025-12-19
+
+**问题描述**:
+在 Doris 集群的实时查询页面执行 SQL 查询时，如果表名使用了大写或大小写混合（如 `ORDERS`、`ORDERs`），会报错：
+```
+ERROR HY000 (1105): errCode = 2, detailMessage = Table [ORDERs] does not exist in database [test_audit_db].
+```
+
+**根本原因分析**:
+1. **Doris 表名大小写敏感**：
+   - Doris 的 `lower_case_table_names` 默认为 `0`，表示表名大小写敏感
+   - 实际表名是 `orders`（小写），但用户可能输入 `ORDERS`（大写）或 `ORDERs`（大小写混合）
+   - StarRocks 通常不区分大小写，但 Doris 严格区分
+
+2. **前端 SQL 格式化问题**：
+   - 前端 `formatSQL()` 函数设置了 `identifierCase: 'lower'`，但可能未执行或执行失败
+   - 用户手动输入的 SQL 可能包含大小写不正确的表名
+
+**实现方案**:
+
+#### 1. SQL 表名规范化函数 ✅
+实现 `normalize_table_names_for_doris()` 函数，使用正则表达式匹配并转换表名：
+```rust
+fn normalize_table_names_for_doris(sql: &str) -> String {
+    use regex::Regex;
+    
+    // Pattern to match table names after FROM, JOIN, INTO, UPDATE, etc.
+    let re = Regex::new(
+        r"(?i)\b(?:FROM|JOIN|INTO|UPDATE|TABLE)\s+((?:`?[a-zA-Z0-9_]+`?(?:\s*\.\s*`?[a-zA-Z0-9_]+`?)*))"
+    ).ok();
+    
+    // Convert table names to lowercase
+    // Handles: FROM ORDERS -> FROM orders
+    //          FROM db.ORDERS -> FROM db.orders
+    //          FROM `ORDERS` -> FROM `orders`
+}
+```
+
+#### 2. 错误重试机制 ✅
+在执行 SQL 失败时，如果是 Doris 集群且错误是"表不存在"，则尝试规范化表名后重试：
+```rust
+let mut query_result = session.execute(&sql_with_limit).await;
+
+// For Doris clusters, if table not found error occurs, try normalizing table names to lowercase
+if let Err(ref error) = query_result {
+    let error_msg = error.to_string();
+    if cluster.cluster_type == ClusterType::Doris 
+        && error_msg.contains("does not exist") 
+        && error_msg.contains("Table [") {
+        let normalized_sql = normalize_table_names_for_doris(&sql_with_limit);
+        if normalized_sql != sql_with_limit {
+            query_result = session.execute(&normalized_sql).await;
+        }
+    }
+}
+```
+
+#### 3. 友好错误提示 ✅
+如果重试后仍然失败，提供友好的错误提示：
+```rust
+if cluster.cluster_type == ClusterType::Doris 
+    && error_msg.contains("does not exist") 
+    && error_msg.contains("Table [") {
+    error_msg = format!("{} (Note: Doris is case-sensitive for table names. Please use the exact case as shown in SHOW TABLES.)", error_msg);
+}
+```
+
+**修改文件**:
+- `backend/src/handlers/query.rs`:
+  - 添加 `normalize_table_names_for_doris()` 函数
+  - 在 `execute_sql()` 中添加错误重试机制
+  - 增强错误提示信息
+
+**测试结果**:
+
+#### 基础测试 ✅
+- ✅ 测试 1: 大写表名 (`ORDERS`) - 成功
+- ✅ 测试 2: 大小写混合表名 (`ORDERs`) - 成功
+- ✅ 测试 3: 带反引号的表名 (`` `ORDERS` ``) - 成功
+- ✅ 测试 4: JOIN 查询 (`ORDERS JOIN USERS`) - 成功
+- ✅ 测试 5: 带数据库前缀的表名 (`test_audit_db.ORDERS`) - 成功
+- ✅ 测试 6: INSERT INTO 语句 (`INSERT INTO ORDERS`) - 成功
+- ⚠️  测试 7: UPDATE 语句 (`UPDATE ORDERS`) - 失败（Doris UPDATE 限制，非表名问题）
+- ✅ 测试 8: 子查询 (`SELECT FROM (SELECT FROM ORDERS)`) - 成功
+
+#### 高级测试 ✅
+- ✅ 测试 9: 不存在的表名 - 显示友好错误提示（包含 "case-sensitive" 说明）
+- ⚠️  测试 10: 多个表名 (`FROM ORDERS JOIN PRODUCTS`) - 失败（PRODUCTS 表不存在，正常）
+- ✅ 测试 11: LEFT JOIN (`FROM ORDERS LEFT JOIN USERS`) - 成功
+- ✅ 测试 12: 复杂查询（带 WHERE、ORDER BY） - 成功
+- ✅ 测试 13: 表别名 (`SELECT FROM ORDERS AS O`) - 成功
+- ✅ 测试 14: 小写表名 (`orders`) - 成功
+
+**测试统计**:
+- ✅ **12/14 测试成功**（85.7%）
+- ⚠️  **2/14 测试失败**（14.3%，但都是预期行为：UPDATE 限制和表不存在）
+
+**技术细节**:
+
+1. **正则表达式匹配**：
+   - 匹配 `FROM`、`JOIN`、`INTO`、`UPDATE`、`TABLE` 后的表名
+   - 支持 `table`、`db.table`、`catalog.db.table` 格式
+   - 支持反引号：`` `table` ``、`` `db`.`table` ``
+
+2. **表名规范化**：
+   - 移除反引号
+   - 转换为小写
+   - 重新添加反引号（保持格式一致性）
+
+3. **错误处理**：
+   - 只在 Doris 集群且错误是"表不存在"时触发
+   - 规范化后的 SQL 与原 SQL 不同时才重试
+   - 重试失败后提供友好错误提示
+
+**经验总结**:
+1. **大小写敏感问题**：Doris 和 StarRocks 在表名大小写处理上不同，需要适配
+2. **智能重试机制**：在错误时尝试规范化后重试，提升用户体验
+3. **友好错误提示**：提供清晰的错误说明，帮助用户理解问题
+4. **全面测试**：测试各种 SQL 场景（SELECT、JOIN、INSERT、子查询等）
+5. **正则表达式**：使用正则表达式匹配表名，支持多种 SQL 格式
+
+**开发标准实践**:
+- ✅ **完全兼容**：通过表名规范化实现大小写不敏感查询
+- ✅ **智能重试**：错误时自动尝试规范化后重试
+- ✅ **友好提示**：提供清晰的错误说明和解决建议
+- ✅ **全面测试**：测试各种 SQL 场景，确保兼容性
+
+---
+
+### 问题 18: 实时查询右键菜单功能适配 ✅
+
+**解决时间**: 2025-12-19
+
+**问题描述**:
+实时查询页面的库表树右键菜单功能在Doris集群下无法正常工作：
+1. **数据库右键菜单**：
+   - 查看事务信息 - 使用 `SHOW PROC '/transactions/{dbId}/running'`
+   - 查看Compaction信息 - 使用 `SHOW PROC '/compactions'`（Doris不支持）
+   - 查看导入作业 - 使用 `SELECT FROM information_schema.loads`（Doris不支持）
+   - 查看数据库统计 - 使用 `SELECT FROM information_schema.partitions_meta`（Doris不支持）
+
+2. **表右键菜单**：
+   - 查看表结构 - 使用 `SHOW CREATE TABLE`（支持）
+   - 查看表统计 - 使用 `SELECT FROM information_schema.partitions_meta`（Doris不支持）
+   - 查看分桶分析 - 使用 `SHOW PROC '/dbs/{dbId}'` 和 `information_schema.partitions_meta`（部分支持）
+   - 查看表事务 - 使用 `SHOW PROC '/transactions'`（支持）
+   - 手动触发Compaction - 需要HTTP API调用（待实现）
+
+**根本原因分析**:
+1. **表名差异**：
+   - StarRocks: `information_schema.partitions_meta`, `information_schema.loads`
+   - Doris: `information_schema.partitions`（无`loads`表）
+
+2. **字段名差异**：
+   - StarRocks: `DB_NAME`, `ROW_COUNT`, `DATA_SIZE`, `AVG_CS`, `P50_CS`, `MAX_CS`
+   - Doris: `TABLE_SCHEMA`, `TABLE_ROWS`, `DATA_LENGTH`（无compaction score字段）
+
+3. **命令差异**：
+   - StarRocks: `SHOW PROC '/compactions'`
+   - Doris: 不支持此PROC路径，compaction信息是tablet级别的BE HTTP API
+
+4. **Load作业查询差异**：
+   - StarRocks: `SELECT FROM information_schema.loads WHERE DB_NAME = 'db'`
+   - Doris: `SHOW LOAD FROM database`（需要SQL重写）
+
+**实现方案**:
+
+#### 1. SQL适配函数 ✅
+实现 `adapt_sql_for_doris()` 函数，自动转换表名和字段名：
+```rust
+fn adapt_sql_for_doris(sql: &str) -> String {
+    // 1. Replace information_schema.partitions_meta with information_schema.partitions
+    // 2. Map field names: DB_NAME -> TABLE_SCHEMA, ROW_COUNT -> TABLE_ROWS, etc.
+}
+```
+
+#### 2. Load作业查询转换 ✅
+实现 `handle_loads_query_for_doris()` 函数，将 `SELECT FROM information_schema.loads` 转换为 `SHOW LOAD`：
+```rust
+async fn handle_loads_query_for_doris(
+    sql: &str,
+    session: &mut MySQLSession,
+    default_db: Option<&str>,
+) -> Result<(Vec<String>, Vec<Vec<String>>, u128), ApiError> {
+    // 1. Extract database name from WHERE DB_NAME = 'database' clause
+    // 2. Execute SHOW LOAD FROM database
+    // 3. Map Doris fields to StarRocks format:
+    //    JobId -> JOB_ID
+    //    Label -> LABEL
+    //    State -> STATE
+    //    ScanRows (from JobDetails JSON) -> SCAN_ROWS
+    //    LoadRows (from JobDetails JSON) -> SINK_ROWS
+    //    CreateTime -> CREATE_TIME
+    //    LoadStartTime -> LOAD_START_TIME
+    //    LoadFinishTime -> LOAD_FINISH_TIME
+    //    ErrorMsg -> ERROR_MSG
+    // 4. Apply ORDER BY and LIMIT
+    // 5. Return mapped results
+}
+```
+
+#### 3. Compaction查询处理 ✅
+实现 `handle_compactions_query_for_doris()` 函数，返回空结果：
+```rust
+async fn handle_compactions_query_for_doris(
+    _session: &mut MySQLSession,
+) -> Result<(Vec<String>, Vec<Vec<String>>, u128), ApiError> {
+    // Return empty result with columns matching StarRocks format
+    // Doris compaction info is tablet-level via BE HTTP API
+    // This is a compromise: return empty result instead of error
+}
+```
+
+**修改文件**:
+- `backend/src/handlers/query.rs`:
+  - 添加 `adapt_sql_for_doris()` 函数
+  - 添加 `handle_loads_query_for_doris()` 函数
+  - 添加 `handle_compactions_query_for_doris()` 函数
+  - 在 `execute_sql()` 中添加特殊处理逻辑
+
+**测试结果**:
+
+#### 数据库右键菜单 ✅
+- ✅ **查看事务信息** - 成功（`SHOW PROC '/transactions'` 支持）
+- ✅ **查看Compaction信息** - 成功（返回空结果，折中实现）
+- ✅ **查看导入作业** - 成功（`information_schema.loads` -> `SHOW LOAD` 转换）
+- ⚠️ **查看数据库统计** - 部分支持（`partitions_meta` -> `partitions` 转换，但缺少compaction score字段）
+
+#### 表右键菜单 ✅
+- ✅ **查看表结构** - 成功（`SHOW CREATE TABLE` 支持）
+- ⚠️ **查看表统计** - 部分支持（`partitions_meta` -> `partitions` 转换，但缺少compaction score字段）
+- ⚠️ **查看分桶分析** - 部分支持（`SHOW PROC '/dbs/{dbId}'` 支持，但分区信息查询需要适配）
+- ✅ **查看表事务** - 成功（`SHOW PROC '/transactions'` 支持）
+- ⚠️ **手动触发Compaction** - 待实现（需要HTTP API调用）
+
+**技术细节**:
+
+1. **Load作业字段映射**：
+   - `SCAN_ROWS`: 从 `JobDetails` JSON中提取 `ScannedRows`
+   - `SINK_ROWS`: 从 `JobDetails` JSON中提取 `LoadRows`
+   - `FILTERED_ROWS`: 返回 `0`（Doris不支持）
+   - `PRIORITY`: 返回 `"NORMAL"`（Doris不支持）
+
+2. **字段映射规则**：
+   - `DB_NAME` → `TABLE_SCHEMA`
+   - `ROW_COUNT` → `TABLE_ROWS`
+   - `DATA_SIZE` → `DATA_LENGTH`
+   - `COMPACT_VERSION` → `COMMITTED_VERSION`
+   - `AVG_CS`, `P50_CS`, `MAX_CS` → 不映射（Doris不支持compaction score）
+
+3. **SQL转换流程**：
+   ```
+   SQL查询 → 检测集群类型 → 如果是Doris：
+     ├─ 检测 information_schema.loads → 转换为 SHOW LOAD
+     ├─ 检测 SHOW PROC '/compactions' → 返回空结果
+     └─ 其他查询 → 应用字段映射和表名转换
+   ```
+
+**经验总结**:
+1. **SQL重写**：复杂的SQL转换需要解析SQL结构，提取关键信息（WHERE条件、SELECT字段等）
+2. **字段映射**：Doris和StarRocks的字段名不同，需要建立映射关系
+3. **JSON解析**：Doris的`JobDetails`字段是JSON格式，需要解析提取嵌套数据
+4. **折中实现**：对于不支持的功能（如compaction score），返回空值或默认值，而不是报错
+5. **全面测试**：每个功能都需要在Doris集群下测试，确保转换正确
+
+**开发标准实践**:
+- ✅ **完全兼容**：Load作业查询通过SQL重写实现完全兼容
+- ✅ **折中实现**：Compaction查询返回空结果，说明原因
+- ✅ **字段映射**：自动映射字段名，保持前端代码不变
+- ✅ **友好提示**：对于不支持的功能，返回空结果而不是错误
+
+**待完善功能**:
+1. **查看数据库/表统计**：需要处理compaction score字段缺失的情况（返回0或NULL）
+2. **查看分桶分析**：需要完善分区信息查询的字段映射
+3. **手动触发Compaction**：需要实现Doris BE HTTP API调用
 

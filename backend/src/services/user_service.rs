@@ -44,7 +44,6 @@ impl UserService {
         let (filtered_query, _) =
             apply_organization_filter(base_query, is_super_admin, organization_id);
 
-        // Query with organization name
         #[derive(FromRow)]
         struct UserWithOrgName {
             id: i64,
@@ -102,7 +101,6 @@ impl UserService {
         organization_id: Option<i64>,
         is_super_admin: bool,
     ) -> ApiResult<UserWithRolesResponse> {
-        // Enforce organization context for non-super admin
         if !is_super_admin && organization_id.is_none() {
             return Err(ApiError::forbidden("Organization context required for user creation"));
         }
@@ -135,7 +133,6 @@ impl UserService {
 
         let user_id = result.last_insert_rowid();
 
-        // Assign user to organization
         self.upsert_user_organization(&mut tx, user_id, target_org_id)
             .await?;
 
@@ -233,7 +230,6 @@ impl UserService {
         }
 
         if let Some(new_org_id) = req.organization_id {
-            // Only check if organization_id is being changed (not just present)
             if !is_super_admin && Some(new_org_id) != existing_user.organization_id {
                 return Err(ApiError::forbidden(
                     "Only super administrators can reassign user organizations",
@@ -329,7 +325,6 @@ impl UserService {
     ) -> UserWithRolesResponse {
         use crate::models::UserResponse;
 
-        // Check if user is organization admin by checking roles
         let is_org_admin =
             roles.is_some_and(|r| r.iter().any(|role| role.code.starts_with("org_admin_")));
 
@@ -558,12 +553,10 @@ impl UserService {
             return self.fetch_default_org_id().await;
         }
 
-        // For non-super admins, ensure they can only create users in their own organization
         let current_org = requestor_org.ok_or_else(|| {
             ApiError::forbidden("Organization context required for user creation")
         })?;
 
-        // If organization_id is explicitly specified, it must match the requestor's organization
         if let Some(requested_id) = requested_org
             && requested_id != current_org
         {

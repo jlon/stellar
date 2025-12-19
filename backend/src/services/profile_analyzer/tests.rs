@@ -26,16 +26,11 @@ mod profile_tests {
             .unwrap_or_else(|e| panic!("Failed to load fixture {}: {}", path.display(), e))
     }
 
-    // ========================================================================
-    // Value Parser Tests
-    // ========================================================================
-
     mod value_parser_tests {
         use super::*;
 
         #[test]
         fn test_parse_duration_complex() {
-            // Test format: 9m41s (from profile1)
             let d = ValueParser::parse_duration("9m41s").unwrap();
             assert_eq!(d.as_secs(), 9 * 60 + 41);
         }
@@ -60,17 +55,15 @@ mod profile_tests {
 
         #[test]
         fn test_parse_duration_combined() {
-            // Test format: 1s727ms (from profile2 QueryCumulativeCpuTime)
             let d = ValueParser::parse_duration("1s727ms").unwrap();
             assert_eq!(d.as_millis(), 1727);
         }
 
         #[test]
         fn test_parse_bytes_gb() {
-            // Test format: 558.156 GB (from profile1)
             let bytes = ValueParser::parse_bytes("558.156 GB").unwrap();
             println!("Parsed '558.156 GB' = {} bytes", bytes);
-            // 558.156 GB = 558.156 * 1024^3 = 599,332,438,016 bytes (approximately)
+
             assert!(
                 bytes > 599_000_000_000 && bytes < 600_000_000_000,
                 "Expected ~599GB, got {} bytes",
@@ -82,7 +75,7 @@ mod profile_tests {
         fn test_parse_bytes_mb() {
             let bytes = ValueParser::parse_bytes("13.812 MB").unwrap();
             println!("Parsed '13.812 MB' = {} bytes", bytes);
-            // 13.812 MB = 13.812 * 1024^2 = 14,483,906 bytes (approximately)
+
             assert!(
                 bytes > 14_000_000 && bytes < 15_000_000,
                 "Expected ~14MB, got {} bytes",
@@ -94,13 +87,12 @@ mod profile_tests {
         fn test_parse_bytes_kb() {
             let bytes = ValueParser::parse_bytes("442.328 KB").unwrap();
             println!("Parsed '442.328 KB' = {} bytes", bytes);
-            // 442.328 KB = 442.328 * 1024 = 452,943 bytes (approximately)
+
             assert!(bytes > 450_000 && bytes < 460_000, "Expected ~452KB, got {} bytes", bytes);
         }
 
         #[test]
         fn test_parse_bytes_with_parentheses() {
-            // Format: 1.026K (1026)
             let bytes = ValueParser::parse_bytes("1.026K (1026)").unwrap();
             assert_eq!(bytes, 1026);
         }
@@ -111,10 +103,6 @@ mod profile_tests {
             assert_eq!(n, 1234567);
         }
     }
-
-    // ========================================================================
-    // Section Parser Tests
-    // ========================================================================
 
     mod section_parser_tests {
         use super::*;
@@ -148,7 +136,6 @@ mod profile_tests {
             let profile_text = load_profile("profile1.txt");
             let execution = SectionParser::parse_execution(&profile_text).unwrap();
 
-            // Verify topology JSON is extracted
             assert!(execution.topology.contains("rootId"));
             assert!(execution.topology.contains("MERGE_EXCHANGE"));
             assert!(execution.topology.contains("OLAP_SCAN"));
@@ -159,7 +146,6 @@ mod profile_tests {
             let profile_text = load_profile("profile1.txt");
             let execution = SectionParser::parse_execution(&profile_text).unwrap();
 
-            // Verify key metrics are extracted
             assert!(
                 execution
                     .metrics
@@ -174,10 +160,6 @@ mod profile_tests {
         }
     }
 
-    // ========================================================================
-    // Fragment Parser Tests
-    // ========================================================================
-
     mod fragment_parser_tests {
         use super::*;
 
@@ -186,10 +168,8 @@ mod profile_tests {
             let profile_text = load_profile("profile1.txt");
             let fragments = FragmentParser::extract_all_fragments(&profile_text);
 
-            // Profile1 has Fragment 0, 1, 2
             assert!(!fragments.is_empty(), "Expected at least 1 fragment, got {}", fragments.len());
 
-            // Check first fragment
             let frag0 = &fragments[0];
             assert_eq!(frag0.id, "0");
             assert!(!frag0.backend_addresses.is_empty());
@@ -202,7 +182,6 @@ mod profile_tests {
 
             assert!(!fragments.is_empty());
 
-            // Find RESULT_SINK operator
             let mut found_result_sink = false;
             let mut found_schema_scan = false;
 
@@ -230,16 +209,13 @@ mod profile_tests {
             let profile_text = load_profile("profile2.txt");
             let fragments = FragmentParser::extract_all_fragments(&profile_text);
 
-            // Find RESULT_SINK and check its metrics
             for fragment in &fragments {
                 for pipeline in &fragment.pipelines {
                     for operator in &pipeline.operators {
                         if operator.name == "RESULT_SINK" {
-                            // Check common metrics
                             assert!(operator.common_metrics.contains_key("OperatorTotalTime"));
                             assert!(operator.common_metrics.contains_key("PushRowNum"));
 
-                            // Check unique metrics
                             assert!(operator.unique_metrics.contains_key("SinkType"));
                             return;
                         }
@@ -249,10 +225,6 @@ mod profile_tests {
             panic!("RESULT_SINK not found");
         }
     }
-
-    // ========================================================================
-    // Topology Parser Tests
-    // ========================================================================
 
     mod topology_parser_tests {
         use super::*;
@@ -266,7 +238,6 @@ mod profile_tests {
             assert_eq!(topology.root_id, 6);
             assert_eq!(topology.nodes.len(), 7);
 
-            // Verify node names
             let node_names: Vec<&str> = topology.nodes.iter().map(|n| n.name.as_str()).collect();
             assert!(node_names.contains(&"MERGE_EXCHANGE"));
             assert!(node_names.contains(&"SORT"));
@@ -285,7 +256,6 @@ mod profile_tests {
             assert_eq!(topology.root_id, 1);
             assert_eq!(topology.nodes.len(), 2);
 
-            // Check parent-child relationship
             let exchange = topology
                 .nodes
                 .iter()
@@ -318,10 +288,6 @@ mod profile_tests {
         }
     }
 
-    // ========================================================================
-    // Profile Composer Integration Tests
-    // ========================================================================
-
     mod composer_tests {
         use super::*;
 
@@ -331,18 +297,14 @@ mod profile_tests {
             let mut composer = ProfileComposer::new();
             let profile = composer.parse(&profile_text).unwrap();
 
-            // Verify summary
             assert_eq!(profile.summary.query_id, "c025364c-a999-11f0-a663-f62b9654e895");
             assert_eq!(profile.summary.total_time, "9m41s");
 
-            // Verify execution tree exists
             assert!(profile.execution_tree.is_some());
             let tree = profile.execution_tree.as_ref().unwrap();
 
-            // Verify nodes exist
             assert!(!tree.nodes.is_empty());
 
-            // Find OLAP_SCAN node - should have highest time percentage (100% as per image)
             let olap_scan = tree.nodes.iter().find(|n| n.operator_name == "OLAP_SCAN");
             assert!(olap_scan.is_some(), "OLAP_SCAN node not found");
         }
@@ -353,20 +315,12 @@ mod profile_tests {
             let mut composer = ProfileComposer::new();
             let profile = composer.parse(&profile_text).unwrap();
 
-            // Verify summary
             assert_eq!(profile.summary.query_id, "ce065afe-a986-11f0-a663-f62b9654e895");
             assert_eq!(profile.summary.total_time, "11ms");
 
-            // Verify execution tree
             assert!(profile.execution_tree.is_some());
             let tree = profile.execution_tree.as_ref().unwrap();
 
-            // According to profile2.png:
-            // - SCHEMA_SCAN: 50.75%
-            // - EXCHANGE: 45.73%
-            // - RESULT_SINK: 3.56%
-
-            // Find nodes and verify they exist
             let schema_scan = tree.nodes.iter().find(|n| n.operator_name.contains("SCAN"));
             assert!(schema_scan.is_some(), "SCAN node not found");
 
@@ -414,10 +368,6 @@ mod profile_tests {
         }
     }
 
-    // ========================================================================
-    // Full Analysis Tests
-    // ========================================================================
-
     mod analysis_tests {
         use super::*;
 
@@ -429,19 +379,15 @@ mod profile_tests {
             assert!(result.is_ok(), "Analysis failed: {:?}", result.err());
             let analysis = result.unwrap();
 
-            // Verify analysis results
             assert!(analysis.performance_score >= 0.0 && analysis.performance_score <= 100.0);
             assert!(!analysis.conclusion.is_empty());
 
-            // Verify execution tree
             assert!(analysis.execution_tree.is_some());
             let tree = analysis.execution_tree.as_ref().unwrap();
 
-            // Profile1 should have OLAP_SCAN as the most time-consuming node
             let olap_scan = tree.nodes.iter().find(|n| n.operator_name == "OLAP_SCAN");
             assert!(olap_scan.is_some());
 
-            // Verify summary
             assert!(analysis.summary.is_some());
             let summary = analysis.summary.as_ref().unwrap();
             assert_eq!(summary.query_id, "c025364c-a999-11f0-a663-f62b9654e895");
@@ -455,28 +401,19 @@ mod profile_tests {
             assert!(result.is_ok(), "Analysis failed: {:?}", result.err());
             let analysis = result.unwrap();
 
-            // Verify fragments are returned
             assert!(!analysis.fragments.is_empty(), "Fragments should not be empty");
 
-            // Verify fragment structure
             let fragment = &analysis.fragments[0];
             assert!(!fragment.id.is_empty(), "Fragment ID should not be empty");
 
-            // Verify pipelines exist
             assert!(!fragment.pipelines.is_empty(), "Pipelines should not be empty");
 
-            // Verify pipeline has operators
             let pipeline = &fragment.pipelines[0];
             assert!(!pipeline.id.is_empty(), "Pipeline ID should not be empty");
         }
 
         #[test]
         fn test_analyze_profile2_time_percentages() {
-            // Profile2.png expected values (from StarRocks UI):
-            // - SCHEMA_SCAN (plan_node_id=0): 50.75%
-            // - EXCHANGE (plan_node_id=1): 45.73%
-            // - RESULT_SINK (plan_node_id=-1): 3.56%
-
             let profile_text = load_profile("profile2.txt");
             let result = analyze_profile(&profile_text);
 
@@ -488,7 +425,6 @@ mod profile_tests {
                 .as_ref()
                 .expect("Execution tree is missing");
 
-            // Print for debugging
             println!("\n=== Profile2 Time Analysis ===");
             for node in &tree.nodes {
                 println!(
@@ -499,7 +435,6 @@ mod profile_tests {
                 );
             }
 
-            // Verify SCHEMA_SCAN matches expected value (~50.75%)
             let scan_node = tree
                 .nodes
                 .iter()
@@ -512,7 +447,6 @@ mod profile_tests {
                 scan_pct
             );
 
-            // Verify EXCHANGE matches expected value (~45.73%)
             let exchange_node = tree
                 .nodes
                 .iter()
@@ -525,7 +459,6 @@ mod profile_tests {
                 exchange_pct
             );
 
-            // Verify RESULT_SINK matches expected value (~3.56%)
             let sink_node = tree
                 .nodes
                 .iter()
@@ -538,7 +471,6 @@ mod profile_tests {
                 sink_pct
             );
 
-            // Total should be close to 100% (allow small floating point variance)
             let total = scan_pct + exchange_pct + sink_pct;
             assert!(
                 total > 99.0 && total < 101.0,
@@ -549,10 +481,6 @@ mod profile_tests {
 
         #[test]
         fn test_analyze_profile1_time_percentages() {
-            // Profile1.png expected values (from StarRocks UI):
-            // - OLAP_SCAN (plan_node_id=0): 100%
-            // - All other nodes: 0%
-
             let profile_text = load_profile("profile1.txt");
             let result = analyze_profile(&profile_text).expect("Analysis failed");
             let tree = result
@@ -570,7 +498,6 @@ mod profile_tests {
                 );
             }
 
-            // OLAP_SCAN should be ~100%
             let scan_node = tree
                 .nodes
                 .iter()
@@ -586,12 +513,6 @@ mod profile_tests {
 
         #[test]
         fn test_analyze_profile3_time_percentages() {
-            // Profile3.png expected values (from StarRocks UI):
-            // - OLAP_SCAN (plan_node_id=0): 99.97%
-            // - PROJECT (plan_node_id=1): 0.01%
-            // - AGGREGATION (plan_node_id=2): 0.01%
-            // - Others: 0%
-
             let profile_text = load_profile("profile3.txt");
             let result = analyze_profile(&profile_text).expect("Analysis failed");
             let tree = result
@@ -609,7 +530,6 @@ mod profile_tests {
                 );
             }
 
-            // OLAP_SCAN should be ~99.97%
             let scan_node = tree
                 .nodes
                 .iter()
@@ -625,11 +545,6 @@ mod profile_tests {
 
         #[test]
         fn test_analyze_profile4_time_percentages() {
-            // Profile4.png expected values:
-            // - RESULT_SINK (plan_node_id=-1): 97.43%
-            // - MERGE_EXCHANGE (plan_node_id=5): 2.64%
-            // - Others: PENDING/0%
-
             let profile_text = load_profile("profile4.txt");
             let result = analyze_profile(&profile_text).expect("Analysis failed");
             let tree = result
@@ -647,7 +562,6 @@ mod profile_tests {
                 );
             }
 
-            // RESULT_SINK should be ~97.43%
             let sink_node = tree
                 .nodes
                 .iter()
@@ -660,7 +574,6 @@ mod profile_tests {
                 sink_pct
             );
 
-            // MERGE_EXCHANGE should be ~2.64%
             let exchange_node = tree
                 .nodes
                 .iter()
@@ -677,12 +590,6 @@ mod profile_tests {
 
         #[test]
         fn test_analyze_profile5_time_percentages() {
-            // Profile5.png expected values (from StarRocks UI):
-            // - TABLE_FUNCTION (plan_node_id=1): 59.07%
-            // - OLAP_TABLE_SINK (plan_node_id=-1): 35.73%
-            // - PROJECT (plan_node_id=2): 5.64%
-            // - OLAP_SCAN (plan_node_id=0): 0%
-
             let profile_text = load_profile("profile5.txt");
             let result = analyze_profile(&profile_text).expect("Analysis failed");
             let tree = result
@@ -700,7 +607,6 @@ mod profile_tests {
                 );
             }
 
-            // Verify TABLE_FUNCTION matches expected value (~59.07%)
             let tf_node = tree
                 .nodes
                 .iter()
@@ -713,7 +619,6 @@ mod profile_tests {
                 tf_pct
             );
 
-            // Verify OLAP_TABLE_SINK matches expected value (~35.73%)
             let sink_node = tree
                 .nodes
                 .iter()
@@ -726,7 +631,6 @@ mod profile_tests {
                 sink_pct
             );
 
-            // Verify PROJECT matches expected value (~5.64%)
             let project_node = tree
                 .nodes
                 .iter()
@@ -739,7 +643,6 @@ mod profile_tests {
                 project_pct
             );
 
-            // Total should be close to 100%
             let total = tf_pct + sink_pct + project_pct;
             assert!(
                 total > 99.0 && total < 101.0,
@@ -783,8 +686,6 @@ mod profile_tests {
 
         #[test]
         fn test_top_time_consuming_nodes() {
-            // Profile1.png shows OLAP_SCAN at 100% (9分41秒1毫秒628微秒)
-            // This is the most time-consuming node
             let profile_text = load_profile("profile1.txt");
             let result = analyze_profile(&profile_text).unwrap();
 
@@ -796,7 +697,6 @@ mod profile_tests {
 
             let top_nodes = summary.top_time_consuming_nodes.as_ref().unwrap();
 
-            // Print debug info for diagnosis
             println!("=== Top Time Consuming Nodes ===");
             println!("Count: {}", top_nodes.len());
             for node in top_nodes {
@@ -810,7 +710,6 @@ mod profile_tests {
                 );
             }
 
-            // Also print all nodes from execution tree for diagnosis
             if let Some(tree) = &result.execution_tree {
                 println!("\n=== All Execution Tree Nodes ===");
                 for node in &tree.nodes {
@@ -821,25 +720,21 @@ mod profile_tests {
                         node.time_percentage,
                         node.metrics.operator_total_time
                     );
-                    // Print unique_metrics for SCAN nodes
+
                     if node.operator_name.contains("SCAN") {
                         println!("    unique_metrics: {:?}", node.unique_metrics);
                     }
                 }
             }
 
-            // STRICT TEST: top_nodes should NOT be empty for profile1
-            // Profile1 has clear time metrics that should be parsed
             assert!(
                 !top_nodes.is_empty(),
                 "Top nodes should not be empty for profile1. \
                 This indicates OperatorTotalTime is not being parsed correctly."
             );
 
-            // First node should have rank 1
             assert_eq!(top_nodes[0].rank, 1, "First node should have rank 1");
 
-            // Nodes should be sorted by time percentage (descending)
             for i in 1..top_nodes.len() {
                 assert!(
                     top_nodes[i - 1].time_percentage >= top_nodes[i].time_percentage,
@@ -852,10 +747,6 @@ mod profile_tests {
             }
         }
     }
-
-    // ========================================================================
-    // Hotspot Detection Tests (using RuleEngine)
-    // ========================================================================
 
     mod hotspot_tests {
         use super::*;
@@ -870,7 +761,6 @@ mod profile_tests {
             let engine = RuleEngine::new();
             let diagnostics = engine.analyze(&profile);
 
-            // Profile1 runs for 9m41s, should detect issues
             println!("Detected {} diagnostics for profile1", diagnostics.len());
             for diag in &diagnostics {
                 println!("  - [{}] {}: {}", diag.rule_id, diag.node_path, diag.message);
@@ -886,7 +776,6 @@ mod profile_tests {
             let engine = RuleEngine::new();
             let diagnostics = engine.analyze(&profile);
 
-            // All diagnostics should have suggestions
             for diag in &diagnostics {
                 assert!(
                     !diag.suggestions.is_empty(),
@@ -896,8 +785,6 @@ mod profile_tests {
             }
         }
 
-        // P0.1: Global execution time threshold test
-        // Fast queries (< 1s) should not produce diagnostics
         #[test]
         fn test_fast_query_no_diagnostics_p0_1() {
             let profile_text = load_profile("profile2.txt");
@@ -912,20 +799,17 @@ mod profile_tests {
             let engine = RuleEngine::new();
             let diagnostics = engine.analyze(&profile);
 
-            // Profile2 runs for 11ms, should not produce any diagnostics
             assert!(
                 diagnostics.is_empty(),
                 "Fast query (11ms) should not produce diagnostics, but got {} diagnostics",
                 diagnostics.len()
             );
 
-            // Log for verification
             if diagnostics.is_empty() {
                 println!("✓ P0.1 PASS: Fast query (11ms) correctly produced no diagnostics");
             }
         }
 
-        // P0.1: Slow queries should still produce diagnostics
         #[test]
         fn test_slow_query_has_diagnostics_p0_1() {
             let profile_text = load_profile("profile1.txt");
@@ -940,27 +824,19 @@ mod profile_tests {
             let engine = RuleEngine::new();
             let diagnostics = engine.analyze(&profile);
 
-            // Profile1 runs for 9m41s, should detect issues
             assert!(!diagnostics.is_empty(), "Slow query (9m41s) should produce diagnostics");
 
-            // Log for verification
             println!(
                 "✓ P0.1 PASS: Slow query (9m41s) correctly produced {} diagnostics",
                 diagnostics.len()
             );
         }
 
-        // =====================================================================
-        // P0.2: Rule Condition Protection Tests
-        // =====================================================================
-
-        // P0.2: S001 sample protection - small dataset should not trigger
         #[test]
         fn test_s001_small_dataset_no_trigger() {
             use crate::services::profile_analyzer::models::*;
             use std::collections::HashMap;
 
-            // Create a minimal SCAN node with small data volume
             let mut metrics = HashMap::new();
             metrics.insert("__MAX_OF_RowsRead".to_string(), "500".to_string());
             metrics.insert("__MIN_OF_RowsRead".to_string(), "100".to_string());
@@ -988,13 +864,11 @@ mod profile_tests {
                 diagnostic_ids: vec![],
             };
 
-            // S001 should NOT trigger because data < 100k rows
             println!("✓ P0.2 Test: S001 with small dataset (500 rows) - no trigger expected");
             println!("  Rule: max/avg ratio = (500/300) = 1.67 < 2.0");
             println!("  Protection: 500 rows < 100k threshold");
         }
 
-        // P0.2: S002 IO time protection - short IO time should not trigger
         #[test]
         fn test_s002_short_io_time_no_trigger() {
             println!("✓ P0.2 Test: S002 with short IO time (100ms total)");
@@ -1003,7 +877,6 @@ mod profile_tests {
             println!("  Expected: Skipped before ratio calculation");
         }
 
-        // P0.2: S003 already has 100k row protection
         #[test]
         fn test_s003_small_dataset_no_trigger() {
             println!("✓ P0.2 Test: S003 with small dataset (50k rows)");
@@ -1012,7 +885,6 @@ mod profile_tests {
             println!("  Expected: Skipped due to absolute value protection");
         }
 
-        // P0.2: J001 probe rows protection
         #[test]
         fn test_j001_small_probe_no_trigger() {
             println!("✓ P0.2 Test: J001 with small probe rows (5k rows)");
@@ -1021,7 +893,6 @@ mod profile_tests {
             println!("  Expected: Skipped before ratio calculation");
         }
 
-        // P0.2: A001 aggregation rows protection
         #[test]
         fn test_a001_small_agg_no_trigger() {
             println!("✓ P0.2 Test: A001 with small aggregation (50k rows)");
@@ -1030,7 +901,6 @@ mod profile_tests {
             println!("  Expected: Skipped due to small input volume");
         }
 
-        // P0.2: G003 execution time protection
         #[test]
         fn test_g003_short_exec_time_no_trigger() {
             println!("✓ P0.2 Test: G003 with short execution time (200ms)");
@@ -1039,7 +909,6 @@ mod profile_tests {
             println!("  Expected: Skipped due to execution time < 500ms");
         }
 
-        // P0.3: Test that protection thresholds work correctly
         #[test]
         fn test_p0_protection_threshold_summary() {
             println!("\n=== P0 Protection Summary ===");
@@ -1063,10 +932,6 @@ mod profile_tests {
             println!("\nAll P0 tasks completed successfully!");
         }
     }
-
-    // ========================================================================
-    // Edge Case Tests
-    // ========================================================================
 
     mod edge_case_tests {
         use super::*;
@@ -1092,7 +957,7 @@ Query:
      - Total: 1s
 "#;
             let result = analyze_profile(partial);
-            // Should fail due to missing required sections
+
             assert!(result.is_err());
         }
 
@@ -1104,14 +969,9 @@ Query:
             assert!(result.is_ok());
             let analysis = result.unwrap();
 
-            // Even with very short execution time, should produce valid results
             assert!(analysis.execution_tree.is_some());
         }
     }
-
-    // ========================================================================
-    // Metrics Parser Tests
-    // ========================================================================
 
     mod metrics_parser_tests {
         use super::*;
@@ -1165,10 +1025,6 @@ Query:
         }
     }
 
-    // ========================================================================
-    // Operator Parser Tests
-    // ========================================================================
-
     mod operator_parser_tests {
         use super::*;
 
@@ -1203,10 +1059,6 @@ Query:
         }
     }
 
-    // ========================================================================
-    // Rule Engine Tests - Profile Diagnostic Validation
-    // ========================================================================
-
     mod rule_engine_tests {
         use super::*;
         use crate::services::profile_analyzer::analyzer::RuleEngine;
@@ -1235,7 +1087,6 @@ Query:
                 messages: vec![],
             };
 
-            // Parse profile
             let mut composer = ProfileComposer::new();
             let profile = match composer.parse(&profile_text) {
                 Ok(p) => {
@@ -1248,7 +1099,6 @@ Query:
                 },
             };
 
-            // Run rule engine
             let config = RuleEngineConfig {
                 max_suggestions: 10,
                 include_parameters: true,
@@ -1300,7 +1150,6 @@ Query:
                 }
                 println!();
 
-                // Assert parse success
                 assert!(result.parse_success, "Profile {} should parse successfully", filename);
             }
 
@@ -1315,7 +1164,6 @@ Query:
 
         #[test]
         fn test_profile1_scan_heavy() {
-            // Profile 1: 9m41s total, scan time dominates
             let result = test_single_profile("profile1.txt");
 
             assert!(result.parse_success, "Profile should parse");
@@ -1325,7 +1173,6 @@ Query:
                 println!("  [{}] {}", rule_id, msg);
             }
 
-            // Should detect long running or scan-related issues
             let has_relevant_diagnostic = result
                 .rule_ids
                 .iter()
@@ -1384,8 +1231,6 @@ Query:
         #[test]
         fn test_rule_engine_creation() {
             let _engine = RuleEngine::new();
-            // Should create without panic
-            // Rule engine created successfully
         }
 
         #[test]
@@ -1398,21 +1243,18 @@ Query:
 
             let engine = RuleEngine::with_config(config);
 
-            // Load a profile and verify config is respected
             let profile_text = load_profile("profile1.txt");
             let mut composer = ProfileComposer::new();
             let profile = composer.parse(&profile_text).expect("Should parse");
 
             let diagnostics = engine.analyze(&profile);
 
-            // Should respect max_suggestions limit
             assert!(
                 diagnostics.len() <= 3,
                 "Should respect max_suggestions limit, got {}",
                 diagnostics.len()
             );
 
-            // Should filter out Info severity
             for d in &diagnostics {
                 assert!(
                     d.severity >= RuleSeverity::Warning,
@@ -1426,7 +1268,6 @@ Query:
         fn test_rule_engine_empty_profile() {
             let engine = RuleEngine::new();
 
-            // Create minimal profile
             let profile = Profile {
                 summary: ProfileSummary {
                     query_id: "test".to_string(),
@@ -1447,34 +1288,26 @@ Query:
                 execution_tree: None,
             };
 
-            // Should not panic
             let diagnostics = engine.analyze(&profile);
             println!("Empty profile diagnostics: {}", diagnostics.len());
         }
     }
-
-    // ========================================================================
-    // DataCache Hit Rate Tests
-    // ========================================================================
 
     mod datacache_tests {
         use super::*;
 
         #[test]
         fn test_datacache_hit_rate_calculation() {
-            // Test profile1 for datacache metrics presence
             let profile_text = load_profile("profile1.txt");
             let result = analyze_profile(&profile_text).expect("Should analyze");
 
             let summary = result.summary.as_ref().expect("Should have summary");
 
-            // Check if DataCache metrics are present (may or may not exist depending on profile)
             if let Some(hit_rate) = summary.datacache_hit_rate {
                 println!("DataCache Hit Rate: {:.2}%", hit_rate * 100.0);
                 println!("Local Bytes: {:?}", summary.datacache_bytes_local_display);
                 println!("Remote Bytes: {:?}", summary.datacache_bytes_remote_display);
 
-                // Hit rate should be between 0 and 1
                 assert!((0.0..=1.0).contains(&hit_rate), "Hit rate should be between 0 and 1");
             } else {
                 println!("No DataCache metrics found in profile (expected for some profiles)");
@@ -1483,9 +1316,6 @@ Query:
 
         #[test]
         fn test_datacache_calculation_logic() {
-            // Simulate the calculation with known values
-            // DataCacheReadDiskBytes: 4.015 GB = 4.015 * 1024^3 = 4,311,744,921 bytes
-            // FSIOBytesRead: 2.332 GB = 2.332 * 1024^3 = 2,504,047,820 bytes
             let cache_hit: f64 = 4.015 * 1024.0 * 1024.0 * 1024.0;
             let cache_miss: f64 = 2.332 * 1024.0 * 1024.0 * 1024.0;
             let total = cache_hit + cache_miss;
@@ -1497,7 +1327,6 @@ Query:
                 expected_hit_rate * 100.0
             );
 
-            // Verify the calculation
             assert!(
                 (expected_hit_rate - 0.6326).abs() < 0.01,
                 "Expected ~63.26%, got {:.2}%",
@@ -1507,16 +1336,13 @@ Query:
 
         #[test]
         fn test_session_variables_parsed() {
-            // Test that NonDefaultSessionVariables are correctly parsed
             let profile_text = load_profile("profile1.txt");
             let result = analyze_profile(&profile_text).expect("Should analyze");
 
             let summary = result.summary.as_ref().expect("Should have summary");
 
-            // Check that non_default_variables structure exists
             println!("Non-default variables count: {}", summary.non_default_variables.len());
 
-            // Verify the HashMap is accessible (may be empty for some profiles)
             for (key, info) in &summary.non_default_variables {
                 println!(
                     "{}: default={:?}, actual={:?}",
@@ -1533,8 +1359,6 @@ Query:
             };
             use std::collections::HashMap;
 
-            // Test 1: Parameter not in non_default_variables but default matches recommendation
-            // enable_scan_datacache default is "true", recommending "true" should return None
             let empty_vars = HashMap::new();
             let node = ExecutionTreeNode {
                 id: "test-0".to_string(),
@@ -1567,7 +1391,6 @@ Query:
                 thresholds: crate::services::profile_analyzer::analyzer::thresholds::DynamicThresholds::default(),
             };
 
-            // enable_scan_datacache default is "true", so suggesting "true" should return None
             let suggestion = context.suggest_parameter(
                 "enable_scan_datacache",
                 "true",
@@ -1578,7 +1401,6 @@ Query:
                 "Should not suggest enable_scan_datacache=true when default is already true"
             );
 
-            // enable_query_cache default is "false", so suggesting "true" should return Some
             let suggestion = context.suggest_parameter(
                 "enable_query_cache",
                 "true",
@@ -1596,13 +1418,11 @@ Query:
         fn test_profile_completeness_detection() {
             use crate::services::profile_analyzer::analyze_profile;
 
-            // Load profile1.txt for completeness detection test
             let profile_text = load_profile("profile1.txt");
 
             let result = analyze_profile(&profile_text).expect("Failed to analyze profile");
             let summary = result.summary.expect("Summary should exist");
 
-            // Verify completeness detection fields exist
             println!("Profile completeness analysis:");
             println!("  is_profile_async: {:?}", summary.is_profile_async);
             println!("  total_fragment_count: {:?}", summary.total_instance_count);
@@ -1610,7 +1430,6 @@ Query:
             println!("  is_profile_complete: {:?}", summary.is_profile_complete);
             println!("  warning: {:?}", summary.profile_completeness_warning);
 
-            // Verify the counts are reasonable
             if let Some(total) = summary.total_instance_count {
                 assert!(total < 100, "Total fragments should be reasonable (< 100), got {}", total);
             }
@@ -1618,10 +1437,6 @@ Query:
             println!("Profile completeness detection test passed!");
         }
     }
-
-    // ========================================================================
-    // Root Cause Analysis Integration Tests
-    // ========================================================================
 
     mod root_cause_integration_tests {
         use super::*;
@@ -1666,7 +1481,6 @@ Query:
 
         #[test]
         fn test_root_cause_analysis_profile1() {
-            // Profile1: 9m41s query with data skew issues
             let profile_text = load_profile("profile1.txt");
             let result = analyze_profile(&profile_text).expect("Failed to analyze profile1");
 
@@ -1675,7 +1489,6 @@ Query:
             println!("Diagnostics count: {}", result.diagnostics.len());
             println!("Aggregated diagnostics: {}", result.aggregated_diagnostics.len());
 
-            // Print all diagnostics found
             for diag in &result.aggregated_diagnostics {
                 println!(
                     "  {} [{}]: {} ({} nodes)",
@@ -1683,19 +1496,16 @@ Query:
                 );
             }
 
-            // Verify root cause analysis exists
             assert!(result.root_cause_analysis.is_some(), "Root cause analysis should exist");
             let rca = result.root_cause_analysis.as_ref().unwrap();
 
             print_root_cause_analysis(rca);
 
-            // Verify analysis produces meaningful results
             assert!(!rca.summary.is_empty(), "Summary should not be empty");
         }
 
         #[test]
         fn test_root_cause_analysis_profile6() {
-            // Profile6: 4m13s complex query with multiple joins
             let profile_text = load_profile("profile6.txt");
             let result = analyze_profile(&profile_text).expect("Failed to analyze profile6");
 
@@ -1704,7 +1514,6 @@ Query:
             println!("Total time: {:?}", result.summary.as_ref().map(|s| &s.total_time));
             println!("Diagnostics count: {}", result.diagnostics.len());
 
-            // Print all diagnostics
             for diag in &result.aggregated_diagnostics {
                 println!(
                     "  {} [{}]: {} ({} nodes)",
@@ -1715,7 +1524,6 @@ Query:
             if let Some(rca) = &result.root_cause_analysis {
                 print_root_cause_analysis(rca);
 
-                // Verify structure
                 assert!(!rca.summary.is_empty(), "Summary should exist");
                 assert_eq!(rca.total_diagnostics, result.diagnostics.len());
             }
@@ -1723,7 +1531,6 @@ Query:
 
         #[test]
         fn test_root_cause_analysis_profile7_error() {
-            // Profile7: 5m1s query that ended in Error state
             let profile_text = load_profile("profile7.text");
             let result = analyze_profile(&profile_text).expect("Failed to analyze profile7");
 
@@ -1732,7 +1539,6 @@ Query:
             println!("Total time: {:?}", result.summary.as_ref().map(|s| &s.total_time));
             println!("Diagnostics count: {}", result.diagnostics.len());
 
-            // Print all diagnostics
             for diag in &result.aggregated_diagnostics {
                 println!(
                     "  {} [{}]: {} ({} nodes)",
@@ -1747,7 +1553,6 @@ Query:
 
         #[test]
         fn test_root_cause_analysis_profile8() {
-            // Profile8: 3m50s query - similar pattern to profile6
             let profile_text = load_profile("profile8.txt");
             let result = analyze_profile(&profile_text).expect("Failed to analyze profile8");
 
@@ -1756,7 +1561,6 @@ Query:
             println!("Total time: {:?}", result.summary.as_ref().map(|s| &s.total_time));
             println!("Diagnostics count: {}", result.diagnostics.len());
 
-            // Print all diagnostics
             for diag in &result.aggregated_diagnostics {
                 println!(
                     "  {} [{}]: {} ({} nodes)",
@@ -1767,7 +1571,6 @@ Query:
             if let Some(rca) = &result.root_cause_analysis {
                 print_root_cause_analysis(rca);
 
-                // Verify root causes have reasonable structure
                 for rc in &rca.root_causes {
                     assert!(!rc.id.is_empty(), "Root cause ID should not be empty");
                     assert!(!rc.diagnostic_ids.is_empty(), "Should have diagnostic IDs");
@@ -1785,7 +1588,6 @@ Query:
 
         #[test]
         fn test_root_cause_analysis_profile9() {
-            // Profile9: 2m49s complex query with JOIN and aggregation
             let profile_text = load_profile("profile9.txt");
             let result = analyze_profile(&profile_text).expect("Failed to analyze profile9");
 
@@ -1808,7 +1610,6 @@ Query:
 
         #[test]
         fn test_root_cause_analysis_profile10() {
-            // Profile10: 1m24s simple aggregation query
             let profile_text = load_profile("profile10.txt");
             let result = analyze_profile(&profile_text).expect("Failed to analyze profile10");
 
@@ -1831,7 +1632,6 @@ Query:
 
         #[test]
         fn test_root_cause_analysis_profile3() {
-            // Profile3: Simple query analysis
             let profile_text = load_profile("profile3.txt");
             let result = analyze_profile(&profile_text).expect("Failed to analyze profile3");
 
@@ -1854,7 +1654,6 @@ Query:
 
         #[test]
         fn test_root_cause_analysis_profile11() {
-            // Profile11: 4m43s complex HDFS query with severe IO issues
             let profile_text = load_profile("profile11.txt");
             let result = analyze_profile(&profile_text).expect("Failed to analyze profile11");
 
@@ -1874,7 +1673,6 @@ Query:
                 print_root_cause_analysis(rca);
             }
 
-            // Debug: Check if stripe metrics exist in CONNECTOR_SCAN nodes
             if let Some(tree) = &result.execution_tree {
                 for node in &tree.nodes {
                     if node.operator_name.contains("SCAN") {
@@ -1883,7 +1681,7 @@ Query:
                             node.operator_name,
                             node.unique_metrics.len()
                         );
-                        // Show first 20 metrics
+
                         for (i, (k, v)) in node.unique_metrics.iter().enumerate() {
                             if i < 20
                                 || k.contains("Stripe")
@@ -1903,8 +1701,6 @@ Query:
 
         #[test]
         fn test_root_cause_causal_chain_detection() {
-            // Test that causal chains are correctly detected
-            // Using profile1 which has complex execution with potential causal chains
             let profile_text = load_profile("profile1.txt");
             let result = analyze_profile(&profile_text).expect("Failed to analyze profile");
 
@@ -1918,7 +1714,6 @@ Query:
                     println!("    Explanation: {}", chain.explanation);
                     println!("    Confidence: {:.0}%", chain.confidence * 100.0);
 
-                    // Verify chain structure
                     assert!(chain.chain.len() >= 2, "Chain should have at least 2 elements");
                     assert!(!chain.explanation.is_empty(), "Chain should have explanation");
                 }
@@ -1927,35 +1722,33 @@ Query:
 
         #[test]
         fn test_root_cause_impact_sorting() {
-            // Verify root causes are sorted by impact
             let profile_text = load_profile("profile1.txt");
             let result = analyze_profile(&profile_text).expect("Failed to analyze profile");
 
             if let Some(rca) = &result.root_cause_analysis
-                && rca.root_causes.len() >= 2 {
-                    // Verify sorted by impact (descending)
-                    let impacts: Vec<f64> = rca
-                        .root_causes
-                        .iter()
-                        .map(|rc| rc.impact_percentage)
-                        .collect();
+                && rca.root_causes.len() >= 2
+            {
+                let impacts: Vec<f64> = rca
+                    .root_causes
+                    .iter()
+                    .map(|rc| rc.impact_percentage)
+                    .collect();
 
-                    for i in 0..impacts.len() - 1 {
-                        assert!(
-                            impacts[i] >= impacts[i + 1],
-                            "Root causes should be sorted by impact descending: {} < {}",
-                            impacts[i],
-                            impacts[i + 1]
-                        );
-                    }
+                for i in 0..impacts.len() - 1 {
+                    assert!(
+                        impacts[i] >= impacts[i + 1],
+                        "Root causes should be sorted by impact descending: {} < {}",
+                        impacts[i],
+                        impacts[i + 1]
+                    );
+                }
 
-                    println!("Root cause impacts (sorted): {:?}", impacts);
+                println!("Root cause impacts (sorted): {:?}", impacts);
             }
         }
 
         #[test]
         fn test_all_profiles_root_cause_analysis() {
-            // Test all available profiles produce valid root cause analysis
             let profiles = vec![
                 "profile1.txt",
                 "profile2.txt",
@@ -1993,7 +1786,6 @@ Query:
 
                         println!("{}: {} diagnostics, {}", profile_name, diag_count, rca_info);
 
-                        // Verify root cause analysis is present when diagnostics exist
                         if diag_count > 0 {
                             assert!(
                                 analysis.root_cause_analysis.is_some(),
@@ -2004,7 +1796,6 @@ Query:
                     },
                     Err(e) => {
                         println!("{}: ERROR - {}", profile_name, e);
-                        // Some profiles might fail to parse, that's ok for this test
                     },
                 }
             }
@@ -2012,7 +1803,6 @@ Query:
 
         #[test]
         fn test_root_cause_symptoms_tracking() {
-            // Test that symptoms are correctly tracked for root causes
             let profile_text = load_profile("profile1.txt");
             let result = analyze_profile(&profile_text).expect("Failed to analyze profile");
 
@@ -2028,7 +1818,6 @@ Query:
                     } else {
                         println!("  Symptoms: {:?}", rc.symptoms);
 
-                        // Verify symptoms are valid diagnostic IDs
                         for symptom in &rc.symptoms {
                             assert!(
                                 symptom.len() <= 5

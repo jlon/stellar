@@ -40,7 +40,6 @@ pub async fn list_query_history(
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     axum::extract::Query(params): axum::extract::Query<HistoryQueryParams>,
 ) -> ApiResult<Json<QueryHistoryResponse>> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -59,32 +58,26 @@ pub async fn list_query_history(
     let start_time = params.start_time.as_deref();
     let end_time = params.end_time.as_deref();
 
-    // Get audit table name and field mappings based on cluster type
     use crate::models::cluster::ClusterType;
-    let (audit_table, time_field, query_id_field, db_field, is_query_field) = match cluster.cluster_type {
-        ClusterType::StarRocks => (
-            state.audit_config.full_table_name(),
-            "timestamp",
-            "queryId",
-            "db",
-            "isQuery"
-        ),
-        ClusterType::Doris => (
-            "__internal_schema.audit_log".to_string(),
-            "time",
-            "query_id",
-            "db",  // Doris also uses 'db' field
-            "is_query"
-        ),
-    };
+    let (audit_table, time_field, query_id_field, db_field, is_query_field) =
+        match cluster.cluster_type {
+            ClusterType::StarRocks => {
+                (state.audit_config.full_table_name(), "timestamp", "queryId", "db", "isQuery")
+            },
+            ClusterType::Doris => (
+                "__internal_schema.audit_log".to_string(),
+                "time",
+                "query_id",
+                "db", // Doris also uses 'db' field
+                "is_query",
+            ),
+        };
 
-    // Build WHERE conditions
     let mut where_conditions = vec![
         format!("{} = 1", is_query_field),
         format!("`{}` >= DATE_SUB(NOW(), INTERVAL 7 DAY)", time_field),
     ];
 
-    // Add keyword search if provided
     if !keyword.is_empty() {
         where_conditions.push(format!(
             "(`{}` LIKE '%{}%' OR `stmt` LIKE '%{}%' OR `user` LIKE '%{}%')",
@@ -95,7 +88,6 @@ pub async fn list_query_history(
         ));
     }
 
-    // Add time range filters if provided
     if let Some(start) = start_time {
         where_conditions.push(format!("`{}` >= '{}'", time_field, start));
     }
@@ -105,7 +97,6 @@ pub async fn list_query_history(
 
     let where_clause = where_conditions.join(" AND ");
 
-    // First, get the total count (required for ng2-smart-table pagination)
     let count_sql = format!(
         r#"
         SELECT COUNT(*) as total
@@ -136,7 +127,6 @@ pub async fn list_query_history(
 
     tracing::info!("Total history records: {}", total);
 
-    // Then fetch the paginated data
     let sql = format!(
         r#"
         SELECT 
@@ -169,7 +159,6 @@ pub async fn list_query_history(
     })?;
     tracing::info!("Fetched {} history records", rows.len());
 
-    // Build column index map for easier access
     let mut col_idx = std::collections::HashMap::new();
     for (i, col) in columns.iter().enumerate() {
         col_idx.insert(col.clone(), i);

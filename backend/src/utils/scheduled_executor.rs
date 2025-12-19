@@ -82,11 +82,9 @@ impl ScheduledExecutor {
             self.interval
         );
 
-        // Calculate next execution time
         let mut next_execution = Utc::now().timestamp_millis() + interval_ms;
 
         loop {
-            // Check shutdown signals
             if shutdown.load(Ordering::Relaxed) || task.should_terminate() {
                 tracing::info!("Scheduled task '{}' is shutting down", task_name);
                 break;
@@ -94,7 +92,6 @@ impl ScheduledExecutor {
 
             let now = Utc::now().timestamp_millis();
 
-            // Execute task if it's time
             if now >= next_execution {
                 tracing::debug!("Executing scheduled task '{}'", task_name);
 
@@ -103,16 +100,13 @@ impl ScheduledExecutor {
                         tracing::debug!("Scheduled task '{}' completed successfully", task_name);
                     },
                     Err(e) => {
-                        // Log error but don't stop the scheduler
                         tracing::error!("Scheduled task '{}' failed: {}", task_name, e);
                     },
                 }
 
-                // Calculate next execution time (avoid cumulative drift)
                 next_execution = Utc::now().timestamp_millis() + interval_ms;
             }
 
-            // Calculate wait time until next execution
             let wait_ms = next_execution.saturating_sub(Utc::now().timestamp_millis());
             if wait_ms > 0 {
                 sleep(Duration::from_millis(wait_ms as u64)).await;

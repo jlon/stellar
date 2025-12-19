@@ -40,10 +40,6 @@ impl BaselineService {
         Self { calculator: BaselineCalculator::new(), config }
     }
 
-    // ========================================================================
-    // Main API: Get Baseline (Fast Path)
-    // ========================================================================
-
     /// Get baseline for specific cluster and complexity - FAST, NEVER BLOCKS
     ///
     /// This is the main entry point. It:
@@ -91,10 +87,6 @@ impl BaselineService {
         BaselineProvider::has_audit_data(cluster_id)
     }
 
-    // ========================================================================
-    // Background Refresh API
-    // ========================================================================
-
     /// Refresh baselines from audit log for a specific cluster
     ///
     /// This method:
@@ -112,7 +104,6 @@ impl BaselineService {
     ) -> Result<RefreshResult, String> {
         info!("Starting baseline refresh for cluster {} from audit log", cluster_id);
 
-        // Step 1: Check if audit log table exists
         if !self.audit_table_exists(mysql, cluster_type).await {
             warn!("Audit log table not found for cluster {}, using defaults", cluster_id);
             BaselineProvider::update(
@@ -127,7 +118,6 @@ impl BaselineService {
             });
         }
 
-        // Step 2: Fetch audit records
         let records = match self.fetch_audit_logs(mysql, cluster_type).await {
             Ok(records) => records,
             Err(e) => {
@@ -155,10 +145,8 @@ impl BaselineService {
             });
         }
 
-        // Step 3: Calculate baselines by complexity
         let baselines = self.calculator.calculate_by_complexity(&records);
 
-        // Step 4: Fill missing complexities with defaults
         let mut final_baselines = BaselineCacheManager::default_baselines();
         let mut complexity_counts = HashMap::new();
 
@@ -167,7 +155,6 @@ impl BaselineService {
             final_baselines.insert(complexity, baseline);
         }
 
-        // Step 5: Update cluster-specific cache (with drift detection)
         let sample_count = records.len();
         if let Some(drift) =
             BaselineProvider::update(cluster_id, final_baselines, BaselineSource::AuditLog)
@@ -192,8 +179,12 @@ impl BaselineService {
         &self,
         mysql: &MySQLClient,
     ) -> Result<RefreshResult, String> {
-        // Default to StarRocks for backward compatibility
-        self.refresh_from_audit_log_for_cluster(mysql, 0, &crate::models::cluster::ClusterType::StarRocks).await
+        self.refresh_from_audit_log_for_cluster(
+            mysql,
+            0,
+            &crate::models::cluster::ClusterType::StarRocks,
+        )
+        .await
     }
 
     /// Calculate baseline for a specific table (on-demand, not cached)
@@ -207,39 +198,69 @@ impl BaselineService {
         Ok(self.calculator.calculate_for_table(&records, table_name))
     }
 
-    // ========================================================================
-    // Internal Methods
-    // ========================================================================
-
     /// Check if audit log table exists
-    async fn audit_table_exists(&self, mysql: &MySQLClient, cluster_type: &crate::models::cluster::ClusterType) -> bool {
+    async fn audit_table_exists(
+        &self,
+        mysql: &MySQLClient,
+        cluster_type: &crate::models::cluster::ClusterType,
+    ) -> bool {
         use crate::models::cluster::ClusterType;
-        
+
         let audit_table = match cluster_type {
             ClusterType::StarRocks => "starrocks_audit_db__.starrocks_audit_tbl__",
             ClusterType::Doris => "__internal_schema.audit_log",
         };
-        
+
         let sql = format!("SELECT 1 FROM {} LIMIT 1", audit_table);
         mysql.query_raw(&sql).await.is_ok()
     }
 
     /// Fetch audit log records
-    async fn fetch_audit_logs(&self, mysql: &MySQLClient, cluster_type: &crate::models::cluster::ClusterType) -> Result<Vec<AuditLogRecord>, String> {
+    async fn fetch_audit_logs(
+        &self,
+        mysql: &MySQLClient,
+        cluster_type: &crate::models::cluster::ClusterType,
+    ) -> Result<Vec<AuditLogRecord>, String> {
         use crate::models::cluster::ClusterType;
-        
-        let (audit_table, query_id_field, user_field, db_field, stmt_field, stmt_type_field, 
-             query_time_field, state_field, time_field, is_query_field) = match cluster_type {
+
+        let (
+            audit_table,
+            query_id_field,
+            user_field,
+            db_field,
+            stmt_field,
+            stmt_type_field,
+            query_time_field,
+            state_field,
+            time_field,
+            is_query_field,
+        ) = match cluster_type {
             ClusterType::StarRocks => (
                 "starrocks_audit_db__.starrocks_audit_tbl__",
-                "queryId", "user", "db", "stmt", "queryType", "queryTime", "state", "timestamp", "isQuery"
+                "queryId",
+                "user",
+                "db",
+                "stmt",
+                "queryType",
+                "queryTime",
+                "state",
+                "timestamp",
+                "isQuery",
             ),
             ClusterType::Doris => (
                 "__internal_schema.audit_log",
-                "query_id", "user", "database", "stmt", "stmt_type", "query_time", "state", "time", "is_query"
+                "query_id",
+                "user",
+                "database",
+                "stmt",
+                "stmt_type",
+                "query_time",
+                "state",
+                "time",
+                "is_query",
             ),
         };
-        
+
         let sql = format!(
             r#"
             SELECT 
@@ -268,7 +289,6 @@ impl BaselineService {
             .await
             .map_err(|e| format!("Audit log query failed: {:?}", e))?;
 
-        // Build column index map
         let mut col_idx = HashMap::new();
         for (i, col) in columns.iter().enumerate() {
             col_idx.insert(col.clone(), i);
@@ -404,7 +424,6 @@ mod tests {
         let service = BaselineService::new();
         let cluster_id = 1;
 
-        // Should always return valid baseline
         let baseline = service.get_baseline(cluster_id, QueryComplexity::Medium);
         assert!(baseline.stats.avg_ms > 0.0);
     }
@@ -424,12 +443,10 @@ mod tests {
 
     #[test]
     fn test_default_fallback() {
-        // Without audit data, should use defaults
         let service = BaselineService::new();
         let cluster_id = 1;
         assert!(!service.has_audit_data(cluster_id));
 
-        // But should still return valid baselines
         let baseline = service.get_baseline(cluster_id, QueryComplexity::Complex);
         assert!(baseline.stats.p95_ms > 0.0);
     }

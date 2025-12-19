@@ -30,7 +30,6 @@ impl ScanMetricsParser {
     fn parse_common_scan_metrics(&self, text: &str) -> ScanMetrics {
         let mut metrics = ScanMetrics::default();
 
-        // Extract table name
         if let Some(cap) = TABLE_REGEX.captures(text) {
             metrics.table = cap
                 .get(1)
@@ -38,7 +37,6 @@ impl ScanMetricsParser {
                 .unwrap_or_default();
         }
 
-        // Extract rollup
         if let Some(cap) = ROLLUP_REGEX.captures(text) {
             metrics.rollup = cap
                 .get(1)
@@ -46,7 +44,6 @@ impl ScanMetricsParser {
                 .unwrap_or_default();
         }
 
-        // Parse metrics from lines
         for line in text.lines() {
             let trimmed = line.trim();
             if !trimmed.starts_with("- ") {

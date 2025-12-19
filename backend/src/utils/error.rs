@@ -12,7 +12,6 @@ use thiserror::Error;
 /// Each variant carries meaningful context to help with debugging.
 #[derive(Error, Debug)]
 pub enum ApiError {
-    // Authentication errors 1xxx
     #[error("Unauthorized: {0}")]
     Unauthorized(String),
 
@@ -22,7 +21,6 @@ pub enum ApiError {
     #[error("Invalid credentials")]
     InvalidCredentials,
 
-    // Cluster errors 2xxx
     #[error("Cluster {cluster_id} not found")]
     ClusterNotFound { cluster_id: i64 },
 
@@ -35,7 +33,6 @@ pub enum ApiError {
     #[error("Cluster authentication failed")]
     ClusterAuthFailed,
 
-    // Resource errors 3xxx
     #[error("Resource not found: {0}")]
     ResourceNotFound(String),
 
@@ -45,7 +42,6 @@ pub enum ApiError {
     #[error("Failed to kill query: {0}")]
     QueryKillFailed(String),
 
-    // Validation errors 4xxx
     #[error("Validation error: {0}")]
     ValidationError(String),
 
@@ -55,11 +51,9 @@ pub enum ApiError {
     #[error("Not implemented: {0}")]
     NotImplemented(String),
 
-    // System errors 5xxx
     #[error("Internal error: {0}")]
     InternalError(String),
 
-    // System Function errors 6xxx
     #[error("System function not found: {0}")]
     SystemFunctionNotFound(String),
 
@@ -78,11 +72,9 @@ pub enum ApiError {
     #[error("Category cannot be deleted")]
     CategoryCannotDelete,
 
-    // Database errors - auto-convert from sqlx::Error
     #[error("Database error: {0}")]
     Database(#[from] sqlx::Error),
 
-    // Generic wrapper for other errors - auto-convert from anyhow::Error
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
@@ -161,33 +153,27 @@ impl ApiError {
     /// Get legacy error code for backward compatibility
     pub fn error_code(&self) -> i32 {
         match self {
-            // Authentication errors 1xxx
             Self::Unauthorized(_) => 1001,
             Self::TokenExpired => 1002,
             Self::InvalidCredentials => 1003,
 
-            // Cluster errors 2xxx
             Self::ClusterNotFound { .. } => 2001,
             Self::ClusterConnectionFailed { .. } => 2002,
             Self::ClusterTimeout => 2003,
             Self::ClusterAuthFailed => 2004,
 
-            // Resource errors 3xxx
             Self::ResourceNotFound(_) => 3000,
             Self::QueryNotFound { .. } => 3001,
             Self::QueryKillFailed(_) => 3002,
 
-            // Validation errors 4xxx
             Self::ValidationError(_) => 4001,
             Self::InvalidInput(_) => 4002,
             Self::NotImplemented(_) => 4003,
 
-            // System errors 5xxx
             Self::InternalError(_) => 5001,
             Self::Database(_) => 5002,
             Self::Other(_) => 5001,
 
-            // System Function errors 6xxx
             Self::SystemFunctionNotFound(_) => 6001,
             Self::SystemFunctionDuplicate => 6002,
             Self::CategoryFull(_) => 6003,

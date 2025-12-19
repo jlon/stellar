@@ -55,7 +55,6 @@ impl ExchangeMetricsParser {
 
     /// Parse EXCHANGE_SOURCE operator metrics (returns None as it uses common metrics)
     pub fn parse_source(&self, _text: &str) -> OperatorSpecializedMetrics {
-        // Exchange source typically uses common metrics
         OperatorSpecializedMetrics::None
     }
 }

@@ -1,7 +1,7 @@
 use crate::models::{
     Cluster, ClusterHealth, CreateClusterRequest, HealthCheck, HealthStatus, UpdateClusterRequest,
 };
-use crate::services::{create_adapter, MySQLPoolManager};
+use crate::services::{MySQLPoolManager, create_adapter};
 use crate::utils::{ApiError, ApiResult};
 use chrono::Utc;
 use sqlx::SqlitePool;
@@ -18,7 +18,6 @@ impl ClusterService {
         Self { pool, mysql_pool_manager }
     }
 
-    // Create a new cluster
     pub async fn create_cluster(
         &self,
         mut req: CreateClusterRequest,
@@ -26,7 +25,6 @@ impl ClusterService {
         requestor_org: Option<i64>,
         is_super_admin: bool,
     ) -> ApiResult<Cluster> {
-        // Clean input data - trim whitespace
         req.name = req.name.trim().to_string();
         req.fe_host = req.fe_host.trim().to_string();
         req.username = req.username.trim().to_string();
@@ -35,7 +33,6 @@ impl ClusterService {
             *desc = desc.trim().to_string();
         }
 
-        // Validate cleaned data
         if req.name.is_empty() {
             return Err(ApiError::validation_error("Cluster name cannot be empty"));
         }
@@ -46,7 +43,6 @@ impl ClusterService {
             return Err(ApiError::validation_error("Username cannot be empty"));
         }
 
-        // Check if cluster name already exists
         let existing: Option<Cluster> = sqlx::query_as("SELECT * FROM clusters WHERE name = ?")
             .bind(&req.name)
             .fetch_optional(&self.pool)
@@ -60,12 +56,10 @@ impl ClusterService {
             .resolve_target_org(req.organization_id, requestor_org, is_super_admin)
             .await?;
 
-        // Convert tags to JSON string
         let tags_json = req
             .tags
             .map(|t| serde_json::to_string(&t).unwrap_or_default());
 
-        // Check if this will be the first cluster within the organization
         let existing_cluster_count: (i64,) =
             sqlx::query_as("SELECT COUNT(*) FROM clusters WHERE organization_id = ?")
                 .bind(target_org_id)
@@ -74,7 +68,6 @@ impl ClusterService {
 
         let is_first_cluster = existing_cluster_count.0 == 0;
 
-        // Insert cluster (password is stored as-is for now, should be encrypted in production)
         let result = sqlx::query(
             "INSERT INTO clusters (name, description, fe_host, fe_http_port, fe_query_port, 
              username, password_encrypted, enable_ssl, connection_timeout, tags, catalog, 
@@ -87,12 +80,12 @@ impl ClusterService {
         .bind(req.fe_http_port)
         .bind(req.fe_query_port)
         .bind(&req.username)
-        .bind(&req.password) // TODO: Encrypt in production
+        .bind(&req.password)
         .bind(req.enable_ssl)
         .bind(req.connection_timeout)
         .bind(&tags_json)
         .bind(&req.catalog)
-        .bind(if is_first_cluster { 1 } else { 0 }) // Set as active if first cluster in org
+        .bind(if is_first_cluster { 1 } else { 0 })
         .bind(user_id)
         .bind(target_org_id)
         .bind(req.deployment_mode.to_string())
@@ -102,7 +95,6 @@ impl ClusterService {
 
         let cluster_id = result.last_insert_rowid();
 
-        // Ensure each organization always has one active cluster if none exists
         if !is_first_cluster {
             let active_count: (i64,) = sqlx::query_as(
                 "SELECT COUNT(*) FROM clusters WHERE is_active = 1 AND organization_id = ?",
@@ -123,7 +115,6 @@ impl ClusterService {
             }
         }
 
-        // Fetch and return the created cluster
         let cluster: Cluster = sqlx::query_as("SELECT * FROM clusters WHERE id = ?")
             .bind(cluster_id)
             .fetch_one(&self.pool)
@@ -142,7 +133,6 @@ impl ClusterService {
         Ok(cluster)
     }
 
-    // Get all clusters (unfiltered, handlers apply org filter)
     pub async fn list_clusters(&self) -> ApiResult<Vec<Cluster>> {
         let clusters: Vec<Cluster> =
             sqlx::query_as("SELECT * FROM clusters ORDER BY created_at DESC")
@@ -152,7 +142,6 @@ impl ClusterService {
         Ok(clusters)
     }
 
-    // Get cluster by ID
     pub async fn get_cluster(&self, cluster_id: i64) -> ApiResult<Cluster> {
         let cluster: Option<Cluster> = sqlx::query_as("SELECT * FROM clusters WHERE id = ?")
             .bind(cluster_id)
@@ -162,7 +151,6 @@ impl ClusterService {
         cluster.ok_or_else(|| ApiError::cluster_not_found(cluster_id))
     }
 
-    // Get the currently active cluster (global)
     pub async fn get_active_cluster(&self) -> ApiResult<Cluster> {
         let cluster: Option<Cluster> =
             sqlx::query_as("SELECT * FROM clusters WHERE is_active = 1 LIMIT 1")
@@ -174,7 +162,6 @@ impl ClusterService {
         })
     }
 
-    // Get active cluster scoped by organization
     pub async fn get_active_cluster_by_org(&self, org_id: Option<i64>) -> ApiResult<Cluster> {
         let cluster: Option<Cluster> = if let Some(org) = org_id {
             sqlx::query_as(
@@ -194,29 +181,23 @@ impl ClusterService {
         })
     }
 
-    // Set a cluster as active (deactivating all others in the same organization)
     pub async fn set_active_cluster(&self, cluster_id: i64) -> ApiResult<Cluster> {
-        // Check if cluster exists and fetch its org
         let cluster = self.get_cluster(cluster_id).await?;
         let org_id = cluster.organization_id;
 
-        // Start transaction to ensure atomicity
         let mut tx = self.pool.begin().await?;
 
-        // First, deactivate all clusters in the same organization
         if let Some(org) = org_id {
             sqlx::query("UPDATE clusters SET is_active = 0 WHERE organization_id = ?")
                 .bind(org)
                 .execute(&mut *tx)
                 .await?;
         } else {
-            // If cluster has no org, deactivate all clusters with NULL org
             sqlx::query("UPDATE clusters SET is_active = 0 WHERE organization_id IS NULL")
                 .execute(&mut *tx)
                 .await?;
         }
 
-        // Then, activate the target cluster
         sqlx::query(
             "UPDATE clusters SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
         )
@@ -224,25 +205,20 @@ impl ClusterService {
         .execute(&mut *tx)
         .await?;
 
-        // Commit transaction
         tx.commit().await?;
 
         tracing::info!("Cluster activated: ID {} (org: {:?})", cluster_id, org_id);
 
-        // Fetch and return the updated cluster
         self.get_cluster(cluster_id).await
     }
 
-    // Update cluster
     pub async fn update_cluster(
         &self,
         cluster_id: i64,
         req: UpdateClusterRequest,
     ) -> ApiResult<Cluster> {
-        // Check if cluster exists
         let _cluster = self.get_cluster(cluster_id).await?;
 
-        // Build dynamic SQL update query
         let mut updates = Vec::new();
         let mut params: Vec<String> = Vec::new();
 
@@ -324,9 +300,7 @@ impl ClusterService {
         self.get_cluster(cluster_id).await
     }
 
-    // Delete cluster
     pub async fn delete_cluster(&self, cluster_id: i64) -> ApiResult<()> {
-        // Check if this is the active cluster and capture organization
         let cluster_record: Option<(bool, Option<i64>)> =
             sqlx::query_as("SELECT is_active, organization_id FROM clusters WHERE id = ?")
                 .bind(cluster_id)
@@ -336,7 +310,6 @@ impl ClusterService {
         let is_active = cluster_record.map(|r| r.0).unwrap_or(false);
         let cluster_org_id = cluster_record.and_then(|r| r.1);
 
-        // Delete the cluster
         let result = sqlx::query("DELETE FROM clusters WHERE id = ?")
             .bind(cluster_id)
             .execute(&self.pool)
@@ -348,7 +321,6 @@ impl ClusterService {
 
         tracing::info!("Cluster deleted: ID {}", cluster_id);
 
-        // If we deleted the active cluster, activate another one (first by creation time)
         if is_active {
             let next_cluster: Option<(i64,)> = if let Some(org_id) = cluster_org_id {
                 sqlx::query_as(
@@ -414,7 +386,6 @@ impl ClusterService {
             .ok_or_else(|| ApiError::not_found("Default organization not found"))
     }
 
-    // Get cluster health
     pub async fn get_cluster_health(&self, cluster_id: i64) -> ApiResult<ClusterHealth> {
         let cluster = self.get_cluster(cluster_id).await?;
         let is_shared_data = cluster.is_shared_data();
@@ -469,7 +440,6 @@ impl ClusterService {
             },
         }
 
-        // Check compute nodes (BE in shared-nothing, CN in shared-data)
         let node_type = if is_shared_data { "CN" } else { "BE" };
         match adapter.get_backends().await {
             Ok(backends) => {
@@ -518,7 +488,6 @@ impl ClusterService {
         Ok(ClusterHealth { status: overall_status, checks, last_check_time: Utc::now() })
     }
 
-    // Get cluster health for a specific cluster object (used for testing new clusters)
     pub async fn get_cluster_health_for_cluster(
         &self,
         cluster: &Cluster,
@@ -528,12 +497,10 @@ impl ClusterService {
         let mut checks = Vec::new();
         let mut overall_status = HealthStatus::Healthy;
 
-        // Check connection by getting pool
         match self.mysql_pool_manager.get_pool(cluster).await {
             Ok(pool) => {
                 let mysql_client = MySQLClient::from_pool(pool);
 
-                // Test basic connection
                 match mysql_client.query("SELECT 1").await {
                     Ok(_) => {
                         checks.push(HealthCheck {
@@ -542,7 +509,6 @@ impl ClusterService {
                             message: "Connection successful".to_string(),
                         });
 
-                        // Try to check FE availability via HTTP
                         let adapter =
                             create_adapter(cluster.clone(), self.mysql_pool_manager.clone());
                         match adapter.get_runtime_info().await {
@@ -565,7 +531,6 @@ impl ClusterService {
                             },
                         }
 
-                        // Try to check compute nodes (BE in shared-nothing, CN in shared-data)
                         let node_type = if cluster.is_shared_data() { "CN" } else { "BE" };
                         match adapter.get_backends().await {
                             Ok(backends) => {

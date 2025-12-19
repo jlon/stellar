@@ -33,12 +33,10 @@ impl ProfileComposer {
 
     /// Parse a complete profile from text
     pub fn parse(&mut self, text: &str) -> ParseResult<Profile> {
-        // Parse main sections
         let mut summary = SectionParser::parse_summary(text)?;
         let planner_info = SectionParser::parse_planner(text)?;
         let execution_info = SectionParser::parse_execution(text)?;
 
-        // Extract additional metrics from execution info
         if summary.query_cumulative_operator_time_ms.is_none()
             && let Some(qcot) = execution_info.metrics.get("QueryCumulativeOperatorTime")
         {
@@ -53,13 +51,10 @@ impl ProfileComposer {
             summary.query_execution_wall_time = Some(qewt.clone());
         }
 
-        // Extract all execution metrics
         SectionParser::extract_execution_metrics(&execution_info, &mut summary);
 
-        // Parse fragments
         let fragments = FragmentParser::extract_all_fragments(text);
 
-        // Parse topology and build execution tree
         let topology_result = Self::extract_topology_json(&execution_info.topology)
             .and_then(|json| TopologyParser::parse_with_fragments(&json, text, &fragments))
             .ok();
@@ -72,11 +67,9 @@ impl ProfileComposer {
             TreeBuilder::build_from_fragments(nodes, &summary, &fragments)?
         };
 
-        // Compute top time-consuming nodes
         let top_nodes = Self::compute_top_time_consuming_nodes(&execution_tree.nodes, 3);
         summary.top_time_consuming_nodes = Some(top_nodes);
 
-        // Analyze profile completeness (check for MissingInstanceIds)
         Self::analyze_profile_completeness(text, &mut summary);
 
         Ok(Profile {
@@ -116,7 +109,6 @@ impl ProfileComposer {
         topology: &TopologyGraph,
         fragments: &[Fragment],
     ) -> ParseResult<Vec<ExecutionTreeNode>> {
-        // Build operator lookup by plan_node_id
         let mut operators_by_plan_id: HashMap<
             i32,
             Vec<(&crate::services::profile_analyzer::models::Operator, String, String)>,
@@ -140,7 +132,6 @@ impl ProfileComposer {
 
         let mut nodes = Vec::new();
 
-        // Create nodes from topology
         for topo_node in &topology.nodes {
             let tree_node = if let Some(op_list) = operators_by_plan_id.get(&topo_node.id) {
                 let op_refs: Vec<&crate::services::profile_analyzer::models::Operator> =
@@ -154,10 +145,8 @@ impl ProfileComposer {
 
                 let mut metrics = MetricsParser::from_hashmap(&aggregated_op.common_metrics);
 
-                // Also parse memory-related metrics from unique_metrics
                 MetricsParser::merge_memory_metrics(&mut metrics, &aggregated_op.unique_metrics);
 
-                // Parse specialized metrics
                 if !aggregated_op.unique_metrics.is_empty() {
                     let pure_name = Self::extract_operator_name(&aggregated_op.name);
                     let operator_text =
@@ -215,7 +204,6 @@ impl ProfileComposer {
             nodes.push(tree_node);
         }
 
-        // Add sink nodes not in topology
         self.add_sink_nodes(&mut nodes, fragments, topology);
 
         Ok(nodes)
@@ -242,7 +230,6 @@ impl ProfileComposer {
                             .and_then(|id| id.parse::<i32>().ok())
                             .unwrap_or(next_sink_id);
 
-                        // Check if already in topology
                         if !topology.nodes.iter().any(|n| n.id == plan_id) {
                             let metrics = MetricsParser::from_hashmap(&operator.common_metrics);
                             let rows = metrics.push_row_num.or(metrics.pull_row_num);
@@ -376,7 +363,6 @@ impl ProfileComposer {
             panic!("Empty operators list");
         }
 
-        // Find matching operators
         let mut matching_operators: Vec<&crate::services::profile_analyzer::models::Operator> =
             Vec::new();
 
@@ -388,7 +374,6 @@ impl ProfileComposer {
             }
         }
 
-        // Fallback to normalized comparison
         if matching_operators.is_empty() {
             let normalized_topology = topology_name.to_uppercase().replace("-", "_");
             for &op in operators {
@@ -400,8 +385,6 @@ impl ProfileComposer {
             }
         }
 
-        // Handle SCAN topology to actual operator mapping
-        // Topology may show OLAP_SCAN, HDFS_SCAN, etc. but actual operator is CONNECTOR_SCAN
         if matching_operators.is_empty() {
             let scan_types = [
                 "OLAP_SCAN",
@@ -423,14 +406,12 @@ impl ProfileComposer {
             }
         }
 
-        // Use first operator as fallback
         if matching_operators.is_empty() {
             matching_operators.push(operators[0]);
         }
 
         let mut base_operator = matching_operators[0].clone();
 
-        // Aggregate time metrics
         let mut total_time_ns: u64 = 0;
         for &op in &matching_operators {
             if let Some(time_str) = op.common_metrics.get("OperatorTotalTime")
@@ -447,7 +428,6 @@ impl ProfileComposer {
                 .insert("OperatorTotalTime".to_string(), format!("{}ms", total_time_ms));
         }
 
-        // Aggregate count metrics
         let count_metrics = ["PushChunkNum", "PushRowNum", "PullChunkNum", "PullRowNum"];
         for metric_name in &count_metrics {
             let mut total_count: u64 = 0;
@@ -465,7 +445,6 @@ impl ProfileComposer {
             }
         }
 
-        // Aggregate unique metrics
         let mut aggregated_unique_metrics = HashMap::new();
         for &op in &matching_operators {
             for (key, value) in &op.unique_metrics {
@@ -563,29 +542,23 @@ impl ProfileComposer {
         use once_cell::sync::Lazy;
         use regex::Regex;
 
-        // Match Fragment sections with MissingInstanceIds
         static MISSING_INSTANCE_REGEX: Lazy<Regex> =
             Lazy::new(|| Regex::new(r"MissingInstanceIds:\s*([^\n]+)").unwrap());
-        // Match Fragment headers to count total fragments
+
         static FRAGMENT_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"Fragment \d+:").unwrap());
 
-        // Count total fragments (each Fragment section represents a stage)
         let total_fragments = FRAGMENT_REGEX.find_iter(text).count();
 
-        // Count fragments with missing instances
         let missing_fragments = MISSING_INSTANCE_REGEX.find_iter(text).count();
 
-        // Update summary with completeness info
         summary.total_instance_count =
             if total_fragments > 0 { Some(total_fragments as i32) } else { None };
         summary.missing_instance_count =
             if missing_fragments > 0 { Some(missing_fragments as i32) } else { None };
 
-        // Determine if profile is complete
         let is_complete = missing_fragments == 0;
         summary.is_profile_complete = Some(is_complete);
 
-        // Generate warning message if incomplete
         if !is_complete && total_fragments > 0 {
             let missing_pct =
                 (missing_fragments as f64 / total_fragments as f64 * 100.0).round() as i32;

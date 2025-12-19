@@ -14,7 +14,7 @@ pub async fn create_test_db() -> SqlitePool {
         .await
         .expect("Failed to create test database");
 
-    // Run migrations
+
     sqlx::migrate!()
         .run(&pool)
         .await
@@ -52,7 +52,7 @@ pub struct MultiTenantTestData {
 }
 
 pub async fn setup_test_data(pool: &SqlitePool) -> TestData {
-    // Clear existing test data first
+
     sqlx::query("DELETE FROM user_roles")
         .execute(pool)
         .await
@@ -74,7 +74,7 @@ pub async fn setup_test_data(pool: &SqlitePool) -> TestData {
     .await
     .ok();
 
-    // Create test permissions (using INSERT OR IGNORE to handle duplicates)
+
     sqlx::query(
         r#"
         INSERT OR IGNORE INTO permissions (code, name, type, resource, action, description)
@@ -106,14 +106,14 @@ pub async fn setup_test_data(pool: &SqlitePool) -> TestData {
     .await
     .expect("Failed to insert test permissions");
 
-    // Get permission IDs
+
     let permissions: Vec<(i64, String)> =
         sqlx::query_as("SELECT id, code FROM permissions ORDER BY code")
             .fetch_all(pool)
             .await
             .expect("Failed to fetch permissions");
 
-    // Create test roles (using INSERT OR IGNORE to handle duplicates)
+
     sqlx::query(
         r#"
         INSERT OR IGNORE INTO roles (code, name, description, is_system)
@@ -124,14 +124,14 @@ pub async fn setup_test_data(pool: &SqlitePool) -> TestData {
     .await
     .expect("Failed to insert admin role");
 
-    // Get role IDs
+
     let (admin_role_id,): (i64,) = sqlx::query_as("SELECT id FROM roles WHERE code = ?")
         .bind("admin")
         .fetch_one(pool)
         .await
         .expect("Failed to fetch admin role");
 
-    // Assign permissions to admin role (all permissions)
+
     for (perm_id, _) in &permissions {
         sqlx::query("INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)")
             .bind(admin_role_id)
@@ -147,7 +147,7 @@ pub async fn setup_test_data(pool: &SqlitePool) -> TestData {
 
 /// Setup comprehensive multi-tenant test data
 pub async fn setup_multi_tenant_test_data(pool: &SqlitePool) -> MultiTenantTestData {
-    // Clear all data
+
     sqlx::query("DELETE FROM user_organizations")
         .execute(pool)
         .await
@@ -171,7 +171,7 @@ pub async fn setup_multi_tenant_test_data(pool: &SqlitePool) -> MultiTenantTestD
         .await
         .ok();
 
-    // Create permissions
+
     sqlx::query(
         r#"
         INSERT INTO permissions (code, name, type, resource, action, description)
@@ -202,7 +202,7 @@ pub async fn setup_multi_tenant_test_data(pool: &SqlitePool) -> MultiTenantTestD
         .await
         .expect("Failed to fetch permissions");
 
-    // Create super admin role (system-wide, no organization)
+
     let super_admin_role_id = create_role(
         pool,
         "super_admin",
@@ -212,7 +212,7 @@ pub async fn setup_multi_tenant_test_data(pool: &SqlitePool) -> MultiTenantTestD
     )
     .await;
 
-    // Create org admin role (organization-scoped)
+
     let org_admin_role_id = create_role(
         pool,
         "org_admin",
@@ -222,7 +222,7 @@ pub async fn setup_multi_tenant_test_data(pool: &SqlitePool) -> MultiTenantTestD
     )
     .await;
 
-    // Create regular user role (organization-scoped)
+
     let regular_role_id = create_role(
         pool,
         "regular_user",
@@ -232,11 +232,11 @@ pub async fn setup_multi_tenant_test_data(pool: &SqlitePool) -> MultiTenantTestD
     )
     .await;
 
-    // Grant all permissions to super admin role
+
     let all_permission_ids: Vec<i64> = permissions.iter().map(|(id, _)| *id).collect();
     grant_permissions(pool, super_admin_role_id, &all_permission_ids).await;
 
-    // Grant organization-scoped permissions to org admin role
+
     let org_permission_ids: Vec<i64> = permissions
         .iter()
         .filter(|(_, code)| {
@@ -246,7 +246,7 @@ pub async fn setup_multi_tenant_test_data(pool: &SqlitePool) -> MultiTenantTestD
         .collect();
     grant_permissions(pool, org_admin_role_id, &org_permission_ids).await;
 
-    // Grant limited permissions to regular user role
+
     let user_permission_ids: Vec<i64> = permissions
         .iter()
         .filter(|(_, code)| code.contains("users:get") || code.contains("roles:get"))
@@ -254,9 +254,9 @@ pub async fn setup_multi_tenant_test_data(pool: &SqlitePool) -> MultiTenantTestD
         .collect();
     grant_permissions(pool, regular_role_id, &user_permission_ids).await;
 
-    // Create super admin user (no organization)
+
     let super_admin_user_id = create_test_user(pool, "super_admin").await;
-    // Ensure super admin stays organization-neutral
+
     sqlx::query("UPDATE users SET organization_id = NULL WHERE id = ?")
         .bind(super_admin_user_id)
         .execute(pool)
@@ -269,35 +269,35 @@ pub async fn setup_multi_tenant_test_data(pool: &SqlitePool) -> MultiTenantTestD
         .ok();
     assign_role_to_user(pool, super_admin_user_id, super_admin_role_id).await;
 
-    // Create organization 1
+
     let org1_id =
         create_test_organization(pool, "org1", "Organization 1", "First test organization").await;
 
-    // Create organization 1 admin user
+
     let org1_admin_user_id = create_test_user_with_org(pool, "org1_admin", org1_id).await;
     assign_role_to_user(pool, org1_admin_user_id, org_admin_role_id).await;
     assign_user_to_organization(pool, org1_admin_user_id, org1_id).await;
 
-    // Create organization 1 regular user
+
     let org1_regular_user_id = create_test_user_with_org(pool, "org1_regular", org1_id).await;
     assign_role_to_user(pool, org1_regular_user_id, regular_role_id).await;
     assign_user_to_organization(pool, org1_regular_user_id, org1_id).await;
 
-    // Create organization 2
+
     let org2_id =
         create_test_organization(pool, "org2", "Organization 2", "Second test organization").await;
 
-    // Create organization 2 admin user
+
     let org2_admin_user_id = create_test_user_with_org(pool, "org2_admin", org2_id).await;
     assign_role_to_user(pool, org2_admin_user_id, org_admin_role_id).await;
     assign_user_to_organization(pool, org2_admin_user_id, org2_id).await;
 
-    // Create organization 2 regular user
+
     let org2_regular_user_id = create_test_user_with_org(pool, "org2_regular", org2_id).await;
     assign_role_to_user(pool, org2_regular_user_id, regular_role_id).await;
     assign_user_to_organization(pool, org2_regular_user_id, org2_id).await;
 
-    // Update roles with organization IDs
+
     sqlx::query("UPDATE roles SET organization_id = ? WHERE code IN ('org_admin', 'regular_user')")
         .bind(org1_id)
         .execute(pool)
@@ -398,7 +398,7 @@ pub async fn create_test_user(pool: &SqlitePool, username: &str) -> i64 {
         "INSERT INTO users (username, password_hash, email, organization_id) VALUES (?, ?, ?, NULL)",
     )
         .bind(username)
-        .bind("$2b$12$hashed_password") // Dummy hash
+        .bind("$2b$12$hashed_password")
         .bind(format!("{}@test.com", username))
         .execute(pool)
         .await

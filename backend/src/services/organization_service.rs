@@ -15,7 +15,6 @@ impl OrganizationService {
         Self { pool }
     }
 
-    // Create organization and optionally create admin user (Option A)
     pub async fn create_organization(
         &self,
         req: CreateOrganizationRequest,
@@ -23,7 +22,6 @@ impl OrganizationService {
         let admin_plan = Self::resolve_admin_plan(&req)?;
         let mut tx = self.pool.begin().await?;
 
-        // Ensure code unique
         let existing: Option<(i64,)> =
             sqlx::query_as("SELECT id FROM organizations WHERE code = ?")
                 .bind(&req.code)
@@ -33,24 +31,21 @@ impl OrganizationService {
             return Err(ApiError::validation_error("Organization code already exists"));
         }
 
-        // Insert organization
         let result = sqlx::query(
             "INSERT INTO organizations (code, name, description, is_system) VALUES (?, ?, ?, ?)",
         )
         .bind(&req.code)
         .bind(&req.name)
         .bind(&req.description)
-        .bind(false) // not system
+        .bind(false)
         .execute(&mut *tx)
         .await?;
         let org_id = result.last_insert_rowid();
 
-        // Create org_admin role scoped to this organization
         let role_id = self
             .create_org_admin_role(&mut tx, org_id, &req.code, &req.name)
             .await?;
 
-        // Provision administrator when requested
         if let Some(plan) = admin_plan {
             let admin_user_id = match plan {
                 AdminPlan::Create { username, password, email } => {
@@ -79,7 +74,6 @@ impl OrganizationService {
         Ok(org.into())
     }
 
-    // List organizations (super admin sees all, others see only their own)
     pub async fn list_organizations(
         &self,
         org_id: Option<i64>,
@@ -114,12 +108,10 @@ impl OrganizationService {
 
         let org = org.ok_or_else(|| ApiError::not_found("Organization not found"))?;
 
-        // Enforce org scope unless super admin
         if !is_super_admin && Some(org.id) != requestor_org {
             return Err(ApiError::forbidden("Access to this organization is not allowed"));
         }
 
-        // Get admin user ID for this organization
         let admin_user_id = self.get_org_admin_user_id(id).await?;
 
         Ok(OrganizationResponse::from(org).with_admin(admin_user_id))
@@ -147,14 +139,12 @@ impl OrganizationService {
         requestor_org: Option<i64>,
         is_super_admin: bool,
     ) -> ApiResult<OrganizationResponse> {
-        // Verify existence and permissions
         let _existing = self
             .get_organization(id, requestor_org, is_super_admin)
             .await?;
 
         let mut tx = self.pool.begin().await?;
 
-        // Build dynamic update
         let mut updates = Vec::new();
         let mut params: Vec<String> = Vec::new();
 
@@ -197,19 +187,16 @@ impl OrganizationService {
         requestor_org: Option<i64>,
         is_super_admin: bool,
     ) -> ApiResult<()> {
-        // Verify existence and permissions
         let org = self
             .get_organization(id, requestor_org, is_super_admin)
             .await?;
 
-        // Prevent deletion of system organizations (e.g., default_org)
         if org.is_system {
             return Err(ApiError::forbidden("System organizations cannot be deleted"));
         }
 
         self.ensure_organization_empty(org.id).await?;
 
-        // Delete organization (cascades to user_organizations)
         let result = sqlx::query("DELETE FROM organizations WHERE id = ?")
             .bind(id)
             .execute(&self.pool)
@@ -222,7 +209,6 @@ impl OrganizationService {
         Ok(())
     }
 
-    // Helper: get user organization
     pub async fn get_user_organization(&self, user_id: i64) -> ApiResult<Option<i64>> {
         let org_id: Option<i64> =
             sqlx::query_scalar("SELECT organization_id FROM user_organizations WHERE user_id = ?")
@@ -266,13 +252,6 @@ impl OrganizationService {
         .await?;
         let role_id = role_result.last_insert_rowid();
 
-        // Grant all permissions except organization management
-        // Exclude:
-        // 1. menu:system:organizations - Organization management menu
-        // 2. api:organizations:* - All organization management APIs
-        // Exclude:
-        // 1. menu:system:organizations - Organization management menu
-        // 2. api:organizations:* - All organization management APIs
         let perms = sqlx::query_as::<_, (i64,)>(
             "SELECT id FROM permissions 
              WHERE code NOT IN ('menu:system:organizations')

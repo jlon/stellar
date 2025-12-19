@@ -19,13 +19,12 @@ impl StarRocksClient {
             .timeout(Duration::from_secs(cluster.connection_timeout as u64))
             .build()
             .unwrap_or_else(|e| {
-                // HTTP client build failure is rare and usually indicates system resource issues
                 tracing::error!(
                     "Failed to build HTTP client for cluster {}: {}. This is a critical error.",
                     cluster.name,
                     e
                 );
-                // Use default client as fallback but log the issue
+
                 tracing::warn!("Using default HTTP client configuration as fallback");
                 Client::default()
             });
@@ -89,7 +88,6 @@ impl StarRocksClient {
     }
 
     pub async fn get_backends(&self) -> ApiResult<Vec<Backend>> {
-        // Automatically switch query strategy based on deployment mode
         if self.cluster.is_shared_data() {
             tracing::info!(
                 "Cluster {} is in shared-data mode, fetching compute nodes",
@@ -105,14 +103,12 @@ impl StarRocksClient {
         self.show_proc_entities::<Backend>("/backends").await
     }
 
-    // Get compute nodes for shared-data architecture
     async fn get_compute_nodes(&self) -> ApiResult<Vec<Backend>> {
         let compute_nodes = self.show_proc_entities::<Backend>("/compute_nodes").await?;
         tracing::info!("Retrieved {} compute nodes (shared-data mode)", compute_nodes.len());
         Ok(compute_nodes)
     }
 
-    // Execute SQL command via HTTP API
     pub async fn execute_sql(&self, sql: &str) -> ApiResult<()> {
         let url = format!("{}/api/query", self.get_base_url());
         tracing::debug!("Executing SQL: {}", sql);
@@ -147,13 +143,10 @@ impl StarRocksClient {
         Ok(())
     }
 
-    // Drop backend node (BE for shared-nothing, CN for shared-data)
     pub async fn drop_backend(&self, host: &str, heartbeat_port: &str) -> ApiResult<()> {
         let sql = if self.cluster.is_shared_data() {
-            // Shared-data mode: drop compute node
             format!("ALTER SYSTEM DROP COMPUTE NODE \"{}:{}\"", host, heartbeat_port)
         } else {
-            // Shared-nothing mode: drop backend
             format!("ALTER SYSTEM DROP BACKEND \"{}:{}\"", host, heartbeat_port)
         };
 
@@ -173,7 +166,6 @@ impl StarRocksClient {
         self.show_proc_entities::<Frontend>("/frontends").await
     }
 
-    // Get current queries
     pub async fn get_queries(&self) -> ApiResult<Vec<Query>> {
         match self.show_proc_entities::<Query>("/current_queries").await {
             Ok(queries) => Ok(queries),
@@ -187,7 +179,6 @@ impl StarRocksClient {
         }
     }
 
-    // Get runtime info
     pub async fn get_runtime_info(&self) -> ApiResult<RuntimeInfo> {
         let url = format!("{}/api/show_runtime_info", self.get_base_url());
 
@@ -213,7 +204,6 @@ impl StarRocksClient {
         Ok(runtime_info)
     }
 
-    // Get metrics in Prometheus format
     pub async fn get_metrics(&self) -> ApiResult<String> {
         let url = format!("{}/metrics", self.get_base_url());
 
@@ -239,7 +229,6 @@ impl StarRocksClient {
         Ok(metrics_text)
     }
 
-    // Parse Prometheus metrics format
     pub fn parse_prometheus_metrics(
         &self,
         metrics_text: &str,
@@ -252,11 +241,9 @@ impl StarRocksClient {
                 continue;
             }
 
-            // Parse format: metric_name{labels} value
             if let Some((name_part, value_str)) = line.rsplit_once(' ')
                 && let Ok(value) = value_str.parse::<f64>()
             {
-                // Extract metric name (before '{' or the whole name_part)
                 let metric_name =
                     if let Some(pos) = name_part.find('{') { &name_part[..pos] } else { name_part };
 

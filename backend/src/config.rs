@@ -152,10 +152,8 @@ impl Config {
     /// 3. Configuration file (config.toml)
     /// 4. Default values
     pub fn load() -> Result<Self, anyhow::Error> {
-        // Parse command line arguments first
         let cli_args = CommandLineArgs::parse();
 
-        // 1. Load from config file (use CLI --config if provided, otherwise find default)
         let config_path = cli_args.config.clone().or_else(Self::find_config_file);
         let mut config = if let Some(config_path) = config_path {
             Self::from_toml(&config_path)?
@@ -164,13 +162,10 @@ impl Config {
             Config::default()
         };
 
-        // 2. Override with environment variables
         config.apply_env_overrides();
 
-        // 3. Override with command line arguments (highest priority)
         config.apply_cli_overrides(&cli_args);
 
-        // 4. Validate configuration
         config.validate()?;
 
         Ok(config)
@@ -223,7 +218,6 @@ impl Config {
             tracing::info!("Override logging.level from env: {}", self.logging.level);
         }
 
-        // Metrics collector overrides
         if let Ok(interval) = std::env::var("APP_METRICS_INTERVAL_SECS") {
             match parse_duration_to_secs(&interval) {
                 Ok(val) => {
@@ -267,7 +261,6 @@ impl Config {
             tracing::info!("Override metrics.enabled from env: {}", self.metrics.enabled);
         }
 
-        // Audit log overrides
         if let Ok(database) = std::env::var("APP_AUDIT_DATABASE") {
             self.audit.database = database;
             tracing::info!("Override audit.database from env: {}", self.audit.database);
@@ -365,7 +358,6 @@ impl Config {
 
     /// Validate configuration
     fn validate(&self) -> Result<(), anyhow::Error> {
-        // Warn if using default JWT secret in production
         if self.auth.jwt_secret == "dev-secret-key-change-in-production" {
             tracing::warn!("⚠️  WARNING: Using default JWT secret!");
             tracing::warn!(
@@ -374,17 +366,14 @@ impl Config {
             tracing::warn!("⚠️  This is INSECURE for production use!");
         }
 
-        // Validate server port
         if self.server.port == 0 {
             anyhow::bail!("Server port cannot be 0");
         }
 
-        // Validate database URL
         if self.database.url.is_empty() {
             anyhow::bail!("Database URL cannot be empty");
         }
 
-        // Validate metrics collector
         if self.metrics.interval_secs == 0 {
             anyhow::bail!("metrics.interval_secs must be > 0");
         }
@@ -461,7 +450,6 @@ impl Default for MetricsCollectorConfig {
 // =========================
 
 fn parse_duration_to_secs(input: &str) -> Result<u64, String> {
-    // Accept plain numbers (treated as seconds)
     if let Ok(val) = input.parse::<u64>() {
         return Ok(val);
     }
@@ -482,7 +470,6 @@ fn parse_duration_to_secs(input: &str) -> Result<u64, String> {
 }
 
 fn parse_days_to_i64(input: &str) -> Result<i64, String> {
-    // Accept plain numbers (treated as days)
     if let Ok(val) = input.parse::<i64>() {
         return Ok(val);
     }

@@ -35,7 +35,6 @@ pub async fn auth_middleware(
     mut req: Request,
     next: Next,
 ) -> Result<Response, ApiError> {
-    // Extract path without query parameters
     let uri_full = req.uri().to_string();
     let uri = uri_full.split('?').next().unwrap_or(&uri_full).to_string();
     let method = req.method().to_string();
@@ -70,7 +69,6 @@ pub async fn auth_middleware(
         uri
     );
 
-    // Load organization and role info with a single query
     let (is_super_admin, organization_id): (bool, Option<i64>) = sqlx::query_as(
         r#"
         SELECT
@@ -92,18 +90,15 @@ pub async fn auth_middleware(
     .unwrap_or(None)
     .unwrap_or((false, None));
 
-    // Fallback: fetch from user_organizations if organization_id is still None
     let organization_id = if organization_id.is_none() {
         fetch_org_from_user_organizations(&state.db, user_id).await
     } else {
         organization_id
     };
 
-    // Insert legacy extensions to keep backward compatibility
     req.extensions_mut().insert(user_id);
     req.extensions_mut().insert(claims.username.clone());
 
-    // Insert org context for downstream services/handlers
     let org_ctx =
         OrgContext { user_id, username: claims.username.clone(), organization_id, is_super_admin };
     req.extensions_mut().insert(org_ctx.clone());

@@ -18,7 +18,6 @@ impl MaterializedViewService {
         &self,
         database: Option<&str>,
     ) -> ApiResult<Vec<MaterializedView>> {
-        // Use information_schema for faster query and accurate row counts
         let sql = if let Some(db) = database {
             format!(
                 "SELECT 
@@ -43,7 +42,6 @@ impl MaterializedViewService {
                 db
             )
         } else {
-            // Exclude system databases
             "SELECT 
                 mv.MATERIALIZED_VIEW_ID as `id`,
                 mv.TABLE_NAME as `name`,
@@ -76,18 +74,15 @@ impl MaterializedViewService {
 
     /// Get a specific materialized view by name
     pub async fn get_materialized_view(&self, mv_name: &str) -> ApiResult<MaterializedView> {
-        // Search across all databases
         let databases = self.get_all_databases().await?;
 
         for db in &databases {
-            // Try async MVs
             if let Ok(mvs) = self.get_async_mvs_from_db(db).await
                 && let Some(mv) = mvs.into_iter().find(|m| m.name == mv_name)
             {
                 return Ok(mv);
             }
 
-            // Try sync MVs
             if let Ok(mvs) = self.get_sync_mvs_from_db(db).await
                 && let Some(mv) = mvs.into_iter().find(|m| m.name == mv_name)
             {
@@ -100,37 +95,29 @@ impl MaterializedViewService {
 
     /// Get DDL for a materialized view
     pub async fn get_materialized_view_ddl(&self, mv_name: &str) -> ApiResult<String> {
-        // First, find which database the MV belongs to
         let mv = self.get_materialized_view(mv_name).await?;
 
-        // For sync MVs (ROLLUP), the DDL is already stored in the 'text' field from SHOW MATERIALIZED VIEWS
-        // ROLLUP MVs are indexes on tables, not standalone views, so SHOW CREATE MATERIALIZED VIEW doesn't work
         if mv.refresh_type == "ROLLUP" {
             if !mv.text.is_empty() {
                 tracing::info!("Using DDL from MV text field for ROLLUP: {}", mv_name);
                 return Ok(mv.text.clone());
             }
-            // Fallback: try to construct DDL from SHOW ALTER MATERIALIZED VIEW
-            // But for now, return the text field or error
+
             return Err(ApiError::not_found(format!(
                 "DDL for sync MV (ROLLUP) '{}' not available. ROLLUP MVs are table indexes, not standalone views.",
                 mv_name
             )));
         }
 
-        // Create a session to use database context for async MVs
         let mut session = self.mysql_client.create_session().await?;
         session.use_database(&mv.database_name).await?;
 
-        // For async MVs, use SHOW CREATE MATERIALIZED VIEW
-        // Try different syntaxes
         let sql1 = format!("SHOW CREATE MATERIALIZED VIEW `{}`.`{}`", mv.database_name, mv_name);
         tracing::info!("Querying async MV DDL (attempt 1): {}", sql1);
 
         let (column_names, rows) = match session.execute(&sql1).await {
             Ok((cols, rows, _)) => (cols, rows),
             Err(_) => {
-                // Fallback: try without database prefix (already in database context)
                 let sql2 = format!("SHOW CREATE MATERIALIZED VIEW `{}`", mv_name);
                 tracing::info!("Querying async MV DDL (attempt 2): {}", sql2);
                 let (cols, rows, _) = session.execute(&sql2).await?;
@@ -138,7 +125,6 @@ impl MaterializedViewService {
             },
         };
 
-        // Convert rows to JSON format for consistent processing
         let mut results = Vec::new();
         for row in rows {
             let mut obj = serde_json::Map::new();
@@ -150,10 +136,7 @@ impl MaterializedViewService {
             results.push(serde_json::Value::Object(obj));
         }
 
-        // Extract DDL from result
-        // StarRocks returns column name as "Create Materialized View" or "Create View"
         if let Some(row) = results.first() {
-            // Try different possible column names
             if let Some(ddl_val) = row.get("Create Materialized View")
                 && let Some(ddl) = ddl_val.as_str()
             {
@@ -164,7 +147,7 @@ impl MaterializedViewService {
             {
                 return Ok(ddl.to_string());
             }
-            // If column name doesn't match, try to get the first string value from the row
+
             if let Some(obj) = row.as_object() {
                 for (_key, value) in obj {
                     if let Some(ddl) = value.as_str() {
@@ -186,8 +169,6 @@ impl MaterializedViewService {
 
     /// Drop a materialized view
     pub async fn drop_materialized_view(&self, mv_name: &str, if_exists: bool) -> ApiResult<()> {
-        // First, find which database the MV belongs to (if not using IF EXISTS, we need to know)
-        // For IF EXISTS, we still try to find it, but don't fail if not found
         let database = if if_exists {
             match self.get_materialized_view(mv_name).await {
                 Ok(mv) => Some(mv.database_name),
@@ -204,7 +185,6 @@ impl MaterializedViewService {
                 format!("DROP MATERIALIZED VIEW `{}`.`{}`", db, mv_name)
             }
         } else {
-            // Fallback for IF EXISTS when MV not found
             format!("DROP MATERIALIZED VIEW IF EXISTS `{}`", mv_name)
         };
 
@@ -222,10 +202,8 @@ impl MaterializedViewService {
         force: bool,
         mode: &str,
     ) -> ApiResult<()> {
-        // First, find which database the MV belongs to
         let mv = self.get_materialized_view(mv_name).await?;
 
-        // Build SQL with database name
         let mut sql = format!("REFRESH MATERIALIZED VIEW `{}`.`{}`", mv.database_name, mv_name);
 
         if let (Some(start), Some(end)) = (partition_start, partition_end) {
@@ -249,7 +227,6 @@ impl MaterializedViewService {
         mv_name: &str,
         force: bool,
     ) -> ApiResult<()> {
-        // First, find which database the MV belongs to
         let mv = self.get_materialized_view(mv_name).await?;
 
         let sql = if force {
@@ -268,7 +245,6 @@ impl MaterializedViewService {
         mv_name: &str,
         alter_clause: &str,
     ) -> ApiResult<()> {
-        // First, find which database the MV belongs to
         let mv = self.get_materialized_view(mv_name).await?;
 
         let sql = format!(
@@ -280,8 +256,6 @@ impl MaterializedViewService {
         Ok(())
     }
 
-    // ========== Private Helper Methods ==========
-
     /// Get all databases (excluding system databases)
     async fn get_all_databases(&self) -> ApiResult<Vec<String>> {
         let sql = "SHOW DATABASES";
@@ -292,7 +266,6 @@ impl MaterializedViewService {
 
         for row in results {
             if let Some(db_name) = row.get("Database").and_then(|v| v.as_str()) {
-                // Skip system databases
                 if db_name != "information_schema" && db_name != "_statistics_" {
                     databases.push(db_name.to_string());
                 }
@@ -405,7 +378,6 @@ impl MaterializedViewService {
         let mut mvs = Vec::new();
 
         for row in results {
-            // Only include FINISHED sync MVs
             let state = row.get("State").and_then(|v| v.as_str()).unwrap_or("");
 
             if state != "FINISHED" {
@@ -515,7 +487,6 @@ impl MaterializedViewService {
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string()),
                 rows: row.get("rows").and_then(|v| {
-                    // Try as i64 first, then as string
                     v.as_i64()
                         .or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok()))
                 }),

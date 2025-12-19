@@ -31,7 +31,6 @@ impl JwtUtil {
     }
 
     fn parse_expiration(expires_in: &str) -> i64 {
-        // Parse "24h", "7d", etc.
         if expires_in.ends_with('h') {
             expires_in.trim_end_matches('h').parse().unwrap_or(24)
         } else if expires_in.ends_with('d') {

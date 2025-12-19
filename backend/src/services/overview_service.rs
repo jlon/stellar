@@ -52,14 +52,11 @@ pub struct ClusterOverview {
     pub cluster_name: String,
     pub timestamp: DateTime<Utc>,
 
-    // Real-time snapshot
     pub latest_snapshot: Option<MetricsSnapshot>,
 
-    // Historical trends (time series data)
     pub performance_trends: PerformanceTrends,
     pub resource_trends: ResourceTrends,
 
-    // Aggregated statistics
     pub statistics: AggregatedStatistics,
 }
 
@@ -321,47 +318,33 @@ pub struct ExtendedClusterOverview {
     pub cluster_name: String,
     pub timestamp: DateTime<Utc>,
 
-    // Module 1: Cluster Health (P0)
     pub health: ClusterHealth,
 
-    // Module 2: Key Performance Indicators (P0)
     pub kpi: KeyPerformanceIndicators,
 
-    // Module 3: Resource Metrics (P0)
     pub resources: ResourceMetrics,
 
-    // Module 4-5: Performance & Resource Trends (P0)
     pub performance_trends: PerformanceTrends,
     pub resource_trends: ResourceTrends,
 
-    // Module 6: Data Statistics (P1)
     pub data_stats: Option<DataStatistics>,
 
-    // Module 7: Materialized Views (P1)
     pub mv_stats: MaterializedViewStats,
 
-    // Module 8: Load Jobs (P1)
     pub load_jobs: LoadJobStats,
 
-    // Module 9: Transactions (P1)
     pub transactions: TransactionStats,
 
-    // Module 10: Schema Changes (P1)
     pub schema_changes: SchemaChangeStats,
 
-    // Module 11: Compaction (P1)
     pub compaction: CompactionStats,
 
-    // Module 12: Sessions (P1)
     pub sessions: SessionStats,
 
-    // Module 13: Network & IO (P1)
     pub network_io: NetworkIOStats,
 
-    // Module 17: Capacity Prediction (P2)
     pub capacity: Option<CapacityPrediction>,
 
-    // Module 18: Alerts (P2)
     pub alerts: Vec<Alert>,
 }
 
@@ -401,16 +384,12 @@ impl OverviewService {
             time_range
         );
 
-        // Get cluster info
         let cluster = self.cluster_service.get_cluster(cluster_id).await?;
 
-        // Get latest snapshot
         let latest_snapshot = self.get_latest_snapshot(cluster_id).await?;
 
-        // Get historical snapshots for trends
         let history = self.get_history_snapshots(cluster_id, &time_range).await?;
 
-        // Calculate trends and statistics
         let performance_trends = self.calculate_performance_trends(&history);
         let resource_trends = self.calculate_resource_trends(&history);
         let statistics = self.calculate_aggregated_statistics(&history);
@@ -444,7 +423,6 @@ impl OverviewService {
 
         let mut cards = Vec::new();
 
-        // Cluster Status Card
         let cluster_status = if snapshot.backend_alive == snapshot.backend_total
             && snapshot.frontend_alive == snapshot.frontend_total
         {
@@ -468,7 +446,6 @@ impl OverviewService {
             description: "Compute nodes (BE/CN) and Frontend nodes availability".to_string(),
         });
 
-        // QPS Card
         let qps_status = if snapshot.qps < 100.0 {
             HealthStatus::Healthy
         } else if snapshot.qps < 1000.0 {
@@ -484,7 +461,6 @@ impl OverviewService {
             description: "Current queries per second".to_string(),
         });
 
-        // CPU Usage Card
         let cpu_status = if snapshot.avg_cpu_usage < 70.0 {
             HealthStatus::Healthy
         } else if snapshot.avg_cpu_usage < 85.0 {
@@ -500,7 +476,6 @@ impl OverviewService {
             description: "Average CPU usage across all compute nodes".to_string(),
         });
 
-        // Disk Usage Card
         let disk_status = if snapshot.disk_usage_pct < 70.0 {
             HealthStatus::Healthy
         } else if snapshot.disk_usage_pct < 85.0 {
@@ -566,7 +541,6 @@ impl OverviewService {
     ///
     /// Uses linear regression on historical disk usage data to predict when disk will be full
     pub async fn predict_capacity(&self, cluster_id: i64) -> ApiResult<CapacityPrediction> {
-        // Get last 2 hours of disk usage data (minimum requirement)
         let cutoff = Utc::now() - chrono::Duration::hours(2);
 
         let snapshots: Vec<(i64, i64, f64, NaiveDateTime)> = sqlx::query_as(
@@ -592,15 +566,12 @@ impl OverviewService {
             ));
         }
 
-        // Get latest values
         let latest = snapshots.last().unwrap();
         let disk_total_bytes = latest.0;
         let disk_usage_pct = latest.2;
-        // Calculate disk_used_bytes from percentage (as stored value may be 0 in shared-nothing arch)
+
         let disk_used_bytes = ((disk_total_bytes as f64) * disk_usage_pct / 100.0) as i64;
 
-        // Perform linear regression on disk_used_bytes over time
-        // y = disk_used_bytes, x = days since first snapshot
         let first_time = snapshots.first().unwrap().3.and_utc().timestamp();
         let last_time = snapshots.last().unwrap().3.and_utc().timestamp();
         let time_span_days = (last_time - first_time) as f64 / 86400.0;
@@ -615,8 +586,8 @@ impl OverviewService {
         let mut max_y = f64::MIN;
 
         for snapshot in &snapshots {
-            let x = (snapshot.3.and_utc().timestamp() - first_time) as f64 / 86400.0; // days
-            // Calculate used bytes from percentage for each snapshot
+            let x = (snapshot.3.and_utc().timestamp() - first_time) as f64 / 86400.0;
+
             let y = (snapshot.0 as f64) * snapshot.2 / 100.0;
 
             min_y = min_y.min(y);
@@ -628,23 +599,19 @@ impl OverviewService {
             sum_x2 += x * x;
         }
 
-        // Calculate slope (daily growth rate in bytes)
         let denominator = n * sum_x2 - sum_x * sum_x;
         let daily_growth_bytes = if denominator.abs() < 1e-10 {
-            // If denominator is too small, slope is undefined or unstable
             0
         } else {
             let slope = (n * sum_xy - sum_x * sum_y) / denominator;
 
-            // Sanity check: if data variance is too small or slope is unreasonably large, set to 0
             let data_variance = max_y - min_y;
             let slope_abs = slope.abs();
 
-            if data_variance < 1_000_000_000.0 || // < 1GB variance
-               slope_abs > 10_000_000_000_000.0 || // > 10TB/day (unreasonable)
-               time_span_days < 0.01
+            if data_variance < 1_000_000_000.0
+                || slope_abs > 10_000_000_000_000.0
+                || time_span_days < 0.01
             {
-                // < 15 minutes (too short for regression)
                 tracing::debug!(
                     "Linear regression unstable: variance={:.0}, slope={:.0}, time_span={:.3} days. Setting growth to 0.",
                     data_variance,
@@ -657,9 +624,7 @@ impl OverviewService {
             }
         };
 
-        // Determine growth trend
         let growth_trend = if daily_growth_bytes > 1_000_000_000 {
-            // > 1GB/day
             "increasing"
         } else if daily_growth_bytes > 0 {
             "stable"
@@ -667,7 +632,6 @@ impl OverviewService {
             "decreasing"
         };
 
-        // Calculate days until full (if disk is growing)
         let (days_until_full, predicted_full_date) = if daily_growth_bytes > 0 {
             let remaining_bytes = disk_total_bytes - disk_used_bytes;
             let days = (remaining_bytes as f64 / daily_growth_bytes as f64).ceil() as i32;
@@ -680,7 +644,6 @@ impl OverviewService {
             (None, None)
         };
 
-        // Note: real_data_size_bytes will be set in get_extended_overview() from data_stats
         Ok(CapacityPrediction {
             disk_total_bytes,
             disk_used_bytes,
@@ -689,13 +652,9 @@ impl OverviewService {
             days_until_full,
             predicted_full_date,
             growth_trend: growth_trend.to_string(),
-            real_data_size_bytes: 0, // Will be populated from data_stats.total_data_size in get_extended_overview()
+            real_data_size_bytes: 0,
         })
     }
-
-    // ========================================
-    // Internal helper methods
-    // ========================================
 
     /// Get the latest snapshot for a cluster
     async fn get_latest_snapshot(&self, cluster_id: i64) -> ApiResult<Option<MetricsSnapshot>> {
@@ -1233,7 +1192,7 @@ impl OverviewService {
             p99_latency_ms,
             p99_latency_trend,
             success_rate,
-            success_rate_trend: 0.0, // TODO: Calculate from history
+            success_rate_trend: 0.0,
             error_rate,
         }
     }
@@ -1246,7 +1205,6 @@ impl OverviewService {
     ) -> ResourceMetrics {
         let current = snapshot.as_ref();
 
-        // Calculate trends
         let prev_avg_cpu = if snapshots.len() > 1 {
             let prev = &snapshots[0..snapshots.len() - 1];
             prev.iter().map(|s| s.avg_cpu_usage).sum::<f64>() / prev.len() as f64
@@ -1277,9 +1235,9 @@ impl OverviewService {
             cpu_usage_pct,
             cpu_trend,
             memory_usage_pct,
-            memory_trend: 0.0, // TODO: Calculate
+            memory_trend: 0.0,
             disk_usage_pct,
-            disk_trend: 0.0, // TODO: Calculate
+            disk_trend: 0.0,
             compaction_score,
             compaction_status,
         }
@@ -1287,33 +1245,41 @@ impl OverviewService {
 
     /// Module 7: Get MV stats from information_schema
     async fn get_mv_stats(&self, cluster_id: i64) -> ApiResult<MaterializedViewStats> {
-        // Get cluster info
         let cluster = self.cluster_service.get_cluster(cluster_id).await?;
 
-        // Use cluster adapter to get materialized views (supports both StarRocks and Doris)
-        let adapter = crate::services::create_adapter(cluster.clone(), self.mysql_pool_manager.clone());
+        let adapter =
+            crate::services::create_adapter(cluster.clone(), self.mysql_pool_manager.clone());
 
-        // Get all materialized views - for Doris, this may return empty list if not supported
         let mvs = match adapter.list_materialized_views(None).await {
             Ok(mvs) => mvs,
             Err(e) => {
-                tracing::warn!("Failed to list materialized views for cluster {}: {}. Returning zero stats.", cluster.name, e);
-                // Return zero stats if MV listing fails (e.g., Doris doesn't have the table)
-                return Ok(MaterializedViewStats { total: 0, running: 0, success: 0, failed: 0, pending: 0 });
-        }
+                tracing::warn!(
+                    "Failed to list materialized views for cluster {}: {}. Returning zero stats.",
+                    cluster.name,
+                    e
+                );
+
+                return Ok(MaterializedViewStats {
+                    total: 0,
+                    running: 0,
+                    success: 0,
+                    failed: 0,
+                    pending: 0,
+                });
+            },
         };
 
         let total = mvs.len() as i32;
         let active = mvs.iter().filter(|mv| mv.is_active).count() as i32;
         let inactive = mvs.iter().filter(|mv| !mv.is_active).count() as i32;
 
-            Ok(MaterializedViewStats {
+        Ok(MaterializedViewStats {
             total,
-            running: 0, // Would need to query running tasks
+            running: 0,
             success: active,
             failed: inactive,
             pending: 0,
-            })
+        })
     }
 
     /// Module 8: Get load job stats from SHOW LOAD
@@ -1323,23 +1289,18 @@ impl OverviewService {
         time_range: &TimeRange,
     ) -> ApiResult<LoadJobStats> {
         use crate::models::cluster::ClusterType;
-        
-        // Get cluster info
+
         let cluster = self.cluster_service.get_cluster(cluster_id).await?;
 
-        // Get MySQL connection pool and create client
         let pool = self.mysql_pool_manager.get_pool(&cluster).await?;
         let mysql_client = MySQLClient::from_pool(pool);
 
-        // Calculate time range start time
         let start_time = time_range.start_time();
 
-        // Different query strategies for StarRocks and Doris
         let (columns, rows) = match cluster.cluster_type {
             ClusterType::StarRocks => {
-                // StarRocks: Query from information_schema.loads (global view)
-        let query = format!(
-            r#"
+                let query = format!(
+                    r#"
             SELECT 
                 State,
                 COUNT(*) as count
@@ -1347,48 +1308,50 @@ impl OverviewService {
             WHERE CREATE_TIME >= '{}'
             GROUP BY State
             "#,
-            start_time.format("%Y-%m-%d %H:%M:%S")
-        );
+                    start_time.format("%Y-%m-%d %H:%M:%S")
+                );
                 mysql_client.query_raw(&query).await?
             },
             ClusterType::Doris => {
-                // Doris: Aggregate from SHOW LOAD across all databases
-                // SHOW LOAD states: PENDING, ETL, LOADING, COMMITTED, FINISHED, CANCELLED, RETRY
                 tracing::debug!("[Doris] Aggregating load jobs from all databases");
-                
-                // Get all user databases (exclude system databases)
+
                 let (_, db_rows) = mysql_client.query_raw("SHOW DATABASES").await?;
                 let mut all_states = std::collections::HashMap::new();
-                
+
                 for db_row in db_rows {
                     if let Some(db_name) = db_row.first() {
-                        // Skip system databases
-                        if db_name.starts_with("__") 
-                            || db_name == "information_schema" 
-                            || db_name == "mysql" 
-                            || db_name == "sys" {
+                        if db_name.starts_with("__")
+                            || db_name == "information_schema"
+                            || db_name == "mysql"
+                            || db_name == "sys"
+                        {
                             continue;
                         }
-                        
-                        // Query SHOW LOAD for this database
+
                         let show_load_sql = format!("USE {}; SHOW LOAD", db_name);
-                        if let Ok((cols, load_rows)) = mysql_client.query_raw(&show_load_sql).await {
-                            // Find State and CreateTime column indices
-                            let state_idx = cols.iter().position(|c| c.eq_ignore_ascii_case("State"));
-                            let create_time_idx = cols.iter().position(|c| c.eq_ignore_ascii_case("CreateTime"));
-                            
+                        if let Ok((cols, load_rows)) = mysql_client.query_raw(&show_load_sql).await
+                        {
+                            let state_idx =
+                                cols.iter().position(|c| c.eq_ignore_ascii_case("State"));
+                            let create_time_idx = cols
+                                .iter()
+                                .position(|c| c.eq_ignore_ascii_case("CreateTime"));
+
                             if let (Some(s_idx), Some(t_idx)) = (state_idx, create_time_idx) {
                                 for load_row in load_rows {
-                                    // Check if load job is within time range
                                     if let Some(create_time_str) = load_row.get(t_idx) {
-                                        // Parse create time and compare
-                                        if let Ok(create_time) = chrono::NaiveDateTime::parse_from_str(
-                                            create_time_str, "%Y-%m-%d %H:%M:%S"
-                                        ) {
+                                        if let Ok(create_time) =
+                                            chrono::NaiveDateTime::parse_from_str(
+                                                create_time_str,
+                                                "%Y-%m-%d %H:%M:%S",
+                                            )
+                                        {
                                             let start_naive = start_time.naive_utc();
                                             if create_time >= start_naive {
                                                 if let Some(state) = load_row.get(s_idx) {
-                                                    *all_states.entry(state.clone()).or_insert(0) += 1;
+                                                    *all_states
+                                                        .entry(state.clone())
+                                                        .or_insert(0) += 1;
                                                 }
                                             }
                                         }
@@ -1398,17 +1361,16 @@ impl OverviewService {
                         }
                     }
                 }
-                
-                // Convert HashMap to rows format
-                let state_rows: Vec<Vec<String>> = all_states.into_iter()
+
+                let state_rows: Vec<Vec<String>> = all_states
+                    .into_iter()
                     .map(|(state, count)| vec![state, count.to_string()])
                     .collect();
-                
+
                 (vec!["State".to_string(), "count".to_string()], state_rows)
             },
         };
 
-        // Build column index map
         let mut col_idx = std::collections::HashMap::new();
         for (i, col) in columns.iter().enumerate() {
             col_idx.insert(col.clone(), i);
@@ -1431,18 +1393,15 @@ impl OverviewService {
                 .and_then(|s| s.parse::<i64>().ok())
                 .unwrap_or(0);
 
-            // Map states to stats
-            // StarRocks: LOADING, PENDING, QUEUEING, FINISHED, CANCELLED
-            // Doris: PENDING, ETL, LOADING, COMMITTED, FINISHED, CANCELLED, RETRY
             match state.to_uppercase().as_str() {
                 "LOADING" => stats.running += count as i32,
-                "ETL" => stats.running += count as i32,  // Doris ETL state = running
-                "COMMITTED" => stats.running += count as i32,  // Doris COMMITTED = running
+                "ETL" => stats.running += count as i32,
+                "COMMITTED" => stats.running += count as i32,
                 "PENDING" | "QUEUEING" => stats.pending += count as i32,
-                "RETRY" => stats.pending += count as i32,  // Doris RETRY = pending
+                "RETRY" => stats.pending += count as i32,
                 "FINISHED" => stats.finished += count as i32,
                 "CANCELLED" => stats.cancelled += count as i32,
-                _ => stats.failed += count as i32, // Treat unknown states as failed
+                _ => stats.failed += count as i32,
             }
         }
 
@@ -1466,32 +1425,21 @@ impl OverviewService {
         cluster_id: i64,
         time_range: &TimeRange,
     ) -> ApiResult<SchemaChangeStats> {
-        use crate::services::MySQLClient;
         use crate::models::cluster::ClusterType;
+        use crate::services::MySQLClient;
 
         let cluster = self.cluster_service.get_cluster(cluster_id).await?;
         let pool = self.mysql_pool_manager.get_pool(&cluster).await?;
         let mysql_client = MySQLClient::from_pool(pool);
 
-        // Calculate time range start time
         let start_time = time_range.start_time();
 
-        // Query ALTER TABLE operations from audit logs
-        // Track schema changes by analyzing DDL statements in the audit log
-        // Use different audit log tables for StarRocks and Doris
-        let (audit_table, time_field, is_query_field, stmt_type_field) = match cluster.cluster_type {
-            ClusterType::StarRocks => (
-                "starrocks_audit_db__.starrocks_audit_tbl__",
-                "timestamp",
-                "isQuery",
-                "queryType"
-            ),
-            ClusterType::Doris => (
-                "__internal_schema.audit_log",
-                "time",
-                "is_query",
-                "stmt_type"
-            ),
+        let (audit_table, time_field, is_query_field, stmt_type_field) = match cluster.cluster_type
+        {
+            ClusterType::StarRocks => {
+                ("starrocks_audit_db__.starrocks_audit_tbl__", "timestamp", "isQuery", "queryType")
+            },
+            ClusterType::Doris => ("__internal_schema.audit_log", "time", "is_query", "stmt_type"),
         };
 
         let query = format!(
@@ -1512,7 +1460,6 @@ impl OverviewService {
 
         let (columns, rows) = mysql_client.query_raw(&query).await?;
 
-        // Build column index map
         let mut col_idx = std::collections::HashMap::new();
         for (i, col) in columns.iter().enumerate() {
             col_idx.insert(col.clone(), i);
@@ -1521,7 +1468,6 @@ impl OverviewService {
         let mut stats =
             SchemaChangeStats { running: 0, pending: 0, finished: 0, failed: 0, cancelled: 0 };
 
-        // Parse results and aggregate by state
         for row in rows {
             let state = col_idx
                 .get("state")
@@ -1541,7 +1487,7 @@ impl OverviewService {
                 "FINISHED" | "OK" | "EOF" => stats.finished += count,
                 "CANCELLED" | "CANCEL" => stats.cancelled += count,
                 "FAILED" | "ERROR" => stats.failed += count,
-                _ => {}, // Ignore unknown states
+                _ => {},
             }
         }
 
@@ -1553,56 +1499,44 @@ impl OverviewService {
     /// Note: Compaction Score is calculated at FE level per Partition, not per BE.
     /// Reference: https://forum.mirrorship.cn/t/topic/13256
     async fn get_compaction_stats(&self, cluster_id: i64) -> ApiResult<CompactionStats> {
-        use crate::services::MySQLClient;
         use crate::models::cluster::ClusterType;
+        use crate::services::MySQLClient;
 
-        // Get cluster info
         let cluster = self.cluster_service.get_cluster(cluster_id).await?;
 
-        // Get compaction stats based on cluster type
         let (base_compaction_running, cumulative_compaction_running) = match cluster.cluster_type {
             ClusterType::StarRocks => {
-                // StarRocks uses SHOW PROC '/compactions' to get running compaction tasks
-        let pool = self.mysql_pool_manager.get_pool(&cluster).await?;
-        let client = MySQLClient::from_pool(pool);
+                let pool = self.mysql_pool_manager.get_pool(&cluster).await?;
+                let client = MySQLClient::from_pool(pool);
 
-        let query = "SHOW PROC '/compactions'";
-        let (_headers, rows) = client.query_raw(query).await.unwrap_or((vec![], vec![]));
+                let query = "SHOW PROC '/compactions'";
+                let (_headers, rows) = client.query_raw(query).await.unwrap_or((vec![], vec![]));
 
-                // In StarRocks shared-data mode, there are no separate base/cumulative compactions
-        let total_running = rows.len() as i32;
+                let total_running = rows.len() as i32;
                 (0, total_running)
             },
             ClusterType::Doris => {
-                // Doris doesn't have a global compaction task list like StarRocks
-                // Doris compaction info is tablet-level via BE HTTP API: /api/compaction/show?tablet_id=xxx
-                // Querying all tablets would be too expensive, so we return 0 for running tasks
-                // Note: Doris has SHOW PROC '/cluster_health/tablet_health' which shows 
-                // ReplicaCompactionTooSlowNum, but not running compaction count
-                tracing::debug!("[Doris] Compaction running task count not available (tablet-level API only)");
+                tracing::debug!(
+                    "[Doris] Compaction running task count not available (tablet-level API only)"
+                );
                 (0, 0)
             },
         };
 
         let total_running = base_compaction_running + cumulative_compaction_running;
 
-        // Get max compaction score from metrics snapshot
-        // Compaction score is stored in our metrics_snapshots table
         let latest_snapshot = self.get_latest_snapshot(cluster_id).await?;
         let max_score = latest_snapshot
             .as_ref()
             .map(|s| s.max_compaction_score)
             .unwrap_or(0.0);
 
-        // For storage-compute separation mode, we don't track per-BE compaction scores
-        // because compaction is scheduled at Partition level by FE
-        // We can provide a simplified view based on latest snapshot
         Ok(CompactionStats {
-            base_compaction_running: 0, // Not applicable in shared-data mode
-            cumulative_compaction_running: total_running, // Total compaction tasks
+            base_compaction_running: 0,
+            cumulative_compaction_running: total_running,
             max_score,
-            avg_score: max_score, // In shared-data, score is per-partition, not per-BE
-            be_scores: Vec::new(), // Not applicable - compaction score is per-partition in FE
+            avg_score: max_score,
+            be_scores: Vec::new(),
         })
     }
 
@@ -1617,18 +1551,16 @@ impl OverviewService {
         cluster_id: i64,
         time_range: &str,
     ) -> ApiResult<CompactionDetailStats> {
-        use crate::services::MySQLClient;
         use crate::models::cluster::ClusterType;
+        use crate::services::MySQLClient;
 
-        // Get cluster info
         let cluster = self.cluster_service.get_cluster(cluster_id).await?;
 
-        // Doris uses HTTP API for compaction, not SHOW PROC
-        // For now, return minimal stats for Doris as full implementation requires BE HTTP API integration
         if cluster.cluster_type == ClusterType::Doris {
-            tracing::debug!("[Doris] Compaction detail stats via HTTP API not fully implemented yet");
-            // TODO: Implement full Doris compaction stats via BE HTTP API
-            // Reference: https://doris.apache.org/zh-CN/docs/4.x/admin-manual/open-api/be-http/compaction-run
+            tracing::debug!(
+                "[Doris] Compaction detail stats via HTTP API not fully implemented yet"
+            );
+
             return Ok(CompactionDetailStats {
                 top_partitions: vec![],
                 task_stats: CompactionTaskStats {
@@ -1644,21 +1576,17 @@ impl OverviewService {
             });
         }
 
-        // Get MySQL connection pool
         let pool = self.mysql_pool_manager.get_pool(&cluster).await?;
         let client = MySQLClient::from_pool(pool);
 
-        // Calculate time filter based on time_range parameter
         let hours_back = match time_range {
             "1h" => 1,
             "6h" => 6,
             "24h" => 24,
             "3d" => 72,
-            _ => 1, // default to 1 hour
+            _ => 1,
         };
 
-        // Query 1: Get Top 10 partitions by compaction score
-        // Filter out system databases and tables (both StarRocks and Doris)
         let top_partitions_query = r#"
             SELECT 
                 DB_NAME, 
@@ -1687,8 +1615,6 @@ impl OverviewService {
                     let db_name = row.first().map(|s| s.to_string()).unwrap_or_default();
                     let table_name = row.get(1).map(|s| s.to_string()).unwrap_or_default();
 
-                    // Filter out system databases (double protection)
-                    // Filter out system databases and tables (both StarRocks and Doris)
                     if db_name == "_statistics_"
                         || db_name == "information_schema"
                         || db_name == "sys"
@@ -1716,8 +1642,6 @@ impl OverviewService {
             })
             .collect();
 
-        // Query 2: Get task statistics from SHOW PROC '/compactions'
-        // Note: SHOW PROC cannot be used in subqueries, so we'll get all data and filter in Rust
         let task_stats_query = r#"SHOW PROC '/compactions'"#;
 
         let (_headers, rows) = client
@@ -1727,7 +1651,6 @@ impl OverviewService {
 
         tracing::debug!("Compaction PROC query returned {} rows", rows.len());
 
-        // Process compaction data in Rust since SHOW PROC cannot be used in subqueries
         let mut total_count = 0;
         let mut running_count = 0;
         let mut finished_count = 0;
@@ -1735,14 +1658,11 @@ impl OverviewService {
 
         for row in &rows {
             if row.len() >= 5 {
-                // Parse StartTime and FinishTime
                 let start_time_str = row.get(2).map(|s| s.to_string()).unwrap_or_default();
                 let finish_time_str = row.get(4).map(|s| s.to_string()).unwrap_or_default();
 
-                // Check if task is within time range or still running
                 let is_within_time_range = if !start_time_str.is_empty() && start_time_str != "NULL"
                 {
-                    // Parse start time and check if within range
                     if let Ok(start_time) =
                         chrono::NaiveDateTime::parse_from_str(&start_time_str, "%Y-%m-%d %H:%M:%S")
                     {
@@ -1766,7 +1686,6 @@ impl OverviewService {
                     } else {
                         finished_count += 1;
 
-                        // Calculate duration for finished tasks
                         if !start_time_str.is_empty()
                             && start_time_str != "NULL"
                             && !finish_time_str.is_empty()
@@ -1800,7 +1719,6 @@ impl OverviewService {
             finished_count
         );
 
-        // Calculate duration statistics from the durations we collected
         let duration_stats = if durations.is_empty() {
             CompactionDurationStats { min_duration_ms: 0, max_duration_ms: 0, avg_duration_ms: 0 }
         } else {
@@ -1830,20 +1748,16 @@ impl OverviewService {
         use crate::services::MySQLClient;
         use chrono::Utc;
 
-        // Get cluster info
         let cluster = self.cluster_service.get_cluster(cluster_id).await?;
 
-        // Get MySQL connection pool
         let pool = self.mysql_pool_manager.get_pool(&cluster).await?;
         let client = MySQLClient::from_pool(pool);
 
-        // Query SHOW PROCESSLIST to get current connections
         let query = "SHOW FULL PROCESSLIST";
         let (_headers, rows) = client.query_raw(query).await?;
 
         let current_connections = rows.len() as i32;
 
-        // Parse running queries (State = 'Query' and Time > 0)
         let mut running_queries = Vec::new();
 
         for row in &rows {
@@ -1852,11 +1766,9 @@ impl OverviewService {
                 let time_str = row.get(5).map(|s| s.as_str()).unwrap_or("0");
                 let info = row.get(7).map(|s| s.as_str()).unwrap_or("");
 
-                // Only include queries that are actively running
                 if state == "Query" && !info.is_empty() {
                     let time_secs = time_str.parse::<i64>().unwrap_or(0);
 
-                    // Skip internal queries and very short queries
                     if time_secs > 1 && !info.starts_with("SHOW") {
                         let query_id = row.first().map(|s| s.to_string()).unwrap_or_default();
                         let user = row.get(1).map(|s| s.to_string()).unwrap_or_default();
@@ -1876,11 +1788,9 @@ impl OverviewService {
             }
         }
 
-        // Sort by duration (longest first) and limit to top 10
         running_queries.sort_by(|a, b| b.duration_ms.cmp(&a.duration_ms));
         running_queries.truncate(10);
 
-        // Get active users from audit logs if available (simplified - use data statistics service)
         let (active_users_1h, active_users_24h) =
             if let Some(service) = &self.data_statistics_service {
                 match service.get_statistics(cluster_id).await {
@@ -1914,7 +1824,6 @@ impl OverviewService {
     ) -> Vec<Alert> {
         let mut alerts = Vec::new();
 
-        // Critical: Node offline
         if health.be_nodes_online < health.be_nodes_total {
             alerts.push(Alert {
                 level: AlertLevel::Critical,
@@ -1925,7 +1834,6 @@ impl OverviewService {
             });
         }
 
-        // Critical: Compaction score too high
         if health.compaction_score > 100.0 {
             alerts.push(Alert {
                 level: AlertLevel::Critical,
@@ -1936,7 +1844,6 @@ impl OverviewService {
             });
         }
 
-        // Warning: High disk usage
         if resources.disk_usage_pct > 80.0 {
             let level = if resources.disk_usage_pct > 90.0 {
                 AlertLevel::Critical
@@ -1952,7 +1859,6 @@ impl OverviewService {
             });
         }
 
-        // Warning: High CPU usage
         if resources.cpu_usage_pct > 80.0 {
             alerts.push(Alert {
                 level: AlertLevel::Warning,

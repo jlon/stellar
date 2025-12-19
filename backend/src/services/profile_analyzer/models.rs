@@ -55,12 +55,10 @@ impl SessionVariableInfo {
 fn parse_bytes_value(value: &str) -> Option<u64> {
     let value = value.trim();
 
-    // Try to parse as plain number first
     if let Ok(n) = value.parse::<u64>() {
         return Some(n);
     }
 
-    // Parse with unit suffix (e.g., "1.5 GB", "100 MB")
     let parts: Vec<&str> = value.split_whitespace().collect();
     if !parts.is_empty() {
         let num_str = parts[0].replace(",", "");
@@ -105,7 +103,6 @@ impl Profile {
     pub fn get_cluster_info(&self) -> ClusterInfo {
         use std::collections::HashSet;
 
-        // Collect unique backend addresses across all fragments
         let mut backends: HashSet<String> = HashSet::new();
         let mut total_instances = 0u32;
 
@@ -116,8 +113,6 @@ impl Profile {
             total_instances += fragment.instance_ids.len() as u32;
         }
 
-        // Extract total scan bytes from execution tree if available
-        // Look for BytesRead or CompressedBytesReadTotal in unique_metrics
         let total_scan_bytes = self
             .execution_tree
             .as_ref()
@@ -126,7 +121,6 @@ impl Profile {
                     .iter()
                     .filter(|n| n.operator_name.to_uppercase().contains("SCAN"))
                     .filter_map(|n| {
-                        // Try different metric names for bytes read
                         n.unique_metrics
                             .get("BytesRead")
                             .or_else(|| n.unique_metrics.get("CompressedBytesReadTotal"))
@@ -141,7 +135,7 @@ impl Profile {
             backend_num: backends.len() as u32,
             instance_num: total_instances,
             total_scan_bytes,
-            be_memory_limit: None, // Not available from profile, use default
+            be_memory_limit: None,
         }
     }
 }
@@ -187,7 +181,6 @@ pub struct ProfileSummary {
     #[serde(default)]
     pub non_default_variables: HashMap<String, SessionVariableInfo>,
 
-    // Memory metrics
     #[serde(skip_serializing_if = "Option::is_none")]
     pub query_allocated_memory: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -197,7 +190,6 @@ pub struct ProfileSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub query_deallocated_memory_usage: Option<String>,
 
-    // Time metrics
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total_time_ms: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -229,7 +221,6 @@ pub struct ProfileSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result_deliver_time_ms: Option<f64>,
 
-    // Planner metrics
     #[serde(skip_serializing_if = "Option::is_none")]
     pub planner_total_time: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -239,7 +230,6 @@ pub struct ProfileSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub collect_profile_time_ms: Option<f64>,
 
-    // IO metrics (aggregated from scan nodes, for disaggregated storage)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub io_seek_time: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -253,7 +243,6 @@ pub struct ProfileSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub remote_read_io_time_ms: Option<f64>,
 
-    // Aggregated IO statistics
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total_raw_rows_read: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -273,11 +262,9 @@ pub struct ProfileSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result_bytes_display: Option<String>,
 
-    // Spill metrics
     #[serde(skip_serializing_if = "Option::is_none")]
     pub query_spill_bytes: Option<String>,
 
-    // DataCache metrics (for disaggregated storage-compute clusters)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub datacache_hit_rate: Option<f64>, // 0.0 - 1.0
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -289,11 +276,9 @@ pub struct ProfileSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub datacache_bytes_remote_display: Option<String>,
 
-    // Top time-consuming nodes for quick overview
     #[serde(skip_serializing_if = "Option::is_none")]
     pub top_time_consuming_nodes: Option<Vec<TopNode>>,
 
-    // Profile completeness indicators
     /// Whether the profile is collected asynchronously
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_profile_async: Option<bool>,

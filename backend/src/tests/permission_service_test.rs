@@ -6,7 +6,7 @@ use crate::tests::common::{
 #[tokio::test]
 async fn test_list_permissions_empty() {
     let pool = create_test_db().await;
-    // Ensure database is empty
+
     sqlx::query("DELETE FROM permissions")
         .execute(&pool)
         .await
@@ -38,7 +38,7 @@ async fn test_list_permissions() {
     let permissions = result.unwrap();
     assert!(permissions.len() >= 6, "Should return all permissions");
 
-    // Check ordering (by type, then code)
+
     for i in 1..permissions.len() {
         let prev = &permissions[i - 1];
         let curr = &permissions[i];
@@ -61,7 +61,7 @@ async fn test_list_menu_permissions() {
     assert!(result.is_ok());
     let permissions = result.unwrap();
 
-    // Should only have menu permissions
+
     assert!(permissions.len() >= 3, "Should return menu permissions");
     for perm in &permissions {
         assert_eq!(perm.r#type, "menu", "Should only return menu permissions");
@@ -80,7 +80,7 @@ async fn test_list_api_permissions() {
     assert!(result.is_ok());
     let permissions = result.unwrap();
 
-    // Should only have API permissions
+
     assert!(permissions.len() >= 3, "Should return API permissions");
     for perm in &permissions {
         assert_eq!(perm.r#type, "api", "Should only return API permissions");
@@ -90,7 +90,7 @@ async fn test_list_api_permissions() {
 #[tokio::test]
 async fn test_get_permission_tree_empty() {
     let pool = create_test_db().await;
-    // Ensure database is empty
+
     sqlx::query("DELETE FROM permissions")
         .execute(&pool)
         .await
@@ -117,7 +117,7 @@ async fn test_get_permission_tree() {
 
     setup_test_data(&pool).await;
 
-    // Add a permission with parent
+
     let parent_permission_id: (i64,) =
         sqlx::query_as("SELECT id FROM permissions WHERE code = 'menu:dashboard'")
             .fetch_one(&pool)
@@ -142,7 +142,7 @@ async fn test_get_permission_tree() {
 
     assert!(!tree.is_empty(), "Should return tree structure");
 
-    // Check if tree structure is correct
+
     let has_children = tree.iter().any(|node| !node.children.is_empty());
     assert!(has_children, "Tree should have nested children");
 }
@@ -178,7 +178,7 @@ async fn test_get_user_permissions() {
 
     assert!(permissions.len() >= 6, "Admin user should have all permissions");
 
-    // Check ordering
+
     for i in 1..permissions.len() {
         let prev = &permissions[i - 1];
         let curr = &permissions[i];
@@ -202,7 +202,7 @@ async fn test_get_user_permissions_multiple_roles() {
     grant_permissions(&pool, operator_role_id, &limited_permissions).await;
     let user_id = crate::tests::common::create_test_user(&pool, "test_user").await;
 
-    // Assign both roles
+
     crate::tests::common::assign_role_to_user(&pool, user_id, admin_role_id).await;
     crate::tests::common::assign_role_to_user(&pool, user_id, operator_role_id).await;
 
@@ -210,7 +210,7 @@ async fn test_get_user_permissions_multiple_roles() {
     assert!(result.is_ok());
     let permissions = result.unwrap();
 
-    // Should have unique permissions (no duplicates)
+
     let codes: Vec<String> = permissions.iter().map(|p| p.code.clone()).collect();
     let unique_codes: std::collections::HashSet<String> = codes.iter().cloned().collect();
     assert_eq!(codes.len(), unique_codes.len(), "Should not have duplicate permissions");
@@ -235,7 +235,7 @@ async fn test_check_permission_with_permission() {
     let casbin_service = create_test_casbin_service().await;
     let service = PermissionService::new(pool.clone(), casbin_service.clone());
 
-    // Setup and reload policies
+
     let data = setup_test_data(&pool).await;
     let admin_role_id = data.admin_role_id;
     let user_id = crate::tests::common::create_test_user(&pool, "test_user").await;
@@ -243,7 +243,7 @@ async fn test_check_permission_with_permission() {
 
     casbin_service.reload_policies_from_db(&pool).await.unwrap();
 
-    // User should have permission
+
     let result = service
         .check_permission(user_id, "system:clusters", "create")
         .await;
@@ -264,12 +264,12 @@ async fn test_check_permission_different_action() {
 
     casbin_service.reload_policies_from_db(&pool).await.unwrap();
 
-    // User has create permission, but not different_action
+
     let result = service
         .check_permission(user_id, "system:clusters", "different_action")
         .await;
     assert!(result.is_ok());
-    // Might be false if action doesn't match
+
 }
 
 #[tokio::test]
@@ -284,7 +284,7 @@ async fn test_permission_response_conversion() {
     assert!(result.is_ok());
     let permissions = result.unwrap();
 
-    // Check that all permissions have required fields
+
     for perm in &permissions {
         assert!(!perm.code.is_empty(), "Permission code should not be empty");
         assert!(!perm.name.is_empty(), "Permission name should not be empty");

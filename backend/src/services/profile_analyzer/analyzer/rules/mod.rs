@@ -80,7 +80,6 @@ pub enum ParameterType {
 /// Get parameter metadata (description and impact) for common StarRocks parameters
 pub fn get_parameter_metadata(name: &str) -> ParameterMetadata {
     match name {
-        // ========== DataCache 相关 ==========
         "enable_scan_datacache" => ParameterMetadata {
             description: "启用 DataCache 读取缓存，允许从本地缓存读取数据而非远程存储".to_string(),
             impact: "提升存算分离架构下的查询性能，减少网络 IO".to_string(),
@@ -94,7 +93,6 @@ pub fn get_parameter_metadata(name: &str) -> ParameterMetadata {
             impact: "降低该值可减少缓存抖动，但可能导致缓存空间不足".to_string(),
         },
 
-        // ========== 查询优化相关 ==========
         "enable_query_cache" => ParameterMetadata {
             description: "启用查询结果缓存，相同查询可直接返回缓存结果".to_string(),
             impact: "对重复查询有显著加速，但会占用额外内存".to_string(),
@@ -112,7 +110,6 @@ pub fn get_parameter_metadata(name: &str) -> ParameterMetadata {
             impact: "可处理超大数据量查询，但会降低查询性能".to_string(),
         },
 
-        // ========== 扫描优化相关 ==========
         "enable_connector_adaptive_io_tasks" => ParameterMetadata {
             description: "启用连接器自适应 IO 任务数，根据数据量动态调整 IO 并行度".to_string(),
             impact: "可优化外部表扫描性能，平衡 IO 和 CPU 资源".to_string(),
@@ -126,7 +123,6 @@ pub fn get_parameter_metadata(name: &str) -> ParameterMetadata {
             impact: "增大可提升外部表扫描吞吐，但会增加远程存储压力".to_string(),
         },
 
-        // ========== Join 优化相关 ==========
         "hash_join_push_down_right_table" => ParameterMetadata {
             description: "启用 Hash Join 右表下推，将小表广播到各节点".to_string(),
             impact: "可减少数据 Shuffle，提升 Join 性能".to_string(),
@@ -136,7 +132,6 @@ pub fn get_parameter_metadata(name: &str) -> ParameterMetadata {
             impact: "可减少网络传输数据量，提升聚合性能".to_string(),
         },
 
-        // ========== Runtime Filter 相关 ==========
         "runtime_filter_on_exchange_node" => ParameterMetadata {
             description: "在 Exchange 节点启用 Runtime Filter，跨节点传递过滤条件".to_string(),
             impact: "可提前过滤数据减少 Shuffle，但会增加 Filter 构建开销".to_string(),
@@ -146,7 +141,6 @@ pub fn get_parameter_metadata(name: &str) -> ParameterMetadata {
             impact: "增大可支持更大的 Filter，但会占用更多内存".to_string(),
         },
 
-        // ========== 并行执行相关 ==========
         "parallel_fragment_exec_instance_num" => ParameterMetadata {
             description: "每个 Fragment 的并行执行实例数".to_string(),
             impact: "增大可提升并行度，但会占用更多资源".to_string(),
@@ -156,7 +150,6 @@ pub fn get_parameter_metadata(name: &str) -> ParameterMetadata {
             impact: "手动设置可控制资源使用，自动模式根据 CPU 核数调整".to_string(),
         },
 
-        // ========== 内存相关 ==========
         "query_mem_limit" => ParameterMetadata {
             description: "单个查询的内存限制 (字节)".to_string(),
             impact: "增大可处理更大数据量，但可能影响其他查询".to_string(),
@@ -166,7 +159,6 @@ pub fn get_parameter_metadata(name: &str) -> ParameterMetadata {
             impact: "增大可允许长时间运行的查询，但可能占用资源过久".to_string(),
         },
 
-        // ========== 聚合相关 ==========
         "streaming_preaggregation_mode" => ParameterMetadata {
             description: "流式预聚合模式 (auto/force_streaming/force_preaggregation)".to_string(),
             impact: "auto 模式自动选择最优策略，force 模式强制使用指定策略".to_string(),
@@ -176,19 +168,16 @@ pub fn get_parameter_metadata(name: &str) -> ParameterMetadata {
             impact: "可减少内存使用，但需要额外排序开销".to_string(),
         },
 
-        // ========== Profile 相关 ==========
         "pipeline_profile_level" => ParameterMetadata {
             description: "Pipeline Profile 详细级别 (0-2)".to_string(),
             impact: "级别越高信息越详细，但收集开销也越大".to_string(),
         },
 
-        // ========== BE 参数 ==========
         "storage_page_cache_limit" => ParameterMetadata {
             description: "BE 存储页缓存大小限制".to_string(),
             impact: "增大可提升热数据读取性能，但会占用更多内存".to_string(),
         },
 
-        // ========== 默认 ==========
         _ => ParameterMetadata {
             description: format!("StarRocks 参数 {}", name),
             impact: "请参考 StarRocks 官方文档了解详情".to_string(),
@@ -309,7 +298,6 @@ impl Diagnostic {
     pub fn to_hotspot(&self) -> HotSpot {
         let mut all_suggestions = self.suggestions.clone();
 
-        // Add parameter suggestions as formatted strings
         for param in &self.parameter_suggestions {
             all_suggestions.push(format!(
                 "调整参数: {} → {} (命令: {})",
@@ -437,7 +425,7 @@ impl<'a> RuleContext<'a> {
     /// Includes: HDFS, Hive, Iceberg, Hudi, Delta, Paimon, JDBC, MySQL, ES, File, etc.
     pub fn is_external_table(&self) -> bool {
         let op = self.node.operator_name.to_uppercase();
-        // Data lake connectors
+
         if op.contains("CONNECTOR")
             || op.contains("HDFS")
             || op.contains("HIVE")
@@ -449,7 +437,7 @@ impl<'a> RuleContext<'a> {
         {
             return true;
         }
-        // Database connectors (JDBC, MySQL, ES)
+
         if op.contains("JDBC")
             || op.contains("MYSQL")
             || op.contains("ES_SCAN")
@@ -457,7 +445,7 @@ impl<'a> RuleContext<'a> {
         {
             return true;
         }
-        // Check DataSourceType metric as fallback
+
         if let Some(ds) = self.node.unique_metrics.get("DataSourceType") {
             let ds_up = ds.to_uppercase();
             return ds_up.contains("HIVE")
@@ -520,13 +508,12 @@ impl<'a> RuleContext<'a> {
     /// Get current value of a session variable as string
     /// Priority: cluster_variables > session_variables (non-default) > None
     pub fn get_variable_value(&self, name: &str) -> Option<String> {
-        // First check live cluster variables (most accurate)
         if let Some(cluster_vars) = self.cluster_variables
             && let Some(value) = cluster_vars.get(name)
         {
             return Some(value.clone());
         }
-        // Fallback to profile's non-default variables
+
         self.session_variables
             .get(name)
             .map(|info| info.actual_value_str())
@@ -543,23 +530,19 @@ impl<'a> RuleContext<'a> {
         recommended: &str,
         command: &str,
     ) -> Option<ParameterSuggestion> {
-        // Check if already set to recommended value in non-default variables
         if self.is_variable_set_to(name, recommended) {
-            return None; // Already configured correctly, no suggestion needed
+            return None;
         }
 
-        // If parameter is not in non_default_variables, check if default value matches recommendation
         if !self.session_variables.contains_key(name)
             && let Some(default) = get_parameter_default(name)
             && default.eq_ignore_ascii_case(recommended)
         {
-            return None; // Using default value which matches recommendation
+            return None;
         }
 
-        // Get current value if set
         let current = self.get_variable_value(name);
 
-        // Get parameter metadata for description and impact
         let metadata = get_parameter_metadata(name);
 
         Some(ParameterSuggestion {
@@ -581,7 +564,6 @@ impl<'a> RuleContext<'a> {
     pub fn suggest_parameter_smart(&self, name: &str) -> Option<ParameterSuggestion> {
         let cluster_info = self.cluster_info.as_ref();
 
-        // Get current value
         let current_str = self.get_variable_value(name);
         let default_str = get_parameter_default(name).map(|s| s.to_string());
         let effective_value = current_str.as_ref().or(default_str.as_ref());
@@ -589,9 +571,7 @@ impl<'a> RuleContext<'a> {
         let current_i64 = effective_value.and_then(|v| v.parse::<i64>().ok());
         let current_bool = effective_value.map(|v| v.eq_ignore_ascii_case("true"));
 
-        // Calculate smart recommendation based on parameter
         let (recommended, reason, param_type) = match name {
-            // ========== 并行度相关 ==========
             "parallel_fragment_exec_instance_num" => {
                 let be_count = cluster_info.map(|c| c.backend_num).unwrap_or(1).max(1);
                 let recommended = be_count.min(16) as i64;
@@ -601,7 +581,6 @@ impl<'a> RuleContext<'a> {
                     return None;
                 }
 
-                // Don't recommend for small queries (< 100MB)
                 if cluster_info
                     .map(|c| c.total_scan_bytes < 100_000_000)
                     .unwrap_or(true)
@@ -619,7 +598,7 @@ impl<'a> RuleContext<'a> {
             "pipeline_dop" => {
                 let current = current_i64.unwrap_or(0);
                 if current == 0 {
-                    return None; // Already auto
+                    return None;
                 }
                 (
                     "0".to_string(),
@@ -631,7 +610,7 @@ impl<'a> RuleContext<'a> {
             "io_tasks_per_scan_operator" => {
                 let current = current_i64.unwrap_or(4);
                 let total_bytes = cluster_info.map(|c| c.total_scan_bytes).unwrap_or(0);
-                let is_large_scan = total_bytes > 1_000_000_000; // > 1GB
+                let is_large_scan = total_bytes > 1_000_000_000;
                 let recommended = if is_large_scan { 8 } else { 4 };
 
                 if current >= recommended || !is_large_scan {
@@ -645,16 +624,14 @@ impl<'a> RuleContext<'a> {
                 )
             },
 
-            // ========== 内存相关 ==========
             "query_mem_limit" => {
                 let current = current_i64.unwrap_or(0);
                 let total_bytes = cluster_info.map(|c| c.total_scan_bytes).unwrap_or(0);
 
-                // Recommend based on scan size: 2x scan size, min 4GB, max 32GB
                 let recommended = if total_bytes > 0 {
                     (total_bytes * 2).clamp(4 * 1024 * 1024 * 1024, 32 * 1024 * 1024 * 1024) as i64
                 } else {
-                    8 * 1024 * 1024 * 1024 // Default 8GB
+                    8 * 1024 * 1024 * 1024
                 };
 
                 if current >= recommended {
@@ -672,15 +649,14 @@ impl<'a> RuleContext<'a> {
             "enable_spill" => {
                 let current = current_bool.unwrap_or(false);
                 if current {
-                    return None; // Already enabled
+                    return None;
                 }
                 ("true".to_string(), "启用后可避免大查询 OOM".to_string(), ParameterType::Session)
             },
 
-            // ========== 查询优化 ==========
             "query_timeout" => {
                 let current = current_i64.unwrap_or(300);
-                // Only recommend if current is default (300s) and query might be long
+
                 if current >= 600 {
                     return None;
                 }
@@ -703,7 +679,6 @@ impl<'a> RuleContext<'a> {
                 )
             },
 
-            // ========== Runtime Filter ==========
             "enable_global_runtime_filter" => {
                 let current = current_bool.unwrap_or(true);
                 if current {
@@ -728,7 +703,6 @@ impl<'a> RuleContext<'a> {
                 )
             },
 
-            // ========== DataCache ==========
             "enable_scan_datacache" => {
                 let current = current_bool.unwrap_or(true);
                 if current {
@@ -749,7 +723,6 @@ impl<'a> RuleContext<'a> {
                 ("true".to_string(), "启用缓存填充以预热缓存".to_string(), ParameterType::Session)
             },
 
-            // ========== Profile ==========
             "pipeline_profile_level" => {
                 let current = current_i64.unwrap_or(1);
                 if current <= 1 {
@@ -762,16 +735,13 @@ impl<'a> RuleContext<'a> {
                 )
             },
 
-            // ========== BE 参数 ==========
             "storage_page_cache_limit" => {
-                // BE parameter, always suggest if IO is bottleneck
                 ("30%".to_string(), "增大页缓存提升热数据读取性能".to_string(), ParameterType::BE)
             },
 
-            _ => return None, // No smart recommendation for this parameter
+            _ => return None,
         };
 
-        // Get current value: cluster_variables > session_variables > default
         let current = self
             .get_variable_value(name)
             .or_else(|| get_parameter_default(name).map(|s| s.to_string()));
@@ -798,31 +768,25 @@ impl<'a> RuleContext<'a> {
 /// This helps avoid suggesting parameters that are already at their recommended default values
 fn get_parameter_default(name: &str) -> Option<&'static str> {
     match name {
-        // DataCache related
         "enable_scan_datacache" => Some("true"),
         "enable_populate_datacache" => Some("true"),
         "datacache_evict_probability" => Some("100"),
 
-        // Query optimization
         "enable_query_cache" => Some("false"),
         "enable_adaptive_sink_dop" => Some("false"),
         "enable_runtime_adaptive_dop" => Some("false"),
         "enable_spill" => Some("false"),
 
-        // Scan optimization
         "enable_connector_adaptive_io_tasks" => Some("true"),
         "io_tasks_per_scan_operator" => Some("4"),
         "connector_io_tasks_per_scan_operator" => Some("16"),
 
-        // Join optimization
         "hash_join_push_down_right_table" => Some("true"),
         "enable_local_shuffle_agg" => Some("true"),
 
-        // Runtime filter
         "runtime_filter_on_exchange_node" => Some("false"),
         "global_runtime_filter_build_max_size" => Some("67108864"),
 
-        // Parallel execution
         "parallel_fragment_exec_instance_num" => Some("1"),
         "pipeline_dop" => Some("0"),
 
@@ -853,31 +817,27 @@ pub trait DiagnosticRule: Send + Sync {
 pub fn parse_metric_value(value: &str) -> Option<f64> {
     let s = value.trim();
 
-    // Handle "1.056M (1056421)" format - extract value from parentheses
     if let Some(start) = s.find('(')
-        && let Some(end) = s.find(')') {
-            let inner = &s[start + 1..end].trim();
-            if let Ok(v) = inner.parse::<f64>() {
-                return Some(v);
-            }
+        && let Some(end) = s.find(')')
+    {
+        let inner = &s[start + 1..end].trim();
+        if let Ok(v) = inner.parse::<f64>() {
+            return Some(v);
+        }
     }
 
-    // Handle percentage
     if s.ends_with('%') {
         return s.trim_end_matches('%').parse().ok();
     }
 
-    // Handle bytes (e.g., "1.5 GB", "100 MB")
     if let Some(bytes) = parse_bytes(s) {
         return Some(bytes as f64);
     }
 
-    // Handle time (e.g., "1s500ms", "100ms")
     if let Some(ms) = parse_duration_ms(s) {
         return Some(ms);
     }
 
-    // Handle "1.056M" format (without parentheses) - K/M/B suffixes
     if let Some(multiplier) = get_suffix_multiplier(s) {
         let numeric_part: String = s
             .chars()
@@ -888,7 +848,6 @@ pub fn parse_metric_value(value: &str) -> Option<f64> {
         }
     }
 
-    // Handle plain numbers with optional suffix
     let numeric_part: String = s
         .chars()
         .take_while(|c| c.is_ascii_digit() || *c == '.' || *c == '-')
@@ -1061,34 +1020,23 @@ pub fn parse_duration_to_ms(s: &str) -> Option<f64> {
 pub fn get_all_rules() -> Vec<Box<dyn DiagnosticRule>> {
     let mut rules: Vec<Box<dyn DiagnosticRule>> = Vec::new();
 
-    // Common rules (G001, G002, G003)
     rules.extend(common::get_rules());
 
-    // Scan rules (S001-S011)
     rules.extend(scan::get_rules());
 
-    // Join rules (J001-J010)
     rules.extend(join::get_rules());
 
-    // Aggregate rules (A001-A005)
     rules.extend(aggregate::get_rules());
 
-    // Sort rules (T001-T005, W001)
     rules.extend(sort::get_rules());
 
-    // Exchange rules (E001-E003)
     rules.extend(exchange::get_rules());
 
-    // Fragment rules (F001-F003)
     rules.extend(fragment::get_rules());
 
-    // Project/LocalExchange rules (P001, L001)
     rules.extend(project::get_rules());
 
-    // OlapTableSink rules (I001-I003)
     rules.extend(sink::get_rules());
-
-    // Query rules (Q001-Q009) - evaluated separately at query level
 
     rules
 }

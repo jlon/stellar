@@ -19,11 +19,11 @@ pub struct CreateOrganizationRequest {
     pub code: String,
     pub name: String,
     pub description: Option<String>,
-    // Option A: create admin user on org creation
+
     pub admin_username: Option<String>,
     pub admin_password: Option<String>,
     pub admin_email: Option<String>,
-    // Option B: assign existing user as admin
+
     pub admin_user_id: Option<i64>,
 }
 
@@ -53,7 +53,7 @@ impl From<Organization> for OrganizationResponse {
             name: o.name,
             description: o.description,
             is_system: o.is_system,
-            admin_user_id: None, // Will be populated by service layer
+            admin_user_id: None,
             created_at: o.created_at,
         }
     }

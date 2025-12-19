@@ -64,15 +64,12 @@ impl QueryComplexity {
         let tokens = Self::tokenize(&cleaned);
         let sql_upper = cleaned.to_uppercase();
 
-        // === Basic counts ===
         let join_count = tokens.iter().filter(|t| *t == "JOIN").count();
         let select_count = tokens.iter().filter(|t| *t == "SELECT").count();
         let subquery_count = select_count.saturating_sub(1);
 
-        // === Window functions ===
         let has_window = tokens.windows(2).any(|w| w[0] == "OVER");
 
-        // === CTE detection ===
         let has_cte = tokens
             .iter()
             .position(|t| t == "WITH")
@@ -80,39 +77,30 @@ impl QueryComplexity {
             .unwrap_or(false)
             && select_count > 1;
 
-        // === Set operations ===
         let has_set_op = tokens
             .iter()
             .any(|t| t == "UNION" || t == "INTERSECT" || t == "EXCEPT");
 
-        // === DISTINCT aggregation (expensive!) ===
-        // Matches: COUNT(DISTINCT, SUM(DISTINCT, AVG(DISTINCT
         let has_distinct_agg = sql_upper.contains("COUNT(DISTINCT")
             || sql_upper.contains("COUNT (DISTINCT")
             || sql_upper.contains("SUM(DISTINCT")
             || sql_upper.contains("AVG(DISTINCT");
 
-        // === ORDER BY without proper LIMIT (full sort) ===
         let has_order = tokens.iter().any(|t| t == "ORDER");
         let has_limit = tokens.iter().any(|t| t == "LIMIT");
         let has_expensive_sort = has_order && !has_limit;
 
-        // === Array/lateral operations ===
         let has_lateral = tokens
             .iter()
             .any(|t| t == "LATERAL" || t == "EXPLODE" || t == "UNNEST" || t == "POSEXPLODE");
 
-        // === Correlated subquery indicators ===
         let has_exists = tokens.iter().any(|t| t == "EXISTS");
 
-        // === Regex operations ===
         let has_regex = tokens.iter().any(|t| t == "REGEXP" || t == "RLIKE");
 
-        // === GROUP BY + HAVING ===
         let has_group_having =
             tokens.iter().any(|t| t == "GROUP") && tokens.iter().any(|t| t == "HAVING");
 
-        // === Aggregate function count ===
         let agg_funcs = [
             "COUNT",
             "SUM",
@@ -129,13 +117,11 @@ impl QueryComplexity {
             .filter(|t| agg_funcs.contains(&t.as_str()))
             .count();
 
-        // === Complexity score calculation ===
         let mut score = 0;
 
-        // JOIN complexity (at least 1 JOIN should not be "Simple")
         score += match join_count {
             0 => 0,
-            1 => 3, // Single JOIN → at least Medium
+            1 => 3,
             2..=3 => join_count * 2 + 1,
             _ => join_count * 2 + 2,
         };
@@ -152,7 +138,7 @@ impl QueryComplexity {
         }
         if has_distinct_agg {
             score += 3;
-        } // Very expensive!
+        }
         if has_expensive_sort {
             score += 2;
         }
@@ -185,22 +171,19 @@ impl QueryComplexity {
 
         while let Some(c) = chars.next() {
             match c {
-                // Single-quoted string
                 '\'' => {
                     while let Some(c2) = chars.next() {
                         if c2 == '\'' {
                             if chars.peek() == Some(&'\'') {
                                 chars.next();
-                            }
-                            // Escaped quote
-                            else {
+                            } else {
                                 break;
                             }
                         }
                     }
-                    result.push(' '); // Replace with space
+                    result.push(' ');
                 },
-                // Double-quoted identifier
+
                 '"' => {
                     for c2 in chars.by_ref() {
                         if c2 == '"' {
@@ -209,7 +192,7 @@ impl QueryComplexity {
                     }
                     result.push(' ');
                 },
-                // Line comment --
+
                 '-' if chars.peek() == Some(&'-') => {
                     chars.next();
                     for c2 in chars.by_ref() {
@@ -218,7 +201,7 @@ impl QueryComplexity {
                         }
                     }
                 },
-                // Block comment /* */
+
                 '/' if chars.peek() == Some(&'*') => {
                     chars.next();
                     while let Some(c2) = chars.next() {
@@ -290,9 +273,7 @@ pub struct BaselineCalculator {
 
 impl BaselineCalculator {
     pub fn new() -> Self {
-        Self {
-            min_sample_size: 30, // Statistical significance threshold
-        }
+        Self { min_sample_size: 30 }
     }
 
     /// Calculate baseline for a specific query complexity
@@ -301,22 +282,20 @@ impl BaselineCalculator {
             return None;
         }
 
-        // Determine complexity (assume all records have same complexity for this calculation)
         let complexity = if let Some(first) = records.first() {
             QueryComplexity::from_sql(&first.stmt)
         } else {
             QueryComplexity::Simple
         };
 
-        // Extract query times
         let mut times: Vec<f64> = records
             .iter()
-            .filter(|r| r.state == "EOF" || r.state == "OK") // Only successful queries
+            .filter(|r| r.state == "EOF" || r.state == "OK")
             .map(|r| r.query_time_ms as f64)
             .collect();
 
         if times.len() < self.min_sample_size {
-            return None; // Not enough samples
+            return None;
         }
 
         times.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -327,7 +306,7 @@ impl BaselineCalculator {
             complexity,
             stats,
             sample_size: times.len(),
-            time_range_hours: 168, // Default: 7 days
+            time_range_hours: 168,
         })
     }
 
@@ -340,10 +319,7 @@ impl BaselineCalculator {
 
         for record in records {
             let complexity = QueryComplexity::from_sql(&record.stmt);
-            grouped
-                .entry(complexity)
-                .or_default()
-                .push(record.clone());
+            grouped.entry(complexity).or_default().push(record.clone());
         }
 
         grouped
@@ -397,7 +373,6 @@ impl BaselineCalculator {
             .unwrap_or(0.0);
         let max = times.last().copied().unwrap_or(0.0);
 
-        // Calculate standard deviation
         let variance = times.iter().map(|t| (t - avg).powi(2)).sum::<f64>() / times.len() as f64;
         let std_dev = variance.sqrt();
 
@@ -439,20 +414,17 @@ impl AdaptiveThresholdCalculator {
     /// Strategy: Use P95 of historical baseline + 2 std_dev as threshold
     pub fn get_query_time_threshold(&self, complexity: QueryComplexity) -> f64 {
         if let Some(baseline) = self.baselines.get(&complexity) {
-            // Adaptive: P95 + 2 * std_dev
             let threshold = baseline.stats.p95_ms + 2.0 * baseline.stats.std_dev_ms;
 
-            // Ensure minimum threshold (avoid too strict for simple queries)
             let min_threshold = match complexity {
-                QueryComplexity::Simple => 5_000.0,       // 5s
-                QueryComplexity::Medium => 10_000.0,      // 10s
-                QueryComplexity::Complex => 30_000.0,     // 30s
-                QueryComplexity::VeryComplex => 60_000.0, // 1min
+                QueryComplexity::Simple => 5_000.0,
+                QueryComplexity::Medium => 10_000.0,
+                QueryComplexity::Complex => 30_000.0,
+                QueryComplexity::VeryComplex => 60_000.0,
             };
 
             threshold.max(min_threshold)
         } else {
-            // Fallback to default if no baseline available
             self.get_default_threshold(complexity)
         }
     }
@@ -469,11 +441,9 @@ impl AdaptiveThresholdCalculator {
                 2.0
             };
 
-            // If historical data shows high variance, allow more skew
-            // Base: 2.0, increase by 20% of historical ratio
             2.0 + (historical_ratio - 2.0) * 0.2
         } else {
-            2.0 // Default
+            2.0
         }
     }
 
@@ -494,15 +464,12 @@ mod tests {
 
     #[test]
     fn test_query_complexity_detection() {
-        // Simple query
         let sql1 = "SELECT * FROM users WHERE id = 1";
         assert_eq!(QueryComplexity::from_sql(sql1), QueryComplexity::Simple);
 
-        // Medium query (2 table JOIN)
         let sql2 = "SELECT u.name, o.amount FROM users u JOIN orders o ON u.id = o.user_id";
         assert_eq!(QueryComplexity::from_sql(sql2), QueryComplexity::Medium);
 
-        // Complex query (3 JOINs + window function)
         let sql3 = r#"
             SELECT u.name, SUM(o.amount) OVER (PARTITION BY u.id) 
             FROM users u 
@@ -512,7 +479,6 @@ mod tests {
         "#;
         assert_eq!(QueryComplexity::from_sql(sql3), QueryComplexity::Complex);
 
-        // Very complex query (CTE + window + subquery + UNION)
         let sql4 = r#"
             WITH sales AS (
                 SELECT user_id, SUM(amount) as total FROM orders GROUP BY user_id
@@ -529,19 +495,15 @@ mod tests {
 
     #[test]
     fn test_query_complexity_edge_cases() {
-        // Empty SQL -> Simple
         assert_eq!(QueryComplexity::from_sql(""), QueryComplexity::Simple);
 
-        // Single JOIN -> Medium
         let sql = "SELECT * FROM a JOIN b ON a.id = b.id";
         assert_eq!(QueryComplexity::from_sql(sql), QueryComplexity::Medium);
 
-        // Multiple JOINs -> Complex
         let sql =
             "SELECT * FROM a JOIN b ON a.id = b.id JOIN c ON b.id = c.id JOIN d ON c.id = d.id";
         assert_eq!(QueryComplexity::from_sql(sql), QueryComplexity::Complex);
 
-        // Window function alone -> Medium/Complex
         let sql = "SELECT id, ROW_NUMBER() OVER (ORDER BY id) FROM t";
         let complexity = QueryComplexity::from_sql(sql);
         assert!(complexity == QueryComplexity::Medium || complexity == QueryComplexity::Complex);
@@ -549,34 +511,27 @@ mod tests {
 
     #[test]
     fn test_query_complexity_ignores_strings() {
-        // JOIN in string literal should NOT count as a real JOIN
         let sql = "SELECT * FROM t WHERE name = 'JOIN this event'";
         assert_eq!(QueryComplexity::from_sql(sql), QueryComplexity::Simple);
 
-        // UNION in string should NOT count
         let sql = "SELECT * FROM t WHERE desc LIKE '%UNION%'";
         assert_eq!(QueryComplexity::from_sql(sql), QueryComplexity::Simple);
 
-        // WITH in string should NOT count as CTE
         let sql = "SELECT * FROM t WHERE note = 'with regards'";
         assert_eq!(QueryComplexity::from_sql(sql), QueryComplexity::Simple);
 
-        // Multiple keywords in string should NOT increase complexity
         let sql = r#"SELECT * FROM t WHERE msg = 'SELECT JOIN UNION WITH OVER'"#;
         assert_eq!(QueryComplexity::from_sql(sql), QueryComplexity::Simple);
     }
 
     #[test]
     fn test_query_complexity_ignores_comments() {
-        // JOIN in line comment should NOT count
         let sql = "SELECT * FROM t -- JOIN this later";
         assert_eq!(QueryComplexity::from_sql(sql), QueryComplexity::Simple);
 
-        // UNION in block comment should NOT count
         let sql = "SELECT * FROM t /* UNION ALL */ WHERE id > 0";
         assert_eq!(QueryComplexity::from_sql(sql), QueryComplexity::Simple);
 
-        // Complex keywords in comments should NOT increase complexity
         let sql = r#"
             -- This query uses JOIN, UNION, WITH CTE
             /* 
@@ -590,11 +545,9 @@ mod tests {
 
     #[test]
     fn test_query_complexity_real_vs_string() {
-        // Real JOIN + fake JOIN in string = should count as Medium (1 JOIN)
         let sql = "SELECT * FROM a JOIN b ON a.id = b.id WHERE name = 'JOIN event'";
         assert_eq!(QueryComplexity::from_sql(sql), QueryComplexity::Medium);
 
-        // Real UNION + fake in string
         let sql = "SELECT * FROM t1 WHERE x = 'UNION' UNION SELECT * FROM t2";
         let complexity = QueryComplexity::from_sql(sql);
         assert!(complexity == QueryComplexity::Medium || complexity == QueryComplexity::Complex);
@@ -602,12 +555,10 @@ mod tests {
 
     #[test]
     fn test_query_complexity_distinct_aggregation() {
-        // COUNT(DISTINCT) is expensive - should be at least Medium
         let sql = "SELECT COUNT(DISTINCT user_id) FROM orders";
         let complexity = QueryComplexity::from_sql(sql);
         assert!(complexity == QueryComplexity::Medium || complexity == QueryComplexity::Complex);
 
-        // Multiple DISTINCT aggregates
         let sql = "SELECT COUNT(DISTINCT user_id), SUM(DISTINCT amount) FROM orders GROUP BY date";
         let complexity = QueryComplexity::from_sql(sql);
         assert!(
@@ -617,11 +568,9 @@ mod tests {
 
     #[test]
     fn test_query_complexity_order_by() {
-        // ORDER BY with LIMIT is reasonable
         let sql = "SELECT * FROM orders ORDER BY created_at LIMIT 100";
         assert_eq!(QueryComplexity::from_sql(sql), QueryComplexity::Simple);
 
-        // ORDER BY without LIMIT (full sort) is expensive
         let sql = "SELECT * FROM orders ORDER BY created_at";
         let complexity = QueryComplexity::from_sql(sql);
         assert!(complexity == QueryComplexity::Medium || complexity == QueryComplexity::Simple);
@@ -629,12 +578,10 @@ mod tests {
 
     #[test]
     fn test_query_complexity_lateral_explode() {
-        // LATERAL VIEW EXPLODE is complex
         let sql = "SELECT id, tag FROM t LATERAL VIEW EXPLODE(tags) tmp AS tag";
         let complexity = QueryComplexity::from_sql(sql);
         assert!(complexity == QueryComplexity::Medium || complexity == QueryComplexity::Complex);
 
-        // UNNEST
         let sql = "SELECT * FROM t, UNNEST(arr) AS x";
         let complexity = QueryComplexity::from_sql(sql);
         assert!(complexity == QueryComplexity::Medium || complexity == QueryComplexity::Complex);
@@ -642,13 +589,11 @@ mod tests {
 
     #[test]
     fn test_query_complexity_exists() {
-        // EXISTS subquery
         let sql =
             "SELECT * FROM orders o WHERE EXISTS (SELECT 1 FROM users u WHERE u.id = o.user_id)";
         let complexity = QueryComplexity::from_sql(sql);
         assert!(complexity == QueryComplexity::Medium || complexity == QueryComplexity::Complex);
 
-        // NOT EXISTS
         let sql = "SELECT * FROM orders WHERE NOT EXISTS (SELECT 1 FROM refunds WHERE refunds.order_id = orders.id)";
         let complexity = QueryComplexity::from_sql(sql);
         assert!(complexity == QueryComplexity::Medium || complexity == QueryComplexity::Complex);
@@ -656,7 +601,6 @@ mod tests {
 
     #[test]
     fn test_query_complexity_single_join_not_simple() {
-        // Single JOIN should NOT be classified as Simple
         let sql = "SELECT * FROM orders o JOIN users u ON o.user_id = u.id";
         assert_ne!(QueryComplexity::from_sql(sql), QueryComplexity::Simple);
         assert_eq!(QueryComplexity::from_sql(sql), QueryComplexity::Medium);
@@ -664,11 +608,9 @@ mod tests {
 
     #[test]
     fn test_query_complexity_production_examples() {
-        // Real production query 1: Simple aggregation
         let sql = "SELECT date, SUM(amount) FROM orders WHERE date >= '2025-01-01' GROUP BY date";
         assert_eq!(QueryComplexity::from_sql(sql), QueryComplexity::Simple);
 
-        // Real production query 2: Multi-table join with aggregation
         let sql = r#"
             SELECT u.name, COUNT(*) as order_count, SUM(o.amount) as total
             FROM users u
@@ -680,7 +622,6 @@ mod tests {
         let complexity = QueryComplexity::from_sql(sql);
         assert!(complexity == QueryComplexity::Medium || complexity == QueryComplexity::Complex);
 
-        // Real production query 3: Analytics with window functions
         let sql = r#"
             WITH daily_sales AS (
                 SELECT date, SUM(amount) as total
@@ -696,7 +637,6 @@ mod tests {
             complexity == QueryComplexity::Complex || complexity == QueryComplexity::VeryComplex
         );
 
-        // Real production query 4: Heavy OLAP query
         let sql = r#"
             SELECT 
                 region,
@@ -718,7 +658,6 @@ mod tests {
     fn test_baseline_calculation() {
         let calculator = BaselineCalculator::new();
 
-        // Single record - not enough samples
         let records = vec![AuditLogRecord {
             query_id: "1".to_string(),
             user: "test".to_string(),
@@ -732,7 +671,6 @@ mod tests {
 
         assert!(calculator.calculate(&records).is_none());
 
-        // Generate 50 samples with increasing query times
         let mut records = Vec::new();
         for i in 0..50 {
             records.push(AuditLogRecord {
@@ -758,7 +696,6 @@ mod tests {
     fn test_baseline_stats_calculation() {
         let calculator = BaselineCalculator::new();
 
-        // Generate 100 samples with known distribution
         let mut records = Vec::new();
         for i in 0..100 {
             records.push(AuditLogRecord {
@@ -767,7 +704,7 @@ mod tests {
                 db: "db1".to_string(),
                 stmt: "SELECT * FROM t1".to_string(),
                 query_type: "Query".to_string(),
-                query_time_ms: 1000 + (i as i64) * 100, // 1000ms to 10900ms
+                query_time_ms: 1000 + (i as i64) * 100,
                 state: "EOF".to_string(),
                 timestamp: "2025-12-08 10:00:00".to_string(),
             });
@@ -775,16 +712,12 @@ mod tests {
 
         let baseline = calculator.calculate(&records).unwrap();
 
-        // Check avg (should be around 5950ms = (1000 + 10900) / 2)
         assert!(baseline.stats.avg_ms > 5000.0 && baseline.stats.avg_ms < 7000.0);
 
-        // Check P50 (should be around 5950ms)
         assert!(baseline.stats.p50_ms > 5000.0 && baseline.stats.p50_ms < 7000.0);
 
-        // Check P95 (should be around 10450ms)
         assert!(baseline.stats.p95_ms > 9000.0 && baseline.stats.p95_ms < 11000.0);
 
-        // Check std_dev > 0
         assert!(baseline.stats.std_dev_ms > 0.0);
     }
 
@@ -794,7 +727,6 @@ mod tests {
 
         let mut records = Vec::new();
 
-        // Add 30 successful queries
         for i in 0..30 {
             records.push(AuditLogRecord {
                 query_id: format!("success_{}", i),
@@ -808,7 +740,6 @@ mod tests {
             });
         }
 
-        // Add 20 failed queries (should be filtered out)
         for i in 0..20 {
             records.push(AuditLogRecord {
                 query_id: format!("failed_{}", i),
@@ -816,7 +747,7 @@ mod tests {
                 db: "db1".to_string(),
                 stmt: "SELECT * FROM t1".to_string(),
                 query_type: "Query".to_string(),
-                query_time_ms: 50000, // Very high time (would skew results)
+                query_time_ms: 50000,
                 state: "ERROR".to_string(),
                 timestamp: "2025-12-08 10:00:00".to_string(),
             });
@@ -824,10 +755,8 @@ mod tests {
 
         let baseline = calculator.calculate(&records).unwrap();
 
-        // Should only include successful queries
         assert_eq!(baseline.sample_size, 30);
 
-        // Avg should be around 1000ms (not skewed by failed queries)
         assert!((baseline.stats.avg_ms - 1000.0).abs() < 1.0);
     }
 
@@ -837,7 +766,6 @@ mod tests {
 
         let mut records = Vec::new();
 
-        // Add 35 Simple queries
         for i in 0..35 {
             records.push(AuditLogRecord {
                 query_id: format!("simple_{}", i),
@@ -851,7 +779,6 @@ mod tests {
             });
         }
 
-        // Add 35 Medium queries (with JOIN)
         for i in 0..35 {
             records.push(AuditLogRecord {
                 query_id: format!("medium_{}", i),
@@ -867,11 +794,9 @@ mod tests {
 
         let baselines = calculator.calculate_by_complexity(&records);
 
-        // Should have baselines for both Simple and Medium
         assert!(baselines.contains_key(&QueryComplexity::Simple));
         assert!(baselines.contains_key(&QueryComplexity::Medium));
 
-        // Simple queries should have lower avg than Medium
         let simple_avg = baselines
             .get(&QueryComplexity::Simple)
             .unwrap()
@@ -891,7 +816,6 @@ mod tests {
 
         let mut records = Vec::new();
 
-        // Add 35 queries for 'users' table
         for i in 0..35 {
             records.push(AuditLogRecord {
                 query_id: format!("users_{}", i),
@@ -905,7 +829,6 @@ mod tests {
             });
         }
 
-        // Add 35 queries for 'orders' table
         for i in 0..35 {
             records.push(AuditLogRecord {
                 query_id: format!("orders_{}", i),
@@ -919,15 +842,12 @@ mod tests {
             });
         }
 
-        // Get baseline for 'users' table
         let users_baseline = calculator.calculate_for_table(&records, "users").unwrap();
         assert_eq!(users_baseline.sample_size, 35);
 
-        // Get baseline for 'orders' table
         let orders_baseline = calculator.calculate_for_table(&records, "orders").unwrap();
         assert_eq!(orders_baseline.sample_size, 35);
 
-        // Users should be faster than orders
         assert!(users_baseline.stats.avg_ms < orders_baseline.stats.avg_ms);
     }
 
@@ -935,7 +855,6 @@ mod tests {
     fn test_adaptive_threshold_calculator() {
         let mut baselines = HashMap::new();
 
-        // Create a baseline for Medium complexity
         baselines.insert(
             QueryComplexity::Medium,
             PerformanceBaseline {
@@ -955,18 +874,13 @@ mod tests {
 
         let calculator = AdaptiveThresholdCalculator::new(baselines);
 
-        // Get threshold for Medium complexity
         let threshold = calculator.get_query_time_threshold(QueryComplexity::Medium);
 
-        // Should be P95 + 2*std_dev = 8000 + 2*2000 = 12000
-        // But at least 10000 (min for Medium)
         assert!(threshold >= 10000.0);
         assert!(threshold <= 15000.0);
 
-        // Get threshold for Simple complexity (no baseline)
         let simple_threshold = calculator.get_query_time_threshold(QueryComplexity::Simple);
 
-        // Should use default threshold for Simple (10000ms)
         assert_eq!(simple_threshold, 10_000.0);
     }
 
@@ -974,7 +888,6 @@ mod tests {
     fn test_adaptive_skew_threshold() {
         let mut baselines = HashMap::new();
 
-        // Create a baseline with high variance (P99/P50 = 3.0)
         baselines.insert(
             QueryComplexity::Medium,
             PerformanceBaseline {
@@ -983,7 +896,7 @@ mod tests {
                     avg_ms: 5000.0,
                     p50_ms: 4000.0,
                     p95_ms: 8000.0,
-                    p99_ms: 12000.0, // P99/P50 = 3.0
+                    p99_ms: 12000.0,
                     max_ms: 15000.0,
                     std_dev_ms: 2000.0,
                 },
@@ -994,11 +907,8 @@ mod tests {
 
         let calculator = AdaptiveThresholdCalculator::new(baselines);
 
-        // Get skew threshold for Medium complexity
         let skew_threshold = calculator.get_skew_threshold(QueryComplexity::Medium);
 
-        // Base: 2.0, Adjustment: (3.0 - 2.0) * 0.2 = 0.2
-        // Final: 2.0 + 0.2 = 2.2
         assert!(skew_threshold > 2.0);
         assert!(skew_threshold < 3.0);
     }

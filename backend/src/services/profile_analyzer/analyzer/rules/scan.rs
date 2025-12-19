@@ -300,11 +300,9 @@ impl DiagnosticRule for S009LowCacheHit {
     }
 
     fn evaluate(&self, context: &RuleContext) -> Option<Diagnostic> {
-        // v2.0: Get dynamic cache hit threshold
         let cache_threshold = context.thresholds.get_cache_hit_threshold();
-        let error_threshold = cache_threshold * 0.6; // Error if below 60% of warning threshold
+        let error_threshold = cache_threshold * 0.6;
 
-        // First, check DataCache metrics (for disaggregated storage-compute clusters)
         let bytes_local = context
             .get_metric("CompressedBytesReadLocalDisk")
             .unwrap_or(0.0);
@@ -313,13 +311,11 @@ impl DiagnosticRule for S009LowCacheHit {
             .unwrap_or(0.0);
         let total_bytes = bytes_local + bytes_remote;
 
-        const MIN_BYTES: f64 = 10.0 * 1024.0 * 1024.0; // 10MB
+        const MIN_BYTES: f64 = 10.0 * 1024.0 * 1024.0;
 
-        // DataCache scenario: remote bytes > 0 indicates disaggregated storage
         if bytes_remote > 0.0 && total_bytes > MIN_BYTES {
             let hit_rate = bytes_local / total_bytes;
 
-            // v2.0: Use dynamic threshold
             if hit_rate < cache_threshold {
                 let miss_rate = (1.0 - hit_rate) * 100.0;
                 return Some(Diagnostic {
@@ -344,7 +340,7 @@ impl DiagnosticRule for S009LowCacheHit {
                         "对热点数据执行缓存预热 (CACHE SELECT)".to_string(),
                         "检查是否有其他查询竞争缓存资源".to_string(),
                     ],
-                    // Only suggest parameters that are not already set to recommended values
+
                     parameter_suggestions: [
                         context.suggest_parameter(
                             "enable_scan_datacache",
@@ -362,7 +358,6 @@ impl DiagnosticRule for S009LowCacheHit {
             }
         }
 
-        // Also check IO count metrics as alternative for DataCache
         let io_local = context.get_metric("IOCountLocalDisk").unwrap_or(0.0);
         let io_remote = context.get_metric("IOCountRemote").unwrap_or(0.0);
         let total_io = io_local + io_remote;
@@ -370,7 +365,6 @@ impl DiagnosticRule for S009LowCacheHit {
         if io_remote > 0.0 && total_io > 100.0 {
             let hit_rate = io_local / total_io;
 
-            // v2.0: Use dynamic threshold
             if hit_rate < cache_threshold {
                 return Some(Diagnostic {
                     rule_id: self.id().to_string(),
@@ -392,7 +386,7 @@ impl DiagnosticRule for S009LowCacheHit {
                         "增大 DataCache 容量 (datacache_disk_size)".to_string(),
                         "对热点数据执行缓存预热 (CACHE SELECT)".to_string(),
                     ],
-                    // Only suggest if not already enabled
+
                     parameter_suggestions: context.suggest_parameter(
                         "enable_scan_datacache",
                         "true",
@@ -403,7 +397,6 @@ impl DiagnosticRule for S009LowCacheHit {
             }
         }
 
-        // Fallback: check PageCache metrics (for shared-nothing clusters)
         let cached_pages = context.get_metric("CachedPagesNum");
         let read_pages = context.get_metric("ReadPagesNum");
 
@@ -454,7 +447,6 @@ impl DiagnosticRule for S010RFNotEffective {
     }
 
     fn applicable_to(&self, node: &ExecutionTreeNode) -> bool {
-        // Runtime Filter is mainly effective on OLAP internal tables
         node.operator_name.to_uppercase().contains("OLAP_SCAN")
     }
 
@@ -518,7 +510,6 @@ impl DiagnosticRule for S011SoftDeletes {
     }
 
     fn applicable_to(&self, node: &ExecutionTreeNode) -> bool {
-        // Only applicable to OLAP_SCAN (internal tables), not CONNECTOR_SCAN (external tables)
         node.operator_name.to_uppercase().contains("OLAP_SCAN")
     }
 
@@ -533,7 +524,6 @@ impl DiagnosticRule for S011SoftDeletes {
         let ratio = del_vec_rows / raw_rows;
 
         if ratio > 0.3 {
-            // Extract table name from unique_metrics
             let table_name = context
                 .node
                 .unique_metrics
@@ -541,9 +531,6 @@ impl DiagnosticRule for S011SoftDeletes {
                 .map(|s| s.as_str())
                 .unwrap_or("unknown_table");
 
-            // Build full table name with database
-            // If table already has db prefix (db.table), use it directly
-            // Otherwise, use default_db from profile summary
             let full_table_name = if table_name.contains('.') {
                 table_name.to_string()
             } else if let Some(db) = context.default_db {
@@ -556,7 +543,6 @@ impl DiagnosticRule for S011SoftDeletes {
                 table_name.to_string()
             };
 
-            // Generate Compaction command (correct syntax: ALTER TABLE <table> COMPACT)
             let compaction_cmd = format!("ALTER TABLE {} COMPACT;", full_table_name);
 
             Some(Diagnostic {
@@ -611,7 +597,6 @@ impl DiagnosticRule for S002IOSkew {
     }
 
     fn evaluate(&self, context: &RuleContext) -> Option<Diagnostic> {
-        // P0.2: Sample protection - need at least 4 instances
         let max_io = context.get_metric("__MAX_OF_IOTime")?;
         let min_io = context.get_metric("__MIN_OF_IOTime").unwrap_or(0.0);
 
@@ -619,8 +604,6 @@ impl DiagnosticRule for S002IOSkew {
             return None;
         }
 
-        // P0.2: Absolute value protection - only check if IO time is significant
-        // v2.0: Use constant from thresholds module
         use crate::services::profile_analyzer::analyzer::thresholds::defaults::MIN_IO_TIME_NS;
 
         if max_io < MIN_IO_TIME_NS {
@@ -629,7 +612,6 @@ impl DiagnosticRule for S002IOSkew {
 
         let ratio = max_io / ((max_io + min_io) / 2.0);
 
-        // v2.0: Use dynamic skew threshold based on cluster size
         let skew_threshold = context.thresholds.get_skew_threshold();
 
         if ratio > skew_threshold {
@@ -755,7 +737,6 @@ impl DiagnosticRule for S006RowsetFragmentation {
     }
 
     fn applicable_to(&self, node: &ExecutionTreeNode) -> bool {
-        // Rowset is a StarRocks internal table concept
         node.operator_name.to_uppercase().contains("OLAP_SCAN")
     }
 
@@ -812,7 +793,6 @@ impl DiagnosticRule for S008ZoneMapNotEffective {
     }
 
     fn applicable_to(&self, node: &ExecutionTreeNode) -> bool {
-        // ZoneMap is only for internal OLAP tables
         node.operator_name.to_uppercase().contains("OLAP_SCAN")
     }
 
@@ -869,7 +849,6 @@ impl DiagnosticRule for S012BitmapIndexNotEffective {
     }
 
     fn applicable_to(&self, node: &ExecutionTreeNode) -> bool {
-        // Bitmap index is only for internal OLAP tables
         node.operator_name.to_uppercase().contains("OLAP_SCAN")
     }
 
@@ -877,9 +856,7 @@ impl DiagnosticRule for S012BitmapIndexNotEffective {
         let bitmap_rows = context.get_metric("BitmapIndexFilterRows").unwrap_or(0.0);
         let raw_rows = context.get_metric("RawRowsRead").unwrap_or(0.0);
 
-        // Only trigger if scanning significant data and bitmap filter is 0
         if bitmap_rows == 0.0 && raw_rows > 100_000.0 {
-            // Check if there's expression filter (suggesting there are filter conditions)
             let expr_filter = context.get_metric("ExprFilterRows").unwrap_or(0.0);
             if expr_filter > raw_rows * 0.1 {
                 return Some(Diagnostic {
@@ -928,7 +905,6 @@ impl DiagnosticRule for S013BloomFilterNotEffective {
     }
 
     fn applicable_to(&self, node: &ExecutionTreeNode) -> bool {
-        // Bloom Filter index is only for internal OLAP tables
         node.operator_name.to_uppercase().contains("OLAP_SCAN")
     }
 
@@ -936,9 +912,7 @@ impl DiagnosticRule for S013BloomFilterNotEffective {
         let bloom_rows = context.get_metric("BloomFilterFilterRows").unwrap_or(0.0);
         let raw_rows = context.get_metric("RawRowsRead").unwrap_or(0.0);
 
-        // Only trigger if scanning significant data and bloom filter is 0
         if bloom_rows == 0.0 && raw_rows > 100_000.0 {
-            // Check if there's expression filter on potential ID columns
             let expr_filter = context.get_metric("ExprFilterRows").unwrap_or(0.0);
             if expr_filter > raw_rows * 0.5 {
                 return Some(Diagnostic {
@@ -990,7 +964,6 @@ impl DiagnosticRule for S014ColocateJoinOpportunity {
     }
 
     fn evaluate(&self, context: &RuleContext) -> Option<Diagnostic> {
-        // Check if this is a shuffle join with significant network transfer
         let bytes_sent = context
             .get_metric("BytesSent")
             .or_else(|| context.get_metric("NetworkBytesSent"))
@@ -1041,7 +1014,6 @@ impl DiagnosticRule for S016SmallFiles {
     }
 
     fn applicable_to(&self, node: &ExecutionTreeNode) -> bool {
-        // v2.0: Use ExternalScanType for type detection
         use crate::services::profile_analyzer::analyzer::thresholds::ExternalScanType;
         ExternalScanType::from_operator_name(&node.operator_name)
             .map(|t| t.supports_small_file_detection())
@@ -1053,15 +1025,12 @@ impl DiagnosticRule for S016SmallFiles {
             ExternalScanType, generate_small_file_suggestions,
         };
 
-        // v2.0: Detect scan type using ExternalScanType enum
         let scan_type = ExternalScanType::from_operator_name(&context.node.operator_name)?;
 
-        // Skip if this type doesn't support small file detection
         if !scan_type.supports_small_file_detection() {
             return None;
         }
 
-        // Get file count using type-specific metric
         let metric_name = scan_type.file_count_metric();
         let file_count = context
             .get_metric(metric_name)
@@ -1078,19 +1047,14 @@ impl DiagnosticRule for S016SmallFiles {
             return None;
         }
 
-        // v2.0: Get storage type from ExternalScanType
         let storage_type = scan_type.storage_type();
 
-        // Get dynamic thresholds based on storage type
         let min_file_count = context.thresholds.get_min_file_count(storage_type) as f64;
         let small_file_threshold = context.thresholds.get_small_file_threshold(storage_type) as f64;
 
-        // Calculate average file size
         let avg_file_size = total_bytes / file_count;
 
-        // Trigger if file count exceeds threshold AND average file size is below threshold
         if file_count > min_file_count && avg_file_size < small_file_threshold {
-            // Get table name for suggestions
             let table_name = context
                 .node
                 .unique_metrics
@@ -1098,7 +1062,6 @@ impl DiagnosticRule for S016SmallFiles {
                 .map(|s| s.as_str())
                 .unwrap_or("external_table");
 
-            // v2.0: Generate type-specific suggestions
             let suggestions = generate_small_file_suggestions(&scan_type, table_name);
 
             Some(Diagnostic {
@@ -1165,7 +1128,6 @@ impl S017FileFragmentation {
     /// For external tables, provide a single consolidated suggestion to avoid repetition
     fn get_suggestions(is_external: bool, _format: &str, table: &str) -> Vec<String> {
         if is_external {
-            // Single consolidated suggestion for external tables
             vec![format!(
                 "外表小文件合并方案: ①Hive简单合并: ALTER TABLE {} PARTITION(...) CONCATENATE; \
                  ②推荐重写: INSERT OVERWRITE TABLE {} PARTITION(...) SELECT * FROM {}; \
@@ -1289,30 +1251,25 @@ impl DiagnosticRule for S018IOWaitTime {
     }
 
     fn applicable_to(&self, node: &ExecutionTreeNode) -> bool {
-        // Applies to any scan node
         let op = node.operator_name.to_uppercase();
         op.contains("SCAN")
     }
 
     fn evaluate(&self, context: &RuleContext) -> Option<Diagnostic> {
-        // Check IOTaskWaitTime - time spent waiting for IO tasks in queue
         let io_wait = context
             .get_metric_duration("IOTaskWaitTime")
             .or_else(|| context.get_metric_duration("__MAX_OF_IOTaskWaitTime"))?;
 
-        // Also get IOTaskExecTime for comparison
         let io_exec = context
             .get_metric_duration("IOTaskExecTime")
             .or_else(|| context.get_metric_duration("__MAX_OF_IOTaskExecTime"))
             .unwrap_or(0.0);
 
-        // Threshold: IO wait > 10 seconds is significant
         let wait_threshold_ms = 10_000.0;
         if io_wait < wait_threshold_ms {
             return None;
         }
 
-        // Calculate wait ratio
         let total_io = io_wait + io_exec;
         let wait_ratio = if total_io > 0.0 { io_wait / total_io * 100.0 } else { 0.0 };
 

@@ -24,11 +24,7 @@ pub struct RuleEngineConfig {
 
 impl Default for RuleEngineConfig {
     fn default() -> Self {
-        Self {
-            max_suggestions: 100, // Increased from 5 to avoid truncating important diagnostics
-            include_parameters: true,
-            min_severity: RuleSeverity::Info,
-        }
+        Self { max_suggestions: 100, include_parameters: true, min_severity: RuleSeverity::Info }
     }
 }
 
@@ -63,7 +59,6 @@ impl RuleEngine {
         profile: &Profile,
         cluster_variables: Option<&std::collections::HashMap<String, String>>,
     ) -> Vec<Diagnostic> {
-        // Default cluster_id = 0 for backward compatibility
         self.analyze_with_baseline(profile, cluster_variables, None)
     }
 
@@ -75,37 +70,29 @@ impl RuleEngine {
         cluster_variables: Option<&std::collections::HashMap<String, String>>,
         cluster_id: Option<i64>,
     ) -> Vec<Diagnostic> {
-        // Detect query type from SQL for dynamic thresholds
         let query_type = QueryType::from_sql(&profile.summary.sql_statement);
 
-        // Detect query complexity for adaptive thresholds
         let query_complexity = QueryComplexity::from_sql(&profile.summary.sql_statement);
 
-        // Get cluster info for smart recommendations
         let cluster_info = profile.get_cluster_info();
 
-        // Get historical baseline from cache (if cluster_id provided)
         let baseline = cluster_id.map(|cid| super::BaselineProvider::get(cid, query_complexity));
 
-        // Create dynamic thresholds based on cluster info, query type, complexity, and baseline
         let thresholds = if let Some(bl) = baseline {
             DynamicThresholds::with_baseline(cluster_info.clone(), query_type, query_complexity, bl)
         } else {
             DynamicThresholds::new(cluster_info.clone(), query_type, query_complexity)
         };
 
-        // P0.1: Skip diagnosis for fast queries
-        // v2.0: Use dynamic threshold based on query type (ETL allows faster queries to be diagnosed)
         let min_diagnosis_time = thresholds.get_min_diagnosis_time_seconds();
         if let Ok(total_time_seconds) = Self::parse_total_time(&profile.summary.total_time)
-            && total_time_seconds < min_diagnosis_time {
-                // Fast query - return empty diagnostics
-                return vec![];
+            && total_time_seconds < min_diagnosis_time
+        {
+            return vec![];
         }
 
         let mut diagnostics = Vec::new();
 
-        // Evaluate query-level rules first
         let query_ctx = super::rules::query::QueryRuleContext::new(
             profile,
             cluster_variables,
@@ -129,13 +116,12 @@ impl RuleEngine {
                     } else {
                         vec![]
                     },
-                    // Pass through threshold metadata from QueryDiagnostic
+
                     threshold_metadata: diag.threshold_metadata,
                 });
             }
         }
 
-        // Evaluate planner-level rules (HMS metadata, optimizer, etc.)
         let query_time_ms = Self::parse_total_time(&profile.summary.total_time)
             .map(|s| s * 1000.0)
             .unwrap_or(0.0);
@@ -152,11 +138,9 @@ impl RuleEngine {
             }
         }
 
-        // Evaluate node-level rules
         if let Some(execution_tree) = &profile.execution_tree {
-            // Get session variables for context
             let session_variables = &profile.summary.non_default_variables;
-            // Get default database for table name resolution
+
             let default_db = profile.summary.default_db.as_deref();
 
             for node in &execution_tree.nodes {
@@ -170,7 +154,6 @@ impl RuleEngine {
                 };
 
                 for rule in &self.rules {
-                    // Skip rules based on query type
                     if query_type.should_skip_rule(rule.id()) {
                         continue;
                     }
@@ -188,18 +171,14 @@ impl RuleEngine {
             }
         }
 
-        // P3: Performance regression detection using query history
         if let Some(regression) = super::query_history::QUERY_HISTORY.record_and_detect(profile) {
             diagnostics.push(regression);
         }
 
-        // Sort by severity (highest first)
         diagnostics.sort_by(|a, b| b.severity.cmp(&a.severity));
 
-        // Deduplicate similar diagnostics
         diagnostics = self.deduplicate(diagnostics);
 
-        // Limit results
         if diagnostics.len() > self.config.max_suggestions {
             diagnostics.truncate(self.config.max_suggestions);
         }
@@ -279,7 +258,6 @@ impl RuleEngine {
         let mut suggestions = Vec::new();
         let mut unique_suggestions = HashSet::new();
 
-        // Collect unique suggestions from diagnostics
         for diag in diagnostics {
             for suggestion in &diag.suggestions {
                 if unique_suggestions.insert(suggestion.clone()) {
@@ -295,7 +273,6 @@ impl RuleEngine {
     pub fn calculate_performance_score(diagnostics: &[Diagnostic], profile: &Profile) -> f64 {
         let mut score: f64 = 100.0;
 
-        // Deduct points for diagnostics based on severity
         for diag in diagnostics {
             let penalty = match diag.severity {
                 RuleSeverity::Error => 20.0,
@@ -305,7 +282,6 @@ impl RuleEngine {
             score -= penalty;
         }
 
-        // Deduct points for long execution time
         if let Ok(total_seconds) = Self::parse_total_time(&profile.summary.total_time) {
             if total_seconds > 3600.0 {
                 score -= 20.0;

@@ -17,17 +17,14 @@ impl OperatorParser {
     pub fn is_operator_header(line: &str) -> bool {
         let trimmed = line.trim();
 
-        // Must end with ':'
         if !trimmed.ends_with(':') {
             return false;
         }
 
-        // Check for known operator patterns
         if trimmed.contains("(plan_node_id=") {
             return true;
         }
 
-        // Check against regex pattern
         OPERATOR_HEADER_REGEX.is_match(trimmed)
     }
 
@@ -60,26 +57,20 @@ impl OperatorParser {
         let name = operator_name.to_uppercase();
 
         match name.as_str() {
-            // Scan operators
             "OLAP_SCAN" | "OLAP_SCAN_OPERATOR" => "OLAP_SCAN".to_string(),
             "CONNECTOR_SCAN" | "CONNECTOR_SCAN_OPERATOR" => "CONNECTOR_SCAN".to_string(),
 
-            // Join operators
             "HASH_JOIN" | "HASH_JOIN_BUILD" | "HASH_JOIN_PROBE" => "HASH_JOIN".to_string(),
             "NEST_LOOP_JOIN" | "NESTLOOP_JOIN" => "NESTLOOP_JOIN".to_string(),
 
-            // Aggregate operators
             "AGGREGATE" | "AGGREGATION" | "AGGREGATE_BLOCKING" | "AGGREGATE_STREAMING" => {
                 "AGGREGATE".to_string()
             },
 
-            // Exchange operators
-            // EXCHANGE_SINK contains NetworkTime which is needed for time calculation
             "EXCHANGE" | "EXCHANGE_SOURCE" | "EXCHANGE_SINK" | "MERGE_EXCHANGE" => {
                 "EXCHANGE".to_string()
             },
 
-            // Other operators - return as-is
             _ => name,
         }
     }
@@ -98,7 +89,6 @@ impl OperatorParser {
         for line in lines {
             let trimmed = line.trim();
 
-            // Check if this is the target operator
             if !in_operator {
                 let is_match = if let Some(plan_id) = plan_node_id {
                     trimmed.contains(operator_name)
@@ -113,11 +103,9 @@ impl OperatorParser {
                     result.push(line);
                 }
             } else {
-                // Check if we've exited the operator block
                 let current_indent = Self::get_indent(line);
 
                 if !trimmed.is_empty() && current_indent <= base_indent {
-                    // Check if this is a new operator
                     if Self::is_operator_header(trimmed) {
                         break;
                     }

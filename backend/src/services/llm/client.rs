@@ -49,11 +49,9 @@ impl LLMClient {
             .as_ref()
             .ok_or_else(|| LLMError::ApiError("API key not configured".to_string()))?;
 
-        // Build user prompt from request
         let user_prompt =
             serde_json::to_string_pretty(request).map_err(LLMError::SerializationError)?;
 
-        // Build chat completion request
         let chat_request = ChatCompletionRequest {
             model: provider.model_name.clone(),
             messages: vec![
@@ -68,12 +66,10 @@ impl LLMClient {
             response_format: Some(ResponseFormat { r#type: "json_object".to_string() }),
         };
 
-        // Build URL
         let url = format!("{}/chat/completions", provider.api_base.trim_end_matches('/'));
 
         tracing::debug!("Calling LLM API: {} with model {}", url, provider.model_name);
 
-        // Make request with timeout
         let response = self
             .http_client
             .post(&url)
@@ -91,10 +87,8 @@ impl LLMClient {
                 }
             })?;
 
-        // Check status
         let status = response.status();
         if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-            // Extract retry-after header if available
             let retry_after = response
                 .headers()
                 .get("retry-after")
@@ -112,20 +106,17 @@ impl LLMClient {
             return Err(LLMError::ApiError(format!("API error {}: {}", status, error_text)));
         }
 
-        // Parse response
         let chat_response: ChatCompletionResponse = response
             .json()
             .await
             .map_err(|e| LLMError::ParseError(e.to_string()))?;
 
-        // Extract content
         let content = chat_response
             .choices
             .first()
             .and_then(|c| c.message.content.as_ref())
             .ok_or_else(|| LLMError::ParseError("Empty response from LLM".to_string()))?;
 
-        // Parse structured response
         let result: Resp = serde_json::from_str(content).map_err(|e| {
             LLMError::ParseError(format!(
                 "Failed to parse LLM response: {}. Content: {}",
@@ -133,7 +124,6 @@ impl LLMClient {
             ))
         })?;
 
-        // Extract token counts
         let input_tokens = chat_response
             .usage
             .as_ref()
@@ -155,7 +145,6 @@ impl LLMClient {
             .as_ref()
             .ok_or_else(|| LLMError::ApiError("API key not configured".to_string()))?;
 
-        // Use models endpoint for a lightweight test
         let url = format!("{}/models", provider.api_base.trim_end_matches('/'));
 
         let response = self
@@ -181,7 +170,6 @@ impl LLMClient {
         }
 
         if !status.is_success() {
-            // Some providers don't have /models endpoint, try a minimal chat request
             return self.test_with_chat(provider).await;
         }
 

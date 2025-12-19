@@ -99,13 +99,18 @@ impl ClusterAdapter for StarRocksAdapter {
     }
 
     async fn get_backends(&self) -> ApiResult<Vec<Backend>> {
-        // Automatically switch query strategy based on deployment mode
         if self.cluster.is_shared_data() {
-            tracing::info!("Cluster {} is in shared-data mode, fetching compute nodes", self.cluster.name);
+            tracing::info!(
+                "Cluster {} is in shared-data mode, fetching compute nodes",
+                self.cluster.name
+            );
             return self.get_compute_nodes().await;
         }
 
-        tracing::debug!("Cluster {} is in shared-nothing mode, fetching backends", self.cluster.name);
+        tracing::debug!(
+            "Cluster {} is in shared-nothing mode, fetching backends",
+            self.cluster.name
+        );
         self.show_proc_entities::<Backend>("/backends").await
     }
 
@@ -134,13 +139,12 @@ impl ClusterAdapter for StarRocksAdapter {
 
     async fn get_sessions(&self) -> ApiResult<Vec<crate::models::Session>> {
         use crate::models::Session;
-        
+
         let mysql_client = self.mysql_client().await?;
         let (_, rows) = mysql_client.query_raw("SHOW PROCESSLIST").await?;
-        
+
         let mut sessions = Vec::new();
         for row in rows {
-            // StarRocks SHOW PROCESSLIST columns: Id(0), User(1), Host(2), Db(3), Command(4), Time(5), State(6), Info(7)
             if row.len() >= 7 {
                 sessions.push(Session {
                     id: row.get(0).cloned().unwrap_or_default(),
@@ -154,7 +158,7 @@ impl ClusterAdapter for StarRocksAdapter {
                 });
             }
         }
-        
+
         Ok(sessions)
     }
 
@@ -162,7 +166,10 @@ impl ClusterAdapter for StarRocksAdapter {
         match self.show_proc_entities::<Query>("/current_queries").await {
             Ok(queries) => Ok(queries),
             Err(e) => {
-                tracing::warn!("Failed to retrieve /current_queries via SHOW PROC: {}. Returning empty list.", e);
+                tracing::warn!(
+                    "Failed to retrieve /current_queries via SHOW PROC: {}. Returning empty list.",
+                    e
+                );
                 Ok(Vec::new())
             },
         }
@@ -180,13 +187,15 @@ impl ClusterAdapter for StarRocksAdapter {
             .map_err(|e| ApiError::cluster_connection_failed(format!("Request failed: {}", e)))?;
 
         if !response.status().is_success() {
-            return Err(ApiError::cluster_connection_failed(format!("HTTP status: {}", response.status())));
+            return Err(ApiError::cluster_connection_failed(format!(
+                "HTTP status: {}",
+                response.status()
+            )));
         }
 
-        response
-            .json()
-            .await
-            .map_err(|e| ApiError::cluster_connection_failed(format!("Failed to parse response: {}", e)))
+        response.json().await.map_err(|e| {
+            ApiError::cluster_connection_failed(format!("Failed to parse response: {}", e))
+        })
     }
 
     async fn get_metrics(&self) -> ApiResult<String> {
@@ -201,16 +210,21 @@ impl ClusterAdapter for StarRocksAdapter {
             .map_err(|e| ApiError::cluster_connection_failed(format!("Request failed: {}", e)))?;
 
         if !response.status().is_success() {
-            return Err(ApiError::cluster_connection_failed(format!("HTTP status: {}", response.status())));
+            return Err(ApiError::cluster_connection_failed(format!(
+                "HTTP status: {}",
+                response.status()
+            )));
         }
 
-        response
-            .text()
-            .await
-            .map_err(|e| ApiError::cluster_connection_failed(format!("Failed to read response: {}", e)))
+        response.text().await.map_err(|e| {
+            ApiError::cluster_connection_failed(format!("Failed to read response: {}", e))
+        })
     }
 
-    fn parse_prometheus_metrics(&self, metrics_text: &str) -> ApiResult<std::collections::HashMap<String, f64>> {
+    fn parse_prometheus_metrics(
+        &self,
+        metrics_text: &str,
+    ) -> ApiResult<std::collections::HashMap<String, f64>> {
         let mut metrics = std::collections::HashMap::new();
 
         for line in metrics_text.lines() {
@@ -222,11 +236,8 @@ impl ClusterAdapter for StarRocksAdapter {
             if let Some((name_part, value_str)) = line.rsplit_once(' ')
                 && let Ok(value) = value_str.parse::<f64>()
             {
-                let metric_name = if let Some(pos) = name_part.find('{') {
-                    &name_part[..pos]
-                } else {
-                    name_part
-                };
+                let metric_name =
+                    if let Some(pos) = name_part.find('{') { &name_part[..pos] } else { name_part };
                 metrics.insert(metric_name.to_string(), value);
             }
         }
@@ -256,7 +267,10 @@ impl ClusterAdapter for StarRocksAdapter {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
             tracing::error!("SQL execution failed with status {}: {}", status, error_text);
-            return Err(ApiError::cluster_connection_failed(format!("SQL execution failed: {}", error_text)));
+            return Err(ApiError::cluster_connection_failed(format!(
+                "SQL execution failed: {}",
+                error_text
+            )));
         }
 
         tracing::info!("SQL executed successfully: {}", sql);
@@ -266,10 +280,9 @@ impl ClusterAdapter for StarRocksAdapter {
     async fn list_catalogs(&self) -> ApiResult<Vec<String>> {
         let mysql_client = self.mysql_client().await?;
         let (_, rows) = mysql_client.query_raw("SHOW CATALOGS").await?;
-        
+
         let mut catalogs = Vec::new();
         for row in rows {
-            // StarRocks SHOW CATALOGS: first column is catalog name
             if let Some(catalog_name) = row.first() {
                 let name = catalog_name.trim().to_string();
                 if !name.is_empty() {
@@ -277,21 +290,20 @@ impl ClusterAdapter for StarRocksAdapter {
                 }
             }
         }
-        
+
         Ok(catalogs)
     }
 
     async fn list_databases(&self, catalog: Option<&str>) -> ApiResult<Vec<String>> {
         let mysql_client = self.mysql_client().await?;
-        
-        // Switch catalog if specified
+
         if let Some(cat) = catalog {
             let switch_sql = format!("SET CATALOG {}", cat);
             mysql_client.execute(&switch_sql).await?;
         }
-        
+
         let (_, rows) = mysql_client.query_raw("SHOW DATABASES").await?;
-        
+
         let mut databases = Vec::new();
         for row in rows {
             if let Some(db_name) = row.first() {
@@ -301,13 +313,16 @@ impl ClusterAdapter for StarRocksAdapter {
                 }
             }
         }
-        
+
         Ok(databases)
     }
 
-    async fn list_materialized_views(&self, database: Option<&str>) -> ApiResult<Vec<crate::models::MaterializedView>> {
+    async fn list_materialized_views(
+        &self,
+        database: Option<&str>,
+    ) -> ApiResult<Vec<crate::models::MaterializedView>> {
         use crate::services::MaterializedViewService;
-        
+
         let mysql_client = self.mysql_client().await?;
         let mv_service = MaterializedViewService::new(mysql_client);
         mv_service.list_materialized_views(database).await
@@ -315,7 +330,7 @@ impl ClusterAdapter for StarRocksAdapter {
 
     async fn get_materialized_view_ddl(&self, mv_name: &str) -> ApiResult<String> {
         use crate::services::MaterializedViewService;
-        
+
         let mysql_client = self.mysql_client().await?;
         let mv_service = MaterializedViewService::new(mysql_client);
         mv_service.get_materialized_view_ddl(mv_name).await
@@ -323,7 +338,7 @@ impl ClusterAdapter for StarRocksAdapter {
 
     async fn create_materialized_view(&self, ddl: &str) -> ApiResult<()> {
         use crate::services::MaterializedViewService;
-        
+
         let mysql_client = self.mysql_client().await?;
         let mv_service = MaterializedViewService::new(mysql_client);
         mv_service.create_materialized_view(ddl).await
@@ -331,22 +346,30 @@ impl ClusterAdapter for StarRocksAdapter {
 
     async fn drop_materialized_view(&self, mv_name: &str) -> ApiResult<()> {
         use crate::services::MaterializedViewService;
-        
+
         let mysql_client = self.mysql_client().await?;
         let mv_service = MaterializedViewService::new(mysql_client);
         mv_service.drop_materialized_view(mv_name, false).await
     }
 
-    async fn refresh_materialized_view(&self, mv_name: &str, partition_start: Option<&str>, partition_end: Option<&str>, force: bool, mode: &str) -> ApiResult<()> {
+    async fn refresh_materialized_view(
+        &self,
+        mv_name: &str,
+        partition_start: Option<&str>,
+        partition_end: Option<&str>,
+        force: bool,
+        mode: &str,
+    ) -> ApiResult<()> {
         use crate::services::MaterializedViewService;
-        
+
         let mysql_client = self.mysql_client().await?;
         let mv_service = MaterializedViewService::new(mysql_client);
-        mv_service.refresh_materialized_view(mv_name, partition_start, partition_end, force, mode).await
+        mv_service
+            .refresh_materialized_view(mv_name, partition_start, partition_end, force, mode)
+            .await
     }
 
     async fn alter_materialized_view(&self, _mv_name: &str, ddl: &str) -> ApiResult<()> {
-        // Simply execute the ALTER statement
         let mysql_client = self.mysql_client().await?;
         mysql_client.execute(ddl).await?;
         Ok(())
@@ -354,10 +377,10 @@ impl ClusterAdapter for StarRocksAdapter {
 
     async fn list_sql_blacklist(&self) -> ApiResult<Vec<crate::models::SqlBlacklistItem>> {
         use crate::models::SqlBlacklistItem;
-        
+
         let mysql_client = self.mysql_client().await?;
         let rows = mysql_client.query("SHOW SQLBLACKLIST").await?;
-        
+
         Ok(rows
             .into_iter()
             .filter_map(|row| {
@@ -391,4 +414,3 @@ impl ClusterAdapter for StarRocksAdapter {
         mysql_client.query(&sql).await
     }
 }
-

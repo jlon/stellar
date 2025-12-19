@@ -93,13 +93,11 @@ impl SystemFunctionService {
             user_id
         );
 
-        // Trim input fields
         let category_name = req.category_name.trim().to_string();
         let function_name = req.function_name.trim().to_string();
         let description = req.description.trim().to_string();
         let sql_query = req.sql_query.trim().to_string();
 
-        // Check if fields are empty after trimming
         if category_name.is_empty() {
             return Err(ApiError::validation_error("Category name cannot be empty"));
         }
@@ -113,10 +111,8 @@ impl SystemFunctionService {
             return Err(ApiError::validation_error("SQL query cannot be empty"));
         }
 
-        // Validate SQL safety
         self.validate_sql_safety(&sql_query)?;
 
-        // Check function count limit per category (4 functions)
         let count: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM system_functions WHERE cluster_id = ? AND category_name = ?",
         )
@@ -131,7 +127,6 @@ impl SystemFunctionService {
             ));
         }
 
-        // Get the maximum display order for current category
         let max_order: Option<i32> = sqlx::query_scalar(
             "SELECT MAX(display_order) FROM system_functions WHERE cluster_id = ? AND category_name = ?"
         )
@@ -142,7 +137,6 @@ impl SystemFunctionService {
 
         let display_order = max_order.unwrap_or(0) + 1;
 
-        // Get the maximum category order for current cluster
         let max_category_order: Option<i32> = sqlx::query_scalar(
             "SELECT MAX(category_order) FROM system_functions WHERE cluster_id = ?",
         )
@@ -169,7 +163,6 @@ impl SystemFunctionService {
         .fetch_one(&*self.db)
         .await?;
 
-        // Return the created function
         let function =
             sqlx::query_as::<_, SystemFunction>("SELECT * FROM system_functions WHERE id = ?")
                 .bind(function_id)
@@ -179,13 +172,11 @@ impl SystemFunctionService {
         Ok(function)
     }
 
-    // Execute custom function SQL
     pub async fn execute_function(
         &self,
         cluster_id: i64,
         function_id: i64,
     ) -> ApiResult<Vec<HashMap<String, Value>>> {
-        // Get function information
         let function = sqlx::query_as::<_, SystemFunction>(
             "SELECT * FROM system_functions WHERE id = ? AND cluster_id = ?",
         )
@@ -199,22 +190,18 @@ impl SystemFunctionService {
             None => return Err(ApiError::not_found("Function not found or deleted")),
         };
 
-        // Update function updated_at timestamp
         sqlx::query("UPDATE system_functions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?")
             .bind(function_id)
             .execute(&*self.db)
             .await?;
 
-        // Get cluster information
         let cluster = self.cluster_service.get_cluster(cluster_id).await?;
 
-        // Execute SQL query using MySQL client
         let pool = self.mysql_pool_manager.get_pool(&cluster).await?;
         let mysql_client = MySQLClient::from_pool(pool);
 
         let (columns, rows) = mysql_client.query_raw(&function.sql_query).await?;
 
-        // Convert to HashMap format
         let result: Vec<HashMap<String, Value>> = rows
             .into_iter()
             .map(|row| {
@@ -229,7 +216,6 @@ impl SystemFunctionService {
         Ok(result)
     }
 
-    // Update system function access time
     pub async fn update_system_function_access_time(&self, function_name: &str) -> ApiResult<()> {
         sqlx::query(
             "UPDATE system_functions SET updated_at = CURRENT_TIMESTAMP WHERE function_name = ? AND cluster_id IS NULL"
@@ -241,13 +227,10 @@ impl SystemFunctionService {
         Ok(())
     }
 
-    // Update display and category orders
     pub async fn update_orders(&self, cluster_id: i64, req: UpdateOrderRequest) -> ApiResult<()> {
         let mut tx = self.db.begin().await?;
 
         for order in req.functions {
-            // Unified handling: all function ordering managed through preferences table
-            // Use UPSERT syntax (SQLite 3.24.0+)
             sqlx::query(
                 "INSERT INTO system_function_preferences (cluster_id, function_id, category_order, display_order, is_favorited, updated_at)
                  VALUES (?, ?, ?, ?, COALESCE((SELECT is_favorited FROM system_function_preferences WHERE cluster_id = ? AND function_id = ?), false), CURRENT_TIMESTAMP)
@@ -270,15 +253,11 @@ impl SystemFunctionService {
         Ok(())
     }
 
-    // Toggle favorite status
     pub async fn toggle_favorite(
         &self,
         cluster_id: i64,
         function_id: i64,
     ) -> ApiResult<SystemFunction> {
-        // Unified handling: all function favorites managed through preferences table
-
-        // Query current favorite status
         let current_favorited: Option<bool> = sqlx::query_scalar(
             "SELECT is_favorited FROM system_function_preferences WHERE cluster_id = ? AND function_id = ?"
         )
@@ -289,7 +268,6 @@ impl SystemFunctionService {
 
         let new_favorited = !current_favorited.unwrap_or(false);
 
-        // Get current function ordering info (use defaults if preference doesn't exist)
         let (default_category_order, default_display_order): (i32, i32) = sqlx::query_as(
             "SELECT category_order, display_order FROM system_functions WHERE id = ?",
         )
@@ -297,7 +275,6 @@ impl SystemFunctionService {
         .fetch_one(&*self.db)
         .await?;
 
-        // UPSERT operation
         sqlx::query(
             "INSERT INTO system_function_preferences (cluster_id, function_id, category_order, display_order, is_favorited, updated_at)
              VALUES (?, ?, 
@@ -320,7 +297,6 @@ impl SystemFunctionService {
         .execute(&*self.db)
         .await?;
 
-        // Return updated function
         let functions = self.get_functions(cluster_id).await?;
         functions
             .into_iter()
@@ -328,20 +304,17 @@ impl SystemFunctionService {
             .ok_or_else(|| ApiError::not_found("Function not found or deleted"))
     }
 
-    // Update custom function
     pub async fn update_function(
         &self,
         cluster_id: i64,
         function_id: i64,
         req: UpdateFunctionRequest,
     ) -> ApiResult<SystemFunction> {
-        // Trim input fields
         let category_name = req.category_name.trim().to_string();
         let function_name = req.function_name.trim().to_string();
         let description = req.description.trim().to_string();
         let sql_query = req.sql_query.trim().to_string();
 
-        // Check if fields are empty after trimming
         if category_name.is_empty() {
             return Err(ApiError::validation_error("Category name cannot be empty"));
         }
@@ -355,10 +328,8 @@ impl SystemFunctionService {
             return Err(ApiError::validation_error("SQL query cannot be empty"));
         }
 
-        // Validate SQL safety
         self.validate_sql_safety(&sql_query)?;
 
-        // 更新功能
         sqlx::query(
             "UPDATE system_functions SET 
              category_name = ?, function_name = ?, description = ?, sql_query = ?, updated_at = CURRENT_TIMESTAMP
@@ -373,7 +344,6 @@ impl SystemFunctionService {
         .execute(&*self.db)
         .await?;
 
-        // Return updated function
         let functions = self.get_functions(cluster_id).await?;
         functions
             .into_iter()
@@ -381,7 +351,6 @@ impl SystemFunctionService {
             .ok_or_else(|| ApiError::not_found("Function not found or deleted"))
     }
 
-    // Delete custom function
     pub async fn delete_function(&self, cluster_id: i64, function_id: i64) -> ApiResult<()> {
         let result = sqlx::query("DELETE FROM system_functions WHERE id = ? AND cluster_id = ?")
             .bind(function_id)
@@ -396,16 +365,13 @@ impl SystemFunctionService {
         Ok(())
     }
 
-    // Validate SQL safety (only allow SELECT/SHOW)
     fn validate_sql_safety(&self, sql: &str) -> ApiResult<()> {
         let trimmed_sql = sql.trim().to_uppercase();
 
-        // Check if starts with SELECT or SHOW
         if !trimmed_sql.starts_with("SELECT") && !trimmed_sql.starts_with("SHOW") {
             return Err(ApiError::invalid_sql("Only SELECT and SHOW type SQL queries are allowed"));
         }
 
-        // Check for dangerous keywords
         let dangerous_keywords = vec![
             "DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "CREATE", "TRUNCATE", "EXEC", "EXECUTE",
             "CALL", "GRANT", "REVOKE", "COMMIT", "ROLLBACK",
@@ -425,9 +391,7 @@ impl SystemFunctionService {
         Ok(())
     }
 
-    // Delete category
     pub async fn delete_category(&self, category_name: &str) -> ApiResult<()> {
-        // Check if it's a system category
         let system_categories = [
             "集群信息",
             "数据库管理",
@@ -442,7 +406,6 @@ impl SystemFunctionService {
             return Err(ApiError::invalid_data("不能删除系统默认分类"));
         }
 
-        // Delete all custom functions in this category
         sqlx::query(
             "DELETE FROM system_functions WHERE category_name = ? AND cluster_id IS NOT NULL",
         )
@@ -450,7 +413,6 @@ impl SystemFunctionService {
         .execute(&*self.db)
         .await?;
 
-        // Delete preferences for this category
         sqlx::query(
             "DELETE FROM system_function_preferences WHERE function_id IN (
                 SELECT id FROM system_functions WHERE category_name = ? AND cluster_id IS NOT NULL

@@ -68,7 +68,6 @@ pub async fn get_cluster_overview(
 ) -> ApiResult<Json<ClusterOverview>> {
     tracing::debug!("GET /api/clusters/overview?time_range={:?}", params.time_range);
 
-    // Get the active cluster with organization isolation
     let active_cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -111,7 +110,6 @@ pub async fn get_health_cards(
     State(state): State<Arc<AppState>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
 ) -> ApiResult<Json<Vec<HealthCard>>> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -154,7 +152,6 @@ pub async fn get_performance_trends(
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Query(params): Query<TrendQueryParams>,
 ) -> ApiResult<Json<PerformanceTrends>> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -200,7 +197,6 @@ pub async fn get_resource_trends(
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Query(params): Query<TrendQueryParams>,
 ) -> ApiResult<Json<ResourceTrends>> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -249,7 +245,6 @@ pub async fn get_data_statistics(
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Query(params): Query<TrendQueryParams>,
 ) -> ApiResult<Json<DataStatistics>> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -286,7 +281,6 @@ pub async fn get_capacity_prediction(
     State(state): State<Arc<AppState>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
 ) -> ApiResult<Json<CapacityPrediction>> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -334,7 +328,6 @@ pub async fn get_extended_cluster_overview(
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Query(params): Query<OverviewQueryParams>,
 ) -> ApiResult<Json<ExtendedClusterOverview>> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -378,7 +371,6 @@ pub async fn get_compaction_detail_stats(
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Query(params): Query<TrendQueryParams>,
 ) -> ApiResult<Json<CompactionDetailStats>> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {

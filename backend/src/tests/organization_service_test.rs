@@ -13,7 +13,7 @@ async fn test_organization_crud_operations() {
     let pool = create_test_db().await;
     let org_service = OrganizationService::new(pool.clone());
 
-    // Test creating organization
+
     let create_req = CreateOrganizationRequest {
         code: "test_org".to_string(),
         name: "Test Organization".to_string(),
@@ -33,7 +33,7 @@ async fn test_organization_crud_operations() {
     assert_eq!(created_org.name, "Test Organization");
     assert!(!created_org.is_system);
 
-    // Test getting organization
+
     let retrieved_org = org_service
         .get_organization(created_org.id, None, true)
         .await
@@ -42,7 +42,7 @@ async fn test_organization_crud_operations() {
     assert_eq!(retrieved_org.id, created_org.id);
     assert_eq!(retrieved_org.code, "test_org");
 
-    // Test listing organizations
+
     let organizations = org_service
         .list_organizations(None, true)
         .await
@@ -51,7 +51,7 @@ async fn test_organization_crud_operations() {
     assert!(!organizations.is_empty());
     assert!(organizations.iter().any(|org| org.code == "test_org"));
 
-    // Test updating organization
+
     let update_req = UpdateOrganizationRequest {
         name: Some("Updated Test Organization".to_string()),
         description: Some("Updated description".to_string()),
@@ -66,7 +66,7 @@ async fn test_organization_crud_operations() {
     assert_eq!(updated_org.name, "Updated Test Organization");
     assert_eq!(updated_org.description, Some("Updated description".to_string()));
 
-    // Test deleting organization
+
     cleanup_organization_data(&pool, created_org.id).await;
 
     org_service
@@ -74,7 +74,7 @@ async fn test_organization_crud_operations() {
         .await
         .expect("Failed to delete organization");
 
-    // Verify organization is deleted
+
     let result = org_service
         .get_organization(created_org.id, None, true)
         .await;
@@ -86,7 +86,7 @@ async fn test_organization_with_admin_creation() {
     let pool = create_test_db().await;
     let org_service = OrganizationService::new(pool.clone());
 
-    // Create organization with admin user
+
     let create_req = CreateOrganizationRequest {
         code: "org_with_admin".to_string(),
         name: "Organization With Admin".to_string(),
@@ -104,7 +104,7 @@ async fn test_organization_with_admin_creation() {
 
     assert_eq!(created_org.code, "org_with_admin");
 
-    // Verify admin user was created
+
     let users =
         sqlx::query_as::<_, (i64, String)>("SELECT id, username FROM users WHERE username = ?")
             .bind("org_admin")
@@ -115,7 +115,7 @@ async fn test_organization_with_admin_creation() {
     assert!(!users.is_empty());
     let (admin_user_id, _) = users[0];
 
-    // Verify user is assigned to organization
+
     let user_orgs: Vec<(i64,)> =
         sqlx::query_as("SELECT organization_id FROM user_organizations WHERE user_id = ?")
             .bind(admin_user_id)
@@ -147,7 +147,7 @@ async fn test_organization_creation_without_admin() {
         .await
         .expect("Failed to create organization without admin");
 
-    // Verify org_admin role exists but no user_role assignment yet
+
     let (role_id,): (i64,) = sqlx::query_as(
         "SELECT id FROM roles WHERE organization_id = ? AND code LIKE 'org_admin_%' LIMIT 1",
     )
@@ -170,7 +170,7 @@ async fn test_assign_admin_during_update() {
     let pool = create_test_db().await;
     let org_service = OrganizationService::new(pool.clone());
 
-    // Create org without admin
+
     let create_req = CreateOrganizationRequest {
         code: "org_update_admin".to_string(),
         name: "Org Update Admin".to_string(),
@@ -185,11 +185,11 @@ async fn test_assign_admin_during_update() {
         .await
         .expect("Failed to create organization");
 
-    // Create user inside organization
+
     let user_id = create_test_user_with_org(&pool, "deferred_admin", org.id).await;
     assign_user_to_organization(&pool, user_id, org.id).await;
 
-    // Assign admin via update
+
     let update_req =
         UpdateOrganizationRequest { name: None, description: None, admin_user_id: Some(user_id) };
 
@@ -224,15 +224,15 @@ async fn test_organization_access_control() {
 
     let test_data = setup_multi_tenant_test_data(&pool).await;
 
-    // Test: Super admin can access all organizations
+
     let organizations = org_service
         .list_organizations(None, true)
         .await
         .expect("Super admin should list all organizations");
 
-    assert!(organizations.len() >= 2); // At least org1 and org2
+    assert!(organizations.len() >= 2);
 
-    // Test: Organization admin can only access their own organization
+
     let org1_organizations = org_service
         .list_organizations(Some(test_data.org1_id), false)
         .await
@@ -240,7 +240,7 @@ async fn test_organization_access_control() {
 
     assert!(!org1_organizations.is_empty());
 
-    // Test: Non-super-admin cannot create organizations
+
     let create_req = CreateOrganizationRequest {
         code: "unauthorized_org".to_string(),
         name: "Unauthorized Organization".to_string(),
@@ -254,7 +254,7 @@ async fn test_organization_access_control() {
     let result = org_service.create_organization(create_req).await;
     assert!(result.is_ok(), "Service-level creation does not enforce RBAC; handler is responsible");
 
-    // Test: Non-super-admin cannot delete organizations
+
     let result = org_service
         .delete_organization(test_data.org2_id, Some(test_data.org1_id), false)
         .await;
@@ -267,7 +267,7 @@ async fn test_system_organization_protection() {
     let pool = create_test_db().await;
     let org_service = OrganizationService::new(pool.clone());
 
-    // Create a system organization
+
     let create_req = CreateOrganizationRequest {
         code: "system_org".to_string(),
         name: "System Organization".to_string(),
@@ -283,21 +283,21 @@ async fn test_system_organization_protection() {
         .await
         .expect("Failed to create system organization");
 
-    // Mark it as system organization
+
     sqlx::query("UPDATE organizations SET is_system = 1 WHERE id = ?")
         .bind(system_org.id)
         .execute(&pool)
         .await
         .expect("Failed to mark organization as system");
 
-    // Test: System organization cannot be deleted
+
     let result = org_service
         .delete_organization(system_org.id, None, true)
         .await;
 
     assert!(result.is_err(), "System organization should not be deletable");
 
-    // Test: System organization can be updated but not deleted
+
     let update_req = UpdateOrganizationRequest {
         name: Some("Updated System Organization".to_string()),
         description: Some("Updated system description".to_string()),
@@ -319,7 +319,7 @@ async fn test_organization_filtering() {
 
     let test_data = setup_multi_tenant_test_data(&pool).await;
 
-    // Create additional organization for testing
+
     let create_req = CreateOrganizationRequest {
         code: "additional_org".to_string(),
         name: "Additional Organization".to_string(),
@@ -336,15 +336,15 @@ async fn test_organization_filtering() {
         .expect("Failed to create additional organization");
     assert_eq!(additional_org.code, "additional_org");
 
-    // Test: Super admin can see all organizations
+
     let all_orgs = org_service
         .list_organizations(None, true)
         .await
         .expect("Super admin should see all organizations");
 
-    assert!(all_orgs.len() >= 3); // org1, org2, and additional_org
+    assert!(all_orgs.len() >= 3);
 
-    // Test: Non-super-admin without organization context gets empty result
+
     let filtered_orgs = org_service
         .list_organizations(None, false)
         .await
@@ -355,7 +355,7 @@ async fn test_organization_filtering() {
         "Should return empty for non-super-admin without organization"
     );
 
-    // Test: Non-super-admin with organization context gets filtered result
+
     let filtered_orgs = org_service
         .list_organizations(Some(test_data.org1_id), false)
         .await
@@ -376,7 +376,7 @@ async fn test_organization_update_validation() {
 
     let test_data = setup_multi_tenant_test_data(&pool).await;
 
-    // Test: Non-super-admin cannot update organizations they don't have access to
+
     let update_req = UpdateOrganizationRequest {
         name: Some("Hijacked Organization".to_string()),
         description: Some("This should not work".to_string()),
@@ -389,7 +389,7 @@ async fn test_organization_update_validation() {
 
     assert!(result.is_err(), "Non-super-admin should not update other organizations");
 
-    // Test: Super admin can update any organization
+
     let update_req = UpdateOrganizationRequest {
         name: Some("Super Admin Updated".to_string()),
         description: Some("Updated by super admin".to_string()),

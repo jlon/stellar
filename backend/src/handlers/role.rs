@@ -188,13 +188,11 @@ pub async fn update_role(
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Json(req): Json<UpdateRoleRequest>,
 ) -> ApiResult<Json<RoleResponse>> {
-    // Get existing role to check organization_id
     let existing = state
         .role_service
         .get_role(id, org_ctx.organization_id, org_ctx.is_super_admin)
         .await?;
 
-    // Only check if organization_id is being changed (not just present)
     if !org_ctx.is_super_admin
         && req.organization_id.is_some()
         && req.organization_id != existing.organization_id

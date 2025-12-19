@@ -12,17 +12,14 @@ use crate::services::profile_analyzer::models::*;
 /// Known default values for common StarRocks session parameters
 fn get_parameter_default(name: &str) -> Option<&'static str> {
     match name {
-        // DataCache related
         "enable_scan_datacache" => Some("true"),
         "enable_populate_datacache" => Some("true"),
 
-        // Query optimization
         "enable_query_cache" => Some("false"),
         "enable_adaptive_sink_dop" => Some("false"),
         "enable_runtime_adaptive_dop" => Some("false"),
         "enable_spill" => Some("false"),
 
-        // Parallelism
         "parallel_fragment_exec_instance_num" => Some("1"),
         "pipeline_dop" => Some("0"),
         "io_tasks_per_scan_operator" => Some("4"),
@@ -58,17 +55,16 @@ impl<'a> QueryRuleContext<'a> {
     /// Get current value of a parameter
     /// Priority: cluster_variables > non_default_variables > default
     pub fn get_variable_value(&self, name: &str) -> Option<String> {
-        // First check live cluster variables (most accurate)
         if let Some(vars) = self.cluster_variables
             && let Some(value) = vars.get(name)
         {
             return Some(value.clone());
         }
-        // Then check profile's non-default variables
+
         if let Some(info) = self.profile.summary.non_default_variables.get(name) {
             return Some(info.actual_value_str());
         }
-        // Finally use known default
+
         get_parameter_default(name).map(|s| s.to_string())
     }
 
@@ -155,7 +151,7 @@ impl<'a> QueryRuleContext<'a> {
         Some(ParameterSuggestion {
             name: name.to_string(),
             param_type: ParameterType::Session,
-            current: current_str, // Always has value from get_variable_value
+            current: current_str,
             recommended,
             command,
             description: metadata.description,
@@ -213,21 +209,17 @@ impl QueryRule for Q001LongRunning {
             .total_time_ms
             .or_else(|| parse_duration_ms(&ctx.profile.summary.total_time))?;
 
-        // v3.0: Use adaptive threshold from DynamicThresholds (includes baseline)
         let time_threshold_ms = ctx.thresholds.get_query_time_threshold_ms();
         let has_baseline = ctx.thresholds.baseline.is_some();
 
-        // Format threshold for display
         let threshold_display = if time_threshold_ms >= 60_000.0 {
             format!("{:.0}分钟", time_threshold_ms / 60_000.0)
         } else {
             format!("{:.0}秒", time_threshold_ms / 1000.0)
         };
 
-        // Threshold source for display
         let threshold_source = if has_baseline { "自适应基线" } else { "默认" };
 
-        // Get query type name for display
         let query_type = QueryType::from_sql(&ctx.profile.summary.sql_statement);
         let query_type_name = match query_type {
             QueryType::Select => "OLAP 查询",
@@ -253,7 +245,8 @@ impl QueryRule for Q001LongRunning {
                     threshold_source
                 ),
                 reason: if has_baseline {
-                    "阈值基于历史基线 P95 + 2σ 计算。当前查询显著慢于同类查询的历史表现。".to_string()
+                    "阈值基于历史基线 P95 + 2σ 计算。当前查询显著慢于同类查询的历史表现。"
+                        .to_string()
                 } else {
                     format!(
                         "根据查询类型 ({}) 使用默认阈值。OLAP 查询期望快速响应 (10s)，而 ETL 任务允许更长时间 (5-30min)。",
@@ -275,7 +268,7 @@ impl QueryRule for Q001LongRunning {
                     }
                     suggestions
                 },
-                // Q001 uses adaptive threshold - include metadata for LLM
+
                 threshold_metadata: Some(if has_baseline {
                     let bl = ctx.thresholds.baseline.as_ref().unwrap();
                     super::ThresholdMetadata::from_baseline(time_threshold_ms, bl)
@@ -350,7 +343,6 @@ impl QueryRule for Q003QuerySpill {
     fn evaluate(&self, ctx: &QueryRuleContext) -> Option<QueryDiagnostic> {
         let spill_bytes_str = ctx.profile.summary.query_spill_bytes.as_ref()?;
 
-        // Parse spill bytes (e.g., "1.5 GB", "0.000 B")
         let spill_bytes = parse_spill_bytes(spill_bytes_str)?;
 
         if spill_bytes > 0 {
@@ -429,7 +421,7 @@ impl QueryRule for Q005ScanDominates {
                     "考虑创建物化视图".to_string(),
                     "检查存储性能".to_string(),
                 ],
-                // Only suggest if not already enabled
+
                 parameter_suggestions: ctx
                     .suggest_parameter("enable_scan_datacache")
                     .into_iter()
@@ -552,7 +544,6 @@ impl QueryRule for Q007ProfileCollectSlow {
     }
 
     fn evaluate(&self, ctx: &QueryRuleContext) -> Option<QueryDiagnostic> {
-        // Check CollectProfileTime from variables or execution metrics
         let collect_time = ctx
             .profile
             .execution
@@ -560,7 +551,6 @@ impl QueryRule for Q007ProfileCollectSlow {
             .get("CollectProfileTime")
             .and_then(|v| v.parse::<f64>().ok())?;
         if collect_time > 100_000_000.0 {
-            // 100ms in ns
             Some(QueryDiagnostic {
                 rule_id: self.id().to_string(),
                 rule_name: self.name().to_string(),
@@ -630,14 +620,13 @@ impl QueryRule for Q009ResultDeliverySlow {
     }
 
     fn evaluate(&self, ctx: &QueryRuleContext) -> Option<QueryDiagnostic> {
-        // Check ResultDeliverTime from execution metrics
         let deliver_time = ctx
             .profile
             .execution
             .metrics
             .get("ResultDeliverTime")
             .and_then(|v| v.parse::<f64>().ok())?;
-        let wall_time = ctx.profile.summary.query_execution_wall_time_ms? * 1_000_000.0; // to ns
+        let wall_time = ctx.profile.summary.query_execution_wall_time_ms? * 1_000_000.0;
         if wall_time == 0.0 {
             return None;
         }

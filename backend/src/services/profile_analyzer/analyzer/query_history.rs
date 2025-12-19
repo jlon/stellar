@@ -81,12 +81,12 @@ pub struct HistoryConfig {
 impl Default for HistoryConfig {
     fn default() -> Self {
         Self {
-            enabled: true, // Enabled by default for real-time detection
+            enabled: true,
             memory_cache_size: 10000,
-            min_record_time_ms: 100.0,       // Skip queries < 100ms
-            min_samples_for_regression: 5,   // Need at least 5 samples
-            regression_ratio_threshold: 2.0, // 2x slower = regression
-            severe_regression_ratio: 5.0,    // 5x slower = severe
+            min_record_time_ms: 100.0,
+            min_samples_for_regression: 5,
+            regression_ratio_threshold: 2.0,
+            severe_regression_ratio: 5.0,
         }
     }
 }
@@ -125,17 +125,14 @@ impl QueryFingerprint {
     fn normalize_sql(sql: &str) -> String {
         let mut result = sql.to_uppercase();
 
-        // Replace numeric literals (keep simple for MVP)
         result = regex::Regex::new(r"\b\d+\.?\d*\b")
             .map(|re| re.replace_all(&result, "?").to_string())
             .unwrap_or(result);
 
-        // Replace string literals
         result = regex::Regex::new(r"'[^']*'")
             .map(|re| re.replace_all(&result, "?").to_string())
             .unwrap_or(result);
 
-        // Normalize whitespace
         result = regex::Regex::new(r"\s+")
             .map(|re| re.replace_all(&result, " ").to_string())
             .unwrap_or(result);
@@ -148,7 +145,6 @@ impl QueryFingerprint {
         let upper = sql.to_uppercase();
         let mut tables = Vec::new();
 
-        // Simple regex for FROM/JOIN clauses
         if let Ok(re) = regex::Regex::new(r"(?:FROM|JOIN)\s+`?(\w+)`?") {
             for cap in re.captures_iter(&upper) {
                 if let Some(m) = cap.get(1) {
@@ -310,24 +306,20 @@ impl QueryHistoryService {
     /// Record a query execution and detect regression
     /// Returns None if disabled or no regression detected
     pub fn record_and_detect(&self, profile: &Profile) -> Option<Diagnostic> {
-        // Check if feature is enabled
         if !self.config.enabled {
             return None;
         }
 
         let time_ms = profile.summary.total_time_ms?;
 
-        // Skip fast queries
         if time_ms < self.config.min_record_time_ms {
             return None;
         }
 
         let fingerprint = QueryFingerprint::from_profile(profile);
 
-        // Try to detect regression first (before updating baseline)
         let regression = self.detect_regression(&fingerprint, time_ms);
 
-        // Update baseline
         self.record_execution(fingerprint, time_ms);
 
         regression
@@ -342,21 +334,18 @@ impl QueryHistoryService {
     fn record_execution(&self, fingerprint: QueryFingerprint, time_ms: f64) {
         let hash = fingerprint.hash();
 
-        // Update access order for LRU
         {
             let mut order = self.access_order.write().unwrap();
             order.retain(|&h| h != hash);
             order.push(hash);
         }
 
-        // Update or create baseline
         {
             let mut cache = self.cache.write().unwrap();
 
             if let Some(baseline) = cache.get_mut(&hash) {
                 baseline.record_execution(time_ms);
             } else {
-                // Check if we need to evict
                 if cache.len() >= self.config.memory_cache_size {
                     self.evict_lru(&mut cache);
                 }
@@ -383,7 +372,6 @@ impl QueryHistoryService {
         let cache = self.cache.read().unwrap();
         let baseline = cache.get(&fingerprint.hash())?;
 
-        // Need minimum samples
         if baseline.time_stats.count() < self.config.min_samples_for_regression as usize {
             return None;
         }
@@ -543,17 +531,14 @@ mod tests {
 
         let sql = "SELECT * FROM orders WHERE user_id = 1";
 
-        // Record baseline samples (100ms each)
         for _ in 0..5 {
             service.record_and_detect(&create_mock_profile(sql, 100.0));
         }
 
-        // Should detect regression at 3x baseline
         let result = service.record_and_detect(&create_mock_profile(sql, 300.0));
         assert!(result.is_some(), "Should detect regression");
         assert_eq!(result.as_ref().unwrap().rule_id, "REG001");
 
-        // Should not detect regression at 1.5x baseline
         service.clear();
         for _ in 0..5 {
             service.record_and_detect(&create_mock_profile(sql, 100.0));
@@ -567,19 +552,16 @@ mod tests {
         let config = HistoryConfig { memory_cache_size: 3, ..Default::default() };
         let service = QueryHistoryService::with_config(config);
 
-        // Fill cache
         service.record_and_detect(&create_mock_profile("SELECT * FROM a", 100.0));
         service.record_and_detect(&create_mock_profile("SELECT * FROM b", 100.0));
         service.record_and_detect(&create_mock_profile("SELECT * FROM c", 100.0));
 
         assert_eq!(service.stats().cache_size, 3);
 
-        // Add one more, should evict oldest (a)
         service.record_and_detect(&create_mock_profile("SELECT * FROM d", 100.0));
 
         assert_eq!(service.stats().cache_size, 3);
 
-        // Check that 'a' was evicted
         let fp_a = QueryFingerprint::from_profile(&create_mock_profile("SELECT * FROM a", 100.0));
         assert!(service.get_baseline(&fp_a).is_none(), "'a' should be evicted");
     }

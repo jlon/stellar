@@ -85,7 +85,6 @@ pub async fn create_organization(
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Json(req): Json<CreateOrganizationRequest>,
 ) -> ApiResult<Json<OrganizationResponse>> {
-    // Only super admin can create organizations
     if !org_ctx.is_super_admin {
         return Err(crate::utils::ApiError::forbidden(
             "Only super administrators can create organizations",
@@ -97,7 +96,6 @@ pub async fn create_organization(
     let org = state.organization_service.create_organization(req).await?;
     tracing::info!("Organization created successfully: {} (ID: {})", org.code, org.id);
 
-    // Reload Casbin policies to include new org admin permissions
     state
         .casbin_service
         .reload_policies_from_db(&state.db)
@@ -159,7 +157,6 @@ pub async fn delete_organization(
     Path(id): Path<i64>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    // Only super admin can delete organizations
     if !org_ctx.is_super_admin {
         return Err(crate::utils::ApiError::forbidden(
             "Only super administrators can delete organizations",

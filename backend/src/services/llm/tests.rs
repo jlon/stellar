@@ -11,7 +11,6 @@ async fn setup_test_db() -> SqlitePool {
         .await
         .expect("Failed to create test database");
 
-    // Create LLM tables
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS llm_providers (
@@ -186,7 +185,6 @@ mod repository_tests {
         let pool = setup_test_db().await;
         let repo = LLMRepository::new(pool);
 
-        // Create multiple providers
         repo.create_provider(create_test_provider_request("openai"))
             .await
             .unwrap();
@@ -260,7 +258,7 @@ mod repository_tests {
         assert_eq!(updated.display_name, "Updated OpenAI");
         assert_eq!(updated.model_name, "gpt-4o");
         assert_eq!(updated.max_tokens, 8192);
-        // Unchanged fields
+
         assert_eq!(updated.api_base, "https://api.test.com/v1");
     }
 
@@ -278,7 +276,6 @@ mod repository_tests {
             .await
             .unwrap();
 
-        // Activate first provider
         repo.activate_provider(p1.id)
             .await
             .expect("Failed to activate");
@@ -290,7 +287,6 @@ mod repository_tests {
         assert!(active.is_some());
         assert_eq!(active.unwrap().id, p1.id);
 
-        // Activate second provider (should deactivate first)
         repo.activate_provider(p2.id)
             .await
             .expect("Failed to activate");
@@ -302,7 +298,6 @@ mod repository_tests {
         assert!(active.is_some());
         assert_eq!(active.unwrap().id, p2.id);
 
-        // Verify first is no longer active
         let p1_updated = repo.get_provider(p1.id).await.unwrap().unwrap();
         assert!(!p1_updated.is_active);
     }
@@ -318,16 +313,13 @@ mod repository_tests {
             .unwrap();
         repo.activate_provider(provider.id).await.unwrap();
 
-        // Verify active
         let active = repo.get_active_provider().await.unwrap();
         assert!(active.is_some());
 
-        // Deactivate
         repo.deactivate_provider(provider.id)
             .await
             .expect("Failed to deactivate");
 
-        // Verify no active provider
         let active = repo.get_active_provider().await.unwrap();
         assert!(active.is_none());
     }
@@ -376,14 +368,12 @@ mod repository_tests {
             .unwrap();
         assert!(provider.enabled);
 
-        // Disable
         let updated = repo
             .set_provider_enabled(provider.id, false)
             .await
             .expect("Failed to disable");
         assert!(!updated.enabled);
 
-        // Enable
         let updated = repo
             .set_provider_enabled(provider.id, true)
             .await
@@ -402,14 +392,11 @@ mod repository_tests {
             .unwrap();
         repo.activate_provider(provider.id).await.unwrap();
 
-        // Verify active
         let active = repo.get_active_provider().await.unwrap();
         assert!(active.is_some());
 
-        // Disable (should also deactivate)
         repo.set_provider_enabled(provider.id, false).await.unwrap();
 
-        // Verify no active provider
         let active = repo.get_active_provider().await.unwrap();
         assert!(active.is_none());
     }
@@ -453,7 +440,6 @@ mod service_tests {
         let providers = service.list_providers().await.expect("Failed to list");
         assert_eq!(providers.len(), 2);
 
-        // Verify sensitive data is masked
         for p in &providers {
             if let Some(masked) = &p.api_key_masked {
                 assert!(masked.contains("...") || masked == "****");
@@ -703,7 +689,6 @@ mod cache_tests {
         let pool = setup_test_db().await;
         let repo = LLMRepository::new(pool);
 
-        // Insert expired cache entry directly
         sqlx::query(
             r#"INSERT INTO llm_cache (cache_key, scenario, request_hash, response_json, expires_at)
                VALUES ('expired', 'test', 'hash', '{}', datetime('now', '-1 hour'))"#,
@@ -729,7 +714,6 @@ mod session_tests {
         let pool = setup_test_db().await;
         let repo = LLMRepository::new(pool);
 
-        // First create a provider
         let provider = repo
             .create_provider(create_test_provider_request("openai"))
             .await
@@ -870,14 +854,12 @@ mod llm_integration_tests {
         println!("🧪 LLM Integration Test - prrofile12.txt");
         println!("{}\n", sep);
 
-        // Step 1: Read profile file
         let profile_path = "tests/fixtures/profiles/prrofile12.txt";
         let profile_content =
             fs::read_to_string(profile_path).expect("Failed to read profile file");
 
         println!("📄 Profile loaded: {} bytes\n", profile_content.len());
 
-        // Step 2: Run rule engine analysis (骨架)
         println!("{}", sep);
         println!("🦴 Step 1: Rule Engine Analysis (骨架)");
         println!("{}\n", sep);
@@ -886,7 +868,6 @@ mod llm_integration_tests {
         let response = analyze_profile_with_context(&profile_content, &context)
             .expect("Failed to analyze profile");
 
-        // Print summary
         println!("📊 Summary:");
         if let Some(summary) = &response.summary {
             println!("   - Query ID: {}", summary.query_id);
@@ -921,7 +902,6 @@ mod llm_integration_tests {
 
         println!("\n🎯 Performance Score: {:.1}", response.performance_score);
 
-        // Step 3: Build LLM request
         println!("\n{}", sep);
         println!("📤 Step 2: Data Sent to LLM");
         println!("{}\n", sep);
@@ -930,12 +910,10 @@ mod llm_integration_tests {
         let request_json = serde_json::to_string_pretty(&llm_request).unwrap();
         println!("{}", request_json);
 
-        // Step 4: Connect to real database and call LLM
         println!("\n{}", sep);
         println!("🤖 Step 3: LLM Response (Real OpenRouter API)");
         println!("{}\n", sep);
 
-        // Try multiple possible database paths
         let db_paths = [
             "data/stellar.db",
             "stellar.db",
@@ -983,7 +961,6 @@ mod llm_integration_tests {
                 println!("📥 LLM Response:");
                 println!("{}", serde_json::to_string_pretty(&llm_response).unwrap());
 
-                // Step 5: Merge results
                 println!("\n{}", sep);
                 println!("🔄 Step 4: Merged Result (骨架 + 血肉)");
                 println!("{}\n", sep);
@@ -992,7 +969,6 @@ mod llm_integration_tests {
                     merge_results_for_test(&response.aggregated_diagnostics, &llm_response);
                 println!("{}", serde_json::to_string_pretty(&merged).unwrap());
 
-                // Print summary
                 println!("\n{}", sep);
                 println!("📊 Final Summary");
                 println!("{}\n", sep);
@@ -1027,7 +1003,6 @@ mod llm_integration_tests {
 
         let summary = response.summary.as_ref();
 
-        // CHANGE 1: Full SQL without truncation
         let sql = summary.map(|s| s.sql_statement.clone()).unwrap_or_default();
 
         let query_summary = QuerySummaryForLLM {
@@ -1058,9 +1033,7 @@ mod llm_integration_tests {
             session_variables: HashMap::new(),
         };
 
-        // CHANGE 2: Build rich profile data from execution tree
         let profile_data = response.execution_tree.as_ref().map(|tree| {
-            // All operators with full metrics
             let operators: Vec<OperatorDetailForLLM> = tree
                 .nodes
                 .iter()
@@ -1069,7 +1042,7 @@ mod llm_integration_tests {
                     plan_node_id: n.plan_node_id.unwrap_or(-1),
                     time_pct: n.time_percentage.unwrap_or(0.0),
                     rows: n.rows.unwrap_or(0),
-                    estimated_rows: None, // TODO: extract from plan
+                    estimated_rows: None,
                     memory_bytes: parse_bytes(
                         &n.unique_metrics
                             .get("PeakMemoryUsage")
@@ -1085,12 +1058,6 @@ mod llm_integration_tests {
                 })
                 .collect();
 
-            // Scan details - determine table type from CATALOG, not scan operator!
-            // Key insight:
-            // - default_catalog.db.table or db.table → internal (StarRocks native table)
-            // - hive_catalog.db.table, iceberg_catalog.db.table → external (foreign table)
-            // SCAN operator type (OLAP_SCAN vs CONNECTOR_SCAN) indicates storage architecture,
-            // NOT whether the table is internal or external!
             let scan_details: Vec<ScanDetailForLLM> = tree
                 .nodes
                 .iter()
@@ -1099,20 +1066,13 @@ mod llm_integration_tests {
                     let metrics = &n.unique_metrics;
                     let scan_type = n.operator_name.clone();
 
-                    // Get full table name (may include catalog.database.table)
                     let table_name = metrics
                         .get("Table")
                         .cloned()
                         .unwrap_or_else(|| "unknown".to_string());
 
-                    // Determine table type from CATALOG prefix, not scan operator!
-                    // - "default_catalog.db.table" or "db.table" (no catalog) → internal
-                    // - "hive_catalog.db.table", "iceberg_catalog.xxx" → external
                     let table_type = determine_table_type(&table_name);
 
-                    // Determine connector type from profile metrics
-                    // For external tables: hive, iceberg, hudi, deltalake, paimon, jdbc, es
-                    // For internal tables: native
                     let connector_type = if table_type == "external" {
                         Some(determine_connector_type(metrics))
                     } else {
@@ -1163,7 +1123,6 @@ mod llm_integration_tests {
                 })
                 .collect();
 
-            // Join details
             let join_details: Vec<JoinDetailForLLM> = tree
                 .nodes
                 .iter()
@@ -1192,7 +1151,6 @@ mod llm_integration_tests {
                 })
                 .collect();
 
-            // Aggregation details
             let agg_details: Vec<AggDetailForLLM> = tree
                 .nodes
                 .iter()
@@ -1226,7 +1184,6 @@ mod llm_integration_tests {
                 })
                 .collect();
 
-            // Exchange details
             let exchange_details: Vec<ExchangeDetailForLLM> = tree
                 .nodes
                 .iter()
@@ -1258,7 +1215,6 @@ mod llm_integration_tests {
                 })
                 .collect();
 
-            // Time distribution for skew detection
             let time_distribution = {
                 let times: Vec<f64> = tree
                     .nodes
@@ -1277,7 +1233,7 @@ mod llm_integration_tests {
                         min_time_ms: min,
                         avg_time_ms: avg,
                         skew_ratio: if avg > 0.0 { max / avg } else { 1.0 },
-                        per_instance: vec![], // Simplified for now
+                        per_instance: vec![],
                     })
                 }
             };
@@ -1292,7 +1248,6 @@ mod llm_integration_tests {
             }
         });
 
-        // Execution plan (simplified DAG)
         let dag_description = response
             .execution_tree
             .as_ref()
@@ -1333,7 +1288,6 @@ mod llm_integration_tests {
 
         let execution_plan = ExecutionPlanForLLM { dag_description, hotspot_nodes };
 
-        // Rule diagnostics (as reference for LLM)
         let diagnostics: Vec<DiagnosticForLLM> = response
             .aggregated_diagnostics
             .iter()
@@ -1408,12 +1362,12 @@ mod llm_integration_tests {
     /// Parse number from metric string like "1.705B (1704962761)" or "1234"
     fn parse_number(s: Option<&String>) -> u64 {
         s.and_then(|v| {
-            // Try to extract number in parentheses first: "1.705B (1704962761)"
             if let Some(start) = v.find('(')
-                && let Some(end) = v.find(')') {
-                    return v[start + 1..end].parse().ok();
+                && let Some(end) = v.find(')')
+            {
+                return v[start + 1..end].parse().ok();
             }
-            // Otherwise try direct parse
+
             v.replace(",", "").parse().ok()
         })
         .unwrap_or(0)
@@ -1470,7 +1424,6 @@ mod llm_integration_tests {
                     .ok()
                     .map(|n| n / 1_000_000.0)
             } else if v.contains('m') && v.contains('s') {
-                // "1m34s" format
                 let parts: Vec<&str> = v.split('m').collect();
                 if parts.len() == 2 {
                     let mins: f64 = parts[0].parse().ok()?;
@@ -1506,7 +1459,6 @@ mod llm_integration_tests {
         let mut root_causes = Vec::new();
         let mut seen_ids: HashSet<String> = HashSet::new();
 
-        // Add LLM root causes first (higher priority)
         for llm_rc in &llm_response.root_causes {
             let id = llm_rc.root_cause_id.clone();
             seen_ids.insert(id.clone());
@@ -1532,7 +1484,6 @@ mod llm_integration_tests {
             });
         }
 
-        // Add uncovered rule diagnostics
         for diag in rule_diagnostics {
             let is_covered = llm_response
                 .root_causes
@@ -1563,7 +1514,6 @@ mod llm_integration_tests {
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        // Merge recommendations
         let mut recommendations = Vec::new();
         let mut seen_actions: HashSet<String> = HashSet::new();
 
@@ -1720,16 +1670,13 @@ mod prompt_generation_tests {
 
         let prompt = build_system_prompt(&request);
 
-        // Verify internal table guidance is included
         assert!(prompt.contains("StarRocks 内表"), "Should mention internal tables");
         assert!(prompt.contains("ANALYZE TABLE"), "Should suggest ANALYZE for internal tables");
         assert!(prompt.contains("分桶键"), "Should mention bucket key optimization");
 
-        // Verify critical thinking section
         assert!(prompt.contains("批判性思维"), "Should include critical thinking section");
         assert!(prompt.contains("自我批评"), "Should mention self-criticism");
 
-        // Verify parameter validation
         assert!(prompt.contains("禁止使用的参数"), "Should list forbidden parameters");
         assert!(prompt.contains("enable_short_key_index"), "Should blacklist fake params");
 
@@ -1792,7 +1739,6 @@ mod prompt_generation_tests {
 
         let prompt = build_system_prompt(&request);
 
-        // Verify Iceberg-specific guidance
         assert!(prompt.contains("Iceberg 外表"), "Should mention Iceberg tables");
         assert!(prompt.contains("rewrite_data_files"), "Should suggest Iceberg file compaction");
         assert!(prompt.contains("DataCache"), "Should suggest DataCache for external tables");
@@ -1837,7 +1783,6 @@ mod prompt_generation_tests {
 
         let prompt = build_system_prompt(&request);
 
-        // Verify session variables are included
         assert!(prompt.contains("enable_scan_datacache"), "Should show current datacache setting");
         assert!(prompt.contains("enable_spill"), "Should show current spill setting");
         assert!(prompt.contains("不要重复建议"), "Should warn about duplicate suggestions");
@@ -1894,7 +1839,6 @@ mod prompt_generation_tests {
 
         let prompt = build_system_prompt(&request);
 
-        // Verify diagnostics are included
         assert!(prompt.contains("SCAN_HIGH_FILTER_RATIO"), "Should include rule IDs");
         assert!(prompt.contains("JOIN_SKEW"), "Should include all diagnostics");
         assert!(prompt.contains("规则引擎已识别的问题"), "Should have diagnostics section");
@@ -1931,7 +1875,6 @@ mod prompt_generation_tests {
 
         let prompt = build_system_prompt(&request);
 
-        // Verify JSON format is specified
         assert!(prompt.contains("root_causes"), "Should specify root_causes field");
         assert!(prompt.contains("recommendations"), "Should specify recommendations field");
         assert!(prompt.contains("sql_example"), "Should require sql_example");
@@ -1951,12 +1894,10 @@ mod table_type_tests {
 
     #[test]
     fn test_determine_table_type() {
-        // Internal tables
         assert_eq!(determine_table_type("default_catalog.db.table"), "internal");
         assert_eq!(determine_table_type("db.table"), "internal");
         assert_eq!(determine_table_type("table"), "internal");
 
-        // External tables
         assert_eq!(determine_table_type("hive_catalog.db.table"), "external");
         assert_eq!(determine_table_type("iceberg_cat.db.table"), "external");
         assert_eq!(determine_table_type("my_lake.schema.table"), "external");
@@ -1966,23 +1907,19 @@ mod table_type_tests {
 
     #[test]
     fn test_determine_connector_type() {
-        // Iceberg detection
         let mut metrics = HashMap::new();
         metrics.insert("IcebergV2FormatTimer".to_string(), "100ms".to_string());
         assert_eq!(determine_connector_type(&metrics), "iceberg");
 
-        // Hive/ORC detection
         let mut metrics = HashMap::new();
         metrics.insert("ORC".to_string(), "".to_string());
         metrics.insert("TotalStripeSize".to_string(), "1GB".to_string());
         assert_eq!(determine_connector_type(&metrics), "hive");
 
-        // Hudi detection
         let mut metrics = HashMap::new();
         metrics.insert("HudiScanTimer".to_string(), "50ms".to_string());
         assert_eq!(determine_connector_type(&metrics), "hudi");
 
-        // JDBC detection
         let mut metrics = HashMap::new();
         metrics.insert("JDBCReadRows".to_string(), "1000".to_string());
         assert_eq!(determine_connector_type(&metrics), "jdbc");
@@ -2009,7 +1946,6 @@ mod sql_diag_tests {
         println!("🧪 SQL Diagnosis LLM Integration Test");
         println!("{}\n", sep);
 
-        // Connect to real database
         let db_paths = [
             "data/stellar.db",
             "stellar.db",
@@ -2035,7 +1971,6 @@ mod sql_diag_tests {
             return;
         }
 
-        // Build test request with EXPLAIN
         let sql = r#"SELECT o.order_id, o.customer_id, c.name, o.amount
 FROM orders o
 JOIN customers c ON o.customer_id = c.id
@@ -2124,7 +2059,6 @@ PLAN FRAGMENT 2
                 println!("📥 Response:");
                 println!("{}", serde_json::to_string_pretty(&r.response).unwrap());
 
-                // Validate response
                 println!("\n📊 Validation:");
                 println!("   - SQL changed: {}", r.response.changed);
                 println!("   - Perf issues: {}", r.response.perf_issues.len());
@@ -2151,7 +2085,6 @@ PLAN FRAGMENT 2
         println!("🧪 Complex SQL Diagnosis - User Retention Analysis");
         println!("{}\n", sep);
 
-        // Connect to real database
         let db_paths = [
             "data/stellar.db",
             "stellar.db",
@@ -2177,7 +2110,6 @@ PLAN FRAGMENT 2
             return;
         }
 
-        // Complex user retention analysis SQL
         let sql = r#"WITH app_usage_with_name AS (
     SELECT 
         l.statis_id,
@@ -2265,7 +2197,6 @@ LIMIT 50000"#;
 
                 println!("   - Summary: {}", r.response.summary);
 
-                // Complex SQL should get meaningful analysis
                 assert!(r.response.confidence > 0.0, "Complex SQL should get some confidence");
                 assert!(!r.response.summary.is_empty(), "Summary should not be empty");
             },
@@ -2286,7 +2217,6 @@ LIMIT 50000"#;
         println!("🧪 SQL Diagnosis WITHOUT EXPLAIN (Static Analysis)");
         println!("{}\n", sep);
 
-        // Connect to real database
         let db_paths = [
             "data/stellar.db",
             "stellar.db",
@@ -2312,7 +2242,6 @@ LIMIT 50000"#;
             return;
         }
 
-        // Build test request WITHOUT EXPLAIN (simulating frontend scenario)
         let sql = r#"SELECT * FROM orders o
 JOIN customers c ON o.customer_id = c.id
 ORDER BY o.created_at DESC"#;
@@ -2345,7 +2274,6 @@ ORDER BY o.created_at DESC"#;
                 println!("   - Perf issues: {}", r.response.perf_issues.len());
                 println!("   - Summary: {}", r.response.summary);
 
-                // Even without EXPLAIN, we should get some analysis
                 assert!(
                     r.response.confidence > 0.0,
                     "Confidence should be > 0 even without EXPLAIN"
@@ -2362,7 +2290,6 @@ ORDER BY o.created_at DESC"#;
     /// Test SqlDiagResp deserialization with various JSON formats
     #[test]
     fn test_sql_diag_resp_deserialization() {
-        // Test 1: Full response
         let json = r#"{
             "sql": "SELECT * FROM orders WHERE order_date >= '2024-01-01'",
             "changed": true,
@@ -2384,7 +2311,6 @@ ORDER BY o.created_at DESC"#;
         assert_eq!(resp.confidence, 0.85);
         println!("✅ Full response parsed correctly");
 
-        // Test 2: Minimal response (all defaults)
         let json = r#"{}"#;
         let resp: SqlDiagResp = serde_json::from_str(json).expect("Failed to parse empty response");
         assert!(!resp.changed);
@@ -2392,7 +2318,6 @@ ORDER BY o.created_at DESC"#;
         assert_eq!(resp.confidence, 0.0);
         println!("✅ Empty response parsed with defaults");
 
-        // Test 3: Response with missing optional fields
         let json = r#"{
             "sql": "SELECT 1",
             "changed": false,
@@ -2407,7 +2332,6 @@ ORDER BY o.created_at DESC"#;
         assert_eq!(resp.confidence, 0.9);
         println!("✅ Partial response parsed correctly");
 
-        // Test 4: Response with perf_issues but no fix
         let json = r#"{
             "sql": "SELECT * FROM t",
             "changed": false,
@@ -2423,7 +2347,6 @@ ORDER BY o.created_at DESC"#;
         assert!(resp.perf_issues[0].fix.is_none());
         println!("✅ Response without fix parsed correctly");
 
-        // Test 5: Response with "unknown" estimated_rows (string instead of number)
         let json = r#"{
             "sql": "SELECT * FROM t",
             "changed": false,

@@ -53,7 +53,6 @@ pub async fn get_variables(
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Query(params): Query<VariableQueryParams>,
 ) -> ApiResult<impl IntoResponse> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -63,11 +62,9 @@ pub async fn get_variables(
             .await?
     };
 
-    // Get MySQL client from pool
     let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
     let mysql_client = MySQLClient::from_pool(pool);
 
-    // Build SQL query
     let sql = match params.r#type.as_str() {
         "session" => "SHOW SESSION VARIABLES",
         _ => "SHOW GLOBAL VARIABLES",
@@ -79,10 +76,8 @@ pub async fn get_variables(
         sql.to_string()
     };
 
-    // Execute query
     let (_, rows) = mysql_client.query_raw(&sql_with_filter).await?;
 
-    // Parse results
     let variables: Vec<Variable> = rows
         .into_iter()
         .map(|row| Variable {
@@ -123,23 +118,16 @@ pub async fn get_configure_info(
     let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
     let mysql_client = MySQLClient::from_pool(pool);
 
-    // Prefer SHOW FRONTEND CONFIG; fallback to SHOW CONFIG for compatibility
     let mut configs: Vec<ConfigEntry> = Vec::new();
     let mut errors: Vec<String> = Vec::new();
 
-    // Try admin + non-admin variants to maximize compatibility across versions/parsers
-    for stmt in [
-        "ADMIN SHOW FRONTEND CONFIG",
-        "SHOW FRONTEND CONFIG",
-        "ADMIN SHOW CONFIG",
-        "SHOW CONFIG",
-    ] {
+    for stmt in
+        ["ADMIN SHOW FRONTEND CONFIG", "SHOW FRONTEND CONFIG", "ADMIN SHOW CONFIG", "SHOW CONFIG"]
+    {
         match mysql_client.query_raw(stmt).await {
             Ok((columns, rows)) => {
-                // Log column names for debugging
                 tracing::info!("Config query '{}' returned columns: {:?}", stmt, columns);
-                
-                // Find column indices for name and value
+
                 let name_idx = columns.iter().position(|c| {
                     let lc = c.to_lowercase();
                     lc == "key" || lc == "name" || lc == "config_name" || lc == "configname"
@@ -148,9 +136,9 @@ pub async fn get_configure_info(
                     let lc = c.to_lowercase();
                     lc == "value" || lc == "config_value" || lc == "configvalue"
                 });
-                
+
                 tracing::info!("name_idx: {:?}, value_idx: {:?}", name_idx, value_idx);
-                
+
                 if let Some(n_idx) = name_idx {
                     configs = rows
                         .into_iter()
@@ -159,14 +147,10 @@ pub async fn get_configure_info(
                             let value = value_idx
                                 .and_then(|v_idx| row.get(v_idx).cloned())
                                 .unwrap_or_default();
-                            if name.is_empty() {
-                                None
-                            } else {
-                                Some(ConfigEntry { name, value })
-                            }
+                            if name.is_empty() { None } else { Some(ConfigEntry { name, value }) }
                         })
                         .collect();
-                    
+
                     if !configs.is_empty() {
                         break;
                     }
@@ -211,7 +195,6 @@ pub async fn update_variable(
     Path(variable_name): Path<String>,
     Json(request): Json<UpdateVariableRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    // Get the active cluster with organization isolation
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -221,21 +204,17 @@ pub async fn update_variable(
             .await?
     };
 
-    // Get MySQL client from pool
     let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
     let mysql_client = MySQLClient::from_pool(pool);
 
-    // Validate scope
     let scope = match request.scope.to_uppercase().as_str() {
         "GLOBAL" => "GLOBAL",
         "SESSION" => "SESSION",
         _ => return Err(ApiError::invalid_data("Invalid scope. Must be GLOBAL or SESSION")),
     };
 
-    // Build SET command
     let sql = format!("SET {} {} = {}", scope, variable_name, request.value);
 
-    // Execute command
     mysql_client.execute(&sql).await?;
 
     Ok((StatusCode::OK, Json(json!({ "message": "Variable updated successfully" }))))

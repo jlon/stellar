@@ -26,12 +26,12 @@ use stellar::{AppState, handlers, middleware, services};
 #[derive(OpenApi)]
 #[openapi(
     paths(
-        // Auth
+
         handlers::auth::register,
         handlers::auth::login,
         handlers::auth::get_me,
         handlers::auth::update_me,
-        // Cluster
+
         handlers::cluster::create_cluster,
         handlers::cluster::list_clusters,
         handlers::cluster::get_active_cluster,
@@ -39,17 +39,17 @@ use stellar::{AppState, handlers, middleware, services};
         handlers::cluster::update_cluster,
         handlers::cluster::delete_cluster,
         handlers::cluster::activate_cluster,
-        // Organization
+
         handlers::organization::create_organization,
         handlers::organization::list_organizations,
         handlers::organization::get_organization,
         handlers::organization::update_organization,
         handlers::organization::delete_organization,
         handlers::cluster::get_cluster_health,
-        // Backend
+
         handlers::backend::list_backends,
         handlers::frontend::list_frontends,
-        // Materialized View
+
         handlers::materialized_view::list_materialized_views,
         handlers::materialized_view::get_materialized_view,
         handlers::materialized_view::get_materialized_view_ddl,
@@ -58,7 +58,7 @@ use stellar::{AppState, handlers, middleware, services};
         handlers::materialized_view::refresh_materialized_view,
         handlers::materialized_view::cancel_refresh_materialized_view,
         handlers::materialized_view::alter_materialized_view,
-        // Query
+
         handlers::query::list_catalogs,
         handlers::query::list_databases,
         handlers::query::list_catalogs_with_databases,
@@ -69,20 +69,20 @@ use stellar::{AppState, handlers, middleware, services};
         handlers::query::add_sql_blacklist,
         handlers::query::delete_sql_blacklist,
         handlers::query_history::list_query_history,
-        // Session
+
         handlers::sessions::get_sessions,
         handlers::sessions::kill_session,
         handlers::variables::get_variables,
         handlers::variables::update_variable,
-        // Profile
+
         handlers::profile::list_profiles,
         handlers::profile::get_profile,
         handlers::profile::analyze_profile_handler,
-        // System
+
         handlers::system_management::get_system_functions,
         handlers::system_management::get_system_function_detail,
         handlers::system::get_runtime_info,
-        // Overview
+
         handlers::overview::get_cluster_overview,
         handlers::overview::get_health_cards,
         handlers::overview::get_performance_trends,
@@ -91,7 +91,7 @@ use stellar::{AppState, handlers, middleware, services};
         handlers::overview::get_capacity_prediction,
         handlers::overview::get_extended_cluster_overview,
         handlers::cluster::test_cluster_connection,
-        // RBAC Handlers
+
         handlers::role::list_roles,
         handlers::role::get_role,
         handlers::role::create_role,
@@ -99,17 +99,17 @@ use stellar::{AppState, handlers, middleware, services};
         handlers::role::delete_role,
         handlers::role::get_role_with_permissions,
         handlers::role::update_role_permissions,
-        // Permission
+
         handlers::permission::list_permissions,
         handlers::permission::list_menu_permissions,
         handlers::permission::list_api_permissions,
         handlers::permission::get_permission_tree,
         handlers::permission::get_current_user_permissions,
-        // User Role
+
         handlers::user_role::get_user_roles,
         handlers::user_role::assign_role_to_user,
         handlers::user_role::remove_role_from_user,
-        // User
+
         handlers::user::list_users,
         handlers::user::get_user,
         handlers::user::create_user,
@@ -229,29 +229,24 @@ impl utoipa::Modify for SecurityAddon {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Load configuration first
     let config = Config::load()?;
 
-    // Initialize logging
     let log_filter = tracing_subscriber::EnvFilter::new(&config.logging.level);
 
     let registry = tracing_subscriber::registry().with(log_filter);
 
-    // Add file logging if configured
     if let Some(log_file) = &config.logging.file {
-        // Ensure log directory exists
         let log_path = std::path::Path::new(log_file);
         if let Some(parent) = log_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
 
-        // Extract directory and filename prefix from config
         let log_dir = log_path.parent().and_then(|p| p.to_str()).unwrap_or("logs");
         let file_name = log_path
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("stellar.log");
-        // Remove .log extension if present (rolling appender adds date suffix)
+
         let file_prefix = file_name.strip_suffix(".log").unwrap_or(file_name);
 
         let file_appender = tracing_appender::rolling::daily(log_dir, file_prefix);
@@ -269,7 +264,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool = db::create_pool(&config.database.url).await?;
     tracing::info!("Database pool created successfully");
 
-    // Initialize core components
     let jwt_util = Arc::new(JwtUtil::new(&config.auth.jwt_secret, &config.auth.jwt_expires_in));
     let mysql_pool_manager = Arc::new(MySQLPoolManager::new());
 
@@ -286,7 +280,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Arc::clone(&cluster_service),
     ));
 
-    // Create new services for cluster overview
     let metrics_collector_service = Arc::new(MetricsCollectorService::new(
         pool.clone(),
         Arc::clone(&cluster_service),
@@ -310,14 +303,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_data_statistics(Arc::clone(&data_statistics_service)),
     );
 
-    // Initialize RBAC services
     let casbin_service = Arc::new(
         CasbinService::new()
             .await
             .map_err(|e| format!("Failed to initialize Casbin service: {}", e))?,
     );
 
-    // Load initial policies from database
     casbin_service
         .reload_policies_from_db(&pool)
         .await
@@ -338,11 +329,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let user_service = Arc::new(UserService::new(pool.clone(), Arc::clone(&casbin_service)));
 
-    // Initialize LLM service (enabled by default, 24 hours cache TTL)
     let llm_service = Arc::new(LLMServiceImpl::new(pool.clone(), true, 24));
     tracing::info!("LLM service initialized");
 
-    // Build AppState with all services
     let app_state = AppState {
         db: pool.clone(),
         mysql_pool_manager: Arc::clone(&mysql_pool_manager),
@@ -363,7 +352,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         llm_service: Arc::clone(&llm_service),
     };
 
-    // Start metrics collector using ScheduledExecutor (configurable interval)
     if config.metrics.enabled {
         let interval = std::time::Duration::from_secs(config.metrics.interval_secs);
         tracing::info!(
@@ -380,47 +368,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tracing::warn!("Metrics collector disabled by configuration");
     }
 
-    // Start baseline refresh task for adaptive thresholds (every hour)
-    // This task fetches audit log data and calculates performance baselines
     let _baseline_refresh_handle = services::start_baseline_refresh_task(
         Arc::clone(&mysql_pool_manager),
         Arc::clone(&cluster_service),
-        3600, // 1 hour refresh interval
+        3600,
     );
     tracing::info!("Baseline refresh task started (interval: 1 hour)");
 
-    // Wrap AppState in Arc for shared ownership across routes
     let app_state_arc = Arc::new(app_state);
 
-    // Auth state for middleware (includes permission checking)
     let auth_state = middleware::AuthState {
         jwt_util: Arc::clone(&jwt_util),
         casbin_service: Arc::clone(&casbin_service),
         db: pool.clone(),
     };
 
-    // Public routes (no authentication required)
     let public_routes = Router::new()
         .route("/api/auth/register", post(handlers::auth::register))
         .route("/api/auth/login", post(handlers::auth::login))
         .with_state(Arc::clone(&app_state_arc));
 
-    // Protected routes (require authentication)
     let protected_routes = Router::new()
-        // Auth
         .route("/api/auth/me", get(handlers::auth::get_me))
         .route("/api/auth/me", put(handlers::auth::update_me))
-        // Clusters
         .route("/api/clusters", post(handlers::cluster::create_cluster))
         .route("/api/clusters", get(handlers::cluster::list_clusters))
         .route("/api/clusters/active", get(handlers::cluster::get_active_cluster))
         .route("/api/clusters/health/test", post(handlers::cluster::test_cluster_connection))
-        // Backends
         .route("/api/clusters/backends", get(handlers::backend::list_backends))
         .route("/api/clusters/backends/:host/:port", delete(handlers::backend::delete_backend))
-        // Frontends
         .route("/api/clusters/frontends", get(handlers::frontend::list_frontends))
-        // Queries
         .route("/api/clusters/catalogs", get(handlers::query::list_catalogs))
         .route("/api/clusters/databases", get(handlers::query::list_databases))
         .route("/api/clusters/tables", get(handlers::query::list_tables))
@@ -432,12 +409,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/clusters/queries/execute", post(handlers::query::execute_sql))
         .route("/api/clusters/queries/:query_id", delete(handlers::query::kill_query))
         .route("/api/clusters/queries/history", get(handlers::query_history::list_query_history))
-        // SQL Blacklist
-        .route("/api/clusters/sql-blacklist", get(handlers::query::list_sql_blacklist).post(handlers::query::add_sql_blacklist))
+        .route(
+            "/api/clusters/sql-blacklist",
+            get(handlers::query::list_sql_blacklist).post(handlers::query::add_sql_blacklist),
+        )
         .route("/api/clusters/sql-blacklist/:id", delete(handlers::query::delete_sql_blacklist))
-        // SQL Diagnosis (LLM-enhanced)
         .route("/api/clusters/:cluster_id/sql/diagnose", post(handlers::sql_diag::diagnose))
-        // Cluster detail routes (placed after specific query routes to avoid path conflicts)
         .route("/api/clusters/:id", get(handlers::cluster::get_cluster))
         .route("/api/clusters/:id", put(handlers::cluster::update_cluster))
         .route("/api/clusters/:id", delete(handlers::cluster::delete_cluster))
@@ -446,7 +423,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/api/clusters/:id/health",
             get(handlers::cluster::get_cluster_health).post(handlers::cluster::get_cluster_health),
         )
-        // Organizations
         .route(
             "/api/organizations",
             post(handlers::organization::create_organization)
@@ -458,7 +434,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .put(handlers::organization::update_organization)
                 .delete(handlers::organization::delete_organization),
         )
-        // Materialized Views
         .route(
             "/api/clusters/materialized_views",
             get(handlers::materialized_view::list_materialized_views)
@@ -482,7 +457,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/api/clusters/materialized_views/:mv_name/cancel",
             post(handlers::materialized_view::cancel_refresh_materialized_view),
         )
-        // Profiles
         .route("/api/clusters/profiles", get(handlers::profile::list_profiles))
         .route("/api/clusters/profiles/:query_id", get(handlers::profile::get_profile))
         .route(
@@ -493,24 +467,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/api/clusters/:cluster_id/profiles/:query_id/enhance",
             post(handlers::profile::enhance_profile_handler),
         )
-        // Sessions
         .route("/api/clusters/sessions", get(handlers::sessions::get_sessions))
         .route("/api/clusters/sessions/:session_id", delete(handlers::sessions::kill_session))
-        // Variables
         .route("/api/clusters/variables", get(handlers::variables::get_variables))
-        .route(
-            "/api/clusters/configs",
-            get(handlers::variables::get_configure_info),
-        )
+        .route("/api/clusters/configs", get(handlers::variables::get_configure_info))
         .route("/api/clusters/variables/:variable_name", put(handlers::variables::update_variable))
-        // System
         .route("/api/clusters/system/runtime_info", get(handlers::system::get_runtime_info))
         .route("/api/clusters/system", get(handlers::system_management::get_system_functions))
         .route(
             "/api/clusters/system/:function_name",
             get(handlers::system_management::get_system_function_detail),
         )
-        // System Functions
         .route(
             "/api/clusters/system-functions",
             get(handlers::system_function::get_system_functions)
@@ -541,7 +508,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/api/system-functions/category/:category_name",
             delete(handlers::system_function::delete_category),
         )
-        // Overview
         .route("/api/clusters/overview", get(handlers::overview::get_cluster_overview))
         .route(
             "/api/clusters/overview/extended",
@@ -562,8 +528,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/api/clusters/overview/compaction-details",
             get(handlers::overview::get_compaction_detail_stats),
         )
-        // RBAC Routes
-        // Roles
         .route("/api/roles", get(handlers::role::list_roles).post(handlers::role::create_role))
         .route(
             "/api/roles/:id",
@@ -576,13 +540,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             get(handlers::role::get_role_with_permissions)
                 .put(handlers::role::update_role_permissions),
         )
-        // Permissions
         .route("/api/permissions", get(handlers::permission::list_permissions))
         .route("/api/permissions/menu", get(handlers::permission::list_menu_permissions))
         .route("/api/permissions/api", get(handlers::permission::list_api_permissions))
         .route("/api/permissions/tree", get(handlers::permission::get_permission_tree))
         .route("/api/auth/permissions", get(handlers::permission::get_current_user_permissions))
-        // User Management
         .route("/api/users", get(handlers::user::list_users).post(handlers::user::create_user))
         .route(
             "/api/users/:id",
@@ -590,13 +552,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .put(handlers::user::update_user)
                 .delete(handlers::user::delete_user),
         )
-        // User Roles
         .route(
             "/api/users/:id/roles",
             get(handlers::user_role::get_user_roles).post(handlers::user_role::assign_role_to_user),
         )
         .route("/api/users/:id/roles/:role_id", delete(handlers::user_role::remove_role_from_user))
-        // LLM Service APIs
         .route("/api/llm/status", get(handlers::llm::get_status))
         .route(
             "/api/llm/providers",
@@ -620,7 +580,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/health", get(health_check))
         .route("/ready", get(ready_check));
 
-    // Static file serving from embedded assets
     let static_routes = if config.static_config.enabled {
         tracing::info!("Static file serving enabled, serving from embedded assets");
         Router::new().fallback(serve_static_files)
@@ -628,13 +587,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Router::new()
     };
 
-    // Build the main app router
     let app = Router::new()
         .merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .merge(public_routes)
         .merge(protected_routes)
         .merge(health_routes)
-        .merge(static_routes); // Must be last to serve as fallback for SPA routes
+        .merge(static_routes);
 
     let app = app
         .layer(tower_http::trace::TraceLayer::new_for_http())
@@ -672,14 +630,10 @@ async fn ready_check() -> &'static str {
 async fn serve_static_files(uri: Uri) -> impl IntoResponse {
     let path = uri.path().trim_start_matches('/');
 
-    // Don't serve static files for API routes
     if path.starts_with("api/") || path.starts_with("api-docs/") {
         return (StatusCode::NOT_FOUND, "Not Found").into_response();
     }
 
-    // Check if this is a static asset request (has file extension)
-    // If the path contains route segments but ends with a static file extension,
-    // extract just the filename to serve the correct asset
     let static_extensions = [
         "js", "css", "png", "jpg", "jpeg", "gif", "svg", "ico", "woff", "woff2", "ttf", "eot",
         "otf", "json",
@@ -689,8 +643,6 @@ async fn serve_static_files(uri: Uri) -> impl IntoResponse {
         .any(|ext| path.ends_with(&format!(".{}", ext)));
 
     let asset_path = if is_static_asset {
-        // Extract filename from path (handles cases like /stellar/pages/starrocks/runtime.js)
-        // Find the last segment that looks like a filename (contains a dot)
         path.split('/')
             .next_back()
             .filter(|s| s.contains('.'))
@@ -700,7 +652,6 @@ async fn serve_static_files(uri: Uri) -> impl IntoResponse {
         path.to_string()
     };
 
-    // Try to get the file from embedded assets
     if let Some(file) = WebAssets::get(&asset_path) {
         let content_type = get_content_type(&asset_path);
         let data: Vec<u8> = file.data.to_vec();
@@ -712,8 +663,6 @@ async fn serve_static_files(uri: Uri) -> impl IntoResponse {
             .into_response();
     }
 
-    // For SPA routing, fall back to index.html for any non-API route
-    // Frontend uses relative API paths (./api), so it works with any deployment path
     if let Some(index) = WebAssets::get("index.html") {
         let data: Vec<u8> = index.data.to_vec();
         return Response::builder()

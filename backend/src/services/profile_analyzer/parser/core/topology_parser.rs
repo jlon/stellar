@@ -40,7 +40,6 @@ impl TopologyParser {
             nodes.push(node);
         }
 
-        // Add sink nodes from fragments
         Self::extract_and_add_sink_nodes(&mut nodes, profile_text, fragments, root_id)?;
 
         Ok(TopologyGraph { root_id, nodes })
@@ -99,7 +98,6 @@ impl TopologyParser {
             }
         }
 
-        // Sort by: final sink first, then by priority
         sink_candidates.sort_by(|a, b| match (a.1, b.1) {
             (true, false) => std::cmp::Ordering::Less,
             (false, true) => std::cmp::Ordering::Greater,
@@ -230,7 +228,6 @@ mod tests {
 
         /// Validate topology structure (test only)
         pub fn validate(topology: &TopologyGraph) -> ParseResult<()> {
-            // Check root exists
             if !topology.nodes.iter().any(|n| n.id == topology.root_id) {
                 return Err(ParseError::TopologyError(format!(
                     "Root node {} not found",
@@ -240,7 +237,6 @@ mod tests {
 
             let node_ids: HashSet<i32> = topology.nodes.iter().map(|n| n.id).collect();
 
-            // Check all children exist
             for node in &topology.nodes {
                 for child_id in &node.children {
                     if !node_ids.contains(child_id) {

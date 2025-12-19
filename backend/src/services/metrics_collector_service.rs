@@ -39,7 +39,6 @@ pub struct MetricsSnapshot {
     pub cluster_id: i64,
     pub collected_at: chrono::DateTime<Utc>,
 
-    // Query performance
     pub qps: f64,
     pub rps: f64,
     pub query_latency_p50: f64,
@@ -50,15 +49,11 @@ pub struct MetricsSnapshot {
     pub query_error: i64,
     pub query_timeout: i64,
 
-    // Cluster health
-    // Note: In shared-data mode, backend_* refers to Compute Nodes (CN)
-    //       In shared-nothing mode, backend_* refers to Backend Nodes (BE)
     pub backend_total: i32,
     pub backend_alive: i32,
     pub frontend_total: i32,
     pub frontend_alive: i32,
 
-    // Resource usage
     pub total_cpu_usage: f64,
     pub avg_cpu_usage: f64,
     pub total_memory_usage: f64,
@@ -67,32 +62,26 @@ pub struct MetricsSnapshot {
     pub disk_used_bytes: i64,
     pub disk_usage_pct: f64,
 
-    // Storage
     pub tablet_count: i64,
     pub max_compaction_score: f64,
 
-    // Transactions
     pub txn_running: i32,
     pub txn_success_total: i64,
     pub txn_failed_total: i64,
 
-    // Load jobs
     pub load_running: i32,
     pub load_finished_total: i64,
 
-    // JVM metrics
     pub jvm_heap_total: i64,
     pub jvm_heap_used: i64,
     pub jvm_heap_usage_pct: f64,
     pub jvm_thread_count: i32,
 
-    // Network metrics
     pub network_bytes_sent_total: i64,
     pub network_bytes_received_total: i64,
     pub network_send_rate: f64,
     pub network_receive_rate: f64,
 
-    // IO metrics
     pub io_read_bytes_total: i64,
     pub io_write_bytes_total: i64,
     pub io_read_rate: f64,
@@ -121,10 +110,8 @@ impl MetricsCollectorService {
     /// Execute one collection cycle
     /// This is called periodically by the ScheduledExecutor
     pub async fn collect_once(&self) -> Result<(), anyhow::Error> {
-        // Collect metrics from all clusters
         self.collect_all_clusters().await?;
 
-        // Check if we need to run daily aggregation
         self.check_and_run_daily_aggregation().await?;
 
         Ok(())
@@ -132,11 +119,9 @@ impl MetricsCollectorService {
 
     /// Check if daily aggregation is needed and run it
     async fn check_and_run_daily_aggregation(&self) -> Result<(), anyhow::Error> {
-        // Check if we've already aggregated today
         let today = Utc::now().date_naive();
         let yesterday = today - chrono::Duration::days(1);
 
-        // Check if yesterday's data has been aggregated
         let count: (i64,) =
             sqlx::query_as("SELECT COUNT(*) as count FROM daily_snapshots WHERE snapshot_date = ?")
                 .bind(yesterday)
@@ -165,11 +150,9 @@ impl MetricsCollectorService {
                     cluster.name,
                     e
                 );
-                // Continue with other clusters
             }
         }
 
-        // Cleanup old metrics every collection cycle
         if let Err(e) = self.cleanup_old_metrics().await {
             tracing::error!("Failed to cleanup old metrics: {}", e);
         }
@@ -183,7 +166,6 @@ impl MetricsCollectorService {
 
         let client = StarRocksClient::new(cluster.clone(), self.mysql_pool_manager.clone());
 
-        // Collect data from StarRocks
         let (metrics_text, backends, frontends, runtime_info) = tokio::try_join!(
             client.get_metrics(),
             client.get_backends(),
@@ -191,11 +173,8 @@ impl MetricsCollectorService {
             client.get_runtime_info(),
         )?;
 
-        // Parse Prometheus metrics
         let metrics_map = client.parse_prometheus_metrics(&metrics_text)?;
 
-        // Aggregate backend metrics (BE in shared-nothing, CN in shared-data)
-        // Note: In shared-data mode, backends list contains Compute Nodes (CN), not Backend Nodes (BE)
         let backend_total = backends.len() as i32;
         let backend_alive = backends.iter().filter(|b| b.alive == "true").count() as i32;
 
@@ -256,14 +235,11 @@ impl MetricsCollectorService {
         let avg_memory_usage =
             if backend_total > 0 { total_memory_usage / backend_total as f64 } else { 0.0 };
 
-        // Calculate disk total capacity (sum of all compute nodes: BE in shared-nothing, CN in shared-data)
         let disk_total_bytes: i64 = backends
             .iter()
             .filter_map(|b| parse_storage_size(&b.total_capacity))
             .sum();
 
-        // For local cache usage: find the compute node with MAX disk usage percentage
-        // and calculate its actual used bytes (represents cache pressure in shared-data or disk usage in shared-nothing)
         let (max_disk_usage_pct, _max_node_total, max_node_used) = backends
             .iter()
             .filter_map(|b| {
@@ -276,7 +252,6 @@ impl MetricsCollectorService {
             .max_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal))
             .unwrap_or((0.0, 0, 0));
 
-        // Use the max node's used bytes as disk_used_bytes (represents local cache usage)
         let disk_used_bytes = max_node_used;
         let disk_usage_pct = max_disk_usage_pct;
 
@@ -288,7 +263,6 @@ impl MetricsCollectorService {
             cluster.deployment_mode
         );
 
-        // JVM metrics
         let jvm_heap_used = runtime_info.total_mem - runtime_info.free_mem;
         let jvm_heap_usage_pct = if runtime_info.total_mem > 0 {
             (jvm_heap_used as f64 / runtime_info.total_mem as f64) * 100.0
@@ -296,7 +270,6 @@ impl MetricsCollectorService {
             0.0
         };
 
-        // Network metrics (BE)
         let network_bytes_sent_total = metrics_map
             .get("starrocks_be_network_send_bytes")
             .copied()
@@ -314,7 +287,6 @@ impl MetricsCollectorService {
             .copied()
             .unwrap_or(0.0);
 
-        // IO metrics (BE)
         let io_read_bytes_total = metrics_map
             .get("starrocks_be_disk_read_bytes")
             .copied()
@@ -332,18 +304,15 @@ impl MetricsCollectorService {
             .copied()
             .unwrap_or(0.0);
 
-        // Get real latency percentiles from audit logs using StarRocks percentile functions
         let (real_p50, real_p95, real_p99) = self
             .get_real_latency_percentiles(cluster)
             .await
             .unwrap_or((0.0, 0.0, 0.0));
 
-        // Create snapshot
         let snapshot = MetricsSnapshot {
             cluster_id: cluster.id,
             collected_at: Utc::now(),
 
-            // Query metrics: Use real percentiles from audit logs, fallback to Prometheus
             qps: metrics_map.get("starrocks_fe_qps").copied().unwrap_or(0.0),
             rps: metrics_map.get("starrocks_fe_rps").copied().unwrap_or(0.0),
             query_latency_p50: if real_p50 > 0.0 {
@@ -387,13 +356,11 @@ impl MetricsCollectorService {
                 .copied()
                 .unwrap_or(0.0) as i64,
 
-            // Cluster health
             backend_total,
             backend_alive,
             frontend_total,
             frontend_alive,
 
-            // Resource usage
             total_cpu_usage,
             avg_cpu_usage,
             total_memory_usage,
@@ -402,15 +369,13 @@ impl MetricsCollectorService {
             disk_used_bytes,
             disk_usage_pct,
 
-            // Storage
             tablet_count,
             max_compaction_score: metrics_map
                 .get("starrocks_fe_max_tablet_compaction_score")
                 .copied()
                 .unwrap_or(0.0),
 
-            // Transactions
-            txn_running: 0, // TODO: Need to get from appropriate metric
+            txn_running: 0,
             txn_success_total: metrics_map
                 .get("starrocks_fe_txn_success")
                 .copied()
@@ -420,33 +385,28 @@ impl MetricsCollectorService {
                 .copied()
                 .unwrap_or(0.0) as i64,
 
-            // Load jobs
-            load_running: 0, // TODO: Need to get from appropriate metric
+            load_running: 0,
             load_finished_total: metrics_map
                 .get("starrocks_fe_load_finished")
                 .copied()
                 .unwrap_or(0.0) as i64,
 
-            // JVM metrics
             jvm_heap_total: runtime_info.total_mem,
             jvm_heap_used,
             jvm_heap_usage_pct,
             jvm_thread_count: runtime_info.thread_cnt,
 
-            // Network metrics
             network_bytes_sent_total,
             network_bytes_received_total,
             network_send_rate,
             network_receive_rate,
 
-            // IO metrics
             io_read_bytes_total,
             io_write_bytes_total,
             io_read_rate,
             io_write_rate,
         };
 
-        // Save to database
         self.save_snapshot(&snapshot).await?;
 
         tracing::debug!(
@@ -537,7 +497,7 @@ impl MetricsCollectorService {
         .bind(snapshot.io_write_bytes_total)
         .bind(snapshot.io_read_rate)
         .bind(snapshot.io_write_rate)
-        .bind(None::<String>) // raw_metrics: reserved for future use
+        .bind(None::<String>)
         .execute(&self.db)
         .await?;
 
@@ -714,7 +674,6 @@ impl MetricsCollectorService {
             }
         }
 
-        // Cleanup old daily snapshots (keep 90 days)
         self.cleanup_old_daily_snapshots().await?;
 
         Ok(())
@@ -734,7 +693,6 @@ impl MetricsCollectorService {
             yesterday_end
         );
 
-        // Query all snapshots from yesterday
         let snapshots = sqlx::query_as::<_, MetricsAggregation>(
             r#"
             SELECT
@@ -764,7 +722,6 @@ impl MetricsCollectorService {
         .fetch_one(&self.db)
         .await?;
 
-        // Calculate derived metrics
         let total_queries = snapshots.total_queries.unwrap_or(0);
         let total_errors = snapshots.total_errors.unwrap_or(0);
         let error_rate = if total_queries > 0 {
@@ -773,7 +730,6 @@ impl MetricsCollectorService {
             0.0
         };
 
-        // Prepare values (to avoid temporary value lifetime issues)
         let avg_qps = snapshots.avg_qps.unwrap_or(0.0);
         let max_qps = snapshots.max_qps.unwrap_or(0.0);
         let min_qps = snapshots.min_qps.unwrap_or(0.0);
@@ -786,9 +742,8 @@ impl MetricsCollectorService {
         let avg_disk_usage_pct = snapshots.avg_disk_usage_pct.unwrap_or(0.0);
         let max_disk_usage_pct = snapshots.max_disk_usage_pct.unwrap_or(0.0);
         let data_size_end = snapshots.max_disk_used_bytes.unwrap_or(0.0) as i64;
-        let data_growth_bytes = 0i64; // Would need previous day's value
+        let data_growth_bytes = 0i64;
 
-        // Insert or update daily snapshot
         sqlx::query(
             r#"
             INSERT INTO daily_snapshots (
@@ -858,28 +813,23 @@ impl MetricsCollectorService {
         cluster: &Cluster,
     ) -> Option<String> {
         use crate::models::cluster::ClusterType;
-        
-        // Use different audit log tables for StarRocks and Doris
+
         let audit_table = match cluster.cluster_type {
             ClusterType::StarRocks => "starrocks_audit_db__.starrocks_audit_tbl__",
             ClusterType::Doris => "__internal_schema.audit_log",
         };
-        
-        // First, try to get column list using SHOW COLUMNS
+
         let show_columns_query = format!("SHOW COLUMNS FROM {}", audit_table);
 
         match mysql_client.query_raw(&show_columns_query).await {
             Ok((columns, rows)) => {
-                // Find the column index for "Field" column
                 let field_idx = columns
                     .iter()
                     .position(|c| c.eq_ignore_ascii_case("Field"))?;
 
-                // Possible column names to look for (in order of likelihood)
                 let possible_columns =
                     vec!["queryTime", "query_time", "duration", "QueryTime", "queryDuration"];
 
-                // Check each row for matching column name
                 for row in rows {
                     if let Some(col_name) = row.get(field_idx) {
                         let col_name_lower = col_name.to_lowercase();
@@ -894,12 +844,11 @@ impl MetricsCollectorService {
             },
             Err(e) => {
                 tracing::debug!("Failed to get column list, trying fallback method: {}", e);
-                // Fallback: try direct queries with common column names
+
                 let possible_columns =
                     vec!["queryTime", "query_time", "duration", "QueryTime", "queryDuration"];
 
                 for col_name in possible_columns {
-                    // Use a safe query that won't fail if column doesn't exist
                     let test_query = format!(
                         "SELECT COUNT(*) as cnt FROM {} WHERE {} > 0 LIMIT 1",
                         audit_table, col_name
@@ -924,31 +873,28 @@ impl MetricsCollectorService {
     async fn get_real_latency_percentiles(&self, cluster: &Cluster) -> ApiResult<(f64, f64, f64)> {
         use crate::services::mysql_client::MySQLClient;
 
-        // Get MySQL connection pool and create client
         let pool = self.mysql_pool_manager.get_pool(cluster).await?;
         let mysql_client = MySQLClient::from_pool(pool);
 
-        // Detect the available query time column name
         let query_time_col = match self.detect_query_time_column(&mysql_client, cluster).await {
             Some(col) => col,
             None => {
                 tracing::debug!(
                     "Query time column not found, skipping audit log percentile calculation"
                 );
-                return Ok((0.0, 0.0, 0.0)); // Return zeros to fallback to Prometheus
+                return Ok((0.0, 0.0, 0.0));
             },
         };
 
         use crate::models::cluster::ClusterType;
-        
-        // Use different audit log tables and field names for StarRocks and Doris
+
         let (audit_table, time_field, is_query_field) = match cluster.cluster_type {
-            ClusterType::StarRocks => ("starrocks_audit_db__.starrocks_audit_tbl__", "timestamp", "isQuery"),
+            ClusterType::StarRocks => {
+                ("starrocks_audit_db__.starrocks_audit_tbl__", "timestamp", "isQuery")
+            },
             ClusterType::Doris => ("__internal_schema.audit_log", "time", "is_query"),
         };
-        
-        // Use percentile_approx function to calculate P50, P95, P99 from audit logs
-        // Query recent 3 days of data for comprehensive percentiles
+
         let query = format!(
             r#"
             SELECT 
@@ -961,14 +907,18 @@ impl MetricsCollectorService {
                 AND state = 'EOF'
                 AND {} = 1
         "#,
-            query_time_col, query_time_col, query_time_col, 
-            audit_table, time_field, query_time_col, is_query_field
+            query_time_col,
+            query_time_col,
+            query_time_col,
+            audit_table,
+            time_field,
+            query_time_col,
+            is_query_field
         );
 
         match mysql_client.query(&query).await {
             Ok(results) => {
                 if let Some(row) = results.first() {
-                    // Parse percentile values - percentile_approx returns DOUBLE, so try f64 first
                     let p50 = row
                         .get("p50")
                         .and_then(|v| v.as_f64())
@@ -1020,7 +970,7 @@ impl MetricsCollectorService {
                     "Failed to query audit logs for percentiles: {}. Falling back to Prometheus metrics.",
                     e
                 );
-                Ok((0.0, 0.0, 0.0)) // Return zeros to fallback to Prometheus
+                Ok((0.0, 0.0, 0.0))
             },
         }
     }

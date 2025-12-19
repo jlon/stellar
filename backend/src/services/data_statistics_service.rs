@@ -4,7 +4,9 @@
 
 use crate::config::AuditLogConfig;
 use crate::models::Cluster;
-use crate::services::{AuditLogService, ClusterService, MaterializedViewService, MySQLClient, MySQLPoolManager, TopTableByAccess};
+use crate::services::{
+    AuditLogService, ClusterService, MySQLClient, MySQLPoolManager, TopTableByAccess,
+};
 use crate::utils::ApiResult;
 use chrono::{NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -21,36 +23,30 @@ pub struct TopTableBySize {
     pub rows: Option<i64>,
 }
 
-
 /// Data statistics cache
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct DataStatistics {
     pub cluster_id: i64,
     pub updated_at: chrono::DateTime<Utc>,
 
-    // Database/Table statistics
     pub database_count: i32,
     pub table_count: i32,
     pub total_data_size: i64,
     pub total_index_size: i64,
 
-    // Top tables
     pub top_tables_by_size: Vec<TopTableBySize>,
     pub top_tables_by_access: Vec<TopTableByAccess>,
 
-    // Materialized view statistics
     pub mv_total: i32,
     pub mv_running: i32,
     pub mv_failed: i32,
     pub mv_success: i32,
 
-    // Schema change statistics
     pub schema_change_running: i32,
     pub schema_change_pending: i32,
     pub schema_change_finished: i32,
     pub schema_change_failed: i32,
 
-    // Active users
     pub active_users_1h: i32,
     pub active_users_24h: i32,
     pub unique_users: Vec<String>,
@@ -72,10 +68,8 @@ impl DataStatisticsService {
         mysql_pool_manager: Arc<MySQLPoolManager>,
         audit_config: AuditLogConfig,
     ) -> Self {
-        let audit_log_service = Arc::new(AuditLogService::new(
-            mysql_pool_manager.clone(),
-            audit_config,
-        ));
+        let audit_log_service =
+            Arc::new(AuditLogService::new(mysql_pool_manager.clone(), audit_config));
         Self { db, cluster_service, mysql_pool_manager, audit_log_service }
     }
 
@@ -89,39 +83,35 @@ impl DataStatisticsService {
 
         let cluster = self.cluster_service.get_cluster(cluster_id).await?;
 
-        // Get MySQL connection pool
         let pool = self.mysql_pool_manager.get_pool(&cluster).await?;
         let mysql_client = MySQLClient::from_pool(pool);
 
-        // Get database and table counts using MySQL queries
         let database_count = self.get_database_count_mysql(&mysql_client).await? as i32;
         let table_count = self.get_table_count_mysql(&mysql_client).await? as i32;
 
-        // Get top tables by size (via MySQL client for detailed info)
         let top_tables_by_size = self.get_top_tables_by_size(&cluster, 20).await?;
 
-        // Get top tables by access (from audit logs using AuditLogService)
-        // Use time_range_start if provided, otherwise default to 3 days ago
         let time_range_start =
             time_range_start.unwrap_or_else(|| chrono::Utc::now() - chrono::Duration::days(3));
         let hours = (chrono::Utc::now() - time_range_start).num_hours().max(1) as i32;
-        let top_tables_by_access = self.audit_log_service
+        let top_tables_by_access = self
+            .audit_log_service
             .get_top_tables_by_access(&cluster, hours, 20)
             .await
             .unwrap_or_else(|e| {
-                tracing::warn!("Failed to get top tables by access from audit logs: {}. Returning empty list.", e);
+                tracing::warn!(
+                    "Failed to get top tables by access from audit logs: {}. Returning empty list.",
+                    e
+                );
                 Vec::new()
             });
 
-        // Calculate total data size from all tables (not just top 20)
         let total_data_size = self.get_total_data_size_mysql(&mysql_client).await?;
-        let total_index_size: i64 = 0; // INDEX_LENGTH is often NULL in StarRocks
+        let total_index_size: i64 = 0;
 
-        // Get materialized view statistics
         let (mv_total, mv_running, mv_failed, mv_success) =
             self.get_mv_statistics(&cluster).await?;
 
-        // Get schema change statistics using MySQL
         let (
             schema_change_running,
             schema_change_pending,
@@ -131,9 +121,8 @@ impl DataStatisticsService {
             .get_schema_change_statistics_mysql(&mysql_client)
             .await?;
 
-        // Get active users using MySQL
         let unique_users = self.get_active_users_mysql(&mysql_client).await?;
-        let active_users_1h = unique_users.len() as i32; // Simplified: treat all as 1h active
+        let active_users_1h = unique_users.len() as i32;
         let active_users_24h = unique_users.len() as i32;
 
         let statistics = DataStatistics {
@@ -158,7 +147,6 @@ impl DataStatisticsService {
             unique_users,
         };
 
-        // Save to cache
         self.save_statistics(&statistics).await?;
 
         tracing::info!(
@@ -251,10 +239,6 @@ impl DataStatisticsService {
         }
     }
 
-    // ========================================
-    // Internal helper methods
-    // ========================================
-
     /// Get top tables by size
     async fn get_top_tables_by_size(
         &self,
@@ -264,8 +248,6 @@ impl DataStatisticsService {
         let pool = self.mysql_pool_manager.get_pool(cluster).await?;
         let mysql_client = MySQLClient::from_pool(pool);
 
-        // Query information_schema.tables for table sizes
-        // Note: Use DATA_LENGTH from StarRocks metadata, INDEX_LENGTH is often NULL
         let query = format!(
             r#"
             SELECT 
@@ -284,20 +266,17 @@ impl DataStatisticsService {
 
         let result = mysql_client.query(&query).await?;
 
-        // Parse results
         let mut tables = Vec::new();
         for row in result {
             let database = row.get("database_name").and_then(|v| v.as_str());
             let table = row.get("table_name").and_then(|v| v.as_str());
 
-            // Try to parse size_bytes - could be i64 or string
             let size_bytes = row.get("size_bytes").and_then(|v| v.as_i64()).or_else(|| {
                 row.get("size_bytes")
                     .and_then(|v| v.as_str())
                     .and_then(|s| s.parse::<i64>().ok())
             });
 
-            // Try to parse row_count - could be i64 or string
             let rows = row.get("row_count").and_then(|v| v.as_i64()).or_else(|| {
                 row.get("row_count")
                     .and_then(|v| v.as_str())
@@ -326,37 +305,32 @@ impl DataStatisticsService {
         Ok(tables)
     }
 
-
     /// Get materialized view statistics
     async fn get_mv_statistics(&self, cluster: &Cluster) -> ApiResult<(i32, i32, i32, i32)> {
-        // Use cluster adapter to get materialized views (supports both StarRocks and Doris)
-        let adapter = crate::services::create_adapter(cluster.clone(), self.mysql_pool_manager.clone());
-        
-        // Get all materialized views - for Doris, this may return empty list if not supported
+        let adapter =
+            crate::services::create_adapter(cluster.clone(), self.mysql_pool_manager.clone());
+
         let mvs = match adapter.list_materialized_views(None).await {
             Ok(mvs) => mvs,
             Err(e) => {
-                tracing::warn!("Failed to list materialized views for cluster {}: {}. Returning zero stats.", cluster.name, e);
-                // Return zero stats if MV listing fails (e.g., Doris doesn't have the table)
+                tracing::warn!(
+                    "Failed to list materialized views for cluster {}: {}. Returning zero stats.",
+                    cluster.name,
+                    e
+                );
+
                 return Ok((0, 0, 0, 0));
-            }
+            },
         };
 
         let mv_total = mvs.len() as i32;
 
-        // Count by state
-        // Note: StarRocks MV states:
-        // - is_active=true: MV is active and can be used
-        // - is_active=false: MV is inactive (failed or paused)
-        // - refresh_type: MANUAL/ASYNC
         let mv_active = mvs.iter().filter(|mv| mv.is_active).count() as i32;
         let mv_inactive = mvs.iter().filter(|mv| !mv.is_active).count() as i32;
 
-        // For now, consider active MVs as "success" and inactive as "failed"
-        // In the future, we could query task history for more accurate stats
         let mv_success = mv_active;
         let mv_failed = mv_inactive;
-        let mv_running = 0; // Would need to query running tasks
+        let mv_running = 0;
 
         tracing::debug!(
             "MV statistics: total={}, active={}, inactive={}",
@@ -506,7 +480,7 @@ impl DataStatisticsService {
 
             for row in rows {
                 if !row.is_empty() {
-                    let state_str = &row[row.len() - 1]; // Usually the last column
+                    let state_str = &row[row.len() - 1];
                     match state_str.to_uppercase().as_str() {
                         "RUNNING" => running += 1,
                         "PENDING" | "WAITING_TXN" => pending += 1,
@@ -523,7 +497,13 @@ impl DataStatisticsService {
 
     /// List user databases excluding system schemas
     async fn list_user_databases(&self, mysql_client: &MySQLClient) -> ApiResult<Vec<String>> {
-        let system_dbs = ["information_schema", "_statistics_", "starrocks_audit_db__", "__internal_schema", "sys"];
+        let system_dbs = [
+            "information_schema",
+            "_statistics_",
+            "starrocks_audit_db__",
+            "__internal_schema",
+            "sys",
+        ];
 
         let mut databases = Vec::new();
         let (columns, rows) = mysql_client.query_raw("SHOW DATABASES").await?;
@@ -552,11 +532,9 @@ impl DataStatisticsService {
 
         let mut unique_users: std::collections::HashSet<String> = std::collections::HashSet::new();
 
-        // Find the User column index
         if let Some(user_idx) = columns.iter().position(|col| col.to_lowercase() == "user") {
             for row in rows {
                 if let Some(user) = row.get(user_idx) {
-                    // Filter out system users
                     if user != "root" && !user.is_empty() {
                         unique_users.insert(user.clone());
                     }

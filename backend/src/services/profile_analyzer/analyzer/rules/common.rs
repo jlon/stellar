@@ -21,15 +21,13 @@ impl DiagnosticRule for G001MostConsuming {
     }
 
     fn applicable_to(&self, _node: &ExecutionTreeNode) -> bool {
-        true // Applies to all nodes
+        true
     }
 
     fn evaluate(&self, context: &RuleContext) -> Option<Diagnostic> {
         let percentage = context.get_time_percentage()?;
         let operator_time_ms = context.get_operator_time_ms()?;
 
-        // P0.2: Check both percentage AND absolute time threshold
-        // Avoid false positives on operators that are fast in absolute terms
         if percentage > MOST_CONSUMING_PERCENTAGE && operator_time_ms > MIN_OPERATOR_TIME_MS {
             Some(Diagnostic {
                 rule_id: self.id().to_string(),
@@ -75,8 +73,6 @@ impl DiagnosticRule for G001bSecondConsuming {
         let percentage = context.get_time_percentage()?;
         let operator_time_ms = context.get_operator_time_ms()?;
 
-        // P0.2: Check both percentage AND absolute time threshold
-        // Only trigger if between 15% and 30% (G001 handles > 30%)
         if percentage > SECOND_CONSUMING_PERCENTAGE
             && percentage <= MOST_CONSUMING_PERCENTAGE
             && operator_time_ms > MIN_OPERATOR_TIME_MS
@@ -124,7 +120,6 @@ impl DiagnosticRule for G002HighMemory {
     fn evaluate(&self, context: &RuleContext) -> Option<Diagnostic> {
         let memory = context.get_memory_usage()?;
 
-        // v2.0: Use dynamic memory threshold based on BE memory
         let memory_threshold = context.thresholds.get_operator_memory_threshold();
 
         if memory > memory_threshold {
@@ -180,7 +175,6 @@ impl DiagnosticRule for G003ExecutionSkew {
     }
 
     fn evaluate(&self, context: &RuleContext) -> Option<Diagnostic> {
-        // Check if we have min/max time metrics
         let max_time = context.node.metrics.operator_total_time_max?;
         let _min_time = context.node.metrics.operator_total_time_min.unwrap_or(0);
         let avg_time = context.node.metrics.operator_total_time?;
@@ -189,8 +183,6 @@ impl DiagnosticRule for G003ExecutionSkew {
             return None;
         }
 
-        // P0.2: Absolute value protection - only check if execution time is significant
-        // v2.0: Use constant from thresholds module
         use crate::services::profile_analyzer::analyzer::thresholds::defaults::MIN_EXEC_TIME_NS;
         if avg_time < MIN_EXEC_TIME_NS {
             return None;
@@ -198,7 +190,6 @@ impl DiagnosticRule for G003ExecutionSkew {
 
         let ratio = max_time as f64 / avg_time as f64;
 
-        // v2.0: Use dynamic skew threshold based on cluster size
         let skew_threshold = context.thresholds.get_skew_threshold();
 
         if ratio > skew_threshold {
@@ -308,12 +299,8 @@ mod tests {
     fn test_g001_triggers_on_high_percentage() {
         let rule = G001MostConsuming;
 
-        // Create a node with 99.84% time percentage and sufficient absolute time (1 second)
-        // P0.2: G001 now requires both percentage > 30% AND operator_time > 500ms
-        let metrics = OperatorMetrics { 
-            operator_total_time: Some(1_000_000_000), // 1 second in nanoseconds
-            ..Default::default() 
-        };
+        let metrics =
+            OperatorMetrics { operator_total_time: Some(1_000_000_000), ..Default::default() };
 
         let node = ExecutionTreeNode {
             id: "test_node".to_string(),
@@ -361,12 +348,8 @@ mod tests {
     fn test_g001_skips_fast_operator() {
         let rule = G001MostConsuming;
 
-        // Create a node with high percentage but low absolute time (100ms < 500ms threshold)
-        // P0.2: G001 should NOT trigger because operator_time < 500ms
-        let metrics = OperatorMetrics { 
-            operator_total_time: Some(100_000_000), // 100ms in nanoseconds
-            ..Default::default() 
-        };
+        let metrics =
+            OperatorMetrics { operator_total_time: Some(100_000_000), ..Default::default() };
 
         let node = ExecutionTreeNode {
             id: "test_node".to_string(),
@@ -381,7 +364,7 @@ mod tests {
             hotspot_severity: HotSeverity::Normal,
             fragment_id: None,
             pipeline_id: None,
-            time_percentage: Some(50.0), // High percentage
+            time_percentage: Some(50.0),
             rows: None,
             is_most_consuming: true,
             is_second_most_consuming: false,

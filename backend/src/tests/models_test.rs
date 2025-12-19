@@ -55,7 +55,7 @@ fn test_role_response_from_role() {
 
 #[test]
 fn test_create_role_request_deserialization() {
-    // Test deserialization
+
     let json_str = r#"{"code":"test_role","name":"Test Role","description":"Test description"}"#;
     let deserialized: CreateRoleRequest = serde_json::from_str(json_str).unwrap();
     assert_eq!(deserialized.code, "test_role");
@@ -72,7 +72,7 @@ fn test_update_role_request_deserialization() {
     assert_eq!(deserialized.description, Some("Updated description".to_string()));
     assert_eq!(deserialized.organization_id, None);
 
-    // Test with null values
+
     let json_str2 = r#"{}"#;
     let deserialized2: UpdateRoleRequest = serde_json::from_str(json_str2).unwrap();
     assert_eq!(deserialized2.name, None);
@@ -123,7 +123,7 @@ fn test_permission_tree_structure() {
         }],
     };
 
-    // Test serialization
+
     let json = serde_json::to_string(&tree);
     assert!(json.is_ok());
 

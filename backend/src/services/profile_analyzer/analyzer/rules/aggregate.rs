@@ -30,8 +30,6 @@ impl DiagnosticRule for A001AggregationSkew {
             return None;
         }
 
-        // P0.2: Absolute value protection - only check if aggregation is significant
-        // v2.0: Use dynamic threshold from thresholds module
         let min_rows_threshold = context.thresholds.get_min_rows_for_skew();
         let input_rows = context.get_metric("PushRowNum").unwrap_or(0.0);
 
@@ -41,7 +39,6 @@ impl DiagnosticRule for A001AggregationSkew {
 
         let ratio = max_time as f64 / avg_time as f64;
 
-        // v2.0: Use dynamic skew threshold based on cluster size
         let skew_threshold = context.thresholds.get_skew_threshold();
 
         if ratio > skew_threshold {
@@ -92,7 +89,6 @@ impl DiagnosticRule for A002HashTableTooLarge {
     fn evaluate(&self, context: &RuleContext) -> Option<Diagnostic> {
         let memory = context.get_memory_usage()?;
 
-        // v2.0: Use dynamic hash table memory threshold
         let memory_threshold = context.thresholds.get_hash_table_memory_threshold();
 
         if memory > memory_threshold {
@@ -294,12 +290,11 @@ impl DiagnosticRule for A006LowLocalAggregation {
 
     fn applicable_to(&self, node: &ExecutionTreeNode) -> bool {
         let name = node.operator_name.to_uppercase();
-        // Only apply to local/first-stage aggregation
+
         name.contains("AGGREGATE") || name.contains("AGG")
     }
 
     fn evaluate(&self, context: &RuleContext) -> Option<Diagnostic> {
-        // Get input and output row counts
         let input_rows = context
             .get_metric("InputRowCount")
             .or_else(|| context.node.metrics.pull_row_num.map(|v| v as f64))?;
@@ -311,11 +306,8 @@ impl DiagnosticRule for A006LowLocalAggregation {
             return None;
         }
 
-        // Calculate aggregation ratio
         let agg_ratio = input_rows / output_rows;
 
-        // If aggregation ratio < 2.0 (less than 50% reduction), local aggregation is ineffective
-        // Also check that we have significant data (> 10K rows)
         if agg_ratio < 2.0 && input_rows > 10_000.0 {
             Some(Diagnostic {
                 rule_id: self.id().to_string(),

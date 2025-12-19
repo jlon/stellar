@@ -187,7 +187,7 @@ impl DiagnosticRule for W001WindowMemoryHigh {
 
     fn evaluate(&self, context: &RuleContext) -> Option<Diagnostic> {
         let memory = context.get_memory_usage()?;
-        const THRESHOLD: u64 = 500 * 1024 * 1024; // 500MB
+        const THRESHOLD: u64 = 500 * 1024 * 1024;
 
         if memory > THRESHOLD {
             Some(Diagnostic {

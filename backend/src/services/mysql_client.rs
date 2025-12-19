@@ -43,7 +43,6 @@ impl MySQLClient {
 
         tracing::debug!("Query returned {} rows", rows.len());
 
-        // CRITICAL: Explicitly drop connection to ensure proper cleanup
         drop(conn);
 
         Ok(process_query_result(rows))
@@ -79,7 +78,6 @@ impl MySQLClient {
             ApiError::cluster_connection_failed(format!("Query failed: {}", e))
         })?;
 
-        // CRITICAL: Explicitly drop connection to ensure proper cleanup
         drop(conn);
 
         Ok(result.len() as u64)
@@ -88,48 +86,35 @@ impl MySQLClient {
 
 impl MySQLSession {
     /// Set catalog context on this session's connection
-    /// 
+    ///
     /// # Syntax Differences
     /// - StarRocks: `SET CATALOG catalog_name`
     /// - Doris: `SWITCH catalog_name`
-    pub async fn use_catalog(&mut self, catalog: &str, cluster_type: &crate::models::cluster::ClusterType) -> Result<(), ApiError> {
+    pub async fn use_catalog(
+        &mut self,
+        catalog: &str,
+        cluster_type: &crate::models::cluster::ClusterType,
+    ) -> Result<(), ApiError> {
         use crate::models::cluster::ClusterType;
-        
+
         if catalog.is_empty() || catalog == "default_catalog" {
             return Ok(());
         }
 
-        // Different syntax for StarRocks and Doris
         let (switch_sql, switch_sql_quoted) = match cluster_type {
             ClusterType::StarRocks => {
-                // StarRocks: SET CATALOG catalog_name
-                (
-                    format!("SET CATALOG {}", catalog),
-                    format!("SET CATALOG `{}`", catalog)
-                )
+                (format!("SET CATALOG {}", catalog), format!("SET CATALOG `{}`", catalog))
             },
-            ClusterType::Doris => {
-                // Doris: SWITCH catalog_name
-                (
-                    format!("SWITCH {}", catalog),
-                    format!("SWITCH `{}`", catalog)
-                )
-            },
+            ClusterType::Doris => (format!("SWITCH {}", catalog), format!("SWITCH `{}`", catalog)),
         };
 
-        // Try without quotes first
-        if let Err(primary_err) = self
-            .conn
-            .query::<mysql_async::Row, _>(&switch_sql)
-            .await
-        {
+        if let Err(primary_err) = self.conn.query::<mysql_async::Row, _>(&switch_sql).await {
             tracing::debug!(
                 "Switch catalog {} without quotes failed: {}. Retrying with backticks.",
                 catalog,
                 primary_err
             );
 
-            // Retry with backticks for catalog names with special characters
             self.conn
                 .query::<mysql_async::Row, _>(&switch_sql_quoted)
                 .await
@@ -178,7 +163,6 @@ impl MySQLSession {
         })?;
         let execution_time_ms = start.elapsed().as_millis();
 
-        // Detailed performance logging for debugging
         tracing::debug!("SQL: '{}' -> {} rows in {}ms", sql, rows.len(), execution_time_ms);
 
         let process_start = std::time::Instant::now();
@@ -224,7 +208,6 @@ fn process_query_result(rows: Vec<mysql_async::Row>) -> (Vec<String>, Vec<Vec<St
     let mut columns = Vec::with_capacity(col_count);
     let mut result_rows = Vec::with_capacity(row_count);
 
-    // Extract column names from first row
     for col in rows[0].columns_ref().iter() {
         columns.push(col.name_str().to_string());
     }
@@ -250,7 +233,6 @@ fn process_query_result_batch(rows: Vec<mysql_async::Row>, result_rows: &mut Vec
         let col_count = row.columns_ref().len();
         let mut row_data = Vec::with_capacity(col_count);
 
-        // Process all columns in this row
         for col_idx in 0..col_count {
             row_data.push(value_to_string_optimized(&row[col_idx]));
         }
@@ -263,16 +245,12 @@ fn process_query_result_batch(rows: Vec<mysql_async::Row>, result_rows: &mut Vec
 fn value_to_string_optimized(value: &mysql_async::Value) -> String {
     match value {
         mysql_async::Value::NULL => "NULL".to_string(),
-        mysql_async::Value::Bytes(bytes) => {
-            // Use Cow<str> to avoid allocation for valid UTF-8
-            match std::str::from_utf8(bytes) {
-                Ok(s) => s.to_string(),
-                Err(_) => String::from_utf8_lossy(bytes).to_string(),
-            }
+        mysql_async::Value::Bytes(bytes) => match std::str::from_utf8(bytes) {
+            Ok(s) => s.to_string(),
+            Err(_) => String::from_utf8_lossy(bytes).to_string(),
         },
         mysql_async::Value::Int(i) => {
-            // Use write! macro for better performance than to_string()
-            let mut s = String::with_capacity(12); // i64 max is 19 digits, but most are smaller
+            let mut s = String::with_capacity(12);
             use std::fmt::Write;
             let _ = write!(s, "{}", i);
             s
@@ -284,20 +262,19 @@ fn value_to_string_optimized(value: &mysql_async::Value) -> String {
             s
         },
         mysql_async::Value::Float(f) => {
-            let mut s = String::with_capacity(16); // f32 precision
+            let mut s = String::with_capacity(16);
             use std::fmt::Write;
             let _ = write!(s, "{}", f);
             s
         },
         mysql_async::Value::Double(d) => {
-            let mut s = String::with_capacity(24); // f64 precision
+            let mut s = String::with_capacity(24);
             use std::fmt::Write;
             let _ = write!(s, "{}", d);
             s
         },
         mysql_async::Value::Date(year, month, day, hour, minute, second, _micro) => {
-            // Pre-allocate string with known capacity to avoid reallocations
-            let mut s = String::with_capacity(19); // "YYYY-MM-DD HH:MM:SS" = 19 chars
+            let mut s = String::with_capacity(19);
             s.push_str(&format!(
                 "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
                 year, month, day, hour, minute, second

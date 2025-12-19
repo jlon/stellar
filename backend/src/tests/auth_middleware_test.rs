@@ -78,27 +78,27 @@ async fn test_admin_user_has_all_permissions() {
     let casbin_service = create_test_casbin_service().await;
     let jwt_util = Arc::new(JwtUtil::new("test-secret-key-for-admin-test", "24h"));
 
-    // Setup test data
+
     let data = setup_test_data(&pool).await;
     let admin_role_id = data.admin_role_id;
 
-    // Reload policies from database
+
     casbin_service.reload_policies_from_db(&pool).await.unwrap();
 
-    // Create admin user
+
     let admin_user_id = create_test_user(&pool, "admin_user").await;
     assign_role_to_user(&pool, admin_user_id, admin_role_id).await;
 
-    // Reload policies to include user-role assignment
+
     casbin_service.reload_policies_from_db(&pool).await.unwrap();
 
-    // Generate token for admin user
+
     let token = generate_token(&jwt_util, admin_user_id, "admin_user");
 
-    // Create test router
+
     let app = create_test_router(jwt_util.clone(), casbin_service.clone(), pool.clone());
 
-    // Test cases: Admin should have access to all endpoints
+
     let test_cases = vec![
         ("GET", "/api/roles", true),
         ("POST", "/api/roles", true),
@@ -144,36 +144,36 @@ async fn test_operator_user_has_limited_permissions() {
     let casbin_service = create_test_casbin_service().await;
     let jwt_util = Arc::new(JwtUtil::new("test-secret-key-for-operator-test", "24h"));
 
-    // Setup test data
+
     setup_test_data(&pool).await;
     let operator_role_id = create_menu_only_role(&pool).await;
 
-    // Reload policies from database
+
     casbin_service.reload_policies_from_db(&pool).await.unwrap();
 
-    // Create operator user
+
     let operator_user_id = create_test_user(&pool, "operator_user").await;
     assign_role_to_user(&pool, operator_user_id, operator_role_id).await;
 
-    // Reload policies to include user-role assignment
+
     casbin_service.reload_policies_from_db(&pool).await.unwrap();
 
-    // Generate token for operator user
+
     let token = generate_token(&jwt_util, operator_user_id, "operator_user");
 
-    // Create test router
+
     let app = create_test_router(jwt_util.clone(), casbin_service.clone(), pool.clone());
 
-    // Test cases: Operator should only have menu permissions (no API permissions)
-    // Note: Since operator role only has menu permissions, API endpoints should be denied
+
+
     let test_cases = vec![
-        ("GET", "/api/roles", false),           // No permission
-        ("POST", "/api/roles", false),          // No permission
-        ("GET", "/api/roles/1", false),         // No permission
-        ("POST", "/api/clusters", false),       // No permission
-        ("PUT", "/api/clusters/1", false),      // No permission
-        ("DELETE", "/api/clusters/1", false),   // No permission
-        ("GET", "/api/auth/permissions", true), // Allowed (skipped permission check)
+        ("GET", "/api/roles", false),
+        ("POST", "/api/roles", false),
+        ("GET", "/api/roles/1", false),
+        ("POST", "/api/clusters", false),
+        ("PUT", "/api/clusters/1", false),
+        ("DELETE", "/api/clusters/1", false),
+        ("GET", "/api/auth/permissions", true),
     ];
 
     for (method, path, should_allow) in test_cases {
@@ -212,26 +212,26 @@ async fn test_user_with_no_role_has_no_permissions() {
     let casbin_service = create_test_casbin_service().await;
     let jwt_util = Arc::new(JwtUtil::new("test-secret-key-for-no-role-test", "24h"));
 
-    // Setup test data (roles and permissions exist)
+
     setup_test_data(&pool).await;
 
-    // Reload policies from database
+
     casbin_service.reload_policies_from_db(&pool).await.unwrap();
 
-    // Create user without any role assignment
+
     let user_id = create_test_user(&pool, "no_role_user").await;
-    // No role assignment
 
-    // Reload policies (user has no roles, so no permissions)
+
+
     casbin_service.reload_policies_from_db(&pool).await.unwrap();
 
-    // Generate token for user
+
     let token = generate_token(&jwt_util, user_id, "no_role_user");
 
-    // Create test router
+
     let app = create_test_router(jwt_util.clone(), casbin_service.clone(), pool.clone());
 
-    // Test cases: User with no role should be denied all API access
+
     let test_cases = vec![
         ("GET", "/api/roles", false),
         ("POST", "/api/roles", false),
@@ -239,7 +239,7 @@ async fn test_user_with_no_role_has_no_permissions() {
         ("POST", "/api/clusters", false),
         ("PUT", "/api/clusters/1", false),
         ("DELETE", "/api/clusters/1", false),
-        ("GET", "/api/auth/permissions", true), // Allowed (skipped permission check)
+        ("GET", "/api/auth/permissions", true),
     ];
 
     for (method, path, should_allow) in test_cases {
@@ -278,10 +278,10 @@ async fn test_custom_role_with_specific_permissions() {
     let casbin_service = create_test_casbin_service().await;
     let jwt_util = Arc::new(JwtUtil::new("test-secret-key-for-custom-role-test", "24h"));
 
-    // Setup base test data
+
     setup_test_data(&pool).await;
 
-    // Create a custom role with specific permissions
+
     let custom_role_id: (i64,) = sqlx::query_as(
         "INSERT INTO roles (code, name, description, is_system) VALUES (?, ?, ?, ?) RETURNING id",
     )
@@ -295,7 +295,7 @@ async fn test_custom_role_with_specific_permissions() {
 
     let custom_role_id = custom_role_id.0;
 
-    // Get specific permission IDs (only clusters:create permission)
+
     let permission_id: (i64,) =
         sqlx::query_as("SELECT id FROM permissions WHERE code = 'api:clusters:create'")
             .fetch_one(&pool)
@@ -304,7 +304,7 @@ async fn test_custom_role_with_specific_permissions() {
 
     let permission_id = permission_id.0;
 
-    // Assign only clusters:create permission to custom role
+
     sqlx::query("INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)")
         .bind(custom_role_id)
         .bind(permission_id)
@@ -312,30 +312,30 @@ async fn test_custom_role_with_specific_permissions() {
         .await
         .expect("Failed to assign permission to custom role");
 
-    // Reload policies from database
+
     casbin_service.reload_policies_from_db(&pool).await.unwrap();
 
-    // Create user with custom role
+
     let user_id = create_test_user(&pool, "custom_user").await;
     assign_role_to_user(&pool, user_id, custom_role_id).await;
 
-    // Reload policies to include user-role assignment
+
     casbin_service.reload_policies_from_db(&pool).await.unwrap();
 
-    // Generate token for user
+
     let token = generate_token(&jwt_util, user_id, "custom_user");
 
-    // Create test router
+
     let app = create_test_router(jwt_util.clone(), casbin_service.clone(), pool.clone());
 
-    // Test cases: User should only have clusters:create permission
+
     let test_cases = vec![
-        ("POST", "/api/clusters", true),      // Has permission
-        ("GET", "/api/roles", false),         // No permission
-        ("POST", "/api/roles", false),        // No permission
-        ("GET", "/api/roles/1", false),       // No permission
-        ("PUT", "/api/clusters/1", false),    // No permission
-        ("DELETE", "/api/clusters/1", false), // No permission
+        ("POST", "/api/clusters", true),
+        ("GET", "/api/roles", false),
+        ("POST", "/api/roles", false),
+        ("GET", "/api/roles/1", false),
+        ("PUT", "/api/clusters/1", false),
+        ("DELETE", "/api/clusters/1", false),
     ];
 
     for (method, path, should_allow) in test_cases {
@@ -374,15 +374,15 @@ async fn test_multiple_users_different_permissions() {
     let casbin_service = create_test_casbin_service().await;
     let jwt_util = Arc::new(JwtUtil::new("test-secret-key-for-multiple-users-test", "24h"));
 
-    // Setup test data
+
     let data = setup_test_data(&pool).await;
     let admin_role_id = data.admin_role_id;
     let operator_role_id = create_menu_only_role(&pool).await;
 
-    // Reload policies from database
+
     casbin_service.reload_policies_from_db(&pool).await.unwrap();
 
-    // Create multiple users with different roles
+
     let admin_user_id = create_test_user(&pool, "admin1").await;
     assign_role_to_user(&pool, admin_user_id, admin_role_id).await;
 
@@ -390,9 +390,9 @@ async fn test_multiple_users_different_permissions() {
     assign_role_to_user(&pool, operator_user_id, operator_role_id).await;
 
     let no_role_user_id = create_test_user(&pool, "norole1").await;
-    // No role assignment - explicitly ensure no roles
 
-    // Check if there are any existing user-role assignments for this user (should be none)
+
+
     let existing_assignments: Vec<(i64,)> =
         sqlx::query_as("SELECT role_id FROM user_roles WHERE user_id = ?")
             .bind(no_role_user_id)
@@ -401,30 +401,30 @@ async fn test_multiple_users_different_permissions() {
             .expect("Failed to check user roles");
     assert!(existing_assignments.is_empty(), "No-role user should have no role assignments");
 
-    // SECURITY NOTE: With the prefix fix (u: for users, r: for roles),
-    // user_id == role_id collisions are now prevented. This test verifies the fix works.
+
+
     eprintln!("[TEST] Admin role ID: {}, Operator role ID: {}", admin_role_id, operator_role_id);
     eprintln!(
         "[TEST] Admin user ID: {}, Operator user ID: {}, No-role user ID: {}",
         admin_user_id, operator_user_id, no_role_user_id
     );
 
-    // Reload policies to include all user-role assignments
+
     casbin_service.reload_policies_from_db(&pool).await.unwrap();
 
-    // Generate tokens for all users
+
     let admin_token = generate_token(&jwt_util, admin_user_id, "admin1");
     let operator_token = generate_token(&jwt_util, operator_user_id, "operator1");
     let no_role_token = generate_token(&jwt_util, no_role_user_id, "norole1");
 
-    // Create test router
+
     let app = create_test_router(jwt_util.clone(), casbin_service.clone(), pool.clone());
 
-    // Test endpoint: POST /api/roles (requires roles:create permission)
+
     let test_endpoint = "/api/roles";
     let test_method = "POST";
 
-    // Test admin user (should have access)
+
     let admin_req = Request::builder()
         .method(test_method)
         .uri(test_endpoint)
@@ -439,7 +439,7 @@ async fn test_multiple_users_different_permissions() {
         "Admin user should have access to create roles"
     );
 
-    // Test operator user (should be denied - only has menu permissions)
+
     let operator_req = Request::builder()
         .method(test_method)
         .uri(test_endpoint)
@@ -454,7 +454,7 @@ async fn test_multiple_users_different_permissions() {
         "Operator user should not have access to create roles"
     );
 
-    // Test no-role user (should be denied)
+
     let no_role_req = Request::builder()
         .method(test_method)
         .uri(test_endpoint)
@@ -462,7 +462,7 @@ async fn test_multiple_users_different_permissions() {
         .body(Body::empty())
         .unwrap();
 
-    // Debug: Check what extract_permission returns
+
     let perm = extract_permission("POST", "/api/roles");
     assert!(
         perm.is_some(),
@@ -473,8 +473,8 @@ async fn test_multiple_users_different_permissions() {
     assert_eq!(res, "roles", "Resource should be 'roles'");
     assert_eq!(act, "create", "Action should be 'create'");
 
-    // Debug: Check Casbin enforce result for no-role user BEFORE making request
-    // This will help us understand if the issue is in Casbin or in the middleware
+
+
     let casbin_result_before = casbin_service
         .enforce(no_role_user_id, "roles", "create")
         .await;
@@ -483,7 +483,7 @@ async fn test_multiple_users_different_permissions() {
         no_role_user_id, casbin_result_before
     );
 
-    // Verify this is indeed a security bug - user should NOT have permission
+
     if casbin_result_before.is_ok() && casbin_result_before.as_ref().unwrap() == &true {
         eprintln!(
             "[SECURITY BUG DETECTED] User {} has no roles but Casbin returned true for (roles, create)!",
@@ -492,16 +492,16 @@ async fn test_multiple_users_different_permissions() {
         eprintln!("This indicates a CRITICAL security vulnerability in the RBAC implementation.");
     }
 
-    // Make the actual request
+
     let no_role_response = app.clone().oneshot(no_role_req).await.unwrap();
     let status = no_role_response.status();
 
-    // Check Casbin again after request (should be same)
+
     let casbin_result_after = casbin_service
         .enforce(no_role_user_id, "roles", "create")
         .await;
 
-    // This is a CRITICAL security issue if status is 200
+
     assert_eq!(
         status,
         StatusCode::UNAUTHORIZED,
@@ -522,26 +522,26 @@ async fn test_permission_check_skipped_for_public_endpoint() {
     let casbin_service = create_test_casbin_service().await;
     let jwt_util = Arc::new(JwtUtil::new("test-secret-key-for-skip-test", "24h"));
 
-    // Setup test data
+
     setup_test_data(&pool).await;
 
-    // Reload policies from database
+
     casbin_service.reload_policies_from_db(&pool).await.unwrap();
 
-    // Create user without any role
+
     let user_id = create_test_user(&pool, "test_user").await;
-    // No role assignment
 
-    // Reload policies
+
+
     casbin_service.reload_policies_from_db(&pool).await.unwrap();
 
-    // Generate token
+
     let token = generate_token(&jwt_util, user_id, "test_user");
 
-    // Create test router
+
     let app = create_test_router(jwt_util.clone(), casbin_service.clone(), pool.clone());
 
-    // Test /api/auth/permissions endpoint (should skip permission check)
+
     let req = Request::builder()
         .method("GET")
         .uri("/api/auth/permissions")
@@ -551,7 +551,7 @@ async fn test_permission_check_skipped_for_public_endpoint() {
 
     let response = app.clone().oneshot(req).await.unwrap();
 
-    // Should succeed even without permissions (permission check is skipped)
+
     assert_eq!(
         response.status(),
         StatusCode::OK,
@@ -565,13 +565,13 @@ async fn test_invalid_token_returns_unauthorized() {
     let casbin_service = create_test_casbin_service().await;
     let jwt_util = Arc::new(JwtUtil::new("test-secret-key-for-invalid-token-test", "24h"));
 
-    // Setup test data
+
     setup_test_data(&pool).await;
 
-    // Create test router
+
     let app = create_test_router(jwt_util.clone(), casbin_service.clone(), pool.clone());
 
-    // Test with invalid token
+
     let req = Request::builder()
         .method("GET")
         .uri("/api/roles")
@@ -594,13 +594,13 @@ async fn test_missing_token_returns_unauthorized() {
     let casbin_service = create_test_casbin_service().await;
     let jwt_util = Arc::new(JwtUtil::new("test-secret-key-for-missing-token-test", "24h"));
 
-    // Setup test data
+
     setup_test_data(&pool).await;
 
-    // Create test router
+
     let app = create_test_router(jwt_util.clone(), casbin_service.clone(), pool.clone());
 
-    // Test without token
+
     let req = Request::builder()
         .method("GET")
         .uri("/api/roles")
@@ -622,27 +622,27 @@ async fn test_user_permissions_updated_after_role_change() {
     let casbin_service = create_test_casbin_service().await;
     let jwt_util = Arc::new(JwtUtil::new("test-secret-key-for-update-test", "24h"));
 
-    // Setup test data
+
     setup_test_data(&pool).await;
     let operator_role_id = create_menu_only_role(&pool).await;
 
-    // Reload policies from database
+
     casbin_service.reload_policies_from_db(&pool).await.unwrap();
 
-    // Create user with operator role initially
+
     let user_id = create_test_user(&pool, "dynamic_user").await;
     assign_role_to_user(&pool, user_id, operator_role_id).await;
 
-    // Reload policies
+
     casbin_service.reload_policies_from_db(&pool).await.unwrap();
 
-    // Generate token
+
     let token = generate_token(&jwt_util, user_id, "dynamic_user");
 
-    // Create test router
+
     let app = create_test_router(jwt_util.clone(), casbin_service.clone(), pool.clone());
 
-    // Initially, user should not have access to create roles (only operator has menu permissions)
+
     let initial_req = Request::builder()
         .method("POST")
         .uri("/api/roles")
@@ -657,7 +657,7 @@ async fn test_user_permissions_updated_after_role_change() {
         "User with operator role should not have access initially"
     );
 
-    // Now assign admin role to the same user
+
     let admin_role_id = sqlx::query_as::<_, (i64,)>("SELECT id FROM roles WHERE code = 'admin'")
         .fetch_one(&pool)
         .await
@@ -666,10 +666,10 @@ async fn test_user_permissions_updated_after_role_change() {
 
     assign_role_to_user(&pool, user_id, admin_role_id).await;
 
-    // Reload policies to reflect new role assignment
+
     casbin_service.reload_policies_from_db(&pool).await.unwrap();
 
-    // User should now have access (has admin role with all permissions)
+
     let updated_req = Request::builder()
         .method("POST")
         .uri("/api/roles")

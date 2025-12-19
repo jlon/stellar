@@ -35,15 +35,12 @@ impl MySQLPoolManager {
     pub async fn get_pool(&self, cluster: &Cluster) -> ApiResult<Pool> {
         let cluster_id = cluster.id;
 
-        // Fast path: Try to get existing pool (lock-free)
         if let Some(pool) = self.pools.get(&cluster_id) {
             return Ok(pool.clone());
         }
 
-        // Slow path: Create new pool
         let pool = self.create_pool(cluster).await?;
 
-        // Insert into map (DashMap handles concurrent inserts gracefully)
         self.pools.insert(cluster_id, pool.clone());
 
         tracing::info!(
@@ -61,7 +58,7 @@ impl MySQLPoolManager {
     /// Useful when cluster is deleted or credentials are updated
     pub async fn remove_pool(&self, cluster_id: i64) {
         if let Some((_, pool)) = self.pools.remove(&cluster_id) {
-            drop(pool); // Pool will be closed when all references are dropped
+            drop(pool);
             tracing::info!("Removed MySQL connection pool for cluster {}", cluster_id);
         }
     }
@@ -84,11 +81,11 @@ impl MySQLPoolManager {
             .tcp_port(cluster.fe_query_port as u16)
             .user(Some(&cluster.username))
             .pass(Some(&cluster.password_encrypted))
-            .db_name(None::<String>) // No default database
-            .prefer_socket(false) // Disable socket preference for StarRocks compatibility
-            .ssl_opts(None::<SslOpts>) // No SSL for now
-            .tcp_keepalive(Some(30_000_u32)) // 30 seconds
-            .tcp_nodelay(true) // Disable Nagle's algorithm for lower latency
+            .db_name(None::<String>)
+            .prefer_socket(false)
+            .ssl_opts(None::<SslOpts>)
+            .tcp_keepalive(Some(30_000_u32))
+            .tcp_nodelay(true)
             .pool_opts(
                 mysql_async::PoolOpts::default()
                     .with_constraints(mysql_async::PoolConstraints::new(2, 20).ok_or_else(
@@ -98,8 +95,8 @@ impl MySQLPoolManager {
                             )
                         },
                     )?)
-                    .with_inactive_connection_ttl(std::time::Duration::from_secs(300)) // 5 minutes
-                    .with_ttl_check_interval(std::time::Duration::from_secs(60)), // 1 minute
+                    .with_inactive_connection_ttl(std::time::Duration::from_secs(300))
+                    .with_ttl_check_interval(std::time::Duration::from_secs(60)),
             );
 
         Ok(Pool::new(opts))
