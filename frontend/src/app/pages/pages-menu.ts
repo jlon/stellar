@@ -33,7 +33,7 @@ export const MENU_ITEMS: NbMenuItem[] = [
   } as NbMenuItem & { data?: { permission: string } },
   {
     title: '查询管理',
-    icon: 'code-outline',
+    icon: 'search-outline',
     data: { permission: 'menu:queries' },
     children: [
       {
