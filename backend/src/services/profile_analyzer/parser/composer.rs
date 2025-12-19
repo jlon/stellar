@@ -3,8 +3,8 @@
 //! Orchestrates all parsing components to produce a complete Profile structure.
 
 use crate::services::profile_analyzer::models::{
-    ExecutionTreeNode, Fragment, HotSeverity, OperatorMetrics, Profile, ProfileSummary, TopNode,
-    TopologyGraph, constants::time_thresholds,
+    ExecutionInfo, ExecutionTreeNode, Fragment, HotSeverity, OperatorMetrics, PlannerInfo, Profile,
+    ProfileSummary, TopNode, TopologyGraph, constants::time_thresholds,
 };
 use crate::services::profile_analyzer::parser::core::{
     FragmentParser, MetricsParser, OperatorParser, SectionParser, TopologyParser, TreeBuilder,
@@ -32,28 +32,76 @@ impl ProfileComposer {
     }
 
     /// Parse a complete profile from text
+    /// Supports both StarRocks format (Query: -> Summary: -> Execution:) and Doris format (Summary: -> MergedProfile:)
     pub fn parse(&mut self, text: &str) -> ParseResult<Profile> {
+        // Detect profile format: StarRocks starts with "Query:", Doris starts with "Summary:"
+        let is_doris_format = text.trim_start().starts_with("Summary:");
+
         let mut summary = SectionParser::parse_summary(text)?;
-        let planner_info = SectionParser::parse_planner(text)?;
-        let execution_info = SectionParser::parse_execution(text)?;
 
-        if summary.query_cumulative_operator_time_ms.is_none()
-            && let Some(qcot) = execution_info.metrics.get("QueryCumulativeOperatorTime")
-        {
-            summary.query_cumulative_operator_time_ms = ValueParser::parse_time_to_ms(qcot).ok();
-            summary.query_cumulative_operator_time = Some(qcot.clone());
+        // Doris doesn't have Planner section, create empty PlannerInfo
+        let planner_info = if is_doris_format {
+            PlannerInfo::default()
+        } else {
+            SectionParser::parse_planner(text)?
+        };
+
+        // Doris uses MergedProfile instead of Execution
+        let execution_info = if is_doris_format {
+            // For Doris, create a minimal ExecutionInfo since MergedProfile contains fragments directly
+            ExecutionInfo {
+                topology: String::new(), // Doris MergedProfile doesn't have topology in Execution Summary
+                metrics: HashMap::new(), // Metrics are in Execution Summary section, not Execution
+            }
+        } else {
+            SectionParser::parse_execution(text)?
+        };
+
+        if !is_doris_format {
+            if summary.query_cumulative_operator_time_ms.is_none()
+                && let Some(qcot) = execution_info.metrics.get("QueryCumulativeOperatorTime")
+            {
+                summary.query_cumulative_operator_time_ms =
+                    ValueParser::parse_time_to_ms(qcot).ok();
+                summary.query_cumulative_operator_time = Some(qcot.clone());
+            }
+
+            if summary.query_execution_wall_time_ms.is_none()
+                && let Some(qewt) = execution_info.metrics.get("QueryExecutionWallTime")
+            {
+                summary.query_execution_wall_time_ms = ValueParser::parse_time_to_ms(qewt).ok();
+                summary.query_execution_wall_time = Some(qewt.clone());
+            }
         }
 
-        if summary.query_execution_wall_time_ms.is_none()
-            && let Some(qewt) = execution_info.metrics.get("QueryExecutionWallTime")
-        {
-            summary.query_execution_wall_time_ms = ValueParser::parse_time_to_ms(qewt).ok();
-            summary.query_execution_wall_time = Some(qewt.clone());
+        if !is_doris_format {
+            SectionParser::extract_execution_metrics(&execution_info, &mut summary);
+        } else {
+            // For Doris, extract metrics from Execution Summary section
+            SectionParser::extract_doris_execution_summary_metrics(text, &mut summary);
         }
 
-        SectionParser::extract_execution_metrics(&execution_info, &mut summary);
-
-        let fragments = FragmentParser::extract_all_fragments(text);
+        // Extract fragments: StarRocks from Execution section, Doris from MergedProfile section
+        let fragments = if is_doris_format {
+            // Doris: Extract fragments from MergedProfile section
+            let frags = Self::extract_fragments_from_merged_profile(text)?;
+            tracing::debug!("[Doris] Extracted {} fragments from MergedProfile", frags.len());
+            for (i, frag) in frags.iter().enumerate() {
+                tracing::debug!("[Doris] Fragment {}: {} pipelines", i, frag.pipelines.len());
+                for (j, pipe) in frag.pipelines.iter().enumerate() {
+                    tracing::debug!(
+                        "[Doris] Fragment {} Pipeline {}: {} operators",
+                        i,
+                        j,
+                        pipe.operators.len()
+                    );
+                }
+            }
+            frags
+        } else {
+            // StarRocks: Extract fragments from Execution section
+            FragmentParser::extract_all_fragments(text)
+        };
 
         let topology_result = Self::extract_topology_json(&execution_info.topology)
             .and_then(|json| TopologyParser::parse_with_fragments(&json, text, &fragments))
@@ -63,11 +111,23 @@ impl ProfileComposer {
             let nodes = self.build_nodes_from_topology_and_fragments(topology, &fragments)?;
             TreeBuilder::build_from_topology(topology, nodes, &fragments, &summary)?
         } else {
-            let nodes = self.build_nodes_from_fragments(text, &fragments)?;
+            let nodes = self.build_nodes_from_fragments(text, &fragments, is_doris_format)?;
+            tracing::debug!("[Doris] Built {} nodes from fragments", nodes.len());
+            if nodes.is_empty() {
+                tracing::warn!(
+                    "[Doris] No nodes built from fragments. Fragments: {}, Total operators: {}",
+                    fragments.len(),
+                    fragments
+                        .iter()
+                        .map(|f| f.pipelines.iter().map(|p| p.operators.len()).sum::<usize>())
+                        .sum::<usize>()
+                );
+            }
             TreeBuilder::build_from_fragments(nodes, &summary, &fragments)?
         };
 
-        let top_nodes = Self::compute_top_time_consuming_nodes(&execution_tree.nodes, 3);
+        // Compute top 10 time-consuming nodes (frontend expects top 10)
+        let top_nodes = Self::compute_top_time_consuming_nodes(&execution_tree.nodes, 10);
         summary.top_time_consuming_nodes = Some(top_nodes);
 
         Self::analyze_profile_completeness(text, &mut summary);
@@ -79,6 +139,61 @@ impl ProfileComposer {
             fragments,
             execution_tree: Some(execution_tree),
         })
+    }
+
+    /// Extract fragments from Doris MergedProfile section
+    /// Doris format: MergedProfile (with space or colon) -> Fragments: -> Fragment 0:
+    /// According to Doris source code, MergedProfile can be:
+    /// - "MergedProfile:" (with colon)
+    /// - "MergedProfile " (with space)
+    /// - "MergedProfile\n" (with newline)
+    fn extract_fragments_from_merged_profile(text: &str) -> ParseResult<Vec<Fragment>> {
+        use crate::services::profile_analyzer::parser::core::FragmentParser;
+
+        // Extract MergedProfile section - it contains Fragments directly
+        // Try different formats in order of likelihood
+        let (marker, start) = if let Some(pos) = text.find("MergedProfile:") {
+            ("MergedProfile:", pos)
+        } else if let Some(pos) = text.find("MergedProfile ") {
+            ("MergedProfile ", pos)
+        } else if let Some(pos) = text.find("MergedProfile\n") {
+            ("MergedProfile\n", pos)
+        } else {
+            tracing::warn!("[Doris] MergedProfile section not found in profile text");
+            return Ok(Vec::new());
+        };
+
+        let rest = &text[start + marker.len()..];
+
+        // Find the end: either DetailProfile: or Execution Profile or end of text
+        // Note: DetailProfile comes after MergedProfile and contains Execution Profile
+        // Also check for "Execution Profile" which may appear without DetailProfile prefix
+        let end_marker = if let Some(pos) = rest.find("\nDetailProfile:") {
+            Some(("\nDetailProfile:", pos))
+        } else if let Some(pos) = rest.find("\nExecution Profile") {
+            Some(("\nExecution Profile", pos))
+        } else {
+            None
+        };
+
+        let end_pos = end_marker.map(|(_, pos)| pos).unwrap_or(rest.len());
+        let merged_profile_block = &rest[..end_pos];
+
+        tracing::debug!("[Doris] MergedProfile block length: {} bytes", merged_profile_block.len());
+
+        // Use existing FragmentParser to extract fragments
+        // FragmentParser will look for "Fragment X:" patterns
+        let fragments = FragmentParser::extract_all_fragments(merged_profile_block);
+        tracing::debug!("[Doris] Extracted {} fragments from MergedProfile block", fragments.len());
+
+        if fragments.is_empty() {
+            tracing::warn!(
+                "[Doris] No fragments extracted from MergedProfile block. Block preview: {}",
+                &merged_profile_block[..merged_profile_block.len().min(500)]
+            );
+        }
+
+        Ok(fragments)
     }
 
     /// Extract topology JSON from topology text
@@ -270,6 +385,7 @@ impl ProfileComposer {
         &self,
         text: &str,
         fragments: &[Fragment],
+        is_doris_format: bool,
     ) -> ParseResult<Vec<ExecutionTreeNode>> {
         let mut nodes = Vec::new();
         let mut node_counter = 0;
@@ -295,8 +411,39 @@ impl ProfileComposer {
 
                     let rows = metrics.push_row_num.or(metrics.pull_row_num);
 
+                    // Extract unique_metrics (CustomCounters) from operator
+                    // All CustomCounters should be stored in unique_metrics for frontend display
+                    let unique_metrics = operator.unique_metrics.clone();
+
+                    // Generate unique node id: use plan_node_id if available, otherwise use counter
+                    // For Doris profiles, multiple operators can have the same plan_node_id (e.g., different fragments/pipelines)
+                    // So we need to ensure uniqueness by always including fragment and pipeline info for Doris
+                    // For StarRocks, plan_node_id is unique, so we can use it directly
+                    let node_id = if plan_id != node_counter {
+                        // Check if we already have a node with this plan_id
+                        // For Doris profiles, always include fragment and pipeline to ensure uniqueness
+                        // For StarRocks, plan_node_id is unique, so we can use it directly
+                        let base_id = format!("node_{}", plan_id);
+                        
+                        // For Doris, always use fragment+pipeline to ensure uniqueness
+                        // because multiple operators can have the same plan_node_id in different fragments/pipelines
+                        // For StarRocks, plan_node_id is unique, so we can use it directly unless duplicate found
+                        if is_doris_format {
+                            // Always use fragment and pipeline for Doris to ensure uniqueness
+                            format!("node_{}_{}_{}", plan_id, fragment.id, pipeline.id)
+                        } else if nodes.iter().any(|n: &ExecutionTreeNode| n.id == base_id && n.plan_node_id == Some(plan_id)) {
+                            // Duplicate found in StarRocks (shouldn't happen, but handle it)
+                            format!("node_{}_{}_{}", plan_id, fragment.id, pipeline.id)
+                        } else {
+                            // First occurrence in StarRocks, use plan_node_id directly
+                            base_id
+                        }
+                    } else {
+                        format!("node_{}", node_counter)
+                    };
+
                     let node = ExecutionTreeNode {
-                        id: format!("node_{}", plan_id),
+                        id: node_id,
                         plan_node_id: Some(plan_id),
                         operator_name: pure_name,
                         node_type: OperatorParser::determine_node_type(&operator.name),
@@ -312,7 +459,7 @@ impl ProfileComposer {
                         rows,
                         is_most_consuming: false,
                         is_second_most_consuming: false,
-                        unique_metrics: HashMap::new(),
+                        unique_metrics,
                         has_diagnostic: false,
                         diagnostic_ids: Vec::new(),
                     };
@@ -345,13 +492,26 @@ impl ProfileComposer {
         text
     }
 
-    /// Extract operator name without plan_node_id suffix
+    /// Extract operator name without plan_node_id/id suffix
+    /// Supports both StarRocks format: OPERATOR_NAME (plan_node_id=0)
+    /// and Doris format: OPERATOR_NAME(id=0) or OPERATOR_NAME (id=0. nereids_id=32...)
     fn extract_operator_name(full_name: &str) -> String {
+        // StarRocks format: OPERATOR_NAME (plan_node_id=0)
         if let Some(pos) = full_name.find(" (plan_node_id=") {
-            full_name[..pos].trim().to_string()
-        } else {
-            full_name.trim().to_string()
+            return full_name[..pos].trim().to_string();
         }
+
+        // Doris format: OPERATOR_NAME(id=0) or OPERATOR_NAME (id=0. nereids_id=32...)
+        if let Some(pos) = full_name.find("(id=") {
+            let before_id = if let Some(space_pos) = full_name[..pos].rfind(' ') {
+                &full_name[..space_pos]
+            } else {
+                &full_name[..pos]
+            };
+            return before_id.trim().to_string();
+        }
+
+        full_name.trim().to_string()
     }
 
     /// Aggregate metrics from multiple operator instances

@@ -413,4 +413,53 @@ impl ClusterAdapter for StarRocksAdapter {
         let mysql_client = self.mysql_client().await?;
         mysql_client.query(&sql).await
     }
+
+    async fn list_profiles(&self) -> ApiResult<Vec<crate::models::ProfileListItem>> {
+        use crate::models::ProfileListItem;
+
+        let mysql_client = self.mysql_client().await?;
+        let (columns, rows) = mysql_client.query_raw("SHOW PROFILELIST").await?;
+
+        tracing::info!(
+            "Profile list query returned {} rows with {} columns",
+            rows.len(),
+            columns.len()
+        );
+
+        let profiles: Vec<ProfileListItem> = rows
+            .into_iter()
+            .filter(|row| {
+                let state = row.get(3).map(|s| s.as_str()).unwrap_or("");
+                !state.eq_ignore_ascii_case("aborted")
+            })
+            .map(|row| ProfileListItem {
+                query_id: row.first().cloned().unwrap_or_default(),
+                start_time: row.get(1).cloned().unwrap_or_default(),
+                time: row.get(2).cloned().unwrap_or_default(),
+                state: row.get(3).cloned().unwrap_or_default(),
+                statement: row.get(4).cloned().unwrap_or_default(),
+            })
+            .collect();
+
+        tracing::info!("Successfully converted {} profiles (Aborted filtered)", profiles.len());
+        Ok(profiles)
+    }
+
+    async fn get_profile(&self, query_id: &str) -> ApiResult<String> {
+        let mysql_client = self.mysql_client().await?;
+        let sql = format!("SELECT get_query_profile('{}')", query_id);
+        let (_, rows) = mysql_client.query_raw(&sql).await?;
+
+        let profile_content = rows
+            .first()
+            .and_then(|row| row.first())
+            .cloned()
+            .unwrap_or_default();
+
+        if profile_content.trim().is_empty() {
+            return Err(ApiError::not_found(format!("Profile not found for query: {}", query_id)));
+        }
+
+        Ok(profile_content)
+    }
 }

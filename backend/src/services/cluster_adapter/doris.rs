@@ -1219,4 +1219,100 @@ impl ClusterAdapter for DorisAdapter {
         let mysql_client = self.mysql_client().await?;
         mysql_client.query(&sql).await
     }
+
+    async fn list_profiles(&self) -> ApiResult<Vec<crate::models::ProfileListItem>> {
+        use crate::models::ProfileListItem;
+
+        let mysql_client = self.mysql_client().await?;
+        let (columns, rows) = mysql_client.query_raw("SHOW QUERY PROFILE").await?;
+
+        tracing::info!(
+            "[Doris] Profile list query returned {} rows with {} columns",
+            rows.len(),
+            columns.len()
+        );
+
+        // Doris SHOW QUERY PROFILE returns columns in this order (from SummaryProfile.SUMMARY_CAPTIONS):
+        // Profile ID, Task Type, Start Time, End Time, Total, Task State, User, Default Catalog, Default Db, Sql Statement
+        let profiles: Vec<ProfileListItem> = rows
+            .into_iter()
+            .filter(|row| {
+                // Filter out aborted profiles (Task State column is at index 5)
+                let state = row.get(5).map(|s| s.as_str()).unwrap_or("");
+                !state.eq_ignore_ascii_case("aborted")
+            })
+            .map(|row| ProfileListItem {
+                // Map Doris columns to ProfileListItem:
+                // Profile ID (index 0) -> query_id
+                // Start Time (index 2) -> start_time
+                // Total (index 4) -> time
+                // Task State (index 5) -> state
+                // Sql Statement (index 9) -> statement
+                query_id: row.get(0).cloned().unwrap_or_default(),
+                start_time: row.get(2).cloned().unwrap_or_default(),
+                time: row.get(4).cloned().unwrap_or_default(),
+                state: row.get(5).cloned().unwrap_or_default(),
+                statement: row.get(9).cloned().unwrap_or_default(),
+            })
+            .collect();
+
+        tracing::info!(
+            "[Doris] Successfully converted {} profiles (Aborted filtered)",
+            profiles.len()
+        );
+        Ok(profiles)
+    }
+
+    async fn get_profile(&self, query_id: &str) -> ApiResult<String> {
+        // Doris uses HTTP API to get profile
+        // According to ProfileAction.java, we can use /api/profile/text?query_id=xxx
+        let url = format!(
+            "http://{}:{}/api/profile/text?query_id={}",
+            self.cluster.fe_host, self.cluster.fe_http_port, query_id
+        );
+
+        tracing::debug!("[Doris] Fetching profile from: {}", url);
+
+        let response = self
+            .http_client
+            .get(&url)
+            .basic_auth(&self.cluster.username, Some(&self.cluster.password_encrypted))
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::error!("[Doris] Failed to fetch profile: {}", e);
+                ApiError::cluster_connection_failed(format!("HTTP request failed: {}", e))
+            })?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_default();
+            tracing::error!("[Doris] Profile API returned status {}: {}", status, error_text);
+            if status.as_u16() == 404 {
+                return Err(ApiError::not_found(format!(
+                    "Profile not found for query: {}",
+                    query_id
+                )));
+            }
+            return Err(ApiError::cluster_connection_failed(format!(
+                "Profile API failed: {}",
+                error_text
+            )));
+        }
+
+        let profile_text = response.text().await.map_err(|e| {
+            tracing::error!("[Doris] Failed to read profile response: {}", e);
+            ApiError::cluster_connection_failed(format!("Failed to read response: {}", e))
+        })?;
+
+        if profile_text.trim().is_empty() {
+            return Err(ApiError::not_found(format!("Profile not found for query: {}", query_id)));
+        }
+
+        tracing::info!(
+            "[Doris] Successfully fetched profile, length: {} bytes",
+            profile_text.len()
+        );
+        Ok(profile_text)
+    }
 }

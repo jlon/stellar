@@ -108,6 +108,12 @@ pub trait ClusterAdapter: Send + Sync {
 
     /// Execute SHOW PROC command and return raw results
     async fn show_proc_raw(&self, path: &str) -> ApiResult<Vec<serde_json::Value>>;
+
+    /// List query profiles
+    async fn list_profiles(&self) -> ApiResult<Vec<crate::models::ProfileListItem>>;
+
+    /// Get profile detail by query_id
+    async fn get_profile(&self, query_id: &str) -> ApiResult<String>;
 }
 
 /// Create adapter based on cluster type (factory method)

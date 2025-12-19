@@ -1,6 +1,7 @@
-//! Section parser for StarRocks profile
+//! Section parser for StarRocks and Doris profile
 //!
 //! Parses Summary, Planner, and Execution sections from profile text.
+//! Supports both StarRocks format (Query: -> Summary:) and Doris format (Summary:).
 
 use crate::services::profile_analyzer::models::{
     ExecutionInfo, PlannerInfo, ProfileSummary, SessionVariableInfo,
@@ -19,8 +20,18 @@ pub struct SectionParser;
 
 impl SectionParser {
     /// Parse Summary section from profile text
+    /// Supports both StarRocks format (Query: -> Summary:) and Doris format (Summary:)
     pub fn parse_summary(text: &str) -> ParseResult<ProfileSummary> {
-        let summary_block = Self::extract_block(text, "Summary:")?;
+        // Detect profile format: StarRocks starts with "Query:", Doris starts with "Summary:"
+        let is_doris_format = text.trim_start().starts_with("Summary:");
+
+        let summary_block = if is_doris_format {
+            // Doris format: Summary: is at the root level
+            Self::extract_block(text, "Summary:")?
+        } else {
+            // StarRocks format: Query: -> Summary:
+            Self::extract_block(text, "Summary:")?
+        };
 
         let mut fields = HashMap::new();
         let lines: Vec<&str> = summary_block.lines().collect();
@@ -68,15 +79,57 @@ impl SectionParser {
             })
             .unwrap_or_default();
 
+        // Map field names based on profile format
+        // StarRocks: Query ID, Query State, StarRocks Version, Query Type
+        // Doris: Profile ID, Task State, Doris Version (in Execution Summary), Task Type
+        let query_id = if is_doris_format {
+            fields.get("Profile ID").cloned().unwrap_or_default()
+        } else {
+            fields.get("Query ID").cloned().unwrap_or_default()
+        };
+
+        let query_state = if is_doris_format {
+            fields.get("Task State").cloned().unwrap_or_default()
+        } else {
+            fields.get("Query State").cloned().unwrap_or_default()
+        };
+
+        // For Doris, Doris Version is in Execution Summary section, not Summary section
+        let version = if is_doris_format {
+            // Try to extract from Execution Summary section
+            Self::extract_block(text, "Execution Summary:")
+                .ok()
+                .and_then(|exec_summary_block| {
+                    let mut exec_fields = HashMap::new();
+                    for line in exec_summary_block.lines() {
+                        if let Some(cap) = SUMMARY_LINE_REGEX.captures(line) {
+                            let key = cap.get(1).map(|m| m.as_str().trim()).unwrap_or("");
+                            let value = cap.get(2).map(|m| m.as_str().trim()).unwrap_or("");
+                            exec_fields.insert(key.to_string(), value.to_string());
+                        }
+                    }
+                    exec_fields.get("Doris Version").cloned()
+                })
+                .unwrap_or_default()
+        } else {
+            fields.get("StarRocks Version").cloned().unwrap_or_default()
+        };
+
+        let query_type = if is_doris_format {
+            fields.get("Task Type").cloned()
+        } else {
+            fields.get("Query Type").cloned()
+        };
+
         Ok(ProfileSummary {
-            query_id: fields.get("Query ID").cloned().unwrap_or_default(),
+            query_id,
             start_time: fields.get("Start Time").cloned().unwrap_or_default(),
             end_time: fields.get("End Time").cloned().unwrap_or_default(),
             total_time: fields.get("Total").cloned().unwrap_or_default(),
-            query_state: fields.get("Query State").cloned().unwrap_or_default(),
-            starrocks_version: fields.get("StarRocks Version").cloned().unwrap_or_default(),
+            query_state,
+            starrocks_version: version,
             sql_statement: fields.get("Sql Statement").cloned().unwrap_or_default(),
-            query_type: fields.get("Query Type").cloned(),
+            query_type,
             user: fields.get("User").cloned(),
             default_db: fields.get("Default Db").cloned(),
             variables: HashMap::new(),
@@ -154,8 +207,14 @@ impl SectionParser {
     }
 
     /// Parse Planner section from profile text
+    /// For Doris format, this will return empty PlannerInfo since Doris doesn't have Planner section
     pub fn parse_planner(text: &str) -> ParseResult<PlannerInfo> {
         use crate::services::profile_analyzer::models::HMSMetrics;
+
+        // Doris format doesn't have Planner section
+        if text.trim_start().starts_with("Summary:") {
+            return Ok(PlannerInfo::default());
+        }
 
         let planner_block = Self::extract_block(text, "Planner:")?;
         let mut details = HashMap::new();
@@ -237,7 +296,13 @@ impl SectionParser {
     }
 
     /// Parse Execution section from profile text
+    /// For Doris format, this will return empty ExecutionInfo since Doris uses MergedProfile instead
     pub fn parse_execution(text: &str) -> ParseResult<ExecutionInfo> {
+        // Doris format doesn't have Execution section, return empty ExecutionInfo
+        if text.trim_start().starts_with("Summary:") {
+            return Ok(ExecutionInfo { topology: String::new(), metrics: HashMap::new() });
+        }
+
         let execution_block = Self::extract_block(text, "Execution:")?;
 
         let topology = Self::extract_topology(&execution_block)?;
@@ -330,6 +395,98 @@ impl SectionParser {
     /// Parse total time string to milliseconds
     fn parse_total_time_ms(time_str: &str) -> Option<f64> {
         ValueParser::parse_time_to_ms(time_str).ok()
+    }
+
+    /// Extract execution metrics from Doris Execution Summary section
+    /// Maps Doris Execution Summary fields to StarRocks ProfileSummary fields
+    pub fn extract_doris_execution_summary_metrics(text: &str, summary: &mut ProfileSummary) {
+        let exec_summary_block = match Self::extract_block(text, "Execution Summary:") {
+            Ok(block) => block,
+            Err(_) => return, // Execution Summary not found, skip
+        };
+
+        let mut fields = HashMap::new();
+        for line in exec_summary_block.lines() {
+            if let Some(cap) = SUMMARY_LINE_REGEX.captures(line) {
+                let key = cap.get(1).map(|m| m.as_str().trim()).unwrap_or("");
+                let value = cap.get(2).map(|m| m.as_str().trim()).unwrap_or("");
+                fields.insert(key.to_string(), value.to_string());
+            }
+        }
+
+        // Map Doris Execution Summary fields to StarRocks ProfileSummary fields
+        // Execution time: Use Total Time from Summary section (already parsed) as the wall time
+        // This represents the total query execution time from start to finish
+        if summary.query_execution_wall_time.is_none() && !summary.total_time.is_empty() {
+            summary.query_execution_wall_time = Some(summary.total_time.clone());
+            // total_time_ms is already parsed in parse_summary
+            summary.query_execution_wall_time_ms = summary.total_time_ms;
+        }
+
+        // Processing time: For Doris, Plan Time + Schedule Time + Wait and Fetch Result Time
+        // represents the total query execution time, not the cumulative operator time.
+        // However, we still set it here for overview display purposes.
+        // The actual cumulative operator time (sum of all operator ExecTime) will be calculated
+        // from fragments in TreeBuilder::determine_base_time when calculating time_percentage.
+        if summary.query_cumulative_operator_time.is_none() {
+            let plan_time = fields
+                .get("Plan Time")
+                .and_then(|t| ValueParser::parse_time_to_ms(t).ok())
+                .unwrap_or(0.0);
+            let schedule_time = fields
+                .get("Schedule Time")
+                .and_then(|t| ValueParser::parse_time_to_ms(t).ok())
+                .unwrap_or(0.0);
+            let fetch_time = fields
+                .get("Wait and Fetch Result Time")
+                .and_then(|t| ValueParser::parse_time_to_ms(t).ok())
+                .unwrap_or(0.0);
+            let total_processing_ms = plan_time + schedule_time + fetch_time;
+            if total_processing_ms > 0.0 {
+                summary.query_cumulative_operator_time_ms = Some(total_processing_ms);
+                summary.query_cumulative_operator_time =
+                    Some(format!("{}ms", total_processing_ms as u64));
+            }
+        }
+
+        // Planner time: Plan Time
+        if summary.planner_total_time.is_none() {
+            if let Some(plan_time) = fields.get("Plan Time") {
+                summary.planner_total_time = Some(plan_time.clone());
+                summary.planner_total_time_ms = ValueParser::parse_time_to_ms(plan_time).ok();
+            }
+        }
+
+        // Schedule time: Schedule Time
+        if summary.query_peak_schedule_time.is_none() {
+            if let Some(schedule_time) = fields.get("Schedule Time") {
+                summary.query_peak_schedule_time = Some(schedule_time.clone());
+                summary.query_peak_schedule_time_ms =
+                    ValueParser::parse_time_to_ms(schedule_time).ok();
+            }
+        }
+
+        // Result deliver time: Write Result Time
+        if summary.result_deliver_time.is_none() {
+            if let Some(write_time) = fields.get("Write Result Time") {
+                summary.result_deliver_time = Some(write_time.clone());
+                summary.result_deliver_time_ms = ValueParser::parse_time_to_ms(write_time).ok();
+            }
+        }
+
+        // Total instances count
+        if summary.total_instance_count.is_none() {
+            if let Some(instances) = fields.get("Total Instances Num") {
+                summary.total_instance_count = instances.parse().ok();
+            }
+        }
+
+        // Parallel fragment exec instance num
+        if summary.total_instance_count.is_none() {
+            if let Some(instances) = fields.get("Parallel Fragment Exec Instance Num") {
+                summary.total_instance_count = instances.parse().ok();
+            }
+        }
     }
 
     /// Extract execution metrics and update summary

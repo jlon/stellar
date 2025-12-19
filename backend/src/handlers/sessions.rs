@@ -82,7 +82,6 @@ pub async fn kill_session(
     Ok((StatusCode::OK, Json(json!({ "message": "Session killed successfully" }))))
 }
 
-
 async fn kill_session_via_starrocks(mysql_client: &MySQLClient, session_id: &str) -> ApiResult<()> {
     tracing::info!("Killing session: {}", session_id);
 

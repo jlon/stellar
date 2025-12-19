@@ -4,12 +4,17 @@
 
 use crate::services::profile_analyzer::models::OperatorMetrics;
 use crate::services::profile_analyzer::parser::core::ValueParser;
+use crate::services::profile_analyzer::parser::core::operator_parser::OperatorParser;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashMap;
 
+// Counter regex: matches "- CounterName: value" format
+// According to Doris profile-dag-parser.md: `^- ([^:]+): (.+)`
+// This allows counter names with special characters (e.g., "Counter-Name", "Counter.Name")
+// but still requires the colon separator
 static METRIC_LINE_REGEX: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^\s*-\s+([A-Za-z_][A-Za-z0-9_]*)(?::\s+(.+))?$").unwrap());
+    Lazy::new(|| Regex::new(r"^\s*-\s+([^:]+):\s*(.+)$").unwrap());
 
 /// Parser for operator metrics
 pub struct MetricsParser;
@@ -69,12 +74,24 @@ impl MetricsParser {
     }
 
     /// Extract CommonMetrics block from operator text
+    /// Supports both StarRocks format (CommonMetrics:) and Doris format (CommonCounters:)
     pub fn extract_common_metrics_block(text: &str) -> String {
+        // Try Doris format first (CommonCounters:), then fallback to StarRocks format (CommonMetrics:)
+        let doris_result = Self::extract_section_block(text, "CommonCounters:");
+        if !doris_result.trim().is_empty() {
+            return doris_result;
+        }
         Self::extract_section_block(text, "CommonMetrics:")
     }
 
     /// Extract UniqueMetrics block from operator text
+    /// Supports both StarRocks format (UniqueMetrics:) and Doris format (CustomCounters:)
     pub fn extract_unique_metrics_block(text: &str) -> String {
+        // Try Doris format first (CustomCounters:), then fallback to StarRocks format (UniqueMetrics:)
+        let doris_result = Self::extract_section_block(text, "CustomCounters:");
+        if !doris_result.trim().is_empty() {
+            return doris_result;
+        }
         Self::extract_section_block(text, "UniqueMetrics:")
     }
 
@@ -98,24 +115,41 @@ impl MetricsParser {
                 let trimmed = line.trim();
 
                 if trimmed.is_empty() {
+                    // According to Doris ProfileDagParser.java, empty lines stop counter parsing
+                    // But we continue to include them as they might be part of the block
                     block_lines.push(line);
                     continue;
                 }
 
                 let current_indent = Self::get_indent_level(line);
 
-                if trimmed.ends_with("Metrics:") && current_indent <= marker_indent {
+                // Stop at next Metrics/Counters section (StarRocks: Metrics:, Doris: Counters:)
+                // Only stop if it's at same or less indentation level
+                if (trimmed.ends_with("Metrics:") || trimmed.ends_with("Counters:"))
+                    && current_indent <= marker_indent
+                {
                     break;
                 }
 
-                if trimmed.contains("(plan_node_id=") && !trimmed.starts_with("-") {
+                // Stop at operator header (StarRocks: plan_node_id=, Doris: id=)
+                // According to Doris ProfileDagParser.java, operator headers end the counter section
+                if (trimmed.contains("(plan_node_id=") || trimmed.contains("(id="))
+                    && !trimmed.starts_with("-")
+                    && OperatorParser::is_operator_header(trimmed)
+                {
                     break;
                 }
 
-                if trimmed.starts_with("Pipeline (id=") {
+                // Stop at Pipeline header (StarRocks: Pipeline (id=), Doris: Pipeline X(instance_num=))
+                // According to Doris ProfileDagParser.java, pipeline headers end the current operator
+                if trimmed.starts_with("Pipeline (id=")
+                    || (trimmed.starts_with("Pipeline") && trimmed.contains("instance_num="))
+                {
                     break;
                 }
 
+                // Stop at Fragment header
+                // According to Doris ProfileDagParser.java, fragment headers end the current pipeline
                 if trimmed.starts_with("Fragment ") && trimmed.contains(":") {
                     break;
                 }
@@ -135,11 +169,26 @@ impl MetricsParser {
     }
 
     /// Set a metric value on OperatorMetrics based on key
+    /// Supports both StarRocks metric names and Doris Counter names
     fn set_metric_value(metrics: &mut OperatorMetrics, key: &str, value: &str) {
         match key {
-            "OperatorTotalTime" => {
+            // StarRocks: OperatorTotalTime, Doris: ExecTime
+            "OperatorTotalTime" | "ExecTime" => {
+                // Doris ExecTime format: "avg 2.927ms, max 2.927ms, min 2.927ms"
+                // Extract avg value for parsing
+                let time_value = if value.contains("avg") {
+                    value
+                        .split("avg")
+                        .nth(1)
+                        .and_then(|s| s.split(',').next())
+                        .map(|s| s.trim())
+                        .unwrap_or(value)
+                } else {
+                    value
+                };
+
                 metrics.operator_total_time_raw = Some(value.to_string());
-                if let Ok(duration) = ValueParser::parse_duration(value) {
+                if let Ok(duration) = ValueParser::parse_duration(time_value) {
                     metrics.operator_total_time = Some(duration.as_nanos() as u64);
                 }
             },
@@ -158,17 +207,55 @@ impl MetricsParser {
                     metrics.operator_total_time = Some(duration.as_nanos() as u64);
                 }
             },
-            "PushChunkNum" => {
-                metrics.push_chunk_num = Self::extract_number(value);
+            "PushChunkNum" | "BlocksProduced" => {
+                // Doris uses BlocksProduced instead of PushChunkNum
+                // Format: "sum 1, avg 1, max 1, min 1" or single value
+                let chunk_value = if value.contains("sum") {
+                    value
+                        .split("sum")
+                        .nth(1)
+                        .and_then(|s| s.split(',').next())
+                        .map(|s| s.trim())
+                        .unwrap_or(value)
+                } else {
+                    value
+                };
+                metrics.push_chunk_num = Self::extract_number(chunk_value);
             },
-            "PushRowNum" => {
-                metrics.push_row_num = Self::extract_number(value);
+            // StarRocks: PushRowNum, Doris: InputRows (for SinkOperator)
+            "PushRowNum" | "InputRows" => {
+                // Doris InputRows format: "sum 100, avg 100, max 100, min 100"
+                // Extract sum value for parsing
+                let row_value = if value.contains("sum") {
+                    value
+                        .split("sum")
+                        .nth(1)
+                        .and_then(|s| s.split(',').next())
+                        .map(|s| s.trim())
+                        .unwrap_or(value)
+                } else {
+                    value
+                };
+                metrics.push_row_num = Self::extract_number(row_value);
             },
             "PullChunkNum" => {
                 metrics.pull_chunk_num = Self::extract_number(value);
             },
-            "PullRowNum" => {
-                metrics.pull_row_num = Self::extract_number(value);
+            // StarRocks: PullRowNum, Doris: RowsProduced (for non-SinkOperator)
+            "PullRowNum" | "RowsProduced" => {
+                // Doris RowsProduced format: "sum 100, avg 100, max 100, min 100"
+                // Extract sum value for parsing
+                let row_value = if value.contains("sum") {
+                    value
+                        .split("sum")
+                        .nth(1)
+                        .and_then(|s| s.split(',').next())
+                        .map(|s| s.trim())
+                        .unwrap_or(value)
+                } else {
+                    value
+                };
+                metrics.pull_row_num = Self::extract_number(row_value);
             },
             "PushTotalTime" => {
                 if let Ok(duration) = ValueParser::parse_duration(value) {
@@ -200,8 +287,27 @@ impl MetricsParser {
                     metrics.pull_total_time_max = Some(duration.as_nanos() as u64);
                 }
             },
-            "MemoryUsage" => {
-                metrics.memory_usage = ValueParser::parse_bytes(value).ok();
+            // StarRocks: MemoryUsage, Doris: MemoryUsage (same name)
+            "MemoryUsage" | "MemoryUsagePeak" => {
+                // Doris MemoryUsage format: "sum 0.00 , avg 0.00 , max 0.00 , min 0.00"
+                let mem_value = if value.contains("sum") {
+                    value
+                        .split("sum")
+                        .nth(1)
+                        .and_then(|s| s.split(',').next())
+                        .map(|s| s.trim())
+                        .unwrap_or(value)
+                } else {
+                    value
+                };
+                // Try to parse bytes, if fails, try to parse as number
+                if let Ok(bytes) = ValueParser::parse_bytes(mem_value) {
+                    let current = metrics.memory_usage.unwrap_or(0);
+                    metrics.memory_usage = Some(current.max(bytes));
+                } else if let Some(num) = Self::extract_number(mem_value) {
+                    let current = metrics.memory_usage.unwrap_or(0);
+                    metrics.memory_usage = Some(current.max(num));
+                }
             },
 
             "LocalExchangePeakMemoryUsage"

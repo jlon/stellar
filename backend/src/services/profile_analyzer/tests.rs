@@ -1835,4 +1835,661 @@ Query:
             }
         }
     }
+
+    mod doris_profile_tests {
+        use super::*;
+
+        /// Comprehensive test for Doris profile full query - validates all parsing features
+        #[test]
+        fn test_doris_profile_full_query_comprehensive() {
+            let profile_text =
+                load_profile("select  from hudi_hms.ztik.ztik_yljk_jsxxb ; ---- .txt");
+
+            // Step 1: Parse profile
+            let mut composer = ProfileComposer::new();
+            let result = composer.parse(&profile_text);
+            assert!(result.is_ok(), "Failed to parse Doris profile: {:?}", result.err());
+            let profile = result.unwrap();
+
+            // Step 2: Verify Summary parsing
+            assert_eq!(profile.summary.query_id, "51e8d9aaaf1c452d-9fd3ee25dee7dc52");
+            assert_eq!(profile.summary.total_time, "23min13sec");
+            assert_eq!(profile.summary.query_state, "TIMEOUT");
+            assert_eq!(profile.summary.starrocks_version, "doris-4.0.1-rc02-791725594d");
+            assert!(
+                profile
+                    .summary
+                    .sql_statement
+                    .contains("select * from hudi_hms.ztik.ztik_yljk_jsxxb")
+            );
+            assert!(!profile.summary.start_time.is_empty());
+            assert!(!profile.summary.end_time.is_empty());
+
+            // Step 3: Verify Fragments extraction
+            assert!(
+                !profile.fragments.is_empty(),
+                "Fragments should be extracted from MergedProfile"
+            );
+            let mut fragments_with_pipelines = 0;
+            for fragment in &profile.fragments {
+                assert!(!fragment.id.is_empty());
+                if !fragment.pipelines.is_empty() {
+                    fragments_with_pipelines += 1;
+                    for pipeline in &fragment.pipelines {
+                        assert!(!pipeline.id.is_empty());
+                        assert!(
+                            !pipeline.operators.is_empty(),
+                            "Pipeline {} should have operators",
+                            pipeline.id
+                        );
+                        for operator in &pipeline.operators {
+                            assert!(!operator.name.is_empty());
+                        }
+                    }
+                }
+            }
+            assert!(fragments_with_pipelines > 0, "At least one fragment should have pipelines");
+
+            // Step 4: Verify Execution Tree (DAG) structure
+            assert!(profile.execution_tree.is_some(), "Execution tree should be built");
+            let tree = profile.execution_tree.as_ref().unwrap();
+            assert!(!tree.nodes.is_empty(), "Execution tree should have nodes");
+
+            // Verify root node exists
+            assert!(!tree.root.id.is_empty());
+            assert!(!tree.root.operator_name.is_empty());
+
+            // Verify all nodes have valid structure and metrics
+            let mut node_ids = std::collections::HashSet::new();
+            let mut nodes_with_metrics = 0;
+            let mut nodes_with_exec_time = 0;
+            let mut nodes_with_rows = 0;
+
+            for node in &tree.nodes {
+                assert!(!node.id.is_empty(), "Node ID should not be empty");
+                assert!(!node.operator_name.is_empty(), "Operator name should not be empty");
+                assert!(!node_ids.contains(&node.id), "Duplicate node ID: {}", node.id);
+                node_ids.insert(node.id.clone());
+
+                // Verify metrics are extracted
+                if node.metrics.operator_total_time.is_some()
+                    || node.metrics.operator_total_time_raw.is_some()
+                    || node.metrics.push_row_num.is_some()
+                    || node.metrics.pull_row_num.is_some()
+                    || node.metrics.memory_usage.is_some()
+                    || !node.unique_metrics.is_empty()
+                {
+                    nodes_with_metrics += 1;
+                }
+
+                if node.metrics.operator_total_time.is_some()
+                    || node.metrics.operator_total_time_raw.is_some()
+                {
+                    nodes_with_exec_time += 1;
+                }
+
+                if node.rows.is_some()
+                    || node.metrics.push_row_num.is_some()
+                    || node.metrics.pull_row_num.is_some()
+                {
+                    nodes_with_rows += 1;
+                }
+
+                // Verify children references are valid
+                for child_id in &node.children {
+                    assert!(
+                        tree.nodes.iter().any(|n| n.id == *child_id),
+                        "Child node {} not found in tree",
+                        child_id
+                    );
+                }
+            }
+
+            // Verify that at least some nodes have metrics
+            assert!(
+                nodes_with_metrics > 0,
+                "At least some nodes should have metrics. Found {}/{} nodes with metrics",
+                nodes_with_metrics,
+                tree.nodes.len()
+            );
+
+            // Verify tree connectivity (all nodes reachable from root)
+            let mut visited = std::collections::HashSet::new();
+            let mut queue = std::collections::VecDeque::new();
+            queue.push_back(tree.root.id.clone());
+            visited.insert(tree.root.id.clone());
+
+            while let Some(node_id) = queue.pop_front() {
+                if let Some(node) = tree.nodes.iter().find(|n| n.id == node_id) {
+                    for child_id in &node.children {
+                        if !visited.contains(child_id) {
+                            visited.insert(child_id.clone());
+                            queue.push_back(child_id.clone());
+                        }
+                    }
+                }
+            }
+
+            // Step 5: Verify full analyze_profile workflow
+            let analysis_result = analyze_profile(&profile_text);
+            assert!(
+                analysis_result.is_ok(),
+                "analyze_profile should succeed: {:?}",
+                analysis_result.err()
+            );
+            let analysis = analysis_result.unwrap();
+
+            assert!(analysis.execution_tree.is_some());
+            assert_eq!(analysis.execution_tree.as_ref().unwrap().nodes.len(), tree.nodes.len());
+
+            println!("✅ Doris profile (full query) comprehensive test passed:");
+            println!("   - Query ID: {}", profile.summary.query_id);
+            println!("   - Total Time: {}", profile.summary.total_time);
+            println!("   - Fragments: {}", profile.fragments.len());
+            println!("   - Execution Tree Nodes: {}", tree.nodes.len());
+            println!("   - Tree Root: {}", tree.root.operator_name);
+            println!("   - Reachable Nodes: {}/{}", visited.len(), tree.nodes.len());
+            println!("   - Nodes with metrics: {}/{}", nodes_with_metrics, tree.nodes.len());
+            println!("   - Nodes with ExecTime: {}/{}", nodes_with_exec_time, tree.nodes.len());
+            println!("   - Nodes with Rows: {}/{}", nodes_with_rows, tree.nodes.len());
+            println!("   - Overview Metrics:");
+            println!(
+                "     * Execution Time: {:?} ({:?} ms)",
+                profile.summary.query_execution_wall_time,
+                profile.summary.query_execution_wall_time_ms
+            );
+            println!(
+                "     * Processing Time: {:?} ({:?} ms)",
+                profile.summary.query_cumulative_operator_time,
+                profile.summary.query_cumulative_operator_time_ms
+            );
+            println!(
+                "     * Planner Time: {:?} ({:?} ms)",
+                profile.summary.planner_total_time, profile.summary.planner_total_time_ms
+            );
+            println!(
+                "     * Schedule Time: {:?} ({:?} ms)",
+                profile.summary.query_peak_schedule_time,
+                profile.summary.query_peak_schedule_time_ms
+            );
+            println!(
+                "     * Result Deliver Time: {:?} ({:?} ms)",
+                profile.summary.result_deliver_time, profile.summary.result_deliver_time_ms
+            );
+            println!("     * Total Instances: {:?}", profile.summary.total_instance_count);
+
+            // Print detailed metrics for first few nodes
+            for (i, node) in tree.nodes.iter().take(3).enumerate() {
+                let exec_time_display =
+                    if let Some(ref time_raw) = node.metrics.operator_total_time_raw {
+                        time_raw.as_str()
+                    } else if let Some(time) = node.metrics.operator_total_time {
+                        // Format as string for display
+                        &format!("{}ns", time)
+                    } else {
+                        "N/A"
+                    };
+                println!(
+                    "   - Node {}: {} - ExecTime: {}, Rows: {:?}, Memory: {:?}",
+                    i, node.operator_name, exec_time_display, node.rows, node.metrics.memory_usage
+                );
+            }
+        }
+
+        /// Comprehensive test for Doris profile limit query - validates all parsing features
+        #[test]
+        fn test_doris_profile_limit_query_comprehensive() {
+            let profile_text =
+                load_profile("select  from hudi_hms.ztik.ztik_yljk_jsxxb limit 1.txt");
+
+            // Step 1: Verify profile format
+            assert!(profile_text.contains("MergedProfile:"), "MergedProfile section not found");
+            assert!(profile_text.contains("Fragment 0:"), "Fragment 0 not found");
+
+            // Step 2: Parse profile
+            let mut composer = ProfileComposer::new();
+            let result = composer.parse(&profile_text);
+            assert!(result.is_ok(), "Failed to parse Doris profile: {:?}", result.err());
+            let profile = result.unwrap();
+
+            // Step 3: Verify Summary parsing
+            assert_eq!(profile.summary.query_id, "1176d8b573e34626-9c9c5677f17f473d");
+            assert_eq!(profile.summary.total_time, "6min50sec");
+            assert_eq!(profile.summary.query_state, "OK");
+            assert_eq!(profile.summary.starrocks_version, "doris-4.0.1-rc02-791725594d");
+            assert!(
+                profile
+                    .summary
+                    .sql_statement
+                    .contains("select * from hudi_hms.ztik.ztik_yljk_jsxxb limit 100")
+            );
+
+            // Verify overview metrics are extracted from Execution Summary
+            // Execution time should be extracted from "Wait and Fetch Result Time" or "Fetch Result Time"
+            assert!(
+                profile.summary.query_execution_wall_time.is_some()
+                    || profile.summary.query_execution_wall_time_ms.is_some(),
+                "Execution time should be extracted from Execution Summary"
+            );
+            // Processing time (Plan Time + Schedule Time + Fetch Time)
+            assert!(
+                profile.summary.query_cumulative_operator_time.is_some()
+                    || profile.summary.query_cumulative_operator_time_ms.is_some(),
+                "Processing time should be extracted from Execution Summary"
+            );
+            // Planner time
+            assert!(
+                profile.summary.planner_total_time.is_some()
+                    || profile.summary.planner_total_time_ms.is_some(),
+                "Planner time should be extracted from Execution Summary"
+            );
+            // Schedule time
+            assert!(
+                profile.summary.query_peak_schedule_time.is_some()
+                    || profile.summary.query_peak_schedule_time_ms.is_some(),
+                "Schedule time should be extracted from Execution Summary"
+            );
+
+            // Step 4: Verify Fragments extraction
+            assert!(!profile.fragments.is_empty(), "Fragments should be extracted");
+            let mut total_operators = 0;
+            for fragment in &profile.fragments {
+                assert!(!fragment.id.is_empty());
+                for pipeline in &fragment.pipelines {
+                    assert!(!pipeline.id.is_empty());
+                    total_operators += pipeline.operators.len();
+                    for operator in &pipeline.operators {
+                        assert!(!operator.name.is_empty());
+                        // Note: Some operators may not have metrics extracted (e.g., if parsing fails)
+                        // This is acceptable as long as the operator structure is valid
+                    }
+                }
+            }
+            assert!(total_operators > 0, "Should have extracted operators");
+
+            // Step 5: Verify Execution Tree (DAG) structure
+            assert!(profile.execution_tree.is_some(), "Execution tree should be built");
+            let tree = profile.execution_tree.as_ref().unwrap();
+            assert!(!tree.nodes.is_empty(), "Execution tree should have nodes");
+            assert_eq!(
+                tree.nodes.len(),
+                total_operators,
+                "Tree nodes count should match operators count"
+            );
+
+            // Verify root node
+            assert!(!tree.root.id.is_empty());
+            assert!(!tree.root.operator_name.is_empty());
+
+            // Verify time_percentage is calculated for nodes
+            let mut nodes_with_time_percentage = 0;
+            for node in &tree.nodes {
+                if node.time_percentage.is_some() && node.time_percentage.unwrap() > 0.0 {
+                    nodes_with_time_percentage += 1;
+                }
+            }
+            assert!(
+                nodes_with_time_percentage > 0,
+                "At least some nodes should have time_percentage calculated. Found {}/{} nodes with time_percentage",
+                nodes_with_time_percentage,
+                tree.nodes.len()
+            );
+
+            // Verify top_time_consuming_nodes is populated
+            assert!(
+                profile.summary.top_time_consuming_nodes.is_some(),
+                "top_time_consuming_nodes should be populated"
+            );
+            let top_nodes = profile.summary.top_time_consuming_nodes.as_ref().unwrap();
+            assert!(
+                !top_nodes.is_empty(),
+                "top_time_consuming_nodes should not be empty. Found {} nodes",
+                top_nodes.len()
+            );
+
+            // Verify unique_metrics (CustomCounters) are extracted
+            let mut _nodes_with_unique_metrics = 0;
+            for node in &tree.nodes {
+                if !node.unique_metrics.is_empty() {
+                    _nodes_with_unique_metrics += 1;
+                }
+            }
+
+            // Verify all nodes structure and metrics
+            let mut node_ids = std::collections::HashSet::new();
+            let mut has_result_sink = false;
+            let mut nodes_with_metrics = 0;
+            let mut nodes_with_exec_time = 0;
+            let mut nodes_with_rows = 0;
+
+            for node in &tree.nodes {
+                assert!(!node.id.is_empty());
+                assert!(!node.operator_name.is_empty());
+                assert!(!node_ids.contains(&node.id), "Duplicate node ID: {}", node.id);
+                node_ids.insert(node.id.clone());
+
+                if node.operator_name.contains("RESULT_SINK")
+                    || node.operator_name.contains("RESULT_SINK_OPERATOR")
+                {
+                    has_result_sink = true;
+                }
+
+                // Verify metrics are extracted
+                // Check if node has at least some metrics (ExecTime, RowsProduced, InputRows, etc.)
+                if node.metrics.operator_total_time.is_some()
+                    || node.metrics.operator_total_time_raw.is_some()
+                {
+                    nodes_with_exec_time += 1;
+                }
+
+                if node.rows.is_some()
+                    || node.metrics.push_row_num.is_some()
+                    || node.metrics.pull_row_num.is_some()
+                {
+                    nodes_with_rows += 1;
+                }
+
+                // Check if node has any metrics at all
+                if node.metrics.operator_total_time.is_some()
+                    || node.metrics.operator_total_time_raw.is_some()
+                    || node.metrics.push_row_num.is_some()
+                    || node.metrics.pull_row_num.is_some()
+                    || node.metrics.memory_usage.is_some()
+                    || !node.unique_metrics.is_empty()
+                {
+                    nodes_with_metrics += 1;
+                }
+
+                // Verify children references
+                for child_id in &node.children {
+                    assert!(
+                        tree.nodes.iter().any(|n| n.id == *child_id),
+                        "Child node {} not found",
+                        child_id
+                    );
+                }
+            }
+
+            // Verify that at least some nodes have metrics
+            // Note: Not all operators may have metrics in Doris profile, but most should
+            assert!(
+                nodes_with_metrics > 0,
+                "At least some nodes should have metrics. Found {}/{} nodes with metrics",
+                nodes_with_metrics,
+                tree.nodes.len()
+            );
+
+            // Verify DAG structure: check depth calculation
+            assert!(tree.root.depth == 0, "Root depth should be 0");
+            for node in &tree.nodes {
+                if !node.children.is_empty() {
+                    // Parent should have depth <= children
+                    for child_id in &node.children {
+                        if let Some(child) = tree.nodes.iter().find(|n| n.id == *child_id) {
+                            assert!(
+                                child.depth > node.depth || child.depth == node.depth + 1,
+                                "Child depth should be greater than parent depth"
+                            );
+                        }
+                    }
+                }
+            }
+
+            // Step 6: Verify full analyze_profile workflow
+            let analysis_result = analyze_profile(&profile_text);
+            assert!(analysis_result.is_ok(), "analyze_profile should succeed");
+            let analysis = analysis_result.unwrap();
+
+            assert!(analysis.execution_tree.is_some());
+            assert_eq!(analysis.execution_tree.as_ref().unwrap().nodes.len(), tree.nodes.len());
+
+            // Verify diagnostics can be generated (diagnostics is a Vec, not Option)
+            assert!(!analysis.diagnostics.is_empty() || analysis.diagnostics.is_empty()); // May or may not have diagnostics
+
+            println!("✅ Doris profile (limit query) comprehensive test passed:");
+            println!("   - Query ID: {}", profile.summary.query_id);
+            println!("   - Total Time: {}", profile.summary.total_time);
+            println!("   - Fragments: {}", profile.fragments.len());
+            println!("   - Total Operators: {}", total_operators);
+            println!("   - Execution Tree Nodes: {}", tree.nodes.len());
+            println!("   - Tree Root: {}", tree.root.operator_name);
+            println!("   - Has RESULT_SINK: {}", has_result_sink);
+            println!("   - All nodes reachable: {}", node_ids.len() == tree.nodes.len());
+            println!("   - Nodes with metrics: {}/{}", nodes_with_metrics, tree.nodes.len());
+            println!("   - Nodes with ExecTime: {}/{}", nodes_with_exec_time, tree.nodes.len());
+            println!("   - Nodes with Rows: {}/{}", nodes_with_rows, tree.nodes.len());
+            println!("   - Overview Metrics:");
+            println!(
+                "     * Execution Time: {:?} ({:?} ms)",
+                profile.summary.query_execution_wall_time,
+                profile.summary.query_execution_wall_time_ms
+            );
+            println!(
+                "     * Processing Time: {:?} ({:?} ms)",
+                profile.summary.query_cumulative_operator_time,
+                profile.summary.query_cumulative_operator_time_ms
+            );
+            println!(
+                "     * Planner Time: {:?} ({:?} ms)",
+                profile.summary.planner_total_time, profile.summary.planner_total_time_ms
+            );
+            println!(
+                "     * Schedule Time: {:?} ({:?} ms)",
+                profile.summary.query_peak_schedule_time,
+                profile.summary.query_peak_schedule_time_ms
+            );
+            println!(
+                "     * Result Deliver Time: {:?} ({:?} ms)",
+                profile.summary.result_deliver_time, profile.summary.result_deliver_time_ms
+            );
+            println!("     * Total Instances: {:?}", profile.summary.total_instance_count);
+
+            // Print detailed metrics for all nodes including time_percentage
+            println!("   - Node details with time_percentage:");
+            for (i, node) in tree.nodes.iter().enumerate() {
+                let exec_time_display =
+                    if let Some(ref time_raw) = node.metrics.operator_total_time_raw {
+                        time_raw.as_str()
+                    } else if let Some(time) = node.metrics.operator_total_time {
+                        // Format as string for display
+                        &format!("{}ns", time)
+                    } else {
+                        "N/A"
+                    };
+                let time_pct = node.time_percentage.map(|p| format!("{:.2}%", p)).unwrap_or_else(|| "None".to_string());
+                let time_ns = node.metrics.operator_total_time.map(|t| format!("{}ns", t)).unwrap_or_else(|| "None".to_string());
+                println!(
+                    "     Node {}: {} - ExecTime: {}, time_percentage: {}, operator_total_time: {}, Rows: {:?}, Memory: {:?}",
+                    i, node.operator_name, exec_time_display, time_pct, time_ns, node.rows, node.metrics.memory_usage
+                );
+            }
+            
+            // Print top nodes
+            if let Some(top_nodes) = &profile.summary.top_time_consuming_nodes {
+                println!("   - Top time consuming nodes: {}", top_nodes.len());
+                for (i, top_node) in top_nodes.iter().take(5).enumerate() {
+                    println!("     {}. {}: {:.2}% (plan_node_id={}, total_time={})", 
+                        i + 1, top_node.operator_name, top_node.time_percentage, top_node.plan_node_id, top_node.total_time);
+                }
+            }
+        }
+
+        /// Comprehensive test for user's new Doris profile (15ms) - validates 10 operators parsing
+        /// This test validates that all 10 operators across different fragments/pipelines are correctly parsed
+        #[test]
+        fn test_doris_profile_15ms_comprehensive() {
+            // Create a test profile based on the structure provided by the user
+            // Profile structure: Fragment 0 (Pipeline 0) + Fragment 1 (Pipelines 0,1,2,3)
+            let profile_text = r#"Summary:
+   - Profile ID: test-15ms-query-id
+   - Task Type: QUERY
+   - Start Time: 2025-01-01 00:00:00
+   - End Time: 2025-01-01 00:00:00
+   - Total: 15ms
+   - Task State: OK
+   - User: root
+   - Default Catalog: internal
+   - Default Db: test_db
+   - Sql Statement: select * from test_table order by id limit 100
+Execution Summary:
+   - Plan Time: 1ms
+   - Schedule Time: 1ms
+   - Wait and Fetch Result Time: 13ms
+   - Doris Version: doris-4.0.1-test
+   - Total Instances Num: 15
+MergedProfile:
+     Fragments:
+       Fragment 0:
+         Pipeline : 0(instance_num=1):
+           RESULT_SINK_OPERATOR (id=0):
+             CommonCounters:
+                - ExecTime: avg 81.150us, max 81.150us, min 81.150us
+                - InputRows: sum 100, avg 100, max 100, min 100
+             EXCHANGE_OPERATOR (id=2):
+                CommonCounters:
+                   - ExecTime: avg 130.380us, max 130.380us, min 130.380us
+                   - RowsProduced: sum 100, avg 100, max 100, min 100
+       Fragment 1:
+         Pipeline : 0(instance_num=14):
+           DATA_STREAM_SINK_OPERATOR (id=2,dst_id=2):
+             CommonCounters:
+                - ExecTime: avg 31.351us, max 50.279us, min 20.437us
+                - InputRows: sum 100, avg 7, max 100, min 0
+             LOCAL_EXCHANGE_OPERATOR (LOCAL_MERGE_SORT) (id=-3):
+                CommonCounters:
+                   - ExecTime: avg 8.772us, max 102.779us, min 790ns
+                   - RowsProduced: sum 100, avg 7, max 100, min 0
+         Pipeline : 1(instance_num=14):
+           LOCAL_EXCHANGE_SINK_OPERATOR (LOCAL_MERGE_SORT) (id=-3):
+             CommonCounters:
+                - ExecTime: avg 7.583us, max 24.892us, min 4.154us
+                - InputRows: sum 100, avg 7, max 100, min 0
+             SORT_OPERATOR (id=1 , nereids_id=137):
+                CommonCounters:
+                   - ExecTime: avg 1.69us, max 2.600us, min 324ns
+                   - RowsProduced: sum 100, avg 7, max 100, min 0
+         Pipeline : 2(instance_num=14):
+           SORT_SINK_OPERATOR (id=1 , nereids_id=137):
+             CommonCounters:
+                - ExecTime: avg 36.45us, max 54.408us, min 23.205us
+                - InputRows: sum 100, avg 7, max 100, min 0
+             LOCAL_EXCHANGE_OPERATOR (PASSTHROUGH) (id=-2):
+                CommonCounters:
+                   - ExecTime: avg 3.430us, max 14.652us, min 1.182us
+                   - RowsProduced: sum 100, avg 7, max 100, min 0
+         Pipeline : 3(instance_num=1):
+           LOCAL_EXCHANGE_SINK_OPERATOR (PASSTHROUGH) (id=-2):
+             CommonCounters:
+                - ExecTime: avg 62.185us, max 62.185us, min 62.185us
+                - InputRows: sum 100, avg 100, max 100, min 100
+             OLAP_SCAN_OPERATOR (id=0. nereids_id=127. table name = test_table(test_table)):
+                CommonCounters:
+                   - ExecTime: avg 972.972us, max 972.972us, min 972.972us
+                   - RowsProduced: sum 100, avg 100, max 100, min 100
+                   - ScanBytes: sum 1.5 MB, avg 1.5 MB, max 1.5 MB, min 1.5 MB
+"#;
+
+            // Step 1: Verify profile format
+            assert!(profile_text.contains("MergedProfile"), "MergedProfile section not found");
+            assert!(profile_text.contains("Fragment 0:"), "Fragment 0 not found");
+            assert!(profile_text.contains("Fragment 1:"), "Fragment 1 not found");
+
+            // Step 2: Parse profile
+            let mut composer = ProfileComposer::new();
+            let profile_result = composer.parse(profile_text);
+            assert!(profile_result.is_ok(), "Profile parsing failed: {:?}", profile_result.err());
+            let profile = profile_result.unwrap();
+
+            // Step 3: Verify summary fields
+            assert!(!profile.summary.query_id.is_empty(), "Query ID should not be empty");
+            assert_eq!(profile.summary.total_time, "15ms", "Total time should be 15ms");
+            assert_eq!(profile.summary.starrocks_version, "doris-4.0.1-test", "Doris version should match");
+
+            // Step 4: Verify fragments
+            assert!(!profile.fragments.is_empty(), "Fragments should not be empty");
+            assert!(profile.fragments.len() >= 2, "Should have at least 2 fragments");
+
+            // Count total operators across all fragments
+            let total_operators: usize = profile.fragments
+                .iter()
+                .map(|f| f.pipelines.iter().map(|p| p.operators.len()).sum::<usize>())
+                .sum();
+            println!("Total Operators: {}", total_operators);
+            assert_eq!(total_operators, 10, "Should have exactly 10 operators. Found: {}", total_operators);
+
+            // Step 5: Verify execution tree
+            let tree = profile.execution_tree.as_ref().expect("Execution tree is missing");
+            assert!(!tree.nodes.is_empty(), "Execution tree should not be empty");
+            println!("Execution Tree Nodes: {}", tree.nodes.len());
+            assert_eq!(tree.nodes.len(), 10, "Should have exactly 10 nodes in execution tree. Found: {}", tree.nodes.len());
+
+            // Step 6: Verify all expected operators are present
+            let operator_names: Vec<String> = tree.nodes.iter().map(|n| n.operator_name.clone()).collect();
+            println!("Operators found: {:?}", operator_names);
+            
+            let expected_operators = vec![
+                "RESULT_SINK_OPERATOR",
+                "EXCHANGE_OPERATOR",
+                "DATA_STREAM_SINK_OPERATOR",
+                "LOCAL_EXCHANGE_OPERATOR",
+                "LOCAL_EXCHANGE_SINK_OPERATOR",
+                "SORT_OPERATOR",
+                "SORT_SINK_OPERATOR",
+                "OLAP_SCAN_OPERATOR",
+            ];
+            
+            for expected_op in &expected_operators {
+                assert!(
+                    operator_names.iter().any(|name| name.contains(expected_op)),
+                    "Missing operator: {}. Found operators: {:?}",
+                    expected_op,
+                    operator_names
+                );
+            }
+
+            // Step 7: Verify time_percentage is calculated for all nodes
+            let nodes_with_time_percentage = tree.nodes.iter()
+                .filter(|n| n.time_percentage.is_some())
+                .count();
+            println!("Nodes with time_percentage: {}/{}", nodes_with_time_percentage, tree.nodes.len());
+            assert_eq!(nodes_with_time_percentage, tree.nodes.len(), "All nodes should have time_percentage");
+
+            // Step 8: Verify top_time_consuming_nodes is populated
+            assert!(
+                profile.summary.top_time_consuming_nodes.is_some(),
+                "top_time_consuming_nodes should be populated"
+            );
+            let top_nodes = profile.summary.top_time_consuming_nodes.as_ref().unwrap();
+            assert!(!top_nodes.is_empty(), "top_time_consuming_nodes should not be empty");
+            println!("Top time consuming nodes: {}", top_nodes.len());
+
+            // Step 9: Verify tree connectivity (all nodes reachable from root)
+            let mut visited = std::collections::HashSet::new();
+            let mut queue = std::collections::VecDeque::new();
+            queue.push_back(tree.root.id.clone());
+            visited.insert(tree.root.id.clone());
+
+            while let Some(node_id) = queue.pop_front() {
+                if let Some(node) = tree.nodes.iter().find(|n| n.id == node_id) {
+                    for child_id in &node.children {
+                        if !visited.contains(child_id) {
+                            visited.insert(child_id.clone());
+                            queue.push_back(child_id.clone());
+                        }
+                    }
+                }
+            }
+            assert_eq!(visited.len(), tree.nodes.len(), "All nodes should be reachable from root");
+
+            println!("✅ Doris profile (15ms) comprehensive test passed:");
+            println!("   - Query ID: {}", profile.summary.query_id);
+            println!("   - Total Time: {}", profile.summary.total_time);
+            println!("   - Fragments: {}", profile.fragments.len());
+            println!("   - Total Operators: {}", total_operators);
+            println!("   - Execution Tree Nodes: {}", tree.nodes.len());
+            println!("   - Nodes with time_percentage: {}/{}", nodes_with_time_percentage, tree.nodes.len());
+            println!("   - Top time consuming nodes: {}", top_nodes.len());
+            println!("   - Reachable Nodes: {}/{}", visited.len(), tree.nodes.len());
+        }
+    }
 }

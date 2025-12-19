@@ -11,8 +11,13 @@ use std::collections::HashMap;
 
 static FRAGMENT_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^\s*Fragment\s+(\d+):").unwrap());
 
+// Support both StarRocks format: Pipeline (id=0): and Doris format: Pipeline : 0(instance_num=1):
+// StarRocks: "Pipeline (id=0):" -> capture group 1
+// Doris: "Pipeline : 0(instance_num=1):" or "Pipeline 0(instance_num=1):" -> capture group 2 (id) and group 3 (instance_num)
+// According to Doris profile-dag-parser.md: `^Pipeline (\\d+)\\(instance_num=(\\d+)\\):`
+// Note: Doris can have space and colon: "Pipeline : 0" or just "Pipeline 0"
 static PIPELINE_REGEX: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^\s*Pipeline\s+\(id=(\d+)\):").unwrap());
+    Lazy::new(|| Regex::new(r"^\s*Pipeline\s*:?\s*(?:\(id=(\d+)\)|(\d+)\(instance_num=(\d+)\))").unwrap());
 
 /// Parser for Fragment and Pipeline structures
 pub struct FragmentParser;
@@ -75,7 +80,12 @@ impl FragmentParser {
             let line = lines[i];
 
             if let Some(caps) = PIPELINE_REGEX.captures(line.trim()) {
-                let id = caps.get(1).unwrap().as_str().to_string();
+                // Support both formats: StarRocks (id=0) -> group 1, Doris (0(instance_num=) -> group 2
+                let id = caps
+                    .get(1)
+                    .or_else(|| caps.get(2))
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_else(|| "0".to_string());
                 let start_idx = i;
                 let base_indent = Self::get_indent(line);
 
@@ -141,10 +151,24 @@ impl FragmentParser {
             if OperatorParser::is_operator_header(trimmed) {
                 let full_header = trimmed.trim_end_matches(':').to_string();
 
+                // Extract operator name - support both formats:
+                // StarRocks: OPERATOR_NAME (plan_node_id=0)
+                // Doris: OPERATOR_NAME(id=0) or OPERATOR_NAME (id=0. nereids_id=32...) or OPERATOR_NAME (id=0. nereids_id=74. table name = xxx)
                 let operator_name = if let Some(pos) = full_header.find(" (plan_node_id=") {
-                    full_header[..pos].to_string()
+                    // StarRocks format: OPERATOR_NAME (plan_node_id=0)
+                    full_header[..pos].trim().to_string()
+                } else if let Some(pos) = full_header.find("(id=") {
+                    // Doris format: OPERATOR_NAME(id=0) or OPERATOR_NAME (id=0. nereids_id=32...)
+                    // Handle both cases: with space before (id=) and without space
+                    let before_id = if let Some(space_pos) = full_header[..pos].rfind(' ') {
+                        &full_header[..space_pos]
+                    } else {
+                        &full_header[..pos]
+                    };
+                    before_id.trim().to_string()
                 } else {
-                    full_header.clone()
+                    // No plan_node_id or id, use full header
+                    full_header.trim().to_string()
                 };
 
                 let base_indent = Self::get_indent(lines[i]);
@@ -154,14 +178,28 @@ impl FragmentParser {
 
                 while i < lines.len() {
                     let line = lines[i];
-                    if line.trim().is_empty() {
+                    let trimmed = line.trim();
+                    
+                    if trimmed.is_empty() {
                         i += 1;
                         continue;
                     }
 
-                    let current_indent = Self::get_indent(line);
-                    if current_indent <= base_indent {
+                    // Check if this is another operator header (even at same or smaller indent)
+                    // This handles nested operators in Doris profiles
+                    // For example: RESULT_SINK_OPERATOR (id=0): followed by EXCHANGE_OPERATOR (id=2):
+                    if OperatorParser::is_operator_header(trimmed) {
                         break;
+                    }
+
+                    let current_indent = Self::get_indent(line);
+                    // Stop if we encounter a line at same or smaller indent that's not part of this operator
+                    // But allow metrics lines (starting with "-") at any indent level
+                    if current_indent <= base_indent && !trimmed.starts_with("-") {
+                        // Check if it's a Pipeline or Fragment header (end of current pipeline)
+                        if trimmed.starts_with("Pipeline") || trimmed.starts_with("Fragment") {
+                            break;
+                        }
                     }
 
                     operator_lines.push(line);
@@ -170,12 +208,40 @@ impl FragmentParser {
 
                 let operator_text = operator_lines.join("\n");
 
+                // Extract plan_node_id - support both formats
+                // According to Doris ProfileDagParser.java:
+                // - StarRocks: (plan_node_id=0)
+                // - Doris: (id=0) or (id=0. nereids_id=32...) or (id=0. nereids_id=74. table name = xxx)
+                // - Doris: (dest_id=1) for DATA_STREAM_SINK_OPERATOR when id= is not present
+                // Note: Doris operator pattern: ^([A-Z_]+_OPERATOR)(?:\\([^)]+\\))?\\(id=(\\d+)\\)
+                // This means id= must be followed by digits, but there can be additional info after
                 let plan_node_id = if full_header.contains("plan_node_id=") {
+                    // StarRocks format: (plan_node_id=0)
                     full_header
                         .split("plan_node_id=")
                         .nth(1)
+                        .and_then(|s| s.split(',').next())
                         .and_then(|s| s.trim_end_matches(')').parse::<i32>().ok())
                         .map(|n| n.to_string())
+                } else if let Some(id_start) = full_header.find("(id=") {
+                    // Doris format: (id=0) or (id=0. nereids_id=32...) or (id=0. nereids_id=74. table name = xxx)
+                    // Extract the number immediately after "id=", before any dot or closing paren
+                    let after_id = &full_header[id_start + 4..]; // Skip "(id="
+                    let id_str = after_id
+                        .split(|c: char| c == '.' || c == ',' || c == ')')
+                        .next()
+                        .and_then(|s| s.trim().parse::<i32>().ok())
+                        .map(|n| n.to_string());
+                    id_str
+                } else if let Some(dest_id_start) = full_header.find("(dest_id=") {
+                    // Doris format: DATA_STREAM_SINK_OPERATOR(dest_id=1): - use dest_id as plan_node_id
+                    let after_dest_id = &full_header[dest_id_start + 9..]; // Skip "(dest_id="
+                    let id_str = after_dest_id
+                        .split(|c: char| c == ',' || c == ')')
+                        .next()
+                        .and_then(|s| s.trim().parse::<i32>().ok())
+                        .map(|n| n.to_string());
+                    id_str
                 } else {
                     None
                 };

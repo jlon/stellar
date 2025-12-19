@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use crate::models::{ProfileDetail, ProfileListItem};
 use crate::services::MySQLClient;
+use crate::services::cluster_adapter::create_adapter;
 use crate::services::llm::{
     DiagnosticForLLM, ExecutionPlanForLLM, HotspotNodeForLLM, KeyMetricsForLLM, LLMService,
     OperatorDetailForLLM, ProfileDataForLLM, QuerySummaryForLLM, RootCauseAnalysisRequest,
@@ -68,33 +69,10 @@ pub async fn list_profiles(
 
     tracing::info!("Fetching profile list for cluster {}", cluster.id);
 
-    let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
-    let mysql_client = MySQLClient::from_pool(pool);
+    let adapter = create_adapter(cluster.clone(), state.mysql_pool_manager.clone());
+    let profiles = adapter.list_profiles().await?;
 
-    let (columns, rows) = mysql_client.query_raw("SHOW PROFILELIST").await?;
-
-    tracing::info!(
-        "Profile list query returned {} rows with {} columns",
-        rows.len(),
-        columns.len()
-    );
-
-    let profiles: Vec<ProfileListItem> = rows
-        .into_iter()
-        .filter(|row| {
-            let state = row.get(3).map(|s| s.as_str()).unwrap_or("");
-            !state.eq_ignore_ascii_case("aborted")
-        })
-        .map(|row| ProfileListItem {
-            query_id: row.first().cloned().unwrap_or_default(),
-            start_time: row.get(1).cloned().unwrap_or_default(),
-            time: row.get(2).cloned().unwrap_or_default(),
-            state: row.get(3).cloned().unwrap_or_default(),
-            statement: row.get(4).cloned().unwrap_or_default(),
-        })
-        .collect();
-
-    tracing::info!("Successfully converted {} profiles (Aborted filtered)", profiles.len());
+    tracing::info!("Successfully fetched {} profiles", profiles.len());
     Ok(Json(profiles))
 }
 
@@ -136,21 +114,8 @@ pub async fn get_profile(
 
     tracing::info!("Fetching profile detail for query {} in cluster {}", safe_query_id, cluster.id);
 
-    let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
-    let mysql_client = MySQLClient::from_pool(pool);
-
-    let sql = format!("SELECT get_query_profile('{}')", safe_query_id);
-    let (_, rows) = mysql_client.query_raw(&sql).await?;
-
-    let profile_content = rows
-        .first()
-        .and_then(|row| row.first())
-        .cloned()
-        .unwrap_or_default();
-
-    if profile_content.trim().is_empty() {
-        return Err(ApiError::not_found(format!("Profile not found for query: {}", safe_query_id)));
-    }
+    let adapter = create_adapter(cluster.clone(), state.mysql_pool_manager.clone());
+    let profile_content = adapter.get_profile(&safe_query_id).await?;
 
     tracing::info!("Profile content length: {} bytes", profile_content.len());
 
@@ -196,20 +161,8 @@ pub async fn analyze_profile_handler(
 
     tracing::info!("Analyzing profile for query {} in cluster {}", safe_query_id, cluster.id);
 
-    let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
-    let mysql_client = MySQLClient::from_pool(pool);
-    let sql = format!("SELECT get_query_profile('{}')", safe_query_id);
-    let (_, rows) = mysql_client.query_raw(&sql).await?;
-
-    let profile_content = rows
-        .first()
-        .and_then(|row| row.first())
-        .cloned()
-        .unwrap_or_default();
-
-    if profile_content.trim().is_empty() {
-        return Err(ApiError::not_found(format!("Profile not found for query: {}", safe_query_id)));
-    }
+    let adapter = create_adapter(cluster.clone(), state.mysql_pool_manager.clone());
+    let profile_content = adapter.get_profile(&safe_query_id).await?;
 
     tracing::info!(
         "Profile content length: {} bytes for query {}",
@@ -217,6 +170,9 @@ pub async fn analyze_profile_handler(
         safe_query_id
     );
 
+    // Fetch cluster variables for analysis context
+    let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
+    let mysql_client = MySQLClient::from_pool(pool);
     let cluster_variables = fetch_cluster_variables(&mysql_client).await;
 
     let context = AnalysisContext { cluster_variables, cluster_id: Some(cluster.id) };

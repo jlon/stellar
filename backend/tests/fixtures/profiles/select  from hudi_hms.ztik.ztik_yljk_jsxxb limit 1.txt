@@ -1,0 +1,610 @@
+Summary:
+   - Profile ID: 1176d8b573e34626-9c9c5677f17f473d
+   - Task Type: QUERY
+   - Start Time: 2025-12-18 14:45:07
+   - End Time: 2025-12-18 14:51:57
+   - Total: 6min50sec
+   - Task State: OK
+   - User: root
+   - Default Catalog: internal
+   - Default Db: ods
+   - Sql Statement: select * from hudi_hms.ztik.ztik_yljk_jsxxb limit 100
+   - Distributed Plan: N/A
+Execution Summary:
+   - Workload Group: normal
+   - Parse SQL Time: 0ms
+   - Plan Time: 6min49sec
+     - Garbage Collect During Plan Time: 1sec624ms
+     - Nereids Lock Table Time: 1ms
+     - Nereids Analysis Time: 22ms
+     - Nereids Rewrite Time: 2ms
+       - Nereids Fold Const By BE Time: 0ms
+     - Nereids Collect Table Partition Time: 0ms
+   - Nereids Pre Rewrite By Mv Time: N/A
+     - Nereids Optimize Time: N/A
+     - Nereids Translate Time: 6min49sec
+       - Init Scan Node Time: 2ms
+       - Finalize Scan Node Time: 6min49sec
+         - Get Splits Time: 145ms
+         - Get Partitions Time: N/A
+         - Get Partition Files Time: N/A
+       - Create Scan Range Time: 6min49sec
+     - Nereids Distribute Time: 9ms
+   - Get Meta Version Time: N/A
+     - Get Partition Version Time: N/A
+     - Get Partition Version Count (hasData): N/A
+     - Get Partition Version Count: N/A
+     - Get Table Version Time: N/A
+     - Get Table Version Count: N/A
+   - Schedule Time: 97ms
+     - Fragment Assign Time: 7ms
+     - Fragment Serialize Time: 10ms
+     - Fragment RPC Phase1 Time: 76ms
+     - Fragment RPC Phase2 Time: 4ms
+     - Fragment Compressed Size: 1.01 MB
+     - Fragment RPC Count: 6
+   - Schedule Time Of BE: {"phase1":{"192.168.0.69: 8060":{"RPC Work Time":"45ms","RPC Latency From FE To BE":"15ms","RPC Work Queue Time":"1ms","RPC Latency From BE To FE":"14ms"},"192.168.0.70: 8060":{"RPC Work Time":"64ms","RPC Latency From FE To BE":"11ms","RPC Work Queue Time":"0ms","RPC Latency From BE To FE":"0ms"},"192.168.0.68: 8060":{"RPC Work Time":"49ms","RPC Latency From FE To BE":"17ms","RPC Work Queue Time":"0ms","RPC Latency From BE To FE":"-4ms"}},"phase2":{"192.168.0.69: 8060":{"RPC Work Time":"0ms","RPC Latency From FE To BE":"7ms","RPC Work Queue Time":"0ms","RPC Latency From BE To FE":"-4ms"},"192.168.0.70: 8060":{"RPC Work Time":"1ms","RPC Latency From FE To BE":"2ms","RPC Work Queue Time":"0ms","RPC Latency From BE To FE":"0ms"},"192.168.0.68: 8060":{"RPC Work Time":"0ms","RPC Latency From FE To BE":"8ms","RPC Work Queue Time":"0ms","RPC Latency From BE To FE":"-4ms"}}}
+   - Wait and Fetch Result Time: 420ms
+   - Fetch Result Time: 418ms
+   - Write Result Time: 1ms
+   - Doris Version: doris-4.0.1-rc02-791725594d
+   - Is Nereids: Yes
+   - Is Cached: No
+   - Total Instances Num: 4
+   - Instances Num Per BE: 192.168.0.68:8060:1,192.168.0.70:8060:2,192.168.0.69:8060:1
+   - Parallel Fragment Exec Instance Num: 4
+   - Trace ID: 
+   - Transaction Commit Time: N/A
+   - System Message: N/A
+   - Executed By Frontend: N/A
+   - Splits Assignment Weight: N/A
+
+ChangedSessionVariables:
+[
+  {
+    "VarName": "enable_profile",
+    "CurrentValue": "true",
+    "DefaultValue": "false"
+  }
+]
+MergedProfile:
+     Fragments:
+       Fragment 0:
+         Pipeline 0(instance_num=1):
+            - WaitWorkerTime: avg 161.900us, max 161.900us, min 161.900us
+           RESULT_SINK_OPERATOR(id=2147483647):
+             CommonCounters:
+                - ExecTime: avg 2.927ms, max 2.927ms, min 2.927ms
+                - InputRows: sum 100, avg 100, max 100, min 100
+                - MemoryUsage: sum 0.00 , avg 0.00 , max 0.00 , min 0.00 
+                - MemoryUsagePeak: sum 0.00 , avg 0.00 , max 0.00 , min 0.00 
+                - WaitForDependency[RESULT_SINK_OPERATOR_DEPENDENCY]Time: avg 0ns, max 0ns, min 0ns
+             CustomCounters:
+                - WaitForDependencyTime: avg 0ns, max 0ns, min 0ns
+           EXCHANGE_OPERATOR(id=1):
+              - PlanInfo
+                 - offset: 0
+                 - limit: 100
+             CommonCounters:
+                - BlocksProduced: sum 1, avg 1, max 1, min 1
+                - ExecTime: avg 59.899us, max 59.899us, min 59.899us
+                - MemoryUsage: sum 0.00 , avg 0.00 , max 0.00 , min 0.00 
+                - MemoryUsagePeak: sum 9.89 MB, avg 9.89 MB, max 9.89 MB, min 9.89 MB
+                - RowsProduced: sum 100, avg 100, max 100, min 100
+             CustomCounters:
+                - WaitForDependencyTime: avg 0ns, max 0ns, min 0ns
+                  - WaitForData0: avg 411.49ms, max 411.49ms, min 411.49ms
+       Fragment 1:
+         Pipeline 0(instance_num=3):
+            - WaitWorkerTime: avg 141.912us, max 147.970us, min 136.657us
+           DATA_STREAM_SINK_OPERATOR(dest_id=1):
+             CommonCounters:
+                - ExecTime: avg 131.833us, max 264.210us, min 62.150us
+                - InputRows: sum 100, avg 33, max 100, min 0
+                - MemoryUsage: sum 0.00 , avg 0.00 , max 0.00 , min 0.00 
+                - MemoryUsagePeak: sum 0.00 , avg 0.00 , max 0.00 , min 0.00 
+                - WaitForDependencyTime: avg 0ns, max 0ns, min 0ns
+                  - WaitForRpcBufferQueue: avg 0ns, max 0ns, min 0ns
+             CustomCounters:
+                - BlocksProduced: sum 1, avg 0, max 1, min 0
+                - OverallThroughput: sum 0.0 /sec, avg 0.0 /sec, max 0.0 /sec, min 0.0 /sec
+                - RpcMaxTime: avg 0ns, max 0ns, min 0ns
+           FILE_SCAN_OPERATOR (id=0. nereids_id=74. table name = ztik_yljk_jsxxb):
+              - PlanInfo
+                 - table: hudi_hms.ztik.ztik_yljk_jsxxb
+                 - inputSplitNum=4080, totalFileSize=115313981567, scanRanges=4080
+                 - partition=1/1
+                 - cardinality=1, numNodes=3
+                 - pushdown agg=NONE
+                 - hudiNativeReadSplits=4080/4080
+                 - limit: 100
+             CommonCounters:
+                - BlocksProduced: sum 1, avg 0, max 1, min 0
+                - ExecTime: avg 423.985ms, max 427.828ms, min 417.660ms
+                - MemoryUsage: sum 0.00 , avg 0.00 , max 0.00 , min 0.00 
+                - MemoryUsagePeak: sum 0.00 , avg 0.00 , max 0.00 , min 0.00 
+                - RowsProduced: sum 100, avg 33, max 100, min 0
+                - WaitForDependency[FILE_SCAN_OPERATOR_DEPENDENCY]Time: avg 417.5ms, max 422.581ms, min 407.110ms
+             CustomCounters:
+                - RuntimeFilterInfo: sum , avg , max , min 
+                - ScanBytes: sum 21.24 MB, avg 7.08 MB, max 21.24 MB, min 0.00 
+                - ScanRows: sum 122.152K (122152), avg 40.717K (40717), max 122.152K (122152), min 0
+
+DetailProfile(1176d8b573e34626-9c9c5677f17f473d):
+  Fragments:
+    Fragment 0:
+      FragmentLevelProfile:(host=TNetworkAddress(hostname:192.168.0.70, port:9050)):
+      Pipeline 0(host=TNetworkAddress(hostname:192.168.0.70, port:9050)):
+        PipelineTask(index=0):
+           - TaskState: FINALIZED
+           - BlockedByDependency: 
+           - WakeUpEarly: 0
+           - WaitWorkerTime: 161.900us
+          RESULT_SINK_OPERATOR(id=2147483647):
+            CommonCounters:
+               - ExecTime: 2.927ms
+               - InputRows: 100
+               - MemoryUsage: 0.00 
+               - MemoryUsagePeak: 0.00 
+               - WaitForDependency[RESULT_SINK_OPERATOR_DEPENDENCY]Time: 0ns
+            CustomCounters:
+               - WaitForDependencyTime: 0ns
+          EXCHANGE_OPERATOR(id=1):
+            CommonCounters:
+               - BlocksProduced: 1
+               - ExecTime: 59.899us
+               - MemoryUsage: 0.00 
+               - MemoryUsagePeak: 9.89 MB
+               - RowsProduced: 100
+            CustomCounters:
+               - InstanceID: 1176d8b573e34626-9c9c5677f17f4763
+               - WaitForDependencyTime: 0ns
+                 - WaitForData0: 411.49ms
+    Fragment 1:
+      FragmentLevelProfile:(host=TNetworkAddress(hostname:192.168.0.70, port:9050)):
+      Pipeline 0(host=TNetworkAddress(hostname:192.168.0.70, port:9050)):
+        PipelineTask(index=0):
+           - TaskState: FINALIZED
+           - BlockedByDependency: 
+           - WakeUpEarly: 0
+           - WaitWorkerTime: 136.657us
+          DATA_STREAM_SINK_OPERATOR(dest_id=1):
+            CommonCounters:
+               - ExecTime: 264.210us
+               - InputRows: 100
+               - MemoryUsage: 0.00 
+               - MemoryUsagePeak: 0.00 
+               - WaitForDependencyTime: 0ns
+                 - WaitForRpcBufferQueue: 0ns
+            CustomCounters:
+               - BlocksProduced: 1
+               - OverallThroughput: 0.0 /sec
+          FILE_SCAN_OPERATOR (id=0. nereids_id=74. table name = ztik_yljk_jsxxb):
+            CommonCounters:
+               - BlocksProduced: 1
+               - ExecTime: 417.660ms
+               - MemoryUsage: 0.00 
+               - MemoryUsagePeak: 0.00 
+               - RowsProduced: 100
+               - WaitForDependency[FILE_SCAN_OPERATOR_DEPENDENCY]Time: 407.110ms
+            CustomCounters:
+               - TopNFilterSourceNodeIds: 
+               - RuntimeFilterInfo: 
+               - ScanBytes: 21.24 MB
+               - ScanRows: 122.152K (122152)
+              Scanner:
+                 - ApplyAllRuntimeFilters: True
+                 - PerScannerRunningTime: [404.581ms, ]
+                 - PerScannerRowsRead: [4.06K, ]
+                 - PerScannerWaitTime: [58.560us, ]
+                 - PerScannerProjectionTime: [0.000ns, ]
+                 - EOS: True
+                 - EmptyFileNum: 0
+                 - FileFooterHitCache: 1
+                 - FileFooterReadCalls: 0
+                 - FileNumber: 1
+                 - FileReadBytes: 21.24 MB
+                 - FileReadCalls: 159
+                 - FileReadTime: 249.473ms
+                 - FileScannerCastInputBlockTime: 0ns
+                 - FileScannerConvertOuputBlockTime: 0ns
+                 - FileScannerFillMissingColumnTime: 0ns
+                 - FileScannerGetBlockTime: 402.722ms
+                 - FileScannerPreFilterTimer: 0ns
+                 - FileScannerRuntimeFilterPartitionPruningTime: 0ns
+                 - FullySkippedFileNum: 0
+                 - MergedSmallIO: 0ns
+                   - ApplyBytes: 25.98 MB
+                   - CopyTime: 26.389ms
+                   - MergedBytes: 25.98 MB
+                   - MergedIO: 4
+                   - ReadTime: 222.930ms
+                   - RequestBytes: 21.24 MB
+                   - RequestIO: 159
+                 - NotFoundFileNum: 0
+                 - PageIndexReadCalls: 0
+                 - ParquetReader: 0ns
+                   - ColumnReadTime: 402.116ms
+                   - DecodeDictTime: 0ns
+                   - DecodeHeaderTime: 0ns
+                   - DecodeLevelTime: 0ns
+                   - DecodeNullMapTime: 0ns
+                   - DecodeValueTime: 0ns
+                   - DecompressCount: 0
+                   - DecompressTime: 0ns
+                   - DictFilterRewriteTime: 0ns
+                   - FileNum: 1
+                   - FileOpenTime: 784.549us
+                   - FilteredBytes: 0.00 
+                   - FilteredGroups: 0
+                   - FilteredRowsByGroup: 0
+                   - FilteredRowsByLazyRead: 0
+                   - FilteredRowsByPage: 0
+                   - PageIndexFilterTime: 860ns
+                   - PageIndexParseTime: 0ns
+                   - PageIndexReadTime: 0ns
+                   - ParseFooterTime: 6.800us
+                   - ParseMetaTime: 319.899us
+                   - ParsePageHeaderNum: 0
+                   - PredicateFilterTime: 0ns
+                   - RawRowsRead: 122.152K (122152)
+                   - ReadBytes: 25.98 MB
+                   - ReadGroups: 1
+                   - RowGroupFilterTime: 14.289us
+                   - SkipPageHeaderNum: 0
+                 - RuntimeFilterPartitionPrunedRangeNum: 0
+      FragmentLevelProfile:(host=TNetworkAddress(hostname:192.168.0.68, port:9050)):
+      Pipeline 0(host=TNetworkAddress(hostname:192.168.0.68, port:9050)):
+        PipelineTask(index=0):
+           - TaskState: FINALIZED
+           - BlockedByDependency: 
+           - WakeUpEarly: 0
+           - WaitWorkerTime: 141.110us
+          DATA_STREAM_SINK_OPERATOR(dest_id=1):
+            CommonCounters:
+               - ExecTime: 62.150us
+               - InputRows: 0
+               - MemoryUsage: 0.00 
+               - MemoryUsagePeak: 0.00 
+               - WaitForDependencyTime: 0ns
+                 - WaitForRpcBufferQueue: 0ns
+            CustomCounters:
+               - BlocksProduced: 0
+               - OverallThroughput: 0.0 /sec
+               - RpcMaxTime: 0ns
+          FILE_SCAN_OPERATOR (id=0. nereids_id=74. table name = ztik_yljk_jsxxb):
+            CommonCounters:
+               - BlocksProduced: 0
+               - ExecTime: 426.466ms
+               - MemoryUsage: 0.00 
+               - MemoryUsagePeak: 0.00 
+               - RowsProduced: 0
+               - WaitForDependency[FILE_SCAN_OPERATOR_DEPENDENCY]Time: 421.324ms
+            CustomCounters:
+               - TopNFilterSourceNodeIds: 
+               - RuntimeFilterInfo: 
+               - ScanBytes: 0.00 
+               - ScanRows: 0
+              Scanner:
+                 - ApplyAllRuntimeFilters: True
+                 - PerScannerRunningTime: [0.000ns, ]
+                 - PerScannerRowsRead: [0, ]
+                 - PerScannerWaitTime: [46.110us, ]
+                 - PerScannerProjectionTime: [0.000ns, ]
+                 - EmptyFileNum: 0
+                 - FileFooterHitCache: 0
+                 - FileFooterReadCalls: 0
+                 - FileNumber: 1
+                 - FileReadBytes: 0.00 
+                 - FileReadCalls: 0
+                 - FileReadTime: 0ns
+                 - FileScannerCastInputBlockTime: 0ns
+                 - FileScannerConvertOuputBlockTime: 0ns
+                 - FileScannerFillMissingColumnTime: 0ns
+                 - FileScannerGetBlockTime: 0ns
+                 - FileScannerPreFilterTimer: 0ns
+                 - FileScannerRuntimeFilterPartitionPruningTime: 0ns
+                 - FullySkippedFileNum: 0
+                 - MergedSmallIO: 0ns
+                   - ApplyBytes: 0.00 
+                   - CopyTime: 0ns
+                   - MergedBytes: 0.00 
+                   - MergedIO: 0
+                   - ReadTime: 0ns
+                   - RequestBytes: 0.00 
+                   - RequestIO: 0
+                 - NotFoundFileNum: 0
+                 - PageIndexReadCalls: 0
+                 - ParquetReader: 0ns
+                   - ColumnReadTime: 0ns
+                   - DecodeDictTime: 0ns
+                   - DecodeHeaderTime: 0ns
+                   - DecodeLevelTime: 0ns
+                   - DecodeNullMapTime: 0ns
+                   - DecodeValueTime: 0ns
+                   - DecompressCount: 0
+                   - DecompressTime: 0ns
+                   - DictFilterRewriteTime: 0ns
+                   - FileNum: 0
+                   - FileOpenTime: 0ns
+                   - FilteredBytes: 0.00 
+                   - FilteredGroups: 0
+                   - FilteredRowsByGroup: 0
+                   - FilteredRowsByLazyRead: 0
+                   - FilteredRowsByPage: 0
+                   - PageIndexFilterTime: 0ns
+                   - PageIndexParseTime: 0ns
+                   - PageIndexReadTime: 0ns
+                   - ParseFooterTime: 0ns
+                   - ParseMetaTime: 0ns
+                   - ParsePageHeaderNum: 0
+                   - PredicateFilterTime: 0ns
+                   - RawRowsRead: 0
+                   - ReadBytes: 0.00 
+                   - ReadGroups: 0
+                   - RowGroupFilterTime: 0ns
+                   - SkipPageHeaderNum: 0
+                 - RuntimeFilterPartitionPrunedRangeNum: 0
+      FragmentLevelProfile:(host=TNetworkAddress(hostname:192.168.0.69, port:9050)):
+      Pipeline 0(host=TNetworkAddress(hostname:192.168.0.69, port:9050)):
+        PipelineTask(index=0):
+           - TaskState: FINALIZED
+           - BlockedByDependency: 
+           - WakeUpEarly: 0
+           - WaitWorkerTime: 147.970us
+          DATA_STREAM_SINK_OPERATOR(dest_id=1):
+            CommonCounters:
+               - ExecTime: 69.140us
+               - InputRows: 0
+               - MemoryUsage: 0.00 
+               - MemoryUsagePeak: 0.00 
+               - WaitForDependencyTime: 0ns
+                 - WaitForRpcBufferQueue: 0ns
+            CustomCounters:
+               - BlocksProduced: 0
+               - OverallThroughput: 0.0 /sec
+               - RpcMaxTime: 0ns
+          FILE_SCAN_OPERATOR (id=0. nereids_id=74. table name = ztik_yljk_jsxxb):
+            CommonCounters:
+               - BlocksProduced: 0
+               - ExecTime: 427.828ms
+               - MemoryUsage: 0.00 
+               - MemoryUsagePeak: 0.00 
+               - RowsProduced: 0
+               - WaitForDependency[FILE_SCAN_OPERATOR_DEPENDENCY]Time: 422.581ms
+            CustomCounters:
+               - TopNFilterSourceNodeIds: 
+               - RuntimeFilterInfo: 
+               - ScanBytes: 0.00 
+               - ScanRows: 0
+              Scanner:
+                 - ApplyAllRuntimeFilters: True
+                 - PerScannerRunningTime: [0.000ns, ]
+                 - PerScannerRowsRead: [0, ]
+                 - PerScannerWaitTime: [56.840us, ]
+                 - PerScannerProjectionTime: [0.000ns, ]
+                 - EmptyFileNum: 0
+                 - FileFooterHitCache: 0
+                 - FileFooterReadCalls: 0
+                 - FileNumber: 1
+                 - FileReadBytes: 0.00 
+                 - FileReadCalls: 0
+                 - FileReadTime: 0ns
+                 - FileScannerCastInputBlockTime: 0ns
+                 - FileScannerConvertOuputBlockTime: 0ns
+                 - FileScannerFillMissingColumnTime: 0ns
+                 - FileScannerGetBlockTime: 0ns
+                 - FileScannerPreFilterTimer: 0ns
+                 - FileScannerRuntimeFilterPartitionPruningTime: 0ns
+                 - FullySkippedFileNum: 0
+                 - MergedSmallIO: 0ns
+                   - ApplyBytes: 0.00 
+                   - CopyTime: 0ns
+                   - MergedBytes: 0.00 
+                   - MergedIO: 0
+                   - ReadTime: 0ns
+                   - RequestBytes: 0.00 
+                   - RequestIO: 0
+                 - NotFoundFileNum: 0
+                 - PageIndexReadCalls: 0
+                 - ParquetReader: 0ns
+                   - ColumnReadTime: 0ns
+                   - DecodeDictTime: 0ns
+                   - DecodeHeaderTime: 0ns
+                   - DecodeLevelTime: 0ns
+                   - DecodeNullMapTime: 0ns
+                   - DecodeValueTime: 0ns
+                   - DecompressCount: 0
+                   - DecompressTime: 0ns
+                   - DictFilterRewriteTime: 0ns
+                   - FileNum: 0
+                   - FileOpenTime: 0ns
+                   - FilteredBytes: 0.00 
+                   - FilteredGroups: 0
+                   - FilteredRowsByGroup: 0
+                   - FilteredRowsByLazyRead: 0
+                   - FilteredRowsByPage: 0
+                   - PageIndexFilterTime: 0ns
+                   - PageIndexParseTime: 0ns
+                   - PageIndexReadTime: 0ns
+                   - ParseFooterTime: 0ns
+                   - ParseMetaTime: 0ns
+                   - ParsePageHeaderNum: 0
+                   - PredicateFilterTime: 0ns
+                   - RawRowsRead: 0
+                   - ReadBytes: 0.00 
+                   - ReadGroups: 0
+                   - RowGroupFilterTime: 0ns
+                   - SkipPageHeaderNum: 0
+                 - RuntimeFilterPartitionPrunedRangeNum: 0
+  LoadChannels:
+
+Appendix:
+
+PhysicalPlan:
+PhysicalResultSink[90] ( outputExprs=[_hoodie_commit_time#0, _hoodie_commit_seqno#1, _hoodie_record_key#2, _hoodie_partition_path#3, _hoodie_file_name#4, zjlid#5, ztik_rksj#6, qx_mc#7, qx#8, xz_mc#9, xz#10, csq_mc#11, csq#12, yjdxxm#13, yjdxzw#14, yjdxzjbh#15, sfsggb#16, sfjjgb#17, wtzrdw#18, qt1#19, setl_id#20, clr_optins#21, medins_setl_id#22, mdtrt_id#23, init_setl_id#24, psn_no#25, psn_insu_rlts_id#26, psn_name#27, psn_cert_type#28, psn_cert_type_mc#29, certno#30, gend#31, naty#32, naty_mc#33, brdy#34, age#35, insutype#36, insuttype_mc#37, psn_type#38, psn_type_mc#39, cvlserv_flag#40, cvlserv_flag_mc#41, cvlserv_lv#42, cvlserv_lv_mc#43, sp_psn_type#44, sp_psn_type_lv#45, sp_psn_type_lv_mc#46, clct_grde#47, clct_grde_mc#48, flxempe_flag#49, flxempe_flag_mc#50, nwb_flag#51, nwb_flag_mc#52, insu_admdvs#53, insu_admdvs_mc#54, emp_no#55, emp_name#56, emp_type#57, emp_type_mc#58, econ_type#59, econ_type_mc#60, afil_indu#61, afil_indu_mc#62, afil_rlts#63, afil_rlts_mc#64, emp_mgt_type#65, emp_mgt_type_mc#66, pay_loc#67, pay_loc_mc#68, fixmedins_code#69, fixmedins_name#70, hosp_lv#71, hosp_lv_mc#72, fix_blng_admdvs#73, fix_blng_admdvs_mc#74, lmtpric_hosp_lv#75, lmtpric_hosp_lv_mc#76, dedc_hosp_lv#77, dedc_hosp_lv_mc#78, begndate#79, enddate#80, setl_time#81, mdtrt_cert_type#82, mdtrt_cert_type_mc#83, mdtrt_cert_no#84, med_type#85, med_type_mc#86, setl_type#87, setl_type_mc#88, clr_type#89, clr_type_mc#90, clr_way#91, clr_way_mc#92, psn_setlway#93, psn_setlway_mc#94, medfee_sumamt#95, fulamt_ownpay_amt#96, overlmt_selfpay#97, preselfpay_amt#98, inscp_amt#99, dedc_std#100, crt_dedc#101, act_pay_dedc#102, hifp_pay#103, pool_prop_selfpay#104, hi_agre_sumfee#105, cvlserv_pay#106, hifes_pay#107, hifmi_pay#108, hifob_pay#109, hifdm_pay#110, maf_pay#111, othfund_pay#112, fund_pay_sumamt#113, psn_pay#114, acct_pay#115, cash_payamt#116, ownpay_hosp_part#117, balc#118, acct_mulaid_pay#119, refd_setl_flag#120, refd_setl_flag_mc#121, cal_ipt_cnt#122, cal_ipt_cnt_mc#123, setl_cashpay_way#124, setl_cashpay_way_mc#125, year#126, dise_no#127, dise_name#128, invono#129, manl_reim_rea#130, manl_reim_rea_mc#131, vali_flag#132, vali_flag_mc#133, memo#134, rid#135, updt_time#136, crter_id#137, crter_name#138, crte_time#139, crte_optins_no#140, opter_id#141, opter_name#142, opt_time#143, optins_no#144, poolarea_no#145, mid_setl_flag#146, mid_setl_flag_mc#147, acct_used_flag#148, acct_used_flag_mc#149, quts_type#150, quts_type_mc#151, bydise_setl_payamt#152, exct_item_fund_payamt#153, dty_flag#154, d_status#155, etl_date#156, region#157, subs_code#158] )
+     +--PhysicalLimit[86]@2 ( limit=100, offset=0, phase=GLOBAL, stats=1 )
+        +--PhysicalDistribute[82]@1 ( stats=1, distributionSpec=DistributionSpecGather )
+           +--PhysicalLimit[78]@1 ( limit=100, offset=0, phase=LOCAL, stats=1 )
+              +--PhysicalHudiScan ( qualified=hudi_hms.ztik.ztik_yljk_jsxxb, output=[_hoodie_commit_time#0, _hoodie_commit_seqno#1, _hoodie_record_key#2, _hoodie_partition_path#3, _hoodie_file_name#4, zjlid#5, ztik_rksj#6, qx_mc#7, qx#8, xz_mc#9, xz#10, csq_mc#11, csq#12, yjdxxm#13, yjdxzw#14, yjdxzjbh#15, sfsggb#16, sfjjgb#17, wtzrdw#18, qt1#19, setl_id#20, clr_optins#21, medins_setl_id#22, mdtrt_id#23, init_setl_id#24, psn_no#25, psn_insu_rlts_id#26, psn_name#27, psn_cert_type#28, psn_cert_type_mc#29, certno#30, gend#31, naty#32, naty_mc#33, brdy#34, age#35, insutype#36, insuttype_mc#37, psn_type#38, psn_type_mc#39, cvlserv_flag#40, cvlserv_flag_mc#41, cvlserv_lv#42, cvlserv_lv_mc#43, sp_psn_type#44, sp_psn_type_lv#45, sp_psn_type_lv_mc#46, clct_grde#47, clct_grde_mc#48, flxempe_flag#49, flxempe_flag_mc#50, nwb_flag#51, nwb_flag_mc#52, insu_admdvs#53, insu_admdvs_mc#54, emp_no#55, emp_name#56, emp_type#57, emp_type_mc#58, econ_type#59, econ_type_mc#60, afil_indu#61, afil_indu_mc#62, afil_rlts#63, afil_rlts_mc#64, emp_mgt_type#65, emp_mgt_type_mc#66, pay_loc#67, pay_loc_mc#68, fixmedins_code#69, fixmedins_name#70, hosp_lv#71, hosp_lv_mc#72, fix_blng_admdvs#73, fix_blng_admdvs_mc#74, lmtpric_hosp_lv#75, lmtpric_hosp_lv_mc#76, dedc_hosp_lv#77, dedc_hosp_lv_mc#78, begndate#79, enddate#80, setl_time#81, mdtrt_cert_type#82, mdtrt_cert_type_mc#83, mdtrt_cert_no#84, med_type#85, med_type_mc#86, setl_type#87, setl_type_mc#88, clr_type#89, clr_type_mc#90, clr_way#91, clr_way_mc#92, psn_setlway#93, psn_setlway_mc#94, medfee_sumamt#95, fulamt_ownpay_amt#96, overlmt_selfpay#97, preselfpay_amt#98, inscp_amt#99, dedc_std#100, crt_dedc#101, act_pay_dedc#102, hifp_pay#103, pool_prop_selfpay#104, hi_agre_sumfee#105, cvlserv_pay#106, hifes_pay#107, hifmi_pay#108, hifob_pay#109, hifdm_pay#110, maf_pay#111, othfund_pay#112, fund_pay_sumamt#113, psn_pay#114, acct_pay#115, cash_payamt#116, ownpay_hosp_part#117, balc#118, acct_mulaid_pay#119, refd_setl_flag#120, refd_setl_flag_mc#121, cal_ipt_cnt#122, cal_ipt_cnt_mc#123, setl_cashpay_way#124, setl_cashpay_way_mc#125, year#126, dise_no#127, dise_name#128, invono#129, manl_reim_rea#130, manl_reim_rea_mc#131, vali_flag#132, vali_flag_mc#133, memo#134, rid#135, updt_time#136, crter_id#137, crter_name#138, crte_time#139, crte_optins_no#140, opter_id#141, opter_name#142, opt_time#143, optins_no#144, poolarea_no#145, mid_setl_flag#146, mid_setl_flag_mc#147, acct_used_flag#148, acct_used_flag_mc#149, quts_type#150, quts_type_mc#151, bydise_setl_payamt#152, exct_item_fund_payamt#153, dty_flag#154, d_status#155, etl_date#156, region#157, subs_code#158], stats=1 actualRows=100, selected partitions num=unknown, isIncremental=false )
+     PhysicalHudiScan ( qualified=hudi_hms.ztik.ztik_yljk_jsxxb, output=[_hoodie_commit_time#0, _hoodie_commit_seqno#1, _hoodie_record_key#2, _hoodie_partition_path#3, _hoodie_file_name#4, zjlid#5, ztik_rksj#6, qx_mc#7, qx#8, xz_mc#9, xz#10, csq_mc#11, csq#12, yjdxxm#13, yjdxzw#14, yjdxzjbh#15, sfsggb#16, sfjjgb#17, wtzrdw#18, qt1#19, setl_id#20, clr_optins#21, medins_setl_id#22, mdtrt_id#23, init_setl_id#24, psn_no#25, psn_insu_rlts_id#26, psn_name#27, psn_cert_type#28, psn_cert_type_mc#29, certno#30, gend#31, naty#32, naty_mc#33, brdy#34, age#35, insutype#36, insuttype_mc#37, psn_type#38, psn_type_mc#39, cvlserv_flag#40, cvlserv_flag_mc#41, cvlserv_lv#42, cvlserv_lv_mc#43, sp_psn_type#44, sp_psn_type_lv#45, sp_psn_type_lv_mc#46, clct_grde#47, clct_grde_mc#48, flxempe_flag#49, flxempe_flag_mc#50, nwb_flag#51, nwb_flag_mc#52, insu_admdvs#53, insu_admdvs_mc#54, emp_no#55, emp_name#56, emp_type#57, emp_type_mc#58, econ_type#59, econ_type_mc#60, afil_indu#61, afil_indu_mc#62, afil_rlts#63, afil_rlts_mc#64, emp_mgt_type#65, emp_mgt_type_mc#66, pay_loc#67, pay_loc_mc#68, fixmedins_code#69, fixmedins_name#70, hosp_lv#71, hosp_lv_mc#72, fix_blng_admdvs#73, fix_blng_admdvs_mc#74, lmtpric_hosp_lv#75, lmtpric_hosp_lv_mc#76, dedc_hosp_lv#77, dedc_hosp_lv_mc#78, begndate#79, enddate#80, setl_time#81, mdtrt_cert_type#82, mdtrt_cert_type_mc#83, mdtrt_cert_no#84, med_type#85, med_type_mc#86, setl_type#87, setl_type_mc#88, clr_type#89, clr_type_mc#90, clr_way#91, clr_way_mc#92, psn_setlway#93, psn_setlway_mc#94, medfee_sumamt#95, fulamt_ownpay_amt#96, overlmt_selfpay#97, preselfpay_amt#98, inscp_amt#99, dedc_std#100, crt_dedc#101, act_pay_dedc#102, hifp_pay#103, pool_prop_selfpay#104, hi_agre_sumfee#105, cvlserv_pay#106, hifes_pay#107, hifmi_pay#108, hifob_pay#109, hifdm_pay#110, maf_pay#111, othfund_pay#112, fund_pay_sumamt#113, psn_pay#114, acct_pay#115, cash_payamt#116, ownpay_hosp_part#117, balc#118, acct_mulaid_pay#119, refd_setl_flag#120, refd_setl_flag_mc#121, cal_ipt_cnt#122, cal_ipt_cnt_mc#123, setl_cashpay_way#124, setl_cashpay_way_mc#125, year#126, dise_no#127, dise_name#128, invono#129, manl_reim_rea#130, manl_reim_rea_mc#131, vali_flag#132, vali_flag_mc#133, memo#134, rid#135, updt_time#136, crter_id#137, crter_name#138, crte_time#139, crte_optins_no#140, opter_id#141, opter_name#142, opt_time#143, optins_no#144, poolarea_no#145, mid_setl_flag#146, mid_setl_flag_mc#147, acct_used_flag#148, acct_used_flag_mc#149, quts_type#150, quts_type_mc#151, bydise_setl_payamt#152, exct_item_fund_payamt#153, dty_flag#154, d_status#155, etl_date#156, region#157, subs_code#158], stats=1 actualRows=100, selected partitions num=unknown, isIncremental=false )
+       _hoodie_commit_time#0 -> unknown(1.0)
+       _hoodie_commit_seqno#1 -> unknown(1.0)
+       _hoodie_record_key#2 -> unknown(1.0)
+       _hoodie_partition_path#3 -> unknown(1.0)
+       _hoodie_file_name#4 -> unknown(1.0)
+       zjlid#5 -> unknown(1.0)
+       ztik_rksj#6 -> unknown(1.0)
+       qx_mc#7 -> unknown(1.0)
+       qx#8 -> unknown(1.0)
+       xz_mc#9 -> unknown(1.0)
+       xz#10 -> unknown(1.0)
+       csq_mc#11 -> unknown(1.0)
+       csq#12 -> unknown(1.0)
+       yjdxxm#13 -> unknown(1.0)
+       yjdxzw#14 -> unknown(1.0)
+       yjdxzjbh#15 -> unknown(1.0)
+       sfsggb#16 -> unknown(1.0)
+       sfjjgb#17 -> unknown(1.0)
+       wtzrdw#18 -> unknown(1.0)
+       qt1#19 -> unknown(1.0)
+       setl_id#20 -> unknown(1.0)
+       clr_optins#21 -> unknown(1.0)
+       medins_setl_id#22 -> unknown(1.0)
+       mdtrt_id#23 -> unknown(1.0)
+       init_setl_id#24 -> unknown(1.0)
+       psn_no#25 -> unknown(1.0)
+       psn_insu_rlts_id#26 -> unknown(1.0)
+       psn_name#27 -> unknown(1.0)
+       psn_cert_type#28 -> unknown(1.0)
+       psn_cert_type_mc#29 -> unknown(1.0)
+       certno#30 -> unknown(1.0)
+       gend#31 -> unknown(1.0)
+       naty#32 -> unknown(1.0)
+       naty_mc#33 -> unknown(1.0)
+       brdy#34 -> unknown(1.0)
+       age#35 -> unknown(1.0)
+       insutype#36 -> unknown(1.0)
+       insuttype_mc#37 -> unknown(1.0)
+       psn_type#38 -> unknown(1.0)
+       psn_type_mc#39 -> unknown(1.0)
+       cvlserv_flag#40 -> unknown(1.0)
+       cvlserv_flag_mc#41 -> unknown(1.0)
+       cvlserv_lv#42 -> unknown(1.0)
+       cvlserv_lv_mc#43 -> unknown(1.0)
+       sp_psn_type#44 -> unknown(1.0)
+       sp_psn_type_lv#45 -> unknown(1.0)
+       sp_psn_type_lv_mc#46 -> unknown(1.0)
+       clct_grde#47 -> unknown(1.0)
+       clct_grde_mc#48 -> unknown(1.0)
+       flxempe_flag#49 -> unknown(1.0)
+       flxempe_flag_mc#50 -> unknown(1.0)
+       nwb_flag#51 -> unknown(1.0)
+       nwb_flag_mc#52 -> unknown(1.0)
+       insu_admdvs#53 -> unknown(1.0)
+       insu_admdvs_mc#54 -> unknown(1.0)
+       emp_no#55 -> unknown(1.0)
+       emp_name#56 -> unknown(1.0)
+       emp_type#57 -> unknown(1.0)
+       emp_type_mc#58 -> unknown(1.0)
+       econ_type#59 -> unknown(1.0)
+       econ_type_mc#60 -> unknown(1.0)
+       afil_indu#61 -> unknown(1.0)
+       afil_indu_mc#62 -> unknown(1.0)
+       afil_rlts#63 -> unknown(1.0)
+       afil_rlts_mc#64 -> unknown(1.0)
+       emp_mgt_type#65 -> unknown(1.0)
+       emp_mgt_type_mc#66 -> unknown(1.0)
+       pay_loc#67 -> unknown(1.0)
+       pay_loc_mc#68 -> unknown(1.0)
+       fixmedins_code#69 -> unknown(1.0)
+       fixmedins_name#70 -> unknown(1.0)
+       hosp_lv#71 -> unknown(1.0)
+       hosp_lv_mc#72 -> unknown(1.0)
+       fix_blng_admdvs#73 -> unknown(1.0)
+       fix_blng_admdvs_mc#74 -> unknown(1.0)
+       lmtpric_hosp_lv#75 -> unknown(1.0)
+       lmtpric_hosp_lv_mc#76 -> unknown(1.0)
+       dedc_hosp_lv#77 -> unknown(1.0)
+       dedc_hosp_lv_mc#78 -> unknown(1.0)
+       begndate#79 -> unknown(1.0)
+       enddate#80 -> unknown(1.0)
+       setl_time#81 -> unknown(1.0)
+       mdtrt_cert_type#82 -> unknown(1.0)
+       mdtrt_cert_type_mc#83 -> unknown(1.0)
+       mdtrt_cert_no#84 -> unknown(1.0)
+       med_type#85 -> unknown(1.0)
+       med_type_mc#86 -> unknown(1.0)
+       setl_type#87 -> unknown(1.0)
+       setl_type_mc#88 -> unknown(1.0)
+       clr_type#89 -> unknown(1.0)
+       clr_type_mc#90 -> unknown(1.0)
+       clr_way#91 -> unknown(1.0)
+       clr_way_mc#92 -> unknown(1.0)
+       psn_setlway#93 -> unknown(1.0)
+       psn_setlway_mc#94 -> unknown(1.0)
+       medfee_sumamt#95 -> unknown(1.0)
+       fulamt_ownpay_amt#96 -> unknown(1.0)
+       overlmt_selfpay#97 -> unknown(1.0)
+       preselfpay_amt#98 -> unknown(1.0)
+       inscp_amt#99 -> unknown(1.0)
+       dedc_std#100 -> unknown(1.0)
+       crt_dedc#101 -> unknown(1.0)
+       act_pay_dedc#102 -> unknown(1.0)
+       hifp_pay#103 -> unknown(1.0)
+       pool_prop_selfpay#104 -> unknown(1.0)
+       hi_agre_sumfee#105 -> unknown(1.0)
+       cvlserv_pay#106 -> unknown(1.0)
+       hifes_pay#107 -> unknown(1.0)
+       hifmi_pay#108 -> unknown(1.0)
+       hifob_pay#109 -> unknown(1.0)
+       hifdm_pay#110 -> unknown(1.0)
+       maf_pay#111 -> unknown(1.0)
+       othfund_pay#112 -> unknown(1.0)
+       fund_pay_sumamt#113 -> unknown(1.0)
+       psn_pay#114 -> unknown(1.0)
+       acct_pay#115 -> unknown(1.0)
+       cash_payamt#116 -> unknown(1.0)
+       ownpay_hosp_part#117 -> unknown(1.0)
+       balc#118 -> unknown(1.0)
+       acct_mulaid_pay#119 -> unknown(1.0)
+       refd_setl_flag#120 -> unknown(1.0)
+       refd_setl_flag_mc#121 -> unknown(1.0)
+       cal_ipt_cnt#122 -> unknown(1.0)
+       cal_ipt_cnt_mc#123 -> unknown(1.0)
+       setl_cashpay_way#124 -> unknown(1.0)
+       setl_cashpay_way_mc#125 -> unknown(1.0)
+       year#126 -> unknown(1.0)
+       dise_no#127 -> unknown(1.0)
+       dise_name#128 -> unknown(1.0)
+       invono#129 -> unknown(1.0)
+       manl_reim_rea#130 -> unknown(1.0)
+       manl_reim_rea_mc#131 -> unknown(1.0)
+       vali_flag#132 -> unknown(1.0)
+       vali_flag_mc#133 -> unknown(1.0)
+       memo#134 -> unknown(1.0)
+       rid#135 -> unknown(1.0)
+       updt_time#136 -> unknown(1.0)
+       crter_id#137 -> unknown(1.0)
+       crter_name#138 -> unknown(1.0)
+       crte_time#139 -> unknown(1.0)
+       crte_optins_no#140 -> unknown(1.0)
+       opter_id#141 -> unknown(1.0)
+       opter_name#142 -> unknown(1.0)
+       opt_time#143 -> unknown(1.0)
+       optins_no#144 -> unknown(1.0)
+       poolarea_no#145 -> unknown(1.0)
+       mid_setl_flag#146 -> unknown(1.0)
+       mid_setl_flag_mc#147 -> unknown(1.0)
+       acct_used_flag#148 -> unknown(1.0)
+       acct_used_flag_mc#149 -> unknown(1.0)
+       quts_type#150 -> unknown(1.0)
+       quts_type_mc#151 -> unknown(1.0)
+       bydise_setl_payamt#152 -> unknown(1.0)
+       exct_item_fund_payamt#153 -> unknown(1.0)
+       dty_flag#154 -> unknown(1.0)
+       d_status#155 -> unknown(1.0)
+       etl_date#156 -> unknown(1.0)
+       region#157 -> unknown(1.0)
+       subs_code#158 -> unknown(1.0)
+     

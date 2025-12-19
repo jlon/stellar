@@ -228,47 +228,77 @@ impl TreeBuilder {
         summary: &ProfileSummary,
         fragments: &[Fragment],
     ) -> ParseResult<()> {
-        let base_time_ns = Self::determine_base_time(summary, nodes, fragments);
-
-        if base_time_ns == 0 {
-            return Ok(());
-        }
-
+        // First, aggregate OperatorTotalTime by plan_node_id from all operators in fragments
+        // This follows StarRocks' sumUpMetric() which sums all operator times for same plan_node_id
         let aggregated_times = Self::aggregate_operator_times_by_plan_node_id(fragments);
 
+        // Aggregate NetworkTime by plan_node_id (for EXCHANGE nodes)
         let aggregated_network_times =
             Self::aggregate_metric_by_plan_node_id(fragments, "NetworkTime");
 
+        // Aggregate ScanTime by plan_node_id (for SCAN nodes)
         let aggregated_scan_times = Self::aggregate_metric_by_plan_node_id(fragments, "ScanTime");
 
+        // Calculate percentage for each node following StarRocks logic
         for node in nodes.iter_mut() {
             let plan_id = node.plan_node_id.unwrap_or(-999);
 
+            // Get aggregated CPU time (sum of all OperatorTotalTime for this plan_node_id)
             let cpu_time_ns = aggregated_times.get(&plan_id).copied().unwrap_or(0);
             let mut total_time_ns = cpu_time_ns;
 
+            // For Exchange nodes, add NetworkTime
+            // Reference: ExplainAnalyzer.java line 1537-1541
             if node.operator_name.contains("EXCHANGE") {
+                // Add aggregated NetworkTime from all fragments
                 if let Some(&network_time) = aggregated_network_times.get(&plan_id) {
                     total_time_ns += network_time;
                 }
             }
 
+            // For Scan nodes, add ScanTime
+            // Reference: ExplainAnalyzer.java line 1542-1547
             if node.operator_name.contains("SCAN") {
+                // Add aggregated ScanTime from all fragments
                 if let Some(&scan_time) = aggregated_scan_times.get(&plan_id) {
                     total_time_ns += scan_time;
                 }
             }
 
+            // Update node's operator_total_time with TOTAL time (cpuTime + extra time)
+            // This is what should be displayed as the node's execution time
             if total_time_ns > 0 {
                 node.metrics.operator_total_time = Some(total_time_ns);
             }
+        }
 
+        // Now determine base time AFTER nodes' operator_total_time is set
+        // This ensures determine_base_time can use nodes' operator_total_time as fallback
+        let base_time_ns = Self::determine_base_time(summary, nodes, fragments);
+
+        if base_time_ns == 0 {
+            // If base_time is 0, set all time_percentage to 0.0
+            for node in nodes.iter_mut() {
+                node.time_percentage = Some(0.0);
+            }
+            return Ok(());
+        }
+
+        // Calculate time_percentage for each node
+        for node in nodes.iter_mut() {
+            let total_time_ns = node.metrics.operator_total_time.unwrap_or(0);
+
+            // Always set time_percentage, even if 0.0, so frontend can display it
+            // Frontend expects time_percentage to be present for all nodes
             if total_time_ns > 0 && base_time_ns > 0 {
                 let percentage = (total_time_ns as f64 / base_time_ns as f64) * 100.0;
-
+                // Ensure percentage is valid (not NaN or Infinity)
                 if percentage.is_finite() {
+                    // Round to 2 decimal places
                     node.time_percentage = Some((percentage * 100.0).round() / 100.0);
 
+                    // Mark consuming nodes (StarRocks thresholds: >30% most, >15% second)
+                    // Reference: ExplainAnalyzer.java line 1549-1553
                     if percentage > time_thresholds::MOST_CONSUMING_THRESHOLD {
                         node.is_most_consuming = true;
                         node.is_second_most_consuming = false;
@@ -276,7 +306,14 @@ impl TreeBuilder {
                         node.is_most_consuming = false;
                         node.is_second_most_consuming = true;
                     }
+                } else {
+                    // Set to 0.0 if not finite (e.g., NaN, Infinity)
+                    node.time_percentage = Some(0.0);
                 }
+            } else {
+                // If total_time_ns is 0 or base_time_ns is 0, set time_percentage to 0.0
+                // This ensures frontend always receives a value
+                node.time_percentage = Some(0.0);
             }
         }
 
@@ -340,15 +377,52 @@ impl TreeBuilder {
                         .and_then(|s| s.parse::<i32>().ok())
                         .unwrap_or(-999);
 
-                    let time_str = operator
+                    // Support both StarRocks (OperatorTotalTime) and Doris (ExecTime) formats
+                    let time_str_opt: Option<&str> = operator
                         .common_metrics
                         .get("__MAX_OF_OperatorTotalTime")
-                        .or_else(|| operator.common_metrics.get("OperatorTotalTime"));
+                        .map(|s| s.as_str())
+                        .or_else(|| {
+                            operator
+                                .common_metrics
+                                .get("OperatorTotalTime")
+                                .map(|s| s.as_str())
+                        })
+                        .or_else(|| {
+                            // Doris format: ExecTime: avg 2.927ms, max 2.927ms, min 2.927ms
+                            // Extract max value for aggregation (prefer max, fallback to avg)
+                            operator
+                                .common_metrics
+                                .get("ExecTime")
+                                .and_then(|exec_time_str| {
+                                    if exec_time_str.contains("max") {
+                                        exec_time_str
+                                            .split("max")
+                                            .nth(1)
+                                            .and_then(|s| s.split(',').next())
+                                            .map(|s| s.trim())
+                                    } else if exec_time_str.contains("avg") {
+                                        exec_time_str
+                                            .split("avg")
+                                            .nth(1)
+                                            .and_then(|s| s.split(',').next())
+                                            .map(|s| s.trim())
+                                    } else {
+                                        None
+                                    }
+                                })
+                        });
 
-                    if let Some(time_str) = time_str
+                    if let Some(time_str) = time_str_opt
                         && let Ok(duration) = ValueParser::parse_duration(time_str)
                     {
                         let time_ns = duration.as_nanos() as u64;
+                        
+                        // StarRocks original logic: SUM all operator times for same plan_node_id
+                        // This follows StarRocks' sumUpMetric() logic
+                        // Note: For StarRocks, fragments may contain operators from different BE instances,
+                        // but we SUM them (not MAX) as per original implementation
+                        // For Doris, MergedProfile already aggregates, so we also SUM
                         *aggregated.entry(plan_id).or_insert(0) += time_ns;
                     }
                 }
@@ -360,23 +434,152 @@ impl TreeBuilder {
 
     /// Determine base time for percentage calculation
     /// Returns 0 if no valid time can be determined (caller should handle this case)
+    ///
+    /// StarRocks original priority order:
+    ///   1. query_cumulative_operator_time_ms (QueryCumulativeOperatorTime)
+    ///   2. query_execution_wall_time_ms (QueryExecutionWallTime)
+    ///   3. Sum of all operator times from nodes (fallback)
+    ///   4. Sum of all operators' OperatorTotalTime from fragments (last resort)
+    ///
+    /// For Doris (detected by checking metrics):
+    ///   1. Sum of all operators' ExecTime from fragments (MergedProfile already aggregates)
+    ///   2. Sum of all nodes' operator_total_time (fallback)
+    ///   3. query_cumulative_operator_time_ms (may include non-operator time)
+    ///   4. query_execution_wall_time_ms (final fallback)
     fn determine_base_time(
         summary: &ProfileSummary,
         nodes: &[ExecutionTreeNode],
         fragments: &[Fragment],
     ) -> u64 {
+        // Detect if this is Doris format using multiple reliable indicators:
+        // 1. Check version field: Doris version starts with "doris-", StarRocks doesn't
+        // 2. Check operator metrics format: Doris uses ExecTime with "avg/max/min", StarRocks uses OperatorTotalTime
+        let is_doris_by_version = summary.starrocks_version.to_lowercase().starts_with("doris-");
+        let is_starrocks_by_version = !summary.starrocks_version.is_empty() 
+            && !summary.starrocks_version.to_lowercase().starts_with("doris-");
+        
+        // Check metrics format as fallback
+        let has_doris_exec_time = fragments
+            .iter()
+            .flat_map(|f| &f.pipelines)
+            .flat_map(|p| &p.operators)
+            .any(|op| {
+                op.common_metrics
+                    .get("ExecTime")
+                    .map(|s| s.contains("avg") || s.contains("max"))
+                    .unwrap_or(false)
+                    && !op.common_metrics.contains_key("OperatorTotalTime")
+            });
+        let has_starrocks_operator_total_time = fragments
+            .iter()
+            .flat_map(|f| &f.pipelines)
+            .flat_map(|p| &p.operators)
+            .any(|op| op.common_metrics.contains_key("OperatorTotalTime"));
+        
+        // Determine format: prioritize version check, fallback to metrics check
+        let is_doris_format = if is_doris_by_version {
+            true
+        } else if is_starrocks_by_version {
+            false
+        } else {
+            // Fallback: use metrics format detection
+            has_doris_exec_time && !has_starrocks_operator_total_time
+        };
+
+        if is_doris_format {
+            // Doris: Priority 1 - Sum of all operators' ExecTime from fragments
+            // Note: In Doris MergedProfile, ExecTime may be in operator.common_metrics or pipeline.metrics
+            // Try operators first, then fallback to pipeline metrics
+            let fragment_total: u64 = {
+                // Try extracting from operators' common_metrics
+                let from_operators: u64 = fragments
+                    .iter()
+                    .flat_map(|f| &f.pipelines)
+                    .flat_map(|p| &p.operators)
+                    .filter_map(|op| {
+                        op.common_metrics
+                            .get("ExecTime")
+                            .and_then(|time_str| {
+                                // Extract max value (prefer max, fallback to avg) for aggregation
+                                let extracted = if time_str.contains("max") {
+                                    time_str.split("max").nth(1)
+                                        .and_then(|s| s.split(',').next())
+                                        .map(|s| s.trim())
+                                } else if time_str.contains("avg") {
+                                    time_str.split("avg").nth(1)
+                                        .and_then(|s| s.split(',').next())
+                                        .map(|s| s.trim())
+                                } else {
+                                    Some(time_str.as_str())
+                                };
+                                extracted
+                            })
+                    })
+                    .filter_map(|s| ValueParser::parse_time_to_ms(s).ok())
+                    .map(|ms| (ms * 1_000_000.0) as u64)
+                    .sum();
+
+                // If operators don't have ExecTime, try pipeline.metrics (Doris format)
+                if from_operators > 0 {
+                    from_operators
+                } else {
+                    fragments
+                        .iter()
+                        .flat_map(|f| &f.pipelines)
+                        .filter_map(|p| {
+                            p.metrics
+                                .get("ExecTime")
+                                .and_then(|time_str| {
+                                    // Extract max value (prefer max, fallback to avg)
+                                    let extracted = if time_str.contains("max") {
+                                        time_str.split("max").nth(1)
+                                            .and_then(|s| s.split(',').next())
+                                            .map(|s| s.trim())
+                                    } else if time_str.contains("avg") {
+                                        time_str.split("avg").nth(1)
+                                            .and_then(|s| s.split(',').next())
+                                            .map(|s| s.trim())
+                                    } else {
+                                        Some(time_str.as_str())
+                                    };
+                                    extracted
+                                })
+                                .and_then(|s| ValueParser::parse_time_to_ms(s).ok())
+                                .map(|ms| (ms * 1_000_000.0) as u64)
+                        })
+                        .sum()
+                }
+            };
+
+            if fragment_total > 0 {
+                return fragment_total;
+            }
+
+            // Doris: Fallback to nodes (nodes already have operator_total_time set)
+            let node_total: u64 = nodes
+                .iter()
+                .filter_map(|n| n.metrics.operator_total_time)
+                .sum();
+            if node_total > 0 {
+                return node_total;
+            }
+        }
+
+        // StarRocks original logic: Try QueryCumulativeOperatorTime first
         if let Some(time_ms) = summary.query_cumulative_operator_time_ms
             && time_ms > 0.0
         {
             return (time_ms * 1_000_000.0) as u64;
         }
 
+        // Try QueryExecutionWallTime
         if let Some(time_ms) = summary.query_execution_wall_time_ms
             && time_ms > 0.0
         {
             return (time_ms * 1_000_000.0) as u64;
         }
 
+        // Fallback: sum all operator times from nodes
         let node_total: u64 = nodes
             .iter()
             .filter_map(|n| n.metrics.operator_total_time)
@@ -385,11 +588,16 @@ impl TreeBuilder {
             return node_total;
         }
 
+        // Last resort: sum from fragments (StarRocks original: SUM, not MAX)
         let fragment_total: u64 = fragments
             .iter()
             .flat_map(|f| &f.pipelines)
             .flat_map(|p| &p.operators)
-            .filter_map(|op| op.common_metrics.get("OperatorTotalTime"))
+            .filter_map(|op| {
+                op.common_metrics
+                    .get("__MAX_OF_OperatorTotalTime")
+                    .or_else(|| op.common_metrics.get("OperatorTotalTime"))
+            })
             .filter_map(|s| ValueParser::parse_time_to_ms(s).ok())
             .map(|ms| (ms * 1_000_000.0) as u64)
             .sum();

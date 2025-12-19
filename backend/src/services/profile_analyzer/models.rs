@@ -416,7 +416,7 @@ pub struct ExecutionTreeNode {
     pub fragment_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pipeline_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub time_percentage: Option<f64>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -430,10 +430,8 @@ pub struct ExecutionTreeNode {
     #[serde(skip_serializing_if = "HashMap::is_empty", default)]
     pub unique_metrics: HashMap<String, String>,
 
-    /// Whether this node has diagnostic issues (for UI warning indicator)
     #[serde(default)]
     pub has_diagnostic: bool,
-    /// List of diagnostic rule IDs associated with this node
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub diagnostic_ids: Vec<String>,
 }

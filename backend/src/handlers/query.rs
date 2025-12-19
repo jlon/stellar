@@ -485,9 +485,19 @@ pub async fn execute_sql(
 
         use crate::models::cluster::ClusterType;
         let mut query_result = if cluster.cluster_type == ClusterType::Doris {
-            if sql_with_limit.to_uppercase().contains("INFORMATION_SCHEMA.LOADS") {
-                handle_loads_query_for_doris(&sql_with_limit, &mut session, request.database.as_deref()).await
-            } else if sql_with_limit.to_uppercase().contains("SHOW PROC") && sql_with_limit.to_uppercase().contains("'/COMPACTIONS'") {
+            if sql_with_limit
+                .to_uppercase()
+                .contains("INFORMATION_SCHEMA.LOADS")
+            {
+                handle_loads_query_for_doris(
+                    &sql_with_limit,
+                    &mut session,
+                    request.database.as_deref(),
+                )
+                .await
+            } else if sql_with_limit.to_uppercase().contains("SHOW PROC")
+                && sql_with_limit.to_uppercase().contains("'/COMPACTIONS'")
+            {
                 handle_compactions_query_for_doris(&mut session).await
             } else {
                 let adapted_sql = adapt_sql_for_doris(&sql_with_limit);
@@ -499,9 +509,10 @@ pub async fn execute_sql(
 
         if let Err(ref error) = query_result {
             let error_msg = error.to_string();
-            if cluster.cluster_type == ClusterType::Doris 
-                && error_msg.contains("does not exist") 
-                && error_msg.contains("Table [") {
+            if cluster.cluster_type == ClusterType::Doris
+                && error_msg.contains("does not exist")
+                && error_msg.contains("Table [")
+            {
                 let normalized_sql = normalize_table_names_for_doris(&sql_with_limit);
                 if normalized_sql != sql_with_limit {
                     tracing::info!("[Doris] Retrying SQL with normalized table names (lowercase)");
@@ -525,13 +536,17 @@ pub async fn execute_sql(
             },
             Err(e) => {
                 let mut error_msg = e.to_string();
-                
-                if cluster.cluster_type == ClusterType::Doris 
-                    && error_msg.contains("does not exist") 
-                    && error_msg.contains("Table [") {
-                    error_msg = format!("{} (Note: Doris is case-sensitive for table names. Please use the exact case as shown in SHOW TABLES.)", error_msg);
+
+                if cluster.cluster_type == ClusterType::Doris
+                    && error_msg.contains("does not exist")
+                    && error_msg.contains("Table [")
+                {
+                    error_msg = format!(
+                        "{} (Note: Doris is case-sensitive for table names. Please use the exact case as shown in SHOW TABLES.)",
+                        error_msg
+                    );
                 }
-                
+
                 results.push(SingleQueryResult {
                     sql,
                     columns: Vec::new(),
@@ -727,30 +742,33 @@ async fn handle_loads_query_for_doris(
     default_db: Option<&str>,
 ) -> Result<(Vec<String>, Vec<Vec<String>>, u128), crate::utils::ApiError> {
     use regex::Regex;
-    
-    let db_name = if let Some(caps) = Regex::new(r#"(?i)WHERE\s+DB_NAME\s*=\s*['"]?([^'";\s]+)['"]?"#)
-        .ok()
-        .and_then(|re| re.captures(sql)) {
+
+    let db_name = if let Some(caps) =
+        Regex::new(r#"(?i)WHERE\s+DB_NAME\s*=\s*['"]?([^'";\s]+)['"]?"#)
+            .ok()
+            .and_then(|re| re.captures(sql))
+    {
         caps.get(1).map(|m| m.as_str().to_string())
     } else {
         default_db.map(|s| s.to_string())
     };
-    
+
     let db_name = db_name.ok_or_else(|| {
         crate::utils::ApiError::validation_error("Database name not found in query. Please specify DB_NAME in WHERE clause or provide database context.")
     })?;
-    
+
     let show_load_sql = format!("SHOW LOAD FROM `{}`", db_name);
     let (columns, rows, _exec_time) = session.execute(&show_load_sql).await?;
-    
+
     let select_fields = if let Some(caps) = Regex::new(r#"(?i)SELECT\s+(.+?)\s+FROM"#)
         .ok()
-        .and_then(|re| re.captures(sql)) {
+        .and_then(|re| re.captures(sql))
+    {
         caps.get(1).map(|m| m.as_str().trim().to_string())
     } else {
         Some("*".to_string())
     };
-    
+
     let requested_fields: Vec<String> = if let Some(select_clause) = select_fields {
         if select_clause.trim() == "*" {
             vec![
@@ -769,84 +787,124 @@ async fn handle_loads_query_for_doris(
                 "ERROR_MSG".to_string(),
             ]
         } else {
-            select_clause.split(',')
+            select_clause
+                .split(',')
                 .map(|f| f.trim().to_uppercase())
                 .collect()
         }
     } else {
         vec!["*".to_string()]
     };
-    
+
     let job_id_idx = columns.iter().position(|c| c.eq_ignore_ascii_case("JobId"));
     let label_idx = columns.iter().position(|c| c.eq_ignore_ascii_case("Label"));
     let state_idx = columns.iter().position(|c| c.eq_ignore_ascii_case("State"));
-    let progress_idx = columns.iter().position(|c| c.eq_ignore_ascii_case("Progress"));
+    let progress_idx = columns
+        .iter()
+        .position(|c| c.eq_ignore_ascii_case("Progress"));
     let type_idx = columns.iter().position(|c| c.eq_ignore_ascii_case("Type"));
-    let create_time_idx = columns.iter().position(|c| c.eq_ignore_ascii_case("CreateTime"));
-    let load_start_time_idx = columns.iter().position(|c| c.eq_ignore_ascii_case("LoadStartTime"));
-    let load_finish_time_idx = columns.iter().position(|c| c.eq_ignore_ascii_case("LoadFinishTime"));
-    let error_msg_idx = columns.iter().position(|c| c.eq_ignore_ascii_case("ErrorMsg"));
-    let job_details_idx = columns.iter().position(|c| c.eq_ignore_ascii_case("JobDetails"));
-    
+    let create_time_idx = columns
+        .iter()
+        .position(|c| c.eq_ignore_ascii_case("CreateTime"));
+    let load_start_time_idx = columns
+        .iter()
+        .position(|c| c.eq_ignore_ascii_case("LoadStartTime"));
+    let load_finish_time_idx = columns
+        .iter()
+        .position(|c| c.eq_ignore_ascii_case("LoadFinishTime"));
+    let error_msg_idx = columns
+        .iter()
+        .position(|c| c.eq_ignore_ascii_case("ErrorMsg"));
+    let job_details_idx = columns
+        .iter()
+        .position(|c| c.eq_ignore_ascii_case("JobDetails"));
+
     let mut mapped_rows = Vec::new();
     for row in rows {
         let mut mapped_row = Vec::new();
-        
+
         for field in &requested_fields {
             let value = match field.as_str() {
-                "JOB_ID" => job_id_idx.and_then(|i| row.get(i)).cloned().unwrap_or_default(),
-                "LABEL" => label_idx.and_then(|i| row.get(i)).cloned().unwrap_or_default(),
-                "STATE" => state_idx.and_then(|i| row.get(i)).cloned().unwrap_or_default(),
-                "PROGRESS" => progress_idx.and_then(|i| row.get(i)).cloned().unwrap_or_default(),
-                "TYPE" => type_idx.and_then(|i| row.get(i)).cloned().unwrap_or_default(),
+                "JOB_ID" => job_id_idx
+                    .and_then(|i| row.get(i))
+                    .cloned()
+                    .unwrap_or_default(),
+                "LABEL" => label_idx
+                    .and_then(|i| row.get(i))
+                    .cloned()
+                    .unwrap_or_default(),
+                "STATE" => state_idx
+                    .and_then(|i| row.get(i))
+                    .cloned()
+                    .unwrap_or_default(),
+                "PROGRESS" => progress_idx
+                    .and_then(|i| row.get(i))
+                    .cloned()
+                    .unwrap_or_default(),
+                "TYPE" => type_idx
+                    .and_then(|i| row.get(i))
+                    .cloned()
+                    .unwrap_or_default(),
                 "PRIORITY" => "NORMAL".to_string(),
-                "SCAN_ROWS" => {
-                    job_details_idx.and_then(|i| row.get(i))
-                        .and_then(|json_str| {
-                            serde_json::from_str::<serde_json::Value>(json_str).ok()
-                                .and_then(|v| v.get("ScannedRows").and_then(|n| n.as_u64()))
-                        })
-                        .map(|n| n.to_string())
-                        .unwrap_or_default()
-                },
+                "SCAN_ROWS" => job_details_idx
+                    .and_then(|i| row.get(i))
+                    .and_then(|json_str| {
+                        serde_json::from_str::<serde_json::Value>(json_str)
+                            .ok()
+                            .and_then(|v| v.get("ScannedRows").and_then(|n| n.as_u64()))
+                    })
+                    .map(|n| n.to_string())
+                    .unwrap_or_default(),
                 "FILTERED_ROWS" => "0".to_string(),
-                "SINK_ROWS" => {
-                    job_details_idx.and_then(|i| row.get(i))
-                        .and_then(|json_str| {
-                            serde_json::from_str::<serde_json::Value>(json_str).ok()
-                                .and_then(|v| v.get("LoadRows").and_then(|n| n.as_u64()))
-                        })
-                        .map(|n| n.to_string())
-                        .unwrap_or_default()
-                },
-                "CREATE_TIME" => create_time_idx.and_then(|i| row.get(i)).cloned().unwrap_or_default(),
-                "LOAD_START_TIME" => load_start_time_idx.and_then(|i| row.get(i)).cloned().unwrap_or_default(),
-                "LOAD_FINISH_TIME" => load_finish_time_idx.and_then(|i| row.get(i)).cloned().unwrap_or_default(),
-                "ERROR_MSG" => error_msg_idx.and_then(|i| row.get(i)).cloned().unwrap_or_default(),
+                "SINK_ROWS" => job_details_idx
+                    .and_then(|i| row.get(i))
+                    .and_then(|json_str| {
+                        serde_json::from_str::<serde_json::Value>(json_str)
+                            .ok()
+                            .and_then(|v| v.get("LoadRows").and_then(|n| n.as_u64()))
+                    })
+                    .map(|n| n.to_string())
+                    .unwrap_or_default(),
+                "CREATE_TIME" => create_time_idx
+                    .and_then(|i| row.get(i))
+                    .cloned()
+                    .unwrap_or_default(),
+                "LOAD_START_TIME" => load_start_time_idx
+                    .and_then(|i| row.get(i))
+                    .cloned()
+                    .unwrap_or_default(),
+                "LOAD_FINISH_TIME" => load_finish_time_idx
+                    .and_then(|i| row.get(i))
+                    .cloned()
+                    .unwrap_or_default(),
+                "ERROR_MSG" => error_msg_idx
+                    .and_then(|i| row.get(i))
+                    .cloned()
+                    .unwrap_or_default(),
                 _ => String::new(),
             };
             mapped_row.push(value);
         }
         mapped_rows.push(mapped_row);
     }
-    
-    if sql.to_uppercase().contains("ORDER BY CREATE_TIME DESC") {
-    }
-    
+
+    if sql.to_uppercase().contains("ORDER BY CREATE_TIME DESC") {}
+
     let limit = if let Some(caps) = Regex::new(r#"(?i)LIMIT\s+(\d+)"#)
         .ok()
-        .and_then(|re| re.captures(sql)) {
+        .and_then(|re| re.captures(sql))
+    {
         caps.get(1).and_then(|m| m.as_str().parse::<usize>().ok())
     } else {
         None
     };
-    
+
     let final_rows = if let Some(limit_val) = limit {
         mapped_rows.into_iter().take(limit_val).collect()
     } else {
         mapped_rows
     };
-    
+
     Ok((requested_fields, final_rows, 0u128))
 }
 
@@ -862,70 +920,81 @@ async fn handle_compactions_query_for_doris(
         "Error".to_string(),
         "Profile".to_string(),
     ];
-    
-    tracing::info!("[Doris] SHOW PROC '/compactions' not supported. Compaction info is tablet-level via BE HTTP API.");
-    
+
+    tracing::info!(
+        "[Doris] SHOW PROC '/compactions' not supported. Compaction info is tablet-level via BE HTTP API."
+    );
+
     Ok((columns, Vec::new(), 0u128))
 }
 
 fn adapt_sql_for_doris(sql: &str) -> String {
     use regex::Regex;
-    
+
     let mut result = sql.to_string();
-    
+
     let re_partitions_meta = Regex::new(r"(?i)information_schema\.partitions_meta").ok();
     if let Some(re) = re_partitions_meta {
-        result = re.replace_all(&result, "information_schema.partitions").to_string();
+        result = re
+            .replace_all(&result, "information_schema.partitions")
+            .to_string();
     }
-    
+
     let re_loads = Regex::new(r"(?i)information_schema\.loads").ok();
     if let Some(re) = re_loads {
-        result = re.replace_all(&result, "information_schema.loads").to_string();
+        result = re
+            .replace_all(&result, "information_schema.loads")
+            .to_string();
     }
-    
+
     let field_mappings = vec![
         (r"(?i)\bDB_NAME\b", "TABLE_SCHEMA"),
         (r"(?i)\bROW_COUNT\b", "TABLE_ROWS"),
         (r"(?i)\bDATA_SIZE\b", "DATA_LENGTH"),
         (r"(?i)\bCOMPACT_VERSION\b", "COMMITTED_VERSION"),
     ];
-    
+
     for (pattern, replacement) in field_mappings {
         if let Ok(re) = Regex::new(pattern) {
             result = re.replace_all(&result, replacement).to_string();
         }
     }
-    
+
     result
 }
 
 fn normalize_table_names_for_doris(sql: &str) -> String {
     use regex::Regex;
-    
+
     let re = Regex::new(
         r"(?i)\b(?:FROM|JOIN|INTO|UPDATE|TABLE)\s+((?:`?[a-zA-Z0-9_]+`?(?:\s*\.\s*`?[a-zA-Z0-9_]+`?)*))"
     ).ok();
-    
+
     if let Some(re) = re {
         re.replace_all(sql, |caps: &regex::Captures| {
             let keyword_match = caps.get(0).unwrap();
             let table_ref = caps.get(1).unwrap().as_str();
-            
-            let keyword = &sql[keyword_match.start()..keyword_match.start() + (caps.get(1).unwrap().start() - keyword_match.start())];
-            
+
+            let keyword = &sql[keyword_match.start()
+                ..keyword_match.start() + (caps.get(1).unwrap().start() - keyword_match.start())];
+
             let parts: Vec<&str> = table_ref.split('.').collect();
-            let normalized_parts: Vec<String> = parts.iter().map(|part| {
-                let cleaned = part.trim_matches('`').trim();
-                if cleaned.chars().any(|c| c.is_alphanumeric() || c == '_') {
-                    format!("`{}`", cleaned.to_lowercase())
-                } else {
-                    part.to_string()
-                }
-            }).collect();
-            
+            let normalized_parts: Vec<String> = parts
+                .iter()
+                .map(|part| {
+                    let cleaned = part.trim_matches('`').trim();
+                    if cleaned.chars().any(|c| c.is_alphanumeric() || c == '_') {
+                        format!("`{}`", cleaned.to_lowercase())
+                    } else {
+                        part.to_string()
+                    }
+                })
+                .collect();
+
             let normalized = normalized_parts.join(".");
             format!("{}{}", keyword.trim_end(), normalized)
-        }).to_string()
+        })
+        .to_string()
     } else {
         sql.to_string()
     }

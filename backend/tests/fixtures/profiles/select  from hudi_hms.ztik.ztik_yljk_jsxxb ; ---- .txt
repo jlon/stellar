@@ -1,0 +1,541 @@
+Summary:
+   - Profile ID: 51e8d9aaaf1c452d-9fd3ee25dee7dc52
+   - Task Type: QUERY
+   - Start Time: 2025-12-18 14:53:08
+   - End Time: 2025-12-18 15:16:21
+   - Total: 23min13sec
+   - Task State: TIMEOUT
+   - User: root
+   - Default Catalog: internal
+   - Default Db: ods
+   - Sql Statement: select * from hudi_hms.ztik.ztik_yljk_jsxxb
+   - Distributed Plan: N/A
+Execution Summary:
+   - Workload Group: normal
+   - Parse SQL Time: 1ms
+   - Plan Time: 6min51sec
+     - Garbage Collect During Plan Time: 1sec215ms
+     - Nereids Lock Table Time: 1ms
+     - Nereids Analysis Time: 1ms
+     - Nereids Rewrite Time: 1ms
+       - Nereids Fold Const By BE Time: 0ms
+     - Nereids Collect Table Partition Time: 0ms
+   - Nereids Pre Rewrite By Mv Time: N/A
+     - Nereids Optimize Time: N/A
+     - Nereids Translate Time: 6min51sec
+       - Init Scan Node Time: 21ms
+       - Finalize Scan Node Time: 6min51sec
+         - Get Splits Time: 55ms
+         - Get Partitions Time: N/A
+         - Get Partition Files Time: N/A
+       - Create Scan Range Time: 6min51sec
+     - Nereids Distribute Time: 5ms
+   - Get Meta Version Time: N/A
+     - Get Partition Version Time: N/A
+     - Get Partition Version Count (hasData): N/A
+     - Get Partition Version Count: N/A
+     - Get Table Version Time: N/A
+     - Get Table Version Count: N/A
+   - Schedule Time: 94ms
+     - Fragment Assign Time: 5ms
+     - Fragment Serialize Time: 10ms
+     - Fragment RPC Phase1 Time: 79ms
+     - Fragment RPC Phase2 Time: N/A
+     - Fragment Compressed Size: 1.02 MB
+     - Fragment RPC Count: 3
+   - Schedule Time Of BE: {"phase1":{"192.168.0.69: 8060":{"RPC Work Time":"62ms","RPC Latency From FE To BE":"15ms","RPC Work Queue Time":"4ms","RPC Latency From BE To FE":"-3ms"},"192.168.0.70: 8060":{"RPC Work Time":"64ms","RPC Latency From FE To BE":"12ms","RPC Work Queue Time":"0ms","RPC Latency From BE To FE":"2ms"},"192.168.0.68: 8060":{"RPC Work Time":"45ms","RPC Latency From FE To BE":"13ms","RPC Work Queue Time":"0ms","RPC Latency From BE To FE":"-2ms"}}}
+   - Wait and Fetch Result Time: N/A
+   - Fetch Result Time: 2sec954ms
+   - Write Result Time: 5min59sec
+   - Doris Version: doris-4.0.1-rc02-791725594d
+   - Is Nereids: Yes
+   - Is Cached: No
+   - Total Instances Num: 3
+   - Instances Num Per BE: 192.168.0.68:8060:1,192.168.0.70:8060:1,192.168.0.69:8060:1
+   - Parallel Fragment Exec Instance Num: 4
+   - Trace ID: 
+   - Transaction Commit Time: N/A
+   - System Message: N/A
+   - Executed By Frontend: N/A
+   - Splits Assignment Weight: N/A
+
+ChangedSessionVariables:
+[
+  {
+    "VarName": "enable_profile",
+    "CurrentValue": "true",
+    "DefaultValue": "false"
+  }
+]
+MergedProfile:
+     Fragments:
+       Fragment 0:
+         Pipeline 0(instance_num=3):
+            - WaitWorkerTime: avg 12.453ms, max 16.204ms, min 5.83ms
+           RESULT_SINK_OPERATOR(id=2147483647):
+             CommonCounters:
+                - ExecTime: avg 15sec504ms, max 17sec229ms, min 14sec164ms
+                - InputRows: sum 1.633728M (1633728), avg 544.576K (544576), max 548.64K (548640), min 540.512K (540512)
+                - MemoryUsage: sum 0.00 , avg 0.00 , max 0.00 , min 0.00 
+                - MemoryUsagePeak: sum 0.00 , avg 0.00 , max 0.00 , min 0.00 
+                - WaitForDependency[RESULT_SINK_OPERATOR_DEPENDENCY]Time: avg 0ns, max 0ns, min 0ns
+             CustomCounters:
+                - WaitForDependencyTime: avg 7min52sec, max 7min54sec, min 7min50sec
+           FILE_SCAN_OPERATOR (id=0. nereids_id=32. table name = ztik_yljk_jsxxb):
+              - PlanInfo
+                 - table: hudi_hms.ztik.ztik_yljk_jsxxb
+                 - inputSplitNum=4080, totalFileSize=115313981567, scanRanges=4080
+                 - partition=1/1
+                 - cardinality=1, numNodes=3
+                 - pushdown agg=NONE
+                 - hudiNativeReadSplits=4080/4080
+             CommonCounters:
+                - BlocksProduced: sum 402, avg 134, max 135, min 133
+                - ExecTime: avg 1sec866ms, max 2sec334ms, min 1sec503ms
+                - MemoryUsage: sum 148.27 MB, avg 49.42 MB, max 108.55 MB, min 0.00 
+                - MemoryUsagePeak: sum 158.01 MB, avg 52.67 MB, max 108.55 MB, min 0.00 
+                - RowsProduced: sum 1.633728M (1633728), avg 544.576K (544576), max 548.64K (548640), min 540.512K (540512)
+                - WaitForDependency[FILE_SCAN_OPERATOR_DEPENDENCY]Time: avg 1sec476ms, max 1sec870ms, min 1sec240ms
+             CustomCounters:
+                - RuntimeFilterInfo: sum , avg , max , min 
+                - ScanBytes: sum 3.16 GB, avg 1.05 GB, max 1.06 GB, min 1.04 GB
+                - ScanRows: sum 18.671283M (18671283), avg 6.223761M (6223761), max 6.266723M (6266723), min 6.143642M (6143642)
+
+DetailProfile(51e8d9aaaf1c452d-9fd3ee25dee7dc52):
+  Fragments:
+    Fragment 0:
+      FragmentLevelProfile:(host=TNetworkAddress(hostname:192.168.0.68, port:9050)):
+      Pipeline 0(host=TNetworkAddress(hostname:192.168.0.68, port:9050)):
+        PipelineTask(index=0):
+           - TaskState: FINALIZED
+           - BlockedByDependency: 
+           - WakeUpEarly: 0
+           - WaitWorkerTime: 5.83ms
+          RESULT_SINK_OPERATOR(id=2147483647):
+            CommonCounters:
+               - ExecTime: 14sec164ms
+               - InputRows: 544.576K (544576)
+               - MemoryUsage: 0.00 
+               - MemoryUsagePeak: 0.00 
+               - WaitForDependency[RESULT_SINK_OPERATOR_DEPENDENCY]Time: 0ns
+            CustomCounters:
+               - WaitForDependencyTime: 7min54sec
+          FILE_SCAN_OPERATOR (id=0. nereids_id=32. table name = ztik_yljk_jsxxb):
+            CommonCounters:
+               - BlocksProduced: 134
+               - ExecTime: 1sec503ms
+               - MemoryUsage: 39.72 MB
+               - MemoryUsagePeak: 49.47 MB
+               - RowsProduced: 544.576K (544576)
+               - WaitForDependency[FILE_SCAN_OPERATOR_DEPENDENCY]Time: 1sec240ms
+            CustomCounters:
+               - TopNFilterSourceNodeIds: 
+               - RuntimeFilterInfo: 
+               - ScanBytes: 1.04 GB
+               - ScanRows: 6.143642M (6143642)
+              Scanner:
+                 - ApplyAllRuntimeFilters: True
+                 - PerScannerRunningTime: [0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 329.065ms, 444.607ms, 1s933ms, 2s226ms, 2s004ms, 2s120ms, 2s505ms, 2s302ms, 2s437ms, 1s964ms, 2s017ms, 2s204ms, 2s664ms, 2s324ms, 2s186ms, 2s783ms, 2s152ms, 1s760ms, 2s245ms, 2s687ms, 2s051ms, 2s421ms, 2s053ms, 1s599ms, 2s331ms, 2s291ms, 2s303ms, 1s476ms, 2s295ms, 1s955ms, 2s265ms, 2s131ms, 2s379ms, 2s384ms, 2s519ms, 2s322ms, 2s331ms, 2s575ms, 2s281ms, 2s581ms, 1s991ms, 1s988ms, 1s892ms, 2s333ms, 1s747ms, 2s195ms, 2s007ms, 1s590ms, 2s109ms, 2s122ms, ]
+                 - PerScannerRowsRead: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4.06K, 4.06K, 16.26K, 16.26K, 16.26K, 16.26K, 12.19K, 12.19K, 12.19K, 16.26K, 16.26K, 16.26K, 12.19K, 16.26K, 16.26K, 12.19K, 16.26K, 16.26K, 16.26K, 12.19K, 16.26K, 12.19K, 16.26K, 16.26K, 12.19K, 16.26K, 12.19K, 24.38K, 12.19K, 16.26K, 16.26K, 16.26K, 16.26K, 12.19K, 12.19K, 16.26K, 16.26K, 12.19K, 16.26K, 12.19K, 16.26K, 16.26K, 16.26K, 16.26K, 16.26K, 16.26K, 16.26K, 24.38K, 16.26K, 16.26K, ]
+                 - PerScannerWaitTime: [0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 5m51s, 2m51s, 31.989ms, 15.142ms, 16.799ms, 12.770ms, 17.557ms, 12.679ms, 11.490ms, 10.505ms, 12.206ms, 13.597ms, 14.411ms, 11.799ms, 11.997ms, 10.410ms, 15.213ms, 15.778ms, 22.284ms, 18.941ms, 11.182ms, 11.282ms, 7.276ms, 8.452ms, 8.910ms, 9.458ms, 7.446ms, 14.602ms, 7.778ms, 7.285ms, 7.782ms, 8.734ms, 3.655ms, 3.927ms, 1.178ms, 7.347ms, 8.260ms, 6.844ms, 6.764ms, 3.625ms, 1.624ms, 1.710ms, 542.011us, 316.469us, 482.579us, 417.411us, 402.190us, 4.256ms, 297.881us, 312.310us, ]
+                 - PerScannerProjectionTime: [0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, ]
+                 - EmptyFileNum: 0
+                 - FileFooterHitCache: 0
+                 - FileFooterReadCalls: 0
+                 - FileNumber: 50
+                 - FileReadBytes: 1.04 GB
+                 - FileReadCalls: 0
+                 - FileReadTime: 0ns
+                 - FileScannerCastInputBlockTime: 0ns
+                 - FileScannerConvertOuputBlockTime: 0ns
+                 - FileScannerFillMissingColumnTime: 0ns
+                 - FileScannerGetBlockTime: 1min45sec
+                 - FileScannerPreFilterTimer: 0ns
+                 - FileScannerRuntimeFilterPartitionPruningTime: 0ns
+                 - FullySkippedFileNum: 0
+                 - MergedSmallIO: 0ns
+                   - ApplyBytes: 0.00 
+                   - CopyTime: 0ns
+                   - MergedBytes: 0.00 
+                   - MergedIO: 0
+                   - ReadTime: 0ns
+                   - RequestBytes: 0.00 
+                   - RequestIO: 0
+                 - NotFoundFileNum: 0
+                 - PageIndexReadCalls: 0
+                 - ParquetReader: 0ns
+                   - ColumnReadTime: 0ns
+                   - DecodeDictTime: 0ns
+                   - DecodeHeaderTime: 0ns
+                   - DecodeLevelTime: 0ns
+                   - DecodeNullMapTime: 0ns
+                   - DecodeValueTime: 0ns
+                   - DecompressCount: 0
+                   - DecompressTime: 0ns
+                   - DictFilterRewriteTime: 0ns
+                   - FileNum: 0
+                   - FileOpenTime: 0ns
+                   - FilteredBytes: 0.00 
+                   - FilteredGroups: 0
+                   - FilteredRowsByGroup: 0
+                   - FilteredRowsByLazyRead: 0
+                   - FilteredRowsByPage: 0
+                   - PageIndexFilterTime: 0ns
+                   - PageIndexParseTime: 0ns
+                   - PageIndexReadTime: 0ns
+                   - ParseFooterTime: 0ns
+                   - ParseMetaTime: 0ns
+                   - ParsePageHeaderNum: 0
+                   - PredicateFilterTime: 0ns
+                   - RawRowsRead: 0
+                   - ReadBytes: 0.00 
+                   - ReadGroups: 0
+                   - RowGroupFilterTime: 0ns
+                   - SkipPageHeaderNum: 0
+                 - RuntimeFilterPartitionPrunedRangeNum: 0
+      FragmentLevelProfile:(host=TNetworkAddress(hostname:192.168.0.70, port:9050)):
+      Pipeline 0(host=TNetworkAddress(hostname:192.168.0.70, port:9050)):
+        PipelineTask(index=0):
+           - TaskState: FINALIZED
+           - BlockedByDependency: 
+           - WakeUpEarly: 0
+           - WaitWorkerTime: 16.72ms
+          RESULT_SINK_OPERATOR(id=2147483647):
+            CommonCounters:
+               - ExecTime: 15sec119ms
+               - InputRows: 540.512K (540512)
+               - MemoryUsage: 0.00 
+               - MemoryUsagePeak: 0.00 
+               - WaitForDependency[RESULT_SINK_OPERATOR_DEPENDENCY]Time: 0ns
+            CustomCounters:
+               - WaitForDependencyTime: 7min52sec
+          FILE_SCAN_OPERATOR (id=0. nereids_id=32. table name = ztik_yljk_jsxxb):
+            CommonCounters:
+               - BlocksProduced: 133
+               - ExecTime: 2sec334ms
+               - MemoryUsage: 0.00 
+               - MemoryUsagePeak: 0.00 
+               - RowsProduced: 540.512K (540512)
+               - WaitForDependency[FILE_SCAN_OPERATOR_DEPENDENCY]Time: 1sec870ms
+            CustomCounters:
+               - TopNFilterSourceNodeIds: 
+               - RuntimeFilterInfo: 
+               - ScanBytes: 1.06 GB
+               - ScanRows: 6.260918M (6260918)
+              Scanner:
+                 - ApplyAllRuntimeFilters: True
+                 - PerScannerRunningTime: [0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 414.300ms, 441.627ms, 399.814ms, 2s586ms, 2s665ms, 2s546ms, 2s518ms, 2s563ms, 2s841ms, 2s720ms, 2s683ms, 2s876ms, 2s918ms, 2s798ms, 2s409ms, 2s139ms, 2s666ms, 2s793ms, 2s764ms, 2s815ms, 2s745ms, 2s901ms, 2s766ms, 2s995ms, 2s654ms, 2s386ms, 2s472ms, 2s682ms, 2s919ms, 2s989ms, 2s638ms, 3s058ms, 2s469ms, 2s400ms, 2s756ms, 2s794ms, 2s960ms, 2s461ms, 2s383ms, 2s807ms, 2s724ms, 2s730ms, 2s477ms, 2s733ms, 3s155ms, 2s280ms, 2s739ms, 3s146ms, 2s508ms, 2s645ms, 3s063ms, ]
+                 - PerScannerRowsRead: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4.06K, 4.06K, 8.13K, 16.26K, 16.26K, 16.26K, 16.26K, 16.26K, 12.19K, 12.19K, 12.19K, 12.19K, 12.19K, 16.26K, 16.26K, 16.26K, 16.26K, 16.26K, 16.26K, 12.19K, 16.26K, 12.19K, 16.26K, 12.19K, 16.26K, 16.26K, 16.26K, 16.26K, 12.19K, 12.19K, 16.26K, 12.19K, 16.26K, 16.26K, 16.26K, 16.26K, 12.19K, 16.26K, 24.38K, 16.26K, 16.26K, 16.26K, 16.26K, 16.26K, 12.19K, 20.32K, 16.26K, 12.19K, 16.26K, 16.26K, 12.19K, ]
+                 - PerScannerWaitTime: [0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 7m51s, 4m51s, 1m51s, 50.498ms, 57.929ms, 115.919ms, 105.390ms, 81.010ms, 15.049ms, 27.771ms, 31.140ms, 27.220ms, 20.989ms, 20.302ms, 17.916ms, 17.207ms, 25.097ms, 18.772ms, 20.592ms, 18.314ms, 18.903ms, 19.695ms, 24.437ms, 13.131ms, 14.033ms, 14.080ms, 9.461ms, 6.140ms, 5.040ms, 8.937ms, 17.577ms, 13.340ms, 13.938ms, 12.308ms, 9.119ms, 9.474ms, 8.848ms, 3.806ms, 18.900ms, 3.275ms, 2.566ms, 2.577ms, 1.742ms, 994.799us, 880.469us, 462.478us, 459.289us, 345.591us, 934.307us, 566.199us, 245.530us, ]
+                 - PerScannerProjectionTime: [0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, ]
+                 - EmptyFileNum: 0
+                 - FileFooterHitCache: 0
+                 - FileFooterReadCalls: 0
+                 - FileNumber: 51
+                 - FileReadBytes: 1.06 GB
+                 - FileReadCalls: 0
+                 - FileReadTime: 0ns
+                 - FileScannerCastInputBlockTime: 0ns
+                 - FileScannerConvertOuputBlockTime: 0ns
+                 - FileScannerFillMissingColumnTime: 0ns
+                 - FileScannerGetBlockTime: 2min10sec
+                 - FileScannerPreFilterTimer: 0ns
+                 - FileScannerRuntimeFilterPartitionPruningTime: 0ns
+                 - FullySkippedFileNum: 0
+                 - MergedSmallIO: 0ns
+                   - ApplyBytes: 0.00 
+                   - CopyTime: 0ns
+                   - MergedBytes: 0.00 
+                   - MergedIO: 0
+                   - ReadTime: 0ns
+                   - RequestBytes: 0.00 
+                   - RequestIO: 0
+                 - NotFoundFileNum: 0
+                 - PageIndexReadCalls: 0
+                 - ParquetReader: 0ns
+                   - ColumnReadTime: 0ns
+                   - DecodeDictTime: 0ns
+                   - DecodeHeaderTime: 0ns
+                   - DecodeLevelTime: 0ns
+                   - DecodeNullMapTime: 0ns
+                   - DecodeValueTime: 0ns
+                   - DecompressCount: 0
+                   - DecompressTime: 0ns
+                   - DictFilterRewriteTime: 0ns
+                   - FileNum: 0
+                   - FileOpenTime: 0ns
+                   - FilteredBytes: 0.00 
+                   - FilteredGroups: 0
+                   - FilteredRowsByGroup: 0
+                   - FilteredRowsByLazyRead: 0
+                   - FilteredRowsByPage: 0
+                   - PageIndexFilterTime: 0ns
+                   - PageIndexParseTime: 0ns
+                   - PageIndexReadTime: 0ns
+                   - ParseFooterTime: 0ns
+                   - ParseMetaTime: 0ns
+                   - ParsePageHeaderNum: 0
+                   - PredicateFilterTime: 0ns
+                   - RawRowsRead: 0
+                   - ReadBytes: 0.00 
+                   - ReadGroups: 0
+                   - RowGroupFilterTime: 0ns
+                   - SkipPageHeaderNum: 0
+                 - RuntimeFilterPartitionPrunedRangeNum: 0
+      FragmentLevelProfile:(host=TNetworkAddress(hostname:192.168.0.69, port:9050)):
+      Pipeline 0(host=TNetworkAddress(hostname:192.168.0.69, port:9050)):
+        PipelineTask(index=0):
+           - TaskState: FINALIZED
+           - BlockedByDependency: 
+           - WakeUpEarly: 0
+           - WaitWorkerTime: 16.204ms
+          RESULT_SINK_OPERATOR(id=2147483647):
+            CommonCounters:
+               - ExecTime: 17sec229ms
+               - InputRows: 548.64K (548640)
+               - MemoryUsage: 0.00 
+               - MemoryUsagePeak: 0.00 
+               - WaitForDependency[RESULT_SINK_OPERATOR_DEPENDENCY]Time: 0ns
+            CustomCounters:
+               - WaitForDependencyTime: 7min50sec
+          FILE_SCAN_OPERATOR (id=0. nereids_id=32. table name = ztik_yljk_jsxxb):
+            CommonCounters:
+               - BlocksProduced: 135
+               - ExecTime: 1sec763ms
+               - MemoryUsage: 108.55 MB
+               - MemoryUsagePeak: 108.55 MB
+               - RowsProduced: 548.64K (548640)
+               - WaitForDependency[FILE_SCAN_OPERATOR_DEPENDENCY]Time: 1sec319ms
+            CustomCounters:
+               - TopNFilterSourceNodeIds: 
+               - RuntimeFilterInfo: 
+               - ScanBytes: 1.06 GB
+               - ScanRows: 6.266723M (6266723)
+              Scanner:
+                 - ApplyAllRuntimeFilters: True
+                 - PerScannerRunningTime: [0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 291.648ms, 450.012ms, 403.479ms, 2s971ms, 1s673ms, 2s335ms, 3s023ms, 2s758ms, 2s904ms, 2s979ms, 2s993ms, 3s251ms, 1s846ms, 2s888ms, 2s348ms, 2s904ms, 2s937ms, 2s540ms, 2s991ms, 2s559ms, 3s220ms, 2s988ms, 2s335ms, 3s001ms, 3s039ms, 3s199ms, 2s906ms, 3s124ms, 2s679ms, 3s238ms, 3s278ms, 2s885ms, 3s000ms, 3s113ms, 3s098ms, 3s016ms, 2s588ms, 2s480ms, 1s602ms, 3s204ms, 3s365ms, 3s236ms, 3s165ms, 2s174ms, 3s513ms, 2s915ms, 2s977ms, 2s792ms, 1s717ms, 2s302ms, 2s737ms, ]
+                 - PerScannerRowsRead: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4.06K, 4.06K, 12.19K, 16.26K, 20.32K, 16.26K, 12.19K, 16.26K, 16.26K, 12.19K, 12.19K, 12.19K, 16.26K, 16.26K, 16.26K, 16.26K, 16.26K, 16.26K, 16.26K, 16.26K, 12.19K, 16.26K, 16.26K, 16.26K, 12.19K, 12.19K, 16.26K, 12.19K, 16.26K, 12.19K, 12.19K, 16.26K, 16.26K, 12.19K, 12.19K, 12.19K, 16.26K, 16.26K, 24.38K, 12.19K, 12.19K, 12.19K, 16.26K, 16.26K, 12.19K, 16.26K, 16.26K, 16.26K, 28.45K, 16.26K, 16.26K, ]
+                 - PerScannerWaitTime: [0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 6m51s, 3m51s, 51s030ms, 29.929ms, 30.063ms, 24.683ms, 25.908ms, 23.670ms, 20.443ms, 15.501ms, 22.475ms, 29.154ms, 30.052ms, 27.514ms, 29.599ms, 60.341ms, 68.859ms, 65.715ms, 62.107ms, 76.348ms, 84.501ms, 47.382ms, 62.832ms, 53.626ms, 50.655ms, 30.019ms, 28.514ms, 18.522ms, 19.678ms, 19.975ms, 17.096ms, 29.320ms, 18.633ms, 19.698ms, 21.881ms, 27.305ms, 28.676ms, 17.941ms, 36.374ms, 10.912ms, 5.209ms, 5.323ms, 5.274ms, 1.025ms, 652.052us, 892.583us, 410.810us, 421.782us, 23.074ms, 643.683us, 402.120us, ]
+                 - PerScannerProjectionTime: [0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, 0.000ns, ]
+                 - EmptyFileNum: 0
+                 - FileFooterHitCache: 0
+                 - FileFooterReadCalls: 0
+                 - FileNumber: 51
+                 - FileReadBytes: 1.06 GB
+                 - FileReadCalls: 0
+                 - FileReadTime: 0ns
+                 - FileScannerCastInputBlockTime: 0ns
+                 - FileScannerConvertOuputBlockTime: 0ns
+                 - FileScannerFillMissingColumnTime: 0ns
+                 - FileScannerGetBlockTime: 2min14sec
+                 - FileScannerPreFilterTimer: 0ns
+                 - FileScannerRuntimeFilterPartitionPruningTime: 0ns
+                 - FullySkippedFileNum: 0
+                 - MergedSmallIO: 0ns
+                   - ApplyBytes: 0.00 
+                   - CopyTime: 0ns
+                   - MergedBytes: 0.00 
+                   - MergedIO: 0
+                   - ReadTime: 0ns
+                   - RequestBytes: 0.00 
+                   - RequestIO: 0
+                 - NotFoundFileNum: 0
+                 - PageIndexReadCalls: 0
+                 - ParquetReader: 0ns
+                   - ColumnReadTime: 0ns
+                   - DecodeDictTime: 0ns
+                   - DecodeHeaderTime: 0ns
+                   - DecodeLevelTime: 0ns
+                   - DecodeNullMapTime: 0ns
+                   - DecodeValueTime: 0ns
+                   - DecompressCount: 0
+                   - DecompressTime: 0ns
+                   - DictFilterRewriteTime: 0ns
+                   - FileNum: 0
+                   - FileOpenTime: 0ns
+                   - FilteredBytes: 0.00 
+                   - FilteredGroups: 0
+                   - FilteredRowsByGroup: 0
+                   - FilteredRowsByLazyRead: 0
+                   - FilteredRowsByPage: 0
+                   - PageIndexFilterTime: 0ns
+                   - PageIndexParseTime: 0ns
+                   - PageIndexReadTime: 0ns
+                   - ParseFooterTime: 0ns
+                   - ParseMetaTime: 0ns
+                   - ParsePageHeaderNum: 0
+                   - PredicateFilterTime: 0ns
+                   - RawRowsRead: 0
+                   - ReadBytes: 0.00 
+                   - ReadGroups: 0
+                   - RowGroupFilterTime: 0ns
+                   - SkipPageHeaderNum: 0
+                 - RuntimeFilterPartitionPrunedRangeNum: 0
+  LoadChannels:
+
+Appendix:
+
+PhysicalPlan:
+PhysicalResultSink[36] ( outputExprs=[_hoodie_commit_time#0, _hoodie_commit_seqno#1, _hoodie_record_key#2, _hoodie_partition_path#3, _hoodie_file_name#4, zjlid#5, ztik_rksj#6, qx_mc#7, qx#8, xz_mc#9, xz#10, csq_mc#11, csq#12, yjdxxm#13, yjdxzw#14, yjdxzjbh#15, sfsggb#16, sfjjgb#17, wtzrdw#18, qt1#19, setl_id#20, clr_optins#21, medins_setl_id#22, mdtrt_id#23, init_setl_id#24, psn_no#25, psn_insu_rlts_id#26, psn_name#27, psn_cert_type#28, psn_cert_type_mc#29, certno#30, gend#31, naty#32, naty_mc#33, brdy#34, age#35, insutype#36, insuttype_mc#37, psn_type#38, psn_type_mc#39, cvlserv_flag#40, cvlserv_flag_mc#41, cvlserv_lv#42, cvlserv_lv_mc#43, sp_psn_type#44, sp_psn_type_lv#45, sp_psn_type_lv_mc#46, clct_grde#47, clct_grde_mc#48, flxempe_flag#49, flxempe_flag_mc#50, nwb_flag#51, nwb_flag_mc#52, insu_admdvs#53, insu_admdvs_mc#54, emp_no#55, emp_name#56, emp_type#57, emp_type_mc#58, econ_type#59, econ_type_mc#60, afil_indu#61, afil_indu_mc#62, afil_rlts#63, afil_rlts_mc#64, emp_mgt_type#65, emp_mgt_type_mc#66, pay_loc#67, pay_loc_mc#68, fixmedins_code#69, fixmedins_name#70, hosp_lv#71, hosp_lv_mc#72, fix_blng_admdvs#73, fix_blng_admdvs_mc#74, lmtpric_hosp_lv#75, lmtpric_hosp_lv_mc#76, dedc_hosp_lv#77, dedc_hosp_lv_mc#78, begndate#79, enddate#80, setl_time#81, mdtrt_cert_type#82, mdtrt_cert_type_mc#83, mdtrt_cert_no#84, med_type#85, med_type_mc#86, setl_type#87, setl_type_mc#88, clr_type#89, clr_type_mc#90, clr_way#91, clr_way_mc#92, psn_setlway#93, psn_setlway_mc#94, medfee_sumamt#95, fulamt_ownpay_amt#96, overlmt_selfpay#97, preselfpay_amt#98, inscp_amt#99, dedc_std#100, crt_dedc#101, act_pay_dedc#102, hifp_pay#103, pool_prop_selfpay#104, hi_agre_sumfee#105, cvlserv_pay#106, hifes_pay#107, hifmi_pay#108, hifob_pay#109, hifdm_pay#110, maf_pay#111, othfund_pay#112, fund_pay_sumamt#113, psn_pay#114, acct_pay#115, cash_payamt#116, ownpay_hosp_part#117, balc#118, acct_mulaid_pay#119, refd_setl_flag#120, refd_setl_flag_mc#121, cal_ipt_cnt#122, cal_ipt_cnt_mc#123, setl_cashpay_way#124, setl_cashpay_way_mc#125, year#126, dise_no#127, dise_name#128, invono#129, manl_reim_rea#130, manl_reim_rea_mc#131, vali_flag#132, vali_flag_mc#133, memo#134, rid#135, updt_time#136, crter_id#137, crter_name#138, crte_time#139, crte_optins_no#140, opter_id#141, opter_name#142, opt_time#143, optins_no#144, poolarea_no#145, mid_setl_flag#146, mid_setl_flag_mc#147, acct_used_flag#148, acct_used_flag_mc#149, quts_type#150, quts_type_mc#151, bydise_setl_payamt#152, exct_item_fund_payamt#153, dty_flag#154, d_status#155, etl_date#156, region#157, subs_code#158] )
+     +--PhysicalHudiScan ( qualified=hudi_hms.ztik.ztik_yljk_jsxxb, output=[_hoodie_commit_time#0, _hoodie_commit_seqno#1, _hoodie_record_key#2, _hoodie_partition_path#3, _hoodie_file_name#4, zjlid#5, ztik_rksj#6, qx_mc#7, qx#8, xz_mc#9, xz#10, csq_mc#11, csq#12, yjdxxm#13, yjdxzw#14, yjdxzjbh#15, sfsggb#16, sfjjgb#17, wtzrdw#18, qt1#19, setl_id#20, clr_optins#21, medins_setl_id#22, mdtrt_id#23, init_setl_id#24, psn_no#25, psn_insu_rlts_id#26, psn_name#27, psn_cert_type#28, psn_cert_type_mc#29, certno#30, gend#31, naty#32, naty_mc#33, brdy#34, age#35, insutype#36, insuttype_mc#37, psn_type#38, psn_type_mc#39, cvlserv_flag#40, cvlserv_flag_mc#41, cvlserv_lv#42, cvlserv_lv_mc#43, sp_psn_type#44, sp_psn_type_lv#45, sp_psn_type_lv_mc#46, clct_grde#47, clct_grde_mc#48, flxempe_flag#49, flxempe_flag_mc#50, nwb_flag#51, nwb_flag_mc#52, insu_admdvs#53, insu_admdvs_mc#54, emp_no#55, emp_name#56, emp_type#57, emp_type_mc#58, econ_type#59, econ_type_mc#60, afil_indu#61, afil_indu_mc#62, afil_rlts#63, afil_rlts_mc#64, emp_mgt_type#65, emp_mgt_type_mc#66, pay_loc#67, pay_loc_mc#68, fixmedins_code#69, fixmedins_name#70, hosp_lv#71, hosp_lv_mc#72, fix_blng_admdvs#73, fix_blng_admdvs_mc#74, lmtpric_hosp_lv#75, lmtpric_hosp_lv_mc#76, dedc_hosp_lv#77, dedc_hosp_lv_mc#78, begndate#79, enddate#80, setl_time#81, mdtrt_cert_type#82, mdtrt_cert_type_mc#83, mdtrt_cert_no#84, med_type#85, med_type_mc#86, setl_type#87, setl_type_mc#88, clr_type#89, clr_type_mc#90, clr_way#91, clr_way_mc#92, psn_setlway#93, psn_setlway_mc#94, medfee_sumamt#95, fulamt_ownpay_amt#96, overlmt_selfpay#97, preselfpay_amt#98, inscp_amt#99, dedc_std#100, crt_dedc#101, act_pay_dedc#102, hifp_pay#103, pool_prop_selfpay#104, hi_agre_sumfee#105, cvlserv_pay#106, hifes_pay#107, hifmi_pay#108, hifob_pay#109, hifdm_pay#110, maf_pay#111, othfund_pay#112, fund_pay_sumamt#113, psn_pay#114, acct_pay#115, cash_payamt#116, ownpay_hosp_part#117, balc#118, acct_mulaid_pay#119, refd_setl_flag#120, refd_setl_flag_mc#121, cal_ipt_cnt#122, cal_ipt_cnt_mc#123, setl_cashpay_way#124, setl_cashpay_way_mc#125, year#126, dise_no#127, dise_name#128, invono#129, manl_reim_rea#130, manl_reim_rea_mc#131, vali_flag#132, vali_flag_mc#133, memo#134, rid#135, updt_time#136, crter_id#137, crter_name#138, crte_time#139, crte_optins_no#140, opter_id#141, opter_name#142, opt_time#143, optins_no#144, poolarea_no#145, mid_setl_flag#146, mid_setl_flag_mc#147, acct_used_flag#148, acct_used_flag_mc#149, quts_type#150, quts_type_mc#151, bydise_setl_payamt#152, exct_item_fund_payamt#153, dty_flag#154, d_status#155, etl_date#156, region#157, subs_code#158], stats=1 actualRows=1633728, selected partitions num=unknown, isIncremental=false )
+     PhysicalHudiScan ( qualified=hudi_hms.ztik.ztik_yljk_jsxxb, output=[_hoodie_commit_time#0, _hoodie_commit_seqno#1, _hoodie_record_key#2, _hoodie_partition_path#3, _hoodie_file_name#4, zjlid#5, ztik_rksj#6, qx_mc#7, qx#8, xz_mc#9, xz#10, csq_mc#11, csq#12, yjdxxm#13, yjdxzw#14, yjdxzjbh#15, sfsggb#16, sfjjgb#17, wtzrdw#18, qt1#19, setl_id#20, clr_optins#21, medins_setl_id#22, mdtrt_id#23, init_setl_id#24, psn_no#25, psn_insu_rlts_id#26, psn_name#27, psn_cert_type#28, psn_cert_type_mc#29, certno#30, gend#31, naty#32, naty_mc#33, brdy#34, age#35, insutype#36, insuttype_mc#37, psn_type#38, psn_type_mc#39, cvlserv_flag#40, cvlserv_flag_mc#41, cvlserv_lv#42, cvlserv_lv_mc#43, sp_psn_type#44, sp_psn_type_lv#45, sp_psn_type_lv_mc#46, clct_grde#47, clct_grde_mc#48, flxempe_flag#49, flxempe_flag_mc#50, nwb_flag#51, nwb_flag_mc#52, insu_admdvs#53, insu_admdvs_mc#54, emp_no#55, emp_name#56, emp_type#57, emp_type_mc#58, econ_type#59, econ_type_mc#60, afil_indu#61, afil_indu_mc#62, afil_rlts#63, afil_rlts_mc#64, emp_mgt_type#65, emp_mgt_type_mc#66, pay_loc#67, pay_loc_mc#68, fixmedins_code#69, fixmedins_name#70, hosp_lv#71, hosp_lv_mc#72, fix_blng_admdvs#73, fix_blng_admdvs_mc#74, lmtpric_hosp_lv#75, lmtpric_hosp_lv_mc#76, dedc_hosp_lv#77, dedc_hosp_lv_mc#78, begndate#79, enddate#80, setl_time#81, mdtrt_cert_type#82, mdtrt_cert_type_mc#83, mdtrt_cert_no#84, med_type#85, med_type_mc#86, setl_type#87, setl_type_mc#88, clr_type#89, clr_type_mc#90, clr_way#91, clr_way_mc#92, psn_setlway#93, psn_setlway_mc#94, medfee_sumamt#95, fulamt_ownpay_amt#96, overlmt_selfpay#97, preselfpay_amt#98, inscp_amt#99, dedc_std#100, crt_dedc#101, act_pay_dedc#102, hifp_pay#103, pool_prop_selfpay#104, hi_agre_sumfee#105, cvlserv_pay#106, hifes_pay#107, hifmi_pay#108, hifob_pay#109, hifdm_pay#110, maf_pay#111, othfund_pay#112, fund_pay_sumamt#113, psn_pay#114, acct_pay#115, cash_payamt#116, ownpay_hosp_part#117, balc#118, acct_mulaid_pay#119, refd_setl_flag#120, refd_setl_flag_mc#121, cal_ipt_cnt#122, cal_ipt_cnt_mc#123, setl_cashpay_way#124, setl_cashpay_way_mc#125, year#126, dise_no#127, dise_name#128, invono#129, manl_reim_rea#130, manl_reim_rea_mc#131, vali_flag#132, vali_flag_mc#133, memo#134, rid#135, updt_time#136, crter_id#137, crter_name#138, crte_time#139, crte_optins_no#140, opter_id#141, opter_name#142, opt_time#143, optins_no#144, poolarea_no#145, mid_setl_flag#146, mid_setl_flag_mc#147, acct_used_flag#148, acct_used_flag_mc#149, quts_type#150, quts_type_mc#151, bydise_setl_payamt#152, exct_item_fund_payamt#153, dty_flag#154, d_status#155, etl_date#156, region#157, subs_code#158], stats=1 actualRows=1633728, selected partitions num=unknown, isIncremental=false )
+       _hoodie_commit_time#0 -> unknown(1.0)
+       _hoodie_commit_seqno#1 -> unknown(1.0)
+       _hoodie_record_key#2 -> unknown(1.0)
+       _hoodie_partition_path#3 -> unknown(1.0)
+       _hoodie_file_name#4 -> unknown(1.0)
+       zjlid#5 -> unknown(1.0)
+       ztik_rksj#6 -> unknown(1.0)
+       qx_mc#7 -> unknown(1.0)
+       qx#8 -> unknown(1.0)
+       xz_mc#9 -> unknown(1.0)
+       xz#10 -> unknown(1.0)
+       csq_mc#11 -> unknown(1.0)
+       csq#12 -> unknown(1.0)
+       yjdxxm#13 -> unknown(1.0)
+       yjdxzw#14 -> unknown(1.0)
+       yjdxzjbh#15 -> unknown(1.0)
+       sfsggb#16 -> unknown(1.0)
+       sfjjgb#17 -> unknown(1.0)
+       wtzrdw#18 -> unknown(1.0)
+       qt1#19 -> unknown(1.0)
+       setl_id#20 -> unknown(1.0)
+       clr_optins#21 -> unknown(1.0)
+       medins_setl_id#22 -> unknown(1.0)
+       mdtrt_id#23 -> unknown(1.0)
+       init_setl_id#24 -> unknown(1.0)
+       psn_no#25 -> unknown(1.0)
+       psn_insu_rlts_id#26 -> unknown(1.0)
+       psn_name#27 -> unknown(1.0)
+       psn_cert_type#28 -> unknown(1.0)
+       psn_cert_type_mc#29 -> unknown(1.0)
+       certno#30 -> unknown(1.0)
+       gend#31 -> unknown(1.0)
+       naty#32 -> unknown(1.0)
+       naty_mc#33 -> unknown(1.0)
+       brdy#34 -> unknown(1.0)
+       age#35 -> unknown(1.0)
+       insutype#36 -> unknown(1.0)
+       insuttype_mc#37 -> unknown(1.0)
+       psn_type#38 -> unknown(1.0)
+       psn_type_mc#39 -> unknown(1.0)
+       cvlserv_flag#40 -> unknown(1.0)
+       cvlserv_flag_mc#41 -> unknown(1.0)
+       cvlserv_lv#42 -> unknown(1.0)
+       cvlserv_lv_mc#43 -> unknown(1.0)
+       sp_psn_type#44 -> unknown(1.0)
+       sp_psn_type_lv#45 -> unknown(1.0)
+       sp_psn_type_lv_mc#46 -> unknown(1.0)
+       clct_grde#47 -> unknown(1.0)
+       clct_grde_mc#48 -> unknown(1.0)
+       flxempe_flag#49 -> unknown(1.0)
+       flxempe_flag_mc#50 -> unknown(1.0)
+       nwb_flag#51 -> unknown(1.0)
+       nwb_flag_mc#52 -> unknown(1.0)
+       insu_admdvs#53 -> unknown(1.0)
+       insu_admdvs_mc#54 -> unknown(1.0)
+       emp_no#55 -> unknown(1.0)
+       emp_name#56 -> unknown(1.0)
+       emp_type#57 -> unknown(1.0)
+       emp_type_mc#58 -> unknown(1.0)
+       econ_type#59 -> unknown(1.0)
+       econ_type_mc#60 -> unknown(1.0)
+       afil_indu#61 -> unknown(1.0)
+       afil_indu_mc#62 -> unknown(1.0)
+       afil_rlts#63 -> unknown(1.0)
+       afil_rlts_mc#64 -> unknown(1.0)
+       emp_mgt_type#65 -> unknown(1.0)
+       emp_mgt_type_mc#66 -> unknown(1.0)
+       pay_loc#67 -> unknown(1.0)
+       pay_loc_mc#68 -> unknown(1.0)
+       fixmedins_code#69 -> unknown(1.0)
+       fixmedins_name#70 -> unknown(1.0)
+       hosp_lv#71 -> unknown(1.0)
+       hosp_lv_mc#72 -> unknown(1.0)
+       fix_blng_admdvs#73 -> unknown(1.0)
+       fix_blng_admdvs_mc#74 -> unknown(1.0)
+       lmtpric_hosp_lv#75 -> unknown(1.0)
+       lmtpric_hosp_lv_mc#76 -> unknown(1.0)
+       dedc_hosp_lv#77 -> unknown(1.0)
+       dedc_hosp_lv_mc#78 -> unknown(1.0)
+       begndate#79 -> unknown(1.0)
+       enddate#80 -> unknown(1.0)
+       setl_time#81 -> unknown(1.0)
+       mdtrt_cert_type#82 -> unknown(1.0)
+       mdtrt_cert_type_mc#83 -> unknown(1.0)
+       mdtrt_cert_no#84 -> unknown(1.0)
+       med_type#85 -> unknown(1.0)
+       med_type_mc#86 -> unknown(1.0)
+       setl_type#87 -> unknown(1.0)
+       setl_type_mc#88 -> unknown(1.0)
+       clr_type#89 -> unknown(1.0)
+       clr_type_mc#90 -> unknown(1.0)
+       clr_way#91 -> unknown(1.0)
+       clr_way_mc#92 -> unknown(1.0)
+       psn_setlway#93 -> unknown(1.0)
+       psn_setlway_mc#94 -> unknown(1.0)
+       medfee_sumamt#95 -> unknown(1.0)
+       fulamt_ownpay_amt#96 -> unknown(1.0)
+       overlmt_selfpay#97 -> unknown(1.0)
+       preselfpay_amt#98 -> unknown(1.0)
+       inscp_amt#99 -> unknown(1.0)
+       dedc_std#100 -> unknown(1.0)
+       crt_dedc#101 -> unknown(1.0)
+       act_pay_dedc#102 -> unknown(1.0)
+       hifp_pay#103 -> unknown(1.0)
+       pool_prop_selfpay#104 -> unknown(1.0)
+       hi_agre_sumfee#105 -> unknown(1.0)
+       cvlserv_pay#106 -> unknown(1.0)
+       hifes_pay#107 -> unknown(1.0)
+       hifmi_pay#108 -> unknown(1.0)
+       hifob_pay#109 -> unknown(1.0)
+       hifdm_pay#110 -> unknown(1.0)
+       maf_pay#111 -> unknown(1.0)
+       othfund_pay#112 -> unknown(1.0)
+       fund_pay_sumamt#113 -> unknown(1.0)
+       psn_pay#114 -> unknown(1.0)
+       acct_pay#115 -> unknown(1.0)
+       cash_payamt#116 -> unknown(1.0)
+       ownpay_hosp_part#117 -> unknown(1.0)
+       balc#118 -> unknown(1.0)
+       acct_mulaid_pay#119 -> unknown(1.0)
+       refd_setl_flag#120 -> unknown(1.0)
+       refd_setl_flag_mc#121 -> unknown(1.0)
+       cal_ipt_cnt#122 -> unknown(1.0)
+       cal_ipt_cnt_mc#123 -> unknown(1.0)
+       setl_cashpay_way#124 -> unknown(1.0)
+       setl_cashpay_way_mc#125 -> unknown(1.0)
+       year#126 -> unknown(1.0)
+       dise_no#127 -> unknown(1.0)
+       dise_name#128 -> unknown(1.0)
+       invono#129 -> unknown(1.0)
+       manl_reim_rea#130 -> unknown(1.0)
+       manl_reim_rea_mc#131 -> unknown(1.0)
+       vali_flag#132 -> unknown(1.0)
+       vali_flag_mc#133 -> unknown(1.0)
+       memo#134 -> unknown(1.0)
+       rid#135 -> unknown(1.0)
+       updt_time#136 -> unknown(1.0)
+       crter_id#137 -> unknown(1.0)
+       crter_name#138 -> unknown(1.0)
+       crte_time#139 -> unknown(1.0)
+       crte_optins_no#140 -> unknown(1.0)
+       opter_id#141 -> unknown(1.0)
+       opter_name#142 -> unknown(1.0)
+       opt_time#143 -> unknown(1.0)
+       optins_no#144 -> unknown(1.0)
+       poolarea_no#145 -> unknown(1.0)
+       mid_setl_flag#146 -> unknown(1.0)
+       mid_setl_flag_mc#147 -> unknown(1.0)
+       acct_used_flag#148 -> unknown(1.0)
+       acct_used_flag_mc#149 -> unknown(1.0)
+       quts_type#150 -> unknown(1.0)
+       quts_type_mc#151 -> unknown(1.0)
+       bydise_setl_payamt#152 -> unknown(1.0)
+       exct_item_fund_payamt#153 -> unknown(1.0)
+       dty_flag#154 -> unknown(1.0)
+       d_status#155 -> unknown(1.0)
+       etl_date#156 -> unknown(1.0)
+       region#157 -> unknown(1.0)
+       subs_code#158 -> unknown(1.0)
+     
