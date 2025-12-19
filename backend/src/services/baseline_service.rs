@@ -108,11 +108,12 @@ impl BaselineService {
         &self,
         mysql: &MySQLClient,
         cluster_id: i64,
+        cluster_type: &crate::models::cluster::ClusterType,
     ) -> Result<RefreshResult, String> {
         info!("Starting baseline refresh for cluster {} from audit log", cluster_id);
 
         // Step 1: Check if audit log table exists
-        if !self.audit_table_exists(mysql).await {
+        if !self.audit_table_exists(mysql, cluster_type).await {
             warn!("Audit log table not found for cluster {}, using defaults", cluster_id);
             BaselineProvider::update(
                 cluster_id,
@@ -127,7 +128,7 @@ impl BaselineService {
         }
 
         // Step 2: Fetch audit records
-        let records = match self.fetch_audit_logs(mysql).await {
+        let records = match self.fetch_audit_logs(mysql, cluster_type).await {
             Ok(records) => records,
             Err(e) => {
                 error!("Failed to fetch audit logs for cluster {}: {}", cluster_id, e);
@@ -191,7 +192,8 @@ impl BaselineService {
         &self,
         mysql: &MySQLClient,
     ) -> Result<RefreshResult, String> {
-        self.refresh_from_audit_log_for_cluster(mysql, 0).await
+        // Default to StarRocks for backward compatibility
+        self.refresh_from_audit_log_for_cluster(mysql, 0, &crate::models::cluster::ClusterType::StarRocks).await
     }
 
     /// Calculate baseline for a specific table (on-demand, not cached)
@@ -199,8 +201,9 @@ impl BaselineService {
         &self,
         mysql: &MySQLClient,
         table_name: &str,
+        cluster_type: &crate::models::cluster::ClusterType,
     ) -> Result<Option<PerformanceBaseline>, String> {
-        let records = self.fetch_audit_logs(mysql).await?;
+        let records = self.fetch_audit_logs(mysql, cluster_type).await?;
         Ok(self.calculator.calculate_for_table(&records, table_name))
     }
 
@@ -209,31 +212,52 @@ impl BaselineService {
     // ========================================================================
 
     /// Check if audit log table exists
-    async fn audit_table_exists(&self, mysql: &MySQLClient) -> bool {
-        let sql = "SELECT 1 FROM starrocks_audit_db__.starrocks_audit_tbl__ LIMIT 1";
-        mysql.query_raw(sql).await.is_ok()
+    async fn audit_table_exists(&self, mysql: &MySQLClient, cluster_type: &crate::models::cluster::ClusterType) -> bool {
+        use crate::models::cluster::ClusterType;
+        
+        let audit_table = match cluster_type {
+            ClusterType::StarRocks => "starrocks_audit_db__.starrocks_audit_tbl__",
+            ClusterType::Doris => "__internal_schema.audit_log",
+        };
+        
+        let sql = format!("SELECT 1 FROM {} LIMIT 1", audit_table);
+        mysql.query_raw(&sql).await.is_ok()
     }
 
     /// Fetch audit log records
-    async fn fetch_audit_logs(&self, mysql: &MySQLClient) -> Result<Vec<AuditLogRecord>, String> {
+    async fn fetch_audit_logs(&self, mysql: &MySQLClient, cluster_type: &crate::models::cluster::ClusterType) -> Result<Vec<AuditLogRecord>, String> {
+        use crate::models::cluster::ClusterType;
+        
+        let (audit_table, query_id_field, user_field, db_field, stmt_field, stmt_type_field, 
+             query_time_field, state_field, time_field, is_query_field) = match cluster_type {
+            ClusterType::StarRocks => (
+                "starrocks_audit_db__.starrocks_audit_tbl__",
+                "queryId", "user", "db", "stmt", "queryType", "queryTime", "state", "timestamp", "isQuery"
+            ),
+            ClusterType::Doris => (
+                "__internal_schema.audit_log",
+                "query_id", "user", "database", "stmt", "stmt_type", "query_time", "state", "time", "is_query"
+            ),
+        };
+        
         let sql = format!(
             r#"
             SELECT 
-                queryId,
-                COALESCE(`user`, '') AS user,
-                COALESCE(`db`, '') AS db,
-                stmt,
-                COALESCE(queryType, 'Query') AS queryType,
-                queryTime AS query_time_ms,
-                COALESCE(`state`, '') AS state,
-                `timestamp`
-            FROM starrocks_audit_db__.starrocks_audit_tbl__
+                `{query_id_field}` as queryId,
+                COALESCE(`{user_field}`, '') AS user,
+                COALESCE(`{db_field}`, '') AS db,
+                `{stmt_field}` as stmt,
+                COALESCE(`{stmt_type_field}`, 'Query') AS queryType,
+                `{query_time_field}` AS query_time_ms,
+                COALESCE(`{state_field}`, '') AS state,
+                `{time_field}` as timestamp
+            FROM {audit_table}
             WHERE 
-                isQuery = 1
-                AND `timestamp` >= DATE_SUB(NOW(), INTERVAL {} HOUR)
-                AND `state` IN ('EOF', 'OK')
-                AND queryTime > 0
-            ORDER BY `timestamp` DESC
+                `{is_query_field}` = 1
+                AND `{time_field}` >= DATE_SUB(NOW(), INTERVAL {} HOUR)
+                AND `{state_field}` IN ('EOF', 'OK')
+                AND `{query_time_field}` > 0
+            ORDER BY `{time_field}` DESC
             LIMIT 10000
             "#,
             self.config.audit_log_hours

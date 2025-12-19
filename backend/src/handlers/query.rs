@@ -488,8 +488,9 @@ pub async fn execute_sql(
     let mut session = mysql_client.create_session().await?;
 
     // Execute USE CATALOG only once on the session's connection
+    // Pass cluster_type for correct syntax (StarRocks: SET CATALOG, Doris: SWITCH)
     if let Some(cat) = request.catalog.as_ref().filter(|c| !c.is_empty()) {
-        session.use_catalog(cat).await?;
+        session.use_catalog(cat, &cluster.cluster_type).await?;
     }
 
     // Execute USE DATABASE only once on the session's connection

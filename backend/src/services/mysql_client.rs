@@ -88,29 +88,50 @@ impl MySQLClient {
 
 impl MySQLSession {
     /// Set catalog context on this session's connection
-    pub async fn use_catalog(&mut self, catalog: &str) -> Result<(), ApiError> {
+    /// 
+    /// # Syntax Differences
+    /// - StarRocks: `SET CATALOG catalog_name`
+    /// - Doris: `SWITCH catalog_name`
+    pub async fn use_catalog(&mut self, catalog: &str, cluster_type: &crate::models::cluster::ClusterType) -> Result<(), ApiError> {
+        use crate::models::cluster::ClusterType;
+        
         if catalog.is_empty() || catalog == "default_catalog" {
             return Ok(());
         }
 
-        // StarRocks uses SET CATALOG, not USE CATALOG
+        // Different syntax for StarRocks and Doris
+        let (switch_sql, switch_sql_quoted) = match cluster_type {
+            ClusterType::StarRocks => {
+                // StarRocks: SET CATALOG catalog_name
+                (
+                    format!("SET CATALOG {}", catalog),
+                    format!("SET CATALOG `{}`", catalog)
+                )
+            },
+            ClusterType::Doris => {
+                // Doris: SWITCH catalog_name
+                (
+                    format!("SWITCH {}", catalog),
+                    format!("SWITCH `{}`", catalog)
+                )
+            },
+        };
+
         // Try without quotes first
-        let set_catalog_sql = format!("SET CATALOG {}", catalog);
         if let Err(primary_err) = self
             .conn
-            .query::<mysql_async::Row, _>(&set_catalog_sql)
+            .query::<mysql_async::Row, _>(&switch_sql)
             .await
         {
             tracing::debug!(
-                "SET CATALOG {} without quotes failed: {}. Retrying with backticks.",
+                "Switch catalog {} without quotes failed: {}. Retrying with backticks.",
                 catalog,
                 primary_err
             );
 
             // Retry with backticks for catalog names with special characters
-            let set_catalog_sql_quoted = format!("SET CATALOG `{}`", catalog);
             self.conn
-                .query::<mysql_async::Row, _>(&set_catalog_sql_quoted)
+                .query::<mysql_async::Row, _>(&switch_sql_quoted)
                 .await
                 .map_err(|e| {
                     tracing::error!("Failed to switch to catalog {}: {}", catalog, e);

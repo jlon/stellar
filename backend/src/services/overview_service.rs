@@ -1290,50 +1290,30 @@ impl OverviewService {
         // Get cluster info
         let cluster = self.cluster_service.get_cluster(cluster_id).await?;
 
-        // Get MySQL connection pool and create client
-        let pool = self.mysql_pool_manager.get_pool(&cluster).await?;
-        let mysql_client = MySQLClient::from_pool(pool);
+        // Use cluster adapter to get materialized views (supports both StarRocks and Doris)
+        let adapter = crate::services::create_adapter(cluster.clone(), self.mysql_pool_manager.clone());
 
-        // Query materialized view statistics
-        let query = r#"
-            SELECT 
-                COUNT(*) as total,
-                SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active,
-                SUM(CASE WHEN is_active = 0 THEN 1 ELSE 0 END) as inactive
-            FROM information_schema.materialized_views
-        "#;
-
-        let (columns, rows) = mysql_client.query_raw(query).await?;
-
-        // Build column index map
-        let mut col_idx = std::collections::HashMap::new();
-        for (i, col) in columns.iter().enumerate() {
-            col_idx.insert(col.clone(), i);
+        // Get all materialized views - for Doris, this may return empty list if not supported
+        let mvs = match adapter.list_materialized_views(None).await {
+            Ok(mvs) => mvs,
+            Err(e) => {
+                tracing::warn!("Failed to list materialized views for cluster {}: {}. Returning zero stats.", cluster.name, e);
+                // Return zero stats if MV listing fails (e.g., Doris doesn't have the table)
+                return Ok(MaterializedViewStats { total: 0, running: 0, success: 0, failed: 0, pending: 0 });
         }
+        };
 
-        if let Some(row) = rows.first() {
-            let total = col_idx
-                .get("total")
-                .and_then(|&i| row.get(i))
-                .and_then(|s| s.parse::<i64>().ok())
-                .unwrap_or(0);
-
-            let active = col_idx
-                .get("active")
-                .and_then(|&i| row.get(i))
-                .and_then(|s| s.parse::<i64>().ok())
-                .unwrap_or(0);
+        let total = mvs.len() as i32;
+        let active = mvs.iter().filter(|mv| mv.is_active).count() as i32;
+        let inactive = mvs.iter().filter(|mv| !mv.is_active).count() as i32;
 
             Ok(MaterializedViewStats {
-                total: total as i32,
-                running: 0, // Not available from information_schema
-                success: active as i32,
-                failed: 0,  // Not available from information_schema
-                pending: 0, // Not available from information_schema
+            total,
+            running: 0, // Would need to query running tasks
+            success: active,
+            failed: inactive,
+            pending: 0,
             })
-        } else {
-            Ok(MaterializedViewStats { total: 0, running: 0, success: 0, failed: 0, pending: 0 })
-        }
     }
 
     /// Module 8: Get load job stats from SHOW LOAD
@@ -1342,6 +1322,8 @@ impl OverviewService {
         cluster_id: i64,
         time_range: &TimeRange,
     ) -> ApiResult<LoadJobStats> {
+        use crate::models::cluster::ClusterType;
+        
         // Get cluster info
         let cluster = self.cluster_service.get_cluster(cluster_id).await?;
 
@@ -1352,8 +1334,10 @@ impl OverviewService {
         // Calculate time range start time
         let start_time = time_range.start_time();
 
-        // Query load job statistics from information_schema.loads
-        // Note: SHOW LOAD returns current database only, so we query information_schema
+        // Different query strategies for StarRocks and Doris
+        let (columns, rows) = match cluster.cluster_type {
+            ClusterType::StarRocks => {
+                // StarRocks: Query from information_schema.loads (global view)
         let query = format!(
             r#"
             SELECT 
@@ -1365,8 +1349,64 @@ impl OverviewService {
             "#,
             start_time.format("%Y-%m-%d %H:%M:%S")
         );
-
-        let (columns, rows) = mysql_client.query_raw(&query).await?;
+                mysql_client.query_raw(&query).await?
+            },
+            ClusterType::Doris => {
+                // Doris: Aggregate from SHOW LOAD across all databases
+                // SHOW LOAD states: PENDING, ETL, LOADING, COMMITTED, FINISHED, CANCELLED, RETRY
+                tracing::debug!("[Doris] Aggregating load jobs from all databases");
+                
+                // Get all user databases (exclude system databases)
+                let (_, db_rows) = mysql_client.query_raw("SHOW DATABASES").await?;
+                let mut all_states = std::collections::HashMap::new();
+                
+                for db_row in db_rows {
+                    if let Some(db_name) = db_row.first() {
+                        // Skip system databases
+                        if db_name.starts_with("__") 
+                            || db_name == "information_schema" 
+                            || db_name == "mysql" 
+                            || db_name == "sys" {
+                            continue;
+                        }
+                        
+                        // Query SHOW LOAD for this database
+                        let show_load_sql = format!("USE {}; SHOW LOAD", db_name);
+                        if let Ok((cols, load_rows)) = mysql_client.query_raw(&show_load_sql).await {
+                            // Find State and CreateTime column indices
+                            let state_idx = cols.iter().position(|c| c.eq_ignore_ascii_case("State"));
+                            let create_time_idx = cols.iter().position(|c| c.eq_ignore_ascii_case("CreateTime"));
+                            
+                            if let (Some(s_idx), Some(t_idx)) = (state_idx, create_time_idx) {
+                                for load_row in load_rows {
+                                    // Check if load job is within time range
+                                    if let Some(create_time_str) = load_row.get(t_idx) {
+                                        // Parse create time and compare
+                                        if let Ok(create_time) = chrono::NaiveDateTime::parse_from_str(
+                                            create_time_str, "%Y-%m-%d %H:%M:%S"
+                                        ) {
+                                            let start_naive = start_time.naive_utc();
+                                            if create_time >= start_naive {
+                                                if let Some(state) = load_row.get(s_idx) {
+                                                    *all_states.entry(state.clone()).or_insert(0) += 1;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Convert HashMap to rows format
+                let state_rows: Vec<Vec<String>> = all_states.into_iter()
+                    .map(|(state, count)| vec![state, count.to_string()])
+                    .collect();
+                
+                (vec!["State".to_string(), "count".to_string()], state_rows)
+            },
+        };
 
         // Build column index map
         let mut col_idx = std::collections::HashMap::new();
@@ -1391,11 +1431,17 @@ impl OverviewService {
                 .and_then(|s| s.parse::<i64>().ok())
                 .unwrap_or(0);
 
+            // Map states to stats
+            // StarRocks: LOADING, PENDING, QUEUEING, FINISHED, CANCELLED
+            // Doris: PENDING, ETL, LOADING, COMMITTED, FINISHED, CANCELLED, RETRY
             match state.to_uppercase().as_str() {
-                "LOADING" => stats.running = count as i32,
+                "LOADING" => stats.running += count as i32,
+                "ETL" => stats.running += count as i32,  // Doris ETL state = running
+                "COMMITTED" => stats.running += count as i32,  // Doris COMMITTED = running
                 "PENDING" | "QUEUEING" => stats.pending += count as i32,
-                "FINISHED" => stats.finished = count as i32,
-                "CANCELLED" => stats.cancelled = count as i32,
+                "RETRY" => stats.pending += count as i32,  // Doris RETRY = pending
+                "FINISHED" => stats.finished += count as i32,
+                "CANCELLED" => stats.cancelled += count as i32,
                 _ => stats.failed += count as i32, // Treat unknown states as failed
             }
         }
@@ -1421,6 +1467,7 @@ impl OverviewService {
         time_range: &TimeRange,
     ) -> ApiResult<SchemaChangeStats> {
         use crate::services::MySQLClient;
+        use crate::models::cluster::ClusterType;
 
         let cluster = self.cluster_service.get_cluster(cluster_id).await?;
         let pool = self.mysql_pool_manager.get_pool(&cluster).await?;
@@ -1431,18 +1478,34 @@ impl OverviewService {
 
         // Query ALTER TABLE operations from audit logs
         // Track schema changes by analyzing DDL statements in the audit log
+        // Use different audit log tables for StarRocks and Doris
+        let (audit_table, time_field, is_query_field, stmt_type_field) = match cluster.cluster_type {
+            ClusterType::StarRocks => (
+                "starrocks_audit_db__.starrocks_audit_tbl__",
+                "timestamp",
+                "isQuery",
+                "queryType"
+            ),
+            ClusterType::Doris => (
+                "__internal_schema.audit_log",
+                "time",
+                "is_query",
+                "stmt_type"
+            ),
+        };
+
         let query = format!(
             r#"
             SELECT 
-                queryType,
+                `{stmt_type_field}` as queryType,
                 state,
                 COUNT(*) as count
-            FROM starrocks_audit_db__.starrocks_audit_tbl__
+            FROM {audit_table}
             WHERE 
-                `timestamp` >= '{}'
-                AND queryType LIKE '%ALTER%'
-                AND isQuery = 0  -- DDL operations have isQuery = 0
-            GROUP BY queryType, state
+                `{time_field}` >= '{}'
+                AND `{stmt_type_field}` LIKE '%ALTER%'
+                AND {is_query_field} = 0
+            GROUP BY `{stmt_type_field}`, state
             "#,
             start_time.format("%Y-%m-%d %H:%M:%S")
         );
@@ -1491,23 +1554,37 @@ impl OverviewService {
     /// Reference: https://forum.mirrorship.cn/t/topic/13256
     async fn get_compaction_stats(&self, cluster_id: i64) -> ApiResult<CompactionStats> {
         use crate::services::MySQLClient;
+        use crate::models::cluster::ClusterType;
 
         // Get cluster info
         let cluster = self.cluster_service.get_cluster(cluster_id).await?;
 
-        // Get MySQL connection pool
+        // Get compaction stats based on cluster type
+        let (base_compaction_running, cumulative_compaction_running) = match cluster.cluster_type {
+            ClusterType::StarRocks => {
+                // StarRocks uses SHOW PROC '/compactions' to get running compaction tasks
         let pool = self.mysql_pool_manager.get_pool(&cluster).await?;
         let client = MySQLClient::from_pool(pool);
 
-        // Query compaction tasks from FE
-        // SHOW PROC '/compactions' shows current running compaction tasks
         let query = "SHOW PROC '/compactions'";
         let (_headers, rows) = client.query_raw(query).await.unwrap_or((vec![], vec![]));
 
-        // Count running compaction tasks
-        // Note: In StarRocks shared-data mode, there are no separate
-        // base_compaction and cumulative_compaction, just unified compaction tasks
+                // In StarRocks shared-data mode, there are no separate base/cumulative compactions
         let total_running = rows.len() as i32;
+                (0, total_running)
+            },
+            ClusterType::Doris => {
+                // Doris doesn't have a global compaction task list like StarRocks
+                // Doris compaction info is tablet-level via BE HTTP API: /api/compaction/show?tablet_id=xxx
+                // Querying all tablets would be too expensive, so we return 0 for running tasks
+                // Note: Doris has SHOW PROC '/cluster_health/tablet_health' which shows 
+                // ReplicaCompactionTooSlowNum, but not running compaction count
+                tracing::debug!("[Doris] Compaction running task count not available (tablet-level API only)");
+                (0, 0)
+            },
+        };
+
+        let total_running = base_compaction_running + cumulative_compaction_running;
 
         // Get max compaction score from metrics snapshot
         // Compaction score is stored in our metrics_snapshots table
@@ -1541,9 +1618,31 @@ impl OverviewService {
         time_range: &str,
     ) -> ApiResult<CompactionDetailStats> {
         use crate::services::MySQLClient;
+        use crate::models::cluster::ClusterType;
 
         // Get cluster info
         let cluster = self.cluster_service.get_cluster(cluster_id).await?;
+
+        // Doris uses HTTP API for compaction, not SHOW PROC
+        // For now, return minimal stats for Doris as full implementation requires BE HTTP API integration
+        if cluster.cluster_type == ClusterType::Doris {
+            tracing::debug!("[Doris] Compaction detail stats via HTTP API not fully implemented yet");
+            // TODO: Implement full Doris compaction stats via BE HTTP API
+            // Reference: https://doris.apache.org/zh-CN/docs/4.x/admin-manual/open-api/be-http/compaction-run
+            return Ok(CompactionDetailStats {
+                top_partitions: vec![],
+                task_stats: CompactionTaskStats {
+                    running_count: 0,
+                    finished_count: 0,
+                    total_count: 0,
+                },
+                duration_stats: CompactionDurationStats {
+                    min_duration_ms: 0,
+                    max_duration_ms: 0,
+                    avg_duration_ms: 0,
+                },
+            });
+        }
 
         // Get MySQL connection pool
         let pool = self.mysql_pool_manager.get_pool(&cluster).await?;
@@ -1559,7 +1658,7 @@ impl OverviewService {
         };
 
         // Query 1: Get Top 10 partitions by compaction score
-        // Filter out system databases and tables
+        // Filter out system databases and tables (both StarRocks and Doris)
         let top_partitions_query = r#"
             SELECT 
                 DB_NAME, 
@@ -1570,8 +1669,8 @@ impl OverviewService {
                 P50_CS as p50_score
             FROM information_schema.partitions_meta
             WHERE MAX_CS > 0 
-              AND DB_NAME NOT IN ('_statistics_', 'information_schema', 'sys', 'starrocks_audit_db__')
-              AND TABLE_NAME != 'starrocks_audit_tbl__'
+              AND DB_NAME NOT IN ('_statistics_', 'information_schema', 'sys', 'starrocks_audit_db__', '__internal_schema', 'mysql')
+              AND TABLE_NAME NOT IN ('starrocks_audit_tbl__', 'audit_log')
             ORDER BY MAX_CS DESC
             LIMIT 10
         "#;
@@ -1589,11 +1688,15 @@ impl OverviewService {
                     let table_name = row.get(1).map(|s| s.to_string()).unwrap_or_default();
 
                     // Filter out system databases (double protection)
+                    // Filter out system databases and tables (both StarRocks and Doris)
                     if db_name == "_statistics_"
                         || db_name == "information_schema"
                         || db_name == "sys"
                         || db_name == "starrocks_audit_db__"
+                        || db_name == "__internal_schema"
+                        || db_name == "mysql"
                         || table_name == "starrocks_audit_tbl__"
+                        || table_name == "audit_log"
                     {
                         tracing::debug!("Filtering out system table: {}.{}", db_name, table_name);
                         return None;

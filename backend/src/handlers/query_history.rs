@@ -59,16 +59,36 @@ pub async fn list_query_history(
     let start_time = params.start_time.as_deref();
     let end_time = params.end_time.as_deref();
 
+    // Get audit table name and field mappings based on cluster type
+    use crate::models::cluster::ClusterType;
+    let (audit_table, time_field, query_id_field, db_field, is_query_field) = match cluster.cluster_type {
+        ClusterType::StarRocks => (
+            state.audit_config.full_table_name(),
+            "timestamp",
+            "queryId",
+            "db",
+            "isQuery"
+        ),
+        ClusterType::Doris => (
+            "__internal_schema.audit_log".to_string(),
+            "time",
+            "query_id",
+            "db",  // Doris also uses 'db' field
+            "is_query"
+        ),
+    };
+
     // Build WHERE conditions
     let mut where_conditions = vec![
-        "isQuery = 1".to_string(),
-        "`timestamp` >= DATE_SUB(NOW(), INTERVAL 7 DAY)".to_string(),
+        format!("{} = 1", is_query_field),
+        format!("`{}` >= DATE_SUB(NOW(), INTERVAL 7 DAY)", time_field),
     ];
 
     // Add keyword search if provided
     if !keyword.is_empty() {
         where_conditions.push(format!(
-            "(`queryId` LIKE '%{}%' OR `stmt` LIKE '%{}%' OR `user` LIKE '%{}%')",
+            "(`{}` LIKE '%{}%' OR `stmt` LIKE '%{}%' OR `user` LIKE '%{}%')",
+            query_id_field,
             keyword.replace('\'', "''"), // Escape single quotes
             keyword.replace('\'', "''"),
             keyword.replace('\'', "''")
@@ -77,16 +97,13 @@ pub async fn list_query_history(
 
     // Add time range filters if provided
     if let Some(start) = start_time {
-        where_conditions.push(format!("`timestamp` >= '{}'", start));
+        where_conditions.push(format!("`{}` >= '{}'", time_field, start));
     }
     if let Some(end) = end_time {
-        where_conditions.push(format!("`timestamp` <= '{}'", end));
+        where_conditions.push(format!("`{}` <= '{}'", time_field, end));
     }
 
     let where_clause = where_conditions.join(" AND ");
-
-    // Get audit table name from config
-    let audit_table = state.audit_config.full_table_name();
 
     // First, get the total count (required for ng2-smart-table pagination)
     let count_sql = format!(
@@ -123,21 +140,21 @@ pub async fn list_query_history(
     let sql = format!(
         r#"
         SELECT 
-            queryId,
+            `{}` as queryId,
             `user`,
-            COALESCE(`db`, '') AS db,
+            COALESCE(`{}`, '') AS db,
             `stmt`,
-            `queryType`,
-            `timestamp` AS start_time,
-            `queryTime` AS total_ms,
+            COALESCE(`stmt_type`, '') AS queryType,
+            `{}` AS start_time,
+            `query_time` AS total_ms,
             `state`,
-            COALESCE(`resourceGroup`, '') AS warehouse
+            COALESCE(`workload_group`, '') AS warehouse
         FROM {}
         WHERE {}
-        ORDER BY `timestamp` DESC
+        ORDER BY `{}` DESC
         LIMIT {} OFFSET {}
     "#,
-        audit_table, where_clause, limit, offset
+        query_id_field, db_field, time_field, audit_table, where_clause, time_field, limit, offset
     );
 
     tracing::info!(

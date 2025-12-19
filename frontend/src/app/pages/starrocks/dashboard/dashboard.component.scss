@@ -55,14 +55,50 @@
   nb-card-header {
     padding: 1rem 1.25rem;
     border-bottom: 1px solid var(--divider-color);
+    position: relative;
+    overflow: hidden; // 防止内容突出到卡片外
+    
+    // 确保 header 内部的 flex 容器正确布局
+    > .d-flex {
+      min-width: 0; // 允许 flex 容器收缩
+      width: 100%;
+    }
+    
+    // 左侧容器（图标 + 标题）
+    > .d-flex > .d-flex:first-child {
+      flex: 1;
+      min-width: 0; // 允许收缩，为右侧按钮让出空间
+      overflow: hidden; // 防止内容溢出
+      align-items: flex-start; // 顶部对齐
+      
+      // 文本容器（标题 + 组织名）
+      > div {
+        flex: 1;
+        min-width: 0; // 允许文本容器收缩
+        overflow: hidden; // 防止文本溢出
+      }
+    }
     
     .cluster-icon {
       font-size: 2rem;
+      flex-shrink: 0; // 图标不被压缩
     }
     
     .cluster-title-wrapper {
       cursor: pointer;
       transition: opacity 0.2s;
+      min-width: 0; // 允许 flex 收缩
+      overflow: hidden; // 防止文本溢出
+      flex: 1; // 占据可用空间
+      
+      .cluster-title {
+        white-space: nowrap; // 不换行
+        overflow: hidden; // 隐藏溢出
+        text-overflow: ellipsis; // 显示省略号
+        max-width: 100%; // 最大宽度限制
+        display: block; // 确保 text-overflow 生效
+        margin: 0; // 移除默认 margin
+      }
       
       .action-icon {
         font-size: 0.8rem;
@@ -70,6 +106,7 @@
         opacity: 0;
         transition: all 0.2s ease;
         transform: translateX(-5px);
+        flex-shrink: 0; // 图标不被压缩
       }
       
       &:hover {
@@ -85,9 +122,35 @@
       }
     }
     
+    // 组织名称也需要处理溢出
+    .text-hint.caption-2 {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+      display: block;
+    }
+    
     .actions {
       display: flex;
       gap: 0.25rem;
+      flex-shrink: 0; // 防止按钮被压缩
+      align-items: center;
+      margin-left: 0.5rem; // 与标题保持间距
+      min-width: fit-content; // 确保按钮区域有足够空间
+      
+      button {
+        flex-shrink: 0; // 每个按钮都不被压缩
+        min-width: 2rem; // 最小宽度确保按钮可见
+        position: relative;
+        z-index: 1;
+        
+        // 防止 tooltip 或其他元素突出
+        &::before,
+        &::after {
+          content: none;
+        }
+      }
     }
   }
   

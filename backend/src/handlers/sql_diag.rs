@@ -89,7 +89,7 @@ pub async fn diagnose(
     tracing::info!("SQL Diagnosis: catalog={}, db={}, tables={:?}", cat, db, tables);
 
     let (explain, schema, vars) = tokio::join!(
-        exec_explain(&client, cat, db, &req.sql),
+        exec_explain(&client, cat, db, &req.sql, &cluster.cluster_type),
         fetch_schema(&client, cat, db, &tables),
         fetch_vars(&client)
     );
@@ -128,9 +128,6 @@ pub async fn diagnose(
     }
 }
 
-// ============================================================================
-// Helper Functions (精简实现)
-// ============================================================================
 
 /// Execute EXPLAIN VERBOSE
 async fn exec_explain(
@@ -138,12 +135,14 @@ async fn exec_explain(
     cat: &str,
     db: &str,
     sql: &str,
+    cluster_type: &crate::models::cluster::ClusterType,
 ) -> Result<String, String> {
     let mut sess = client.create_session().await.map_err(|e| e.to_string())?;
 
     // Set catalog if not default
+    // Pass cluster_type for correct syntax (StarRocks: SET CATALOG, Doris: SWITCH)
     if !cat.is_empty() && cat != "default_catalog" {
-        sess.use_catalog(cat)
+        sess.use_catalog(cat, cluster_type)
             .await
             .map_err(|e| format!("Failed to use catalog {}: {}", cat, e))?;
     }

@@ -855,11 +855,20 @@ impl MetricsCollectorService {
     async fn detect_query_time_column(
         &self,
         mysql_client: &crate::services::mysql_client::MySQLClient,
+        cluster: &Cluster,
     ) -> Option<String> {
+        use crate::models::cluster::ClusterType;
+        
+        // Use different audit log tables for StarRocks and Doris
+        let audit_table = match cluster.cluster_type {
+            ClusterType::StarRocks => "starrocks_audit_db__.starrocks_audit_tbl__",
+            ClusterType::Doris => "__internal_schema.audit_log",
+        };
+        
         // First, try to get column list using SHOW COLUMNS
-        let show_columns_query = "SHOW COLUMNS FROM starrocks_audit_db__.starrocks_audit_tbl__";
+        let show_columns_query = format!("SHOW COLUMNS FROM {}", audit_table);
 
-        match mysql_client.query_raw(show_columns_query).await {
+        match mysql_client.query_raw(&show_columns_query).await {
             Ok((columns, rows)) => {
                 // Find the column index for "Field" column
                 let field_idx = columns
@@ -892,8 +901,8 @@ impl MetricsCollectorService {
                 for col_name in possible_columns {
                     // Use a safe query that won't fail if column doesn't exist
                     let test_query = format!(
-                        "SELECT COUNT(*) as cnt FROM starrocks_audit_db__.starrocks_audit_tbl__ WHERE {} > 0 LIMIT 1",
-                        col_name
+                        "SELECT COUNT(*) as cnt FROM {} WHERE {} > 0 LIMIT 1",
+                        audit_table, col_name
                     );
 
                     if mysql_client.query(&test_query).await.is_ok() {
@@ -920,7 +929,7 @@ impl MetricsCollectorService {
         let mysql_client = MySQLClient::from_pool(pool);
 
         // Detect the available query time column name
-        let query_time_col = match self.detect_query_time_column(&mysql_client).await {
+        let query_time_col = match self.detect_query_time_column(&mysql_client, cluster).await {
             Some(col) => col,
             None => {
                 tracing::debug!(
@@ -930,7 +939,15 @@ impl MetricsCollectorService {
             },
         };
 
-        // Use StarRocks percentile_approx function to calculate P50, P95, P99 from audit logs
+        use crate::models::cluster::ClusterType;
+        
+        // Use different audit log tables and field names for StarRocks and Doris
+        let (audit_table, time_field, is_query_field) = match cluster.cluster_type {
+            ClusterType::StarRocks => ("starrocks_audit_db__.starrocks_audit_tbl__", "timestamp", "isQuery"),
+            ClusterType::Doris => ("__internal_schema.audit_log", "time", "is_query"),
+        };
+        
+        // Use percentile_approx function to calculate P50, P95, P99 from audit logs
         // Query recent 3 days of data for comprehensive percentiles
         let query = format!(
             r#"
@@ -938,13 +955,14 @@ impl MetricsCollectorService {
                 COALESCE(percentile_approx({}, 0.50), 0) as p50,
                 COALESCE(percentile_approx({}, 0.95), 0) as p95,
                 COALESCE(percentile_approx({}, 0.99), 0) as p99
-            FROM starrocks_audit_db__.starrocks_audit_tbl__
-            WHERE timestamp >= DATE_SUB(NOW(), INTERVAL 3 DAY)
+            FROM {}
+            WHERE {} >= DATE_SUB(NOW(), INTERVAL 3 DAY)
                 AND {} > 0
                 AND state = 'EOF'
-                AND isQuery = 1
+                AND {} = 1
         "#,
-            query_time_col, query_time_col, query_time_col, query_time_col
+            query_time_col, query_time_col, query_time_col, 
+            audit_table, time_field, query_time_col, is_query_field
         );
 
         match mysql_client.query(&query).await {

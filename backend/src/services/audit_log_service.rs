@@ -104,43 +104,43 @@ impl AuditLogService {
         // Different SQL for StarRocks (supports REGEXP_REPLACE) and Doris (uses SUBSTRING_INDEX)
         let query = match cluster.cluster_type {
             ClusterType::StarRocks => format!(
-                r#"
-                SELECT 
-                    COALESCE(NULLIF(`catalog`, 'default_catalog'), '') as catalog,
+            r#"
+            SELECT 
+                COALESCE(NULLIF(`catalog`, 'default_catalog'), '') as catalog,
                     COALESCE(NULLIF(`db`, ''), '') as db_name,
-                    -- Extract full table reference from stmt (handles catalog.db.table format)
-                    TRIM(BOTH '`' FROM 
+                -- Extract full table reference from stmt (handles catalog.db.table format)
+                TRIM(BOTH '`' FROM 
+                    REGEXP_REPLACE(
                         REGEXP_REPLACE(
-                            REGEXP_REPLACE(
-                                `stmt`, 
-                                '.*\\b(?:FROM|JOIN|INTO|TABLE)\\s+(`?[a-zA-Z0-9_]+`?(?:\\.[a-zA-Z0-9_]+){{1,2}}|`?[a-zA-Z0-9_]+`?).*', 
-                                '$1'
-                            ),
-                            '`', ''
-                        )
-                    ) as full_table_name,
-                    COUNT(*) as access_count,
+                            `stmt`, 
+                            '.*\\b(?:FROM|JOIN|INTO|TABLE)\\s+(`?[a-zA-Z0-9_]+`?(?:\\.[a-zA-Z0-9_]+){{1,2}}|`?[a-zA-Z0-9_]+`?).*', 
+                            '$1'
+                        ),
+                        '`', ''
+                    )
+                ) as full_table_name,
+                COUNT(*) as access_count,
                     MAX(`{time_field}`) as last_access,
-                    COUNT(DISTINCT `user`) as unique_users
-                FROM {audit_table}
+                COUNT(DISTINCT `user`) as unique_users
+            FROM {audit_table}
                 WHERE `{time_field}` >= DATE_SUB(NOW(), INTERVAL {hours} HOUR)
                     AND {is_query_field} = 1
-                    AND `state` = 'EOF'
+                AND `state` = 'EOF'
                     AND `{stmt_type_field}` IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE', 'Query')
-                    AND `catalog` != ''
-                    AND (`db` != 'information_schema' OR `db` IS NULL)
-                    AND (`db` != '_statistics_' OR `db` IS NULL)
+                AND `catalog` != ''
+                AND (`db` != 'information_schema' OR `db` IS NULL)
+                AND (`db` != '_statistics_' OR `db` IS NULL)
                     AND (`db` != '__internal_schema' OR `db` IS NULL)
-                    AND LOWER(`stmt`) NOT LIKE '%{audit_table_filter}%'
+                AND LOWER(`stmt`) NOT LIKE '%{audit_table_filter}%'
                 GROUP BY catalog, db_name, full_table_name
-                HAVING full_table_name != ''
-                    AND full_table_name NOT LIKE '%(%'
-                    AND full_table_name NOT LIKE '%SELECT%'
-                    AND full_table_name NOT LIKE '%WHERE%'
-                    AND full_table_name NOT LIKE '%GROUP%'
-                ORDER BY access_count DESC
-                LIMIT {limit}
-                "#,
+            HAVING full_table_name != ''
+                AND full_table_name NOT LIKE '%(%'
+                AND full_table_name NOT LIKE '%SELECT%'
+                AND full_table_name NOT LIKE '%WHERE%'
+                AND full_table_name NOT LIKE '%GROUP%'
+            ORDER BY access_count DESC
+            LIMIT {limit}
+            "#,
             ),
             ClusterType::Doris => format!(
                 r#"
@@ -308,21 +308,21 @@ impl AuditLogService {
         // Query audit logs for slow queries - field names differ between StarRocks and Doris
         let query = match cluster.cluster_type {
             ClusterType::StarRocks => format!(
-                r#"
-                SELECT 
-                    queryId as query_id,
-                    `user`,
-                    COALESCE(`db`, '') as `database`,
-                    `queryTime` as duration_ms,
-                    `scanRows` as scan_rows,
-                    `scanBytes` as scan_bytes,
-                    `returnRows` as return_rows,
-                    `cpuCostNs` / 1000000 as cpu_cost_ms,
-                    `memCostBytes` as mem_cost_bytes,
-                    `timestamp`,
-                    `state`,
-                    LEFT(`stmt`, 200) as query_preview
-                FROM {audit_table}
+            r#"
+            SELECT 
+                queryId as query_id,
+                `user`,
+                COALESCE(`db`, '') as `database`,
+                `queryTime` as duration_ms,
+                `scanRows` as scan_rows,
+                `scanBytes` as scan_bytes,
+                `returnRows` as return_rows,
+                `cpuCostNs` / 1000000 as cpu_cost_ms,
+                `memCostBytes` as mem_cost_bytes,
+                `timestamp`,
+                `state`,
+                LEFT(`stmt`, 200) as query_preview
+            FROM {audit_table}
                 WHERE `{time_field}` >= DATE_SUB(NOW(), INTERVAL {hours} HOUR)
                     AND `{query_time_field}` >= {min_duration_ms}
                     AND {is_query_field} = 1
@@ -350,10 +350,10 @@ impl AuditLogService {
                 WHERE `{time_field}` >= DATE_SUB(NOW(), INTERVAL {hours} HOUR)
                     AND `{query_time_field}` >= {min_duration_ms}
                     AND {is_query_field} = 1
-                    AND `state` = 'EOF'
+                AND `state` = 'EOF'
                 ORDER BY `{query_time_field}` DESC
-                LIMIT {limit}
-                "#,
+            LIMIT {limit}
+            "#,
             ),
         };
         

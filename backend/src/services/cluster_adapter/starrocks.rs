@@ -337,12 +337,12 @@ impl ClusterAdapter for StarRocksAdapter {
         mv_service.drop_materialized_view(mv_name, false).await
     }
 
-    async fn refresh_materialized_view(&self, mv_name: &str) -> ApiResult<()> {
+    async fn refresh_materialized_view(&self, mv_name: &str, partition_start: Option<&str>, partition_end: Option<&str>, force: bool, mode: &str) -> ApiResult<()> {
         use crate::services::MaterializedViewService;
         
         let mysql_client = self.mysql_client().await?;
         let mv_service = MaterializedViewService::new(mysql_client);
-        mv_service.refresh_materialized_view(mv_name, None, None, false, "ASYNC").await
+        mv_service.refresh_materialized_view(mv_name, partition_start, partition_end, force, mode).await
     }
 
     async fn alter_materialized_view(&self, _mv_name: &str, ddl: &str) -> ApiResult<()> {

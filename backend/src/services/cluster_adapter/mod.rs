@@ -96,7 +96,14 @@ pub trait ClusterAdapter: Send + Sync {
     async fn drop_materialized_view(&self, mv_name: &str) -> ApiResult<()>;
 
     /// Refresh materialized view
-    async fn refresh_materialized_view(&self, mv_name: &str) -> ApiResult<()>;
+    /// 
+    /// # Parameters
+    /// - `mv_name`: Materialized view name
+    /// - `partition_start`: Optional partition start (for partition refresh)
+    /// - `partition_end`: Optional partition end (for partition refresh)
+    /// - `force`: Force refresh (StarRocks specific)
+    /// - `mode`: Refresh mode ("complete", "auto", etc.)
+    async fn refresh_materialized_view(&self, mv_name: &str, partition_start: Option<&str>, partition_end: Option<&str>, force: bool, mode: &str) -> ApiResult<()>;
 
     /// Alter materialized view
     async fn alter_materialized_view(&self, mv_name: &str, ddl: &str) -> ApiResult<()>;

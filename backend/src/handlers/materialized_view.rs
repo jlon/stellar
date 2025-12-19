@@ -242,7 +242,13 @@ pub async fn refresh_materialized_view(
 
     // Use cluster adapter to refresh MV (supports both StarRocks and Doris)
     let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
-    adapter.refresh_materialized_view(&mv_name).await?;
+    adapter.refresh_materialized_view(
+            &mv_name,
+            request.partition_start.as_deref(),
+            request.partition_end.as_deref(),
+            request.force,
+        &request.mode
+    ).await?;
 
     Ok((StatusCode::OK, Json(json!({ "message": "Refresh initiated" }))))
 }

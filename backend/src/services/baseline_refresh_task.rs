@@ -127,7 +127,7 @@ impl BaselineRefreshTask {
 
         let result = self
             .baseline_service
-            .refresh_from_audit_log_for_cluster(&mysql, cluster.id)
+            .refresh_from_audit_log_for_cluster(&mysql, cluster.id, &cluster.cluster_type)
             .await
             .map_err(|e| anyhow::anyhow!("Baseline refresh failed: {}", e))?;
 
