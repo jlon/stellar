@@ -152,8 +152,18 @@ impl OperatorParser {
             } else {
                 let current_indent = Self::get_indent(line);
 
-                if !trimmed.is_empty() && current_indent <= base_indent {
-                    if Self::is_operator_header(trimmed) {
+                // Always check if this is another operator header, regardless of indent level
+                // This prevents nested operators (e.g., OLAP_SCAN nested under LOCAL_EXCHANGE_SINK)
+                // from being incorrectly included in the parent operator's block
+                if !trimmed.is_empty() && Self::is_operator_header(trimmed) {
+                    break;
+                }
+
+                // Stop if we encounter a line at same or smaller indent that's not part of this operator
+                // But allow metrics lines (starting with "-") at any indent level
+                if !trimmed.is_empty() && current_indent <= base_indent && !trimmed.starts_with("-") {
+                    // Check if it's a Pipeline or Fragment header (end of current pipeline)
+                    if trimmed.starts_with("Pipeline") || trimmed.starts_with("Fragment") {
                         break;
                     }
                 }

@@ -495,23 +495,47 @@ impl ProfileComposer {
     /// Extract operator name without plan_node_id/id suffix
     /// Supports both StarRocks format: OPERATOR_NAME (plan_node_id=0)
     /// and Doris format: OPERATOR_NAME(id=0) or OPERATOR_NAME (id=0. nereids_id=32...)
+    /// For Doris format, also removes "_OPERATOR" suffix if present (e.g., "OLAP_SCAN_OPERATOR" -> "OLAP_SCAN")
     fn extract_operator_name(full_name: &str) -> String {
-        // StarRocks format: OPERATOR_NAME (plan_node_id=0)
-        if let Some(pos) = full_name.find(" (plan_node_id=") {
-            return full_name[..pos].trim().to_string();
-        }
+        let name = {
+            // StarRocks format: OPERATOR_NAME (plan_node_id=0)
+            if let Some(pos) = full_name.find(" (plan_node_id=") {
+                full_name[..pos].trim().to_string()
+            }
+            // Doris format: OPERATOR_NAME(id=0) or OPERATOR_NAME (id=0. nereids_id=32...)
+            else if let Some(pos) = full_name.find("(id=") {
+                let before_id = if let Some(space_pos) = full_name[..pos].rfind(' ') {
+                    &full_name[..space_pos]
+                } else {
+                    &full_name[..pos]
+                };
+                before_id.trim().to_string()
+            }
+            // Doris format: OPERATOR_NAME(dest_id=1)
+            else if let Some(pos) = full_name.find("(dest_id=") {
+                let before_id = if let Some(space_pos) = full_name[..pos].rfind(' ') {
+                    &full_name[..space_pos]
+                } else {
+                    &full_name[..pos]
+                };
+                before_id.trim().to_string()
+            }
+            // Doris format: OPERATOR_NAME (LOCAL_MERGE_SORT) or OPERATOR_NAME (PASSTHROUGH) - handle parentheses with additional info
+            else if let Some(pos) = full_name.find(" (") {
+                full_name[..pos].trim().to_string()
+            }
+            else {
+                full_name.trim().to_string()
+            }
+        };
 
-        // Doris format: OPERATOR_NAME(id=0) or OPERATOR_NAME (id=0. nereids_id=32...)
-        if let Some(pos) = full_name.find("(id=") {
-            let before_id = if let Some(space_pos) = full_name[..pos].rfind(' ') {
-                &full_name[..space_pos]
-            } else {
-                &full_name[..pos]
-            };
-            return before_id.trim().to_string();
+        // Remove "_OPERATOR" suffix for Doris format (e.g., "RESULT_SINK_OPERATOR" -> "RESULT_SINK", "OLAP_SCAN_OPERATOR" -> "OLAP_SCAN")
+        // Also handles "LOCAL_EXCHANGE_OPERATOR" -> "LOCAL_EXCHANGE", "LOCAL_EXCHANGE_SINK_OPERATOR" -> "LOCAL_EXCHANGE_SINK"
+        if name.ends_with("_OPERATOR") {
+            name[..name.len() - 9].to_string()
+        } else {
+            name
         }
-
-        full_name.trim().to_string()
     }
 
     /// Aggregate metrics from multiple operator instances

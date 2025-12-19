@@ -221,6 +221,8 @@
     // Ensure pixel-perfect rendering
     -webkit-backface-visibility: hidden;
     backface-visibility: hidden;
+    // Preserve 3D transforms for child elements (nodes)
+    transform-style: preserve-3d;
   }
 }
 
@@ -241,28 +243,38 @@
   // Only transition box-shadow, not all properties - prevents blur
   transition: box-shadow 0.2s ease;
   overflow: hidden;
-  // Critical for crisp rendering when parent has transform: scale()
-  // Force browser to create separate compositing layer for each node
-  transform: translateZ(0);
+  
+  // ============================================
+  // Critical rendering optimizations for crisp nodes
+  // ============================================
+  // CRITICAL: Force browser to create separate compositing layer for each node
+  // Use opacity: 0.999 hack to guarantee compositing layer creation
+  // This ensures nodes are always crisp, not just on hover
+  opacity: 0.999;
+  // Use translate3d to force GPU compositing layer
+  transform: translate3d(0, 0, 0);
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
-  // Ensure text remains sharp
+  // Create new stacking context for isolated rendering
+  isolation: isolate;
+  // Hint browser to optimize for transform
+  will-change: transform;
+  // Ensure pixel-aligned rendering
+  image-rendering: crisp-edges;
+  image-rendering: -webkit-optimize-contrast;
+  // Ensure text remains sharp - use optimizeLegibility for better clarity
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  text-rendering: geometricPrecision;
+  text-rendering: optimizeLegibility;
   
-  &::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 6px;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
-    pointer-events: none;
-  }
+  // REMOVED ::after pseudo-element - it was causing blur by adding extra rendering layer
+  // The inset box-shadow was creating an additional compositing layer that blurred the node
   
   &:hover {
     box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
     z-index: 20;
+    // Ensure hover state maintains crisp rendering
+    // opacity stays at 0.999 (no change needed, already creates compositing layer)
   }
   
   &.selected {
@@ -276,21 +288,26 @@
     padding: 8px 14px;
     border-bottom: 1px solid #ccd2df;
     position: relative;
-    background: linear-gradient(180deg, #f8fafc 0%, #e3e8f0 100%);
+    // SIMPLIFIED: Use solid color instead of gradient for crisp rendering
+    // Gradients can blur when parent is scaled
+    background: #f0f2f5;
     
     &.header-gray {
-      background: linear-gradient(180deg, #dfe4ee 0%, #c9cfda 100%);
+      // SIMPLIFIED: Solid color for crisp rendering
+      background: #d4d9e0;
       border-bottom-color: #b5bccb;
       .node-title { color: #1f2740; }
     }
     
     &.header-orange {
-      background: linear-gradient(180deg, #ffb76e 0%, #f7931e 100%);
+      // SIMPLIFIED: Solid color for crisp rendering
+      background: #fa8c16;
       .node-title { color: #fff; }
     }
     
     &.header-red {
-      background: linear-gradient(180deg, #ff7875 0%, #cf1322 100%);
+      // SIMPLIFIED: Solid color for crisp rendering
+      background: #cf1322;
       .node-title { color: #fff; }
     }
     
@@ -316,7 +333,9 @@
       left: -8px;
       font-size: 14px;
       line-height: 1;
-      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+      // REMOVED filter: drop-shadow - filters cause blur when parent is scaled
+      // Use text-shadow instead for crisp rendering
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
       z-index: 1;
     }
   }
@@ -403,7 +422,8 @@
     animation: pulseGlow 2s ease-in-out infinite;
     
     .node-header.header-red {
-      background: linear-gradient(135deg, #ff4d4f 0%, #cf1322 100%);
+      // SIMPLIFIED: Solid color for crisp rendering
+      background: #cf1322;
     }
     
     .node-body {
@@ -418,7 +438,8 @@
     
     // Top 1 also shows progress bar (red color)
     .node-bottom-progress .progress-bar {
-      background: linear-gradient(90deg, #ff7875 0%, #cf1322 100%) !important;
+      // SIMPLIFIED: Solid color for crisp rendering
+      background: #cf1322 !important;
     }
   }
   
@@ -443,21 +464,22 @@
     }
   }
 
+  // SIMPLIFIED: Use solid colors instead of gradients for crisp rendering
   &.node-scan .node-body,
   &.node-join .node-body {
-    background: linear-gradient(180deg, #fff8f1 0%, #ffffff 60%);
+    background: #fffbf5;
   }
 
   &.node-project .node-body {
-    background: linear-gradient(180deg, #f5f7fc 0%, #ffffff 60%);
+    background: #f7f8fc;
   }
 
   &.node-exchange .node-body {
-    background: linear-gradient(180deg, #f6f6f6 0%, #ffffff 60%);
+    background: #f8f8f8;
   }
 
   &.node-agg .node-body {
-    background: linear-gradient(180deg, #fef9f2 0%, #ffffff 60%);
+    background: #fffaf5;
   }
 }
 
@@ -471,11 +493,15 @@
   pointer-events: none;
   z-index: 5;
   overflow: visible;
+  // Ensure crisp SVG rendering
+  shape-rendering: geometricPrecision;
   
   .edge-path {
     fill: none;
     stroke-linejoin: round;
     stroke-linecap: round;
+    // Ensure crisp path rendering
+    shape-rendering: geometricPrecision;
   }
   
   // Base edge path (static, semi-transparent)

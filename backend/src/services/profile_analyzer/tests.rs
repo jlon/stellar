@@ -2424,18 +2424,19 @@ MergedProfile:
             assert_eq!(tree.nodes.len(), 10, "Should have exactly 10 nodes in execution tree. Found: {}", tree.nodes.len());
 
             // Step 6: Verify all expected operators are present
+            // Note: For Doris format, "_OPERATOR" suffix is removed (e.g., "OLAP_SCAN_OPERATOR" -> "OLAP_SCAN")
             let operator_names: Vec<String> = tree.nodes.iter().map(|n| n.operator_name.clone()).collect();
             println!("Operators found: {:?}", operator_names);
             
             let expected_operators = vec![
-                "RESULT_SINK_OPERATOR",
-                "EXCHANGE_OPERATOR",
-                "DATA_STREAM_SINK_OPERATOR",
-                "LOCAL_EXCHANGE_OPERATOR",
-                "LOCAL_EXCHANGE_SINK_OPERATOR",
-                "SORT_OPERATOR",
-                "SORT_SINK_OPERATOR",
-                "OLAP_SCAN_OPERATOR",
+                "RESULT_SINK",
+                "EXCHANGE",
+                "DATA_STREAM_SINK",
+                "LOCAL_EXCHANGE",
+                "LOCAL_EXCHANGE_SINK",
+                "SORT",
+                "SORT_SINK",
+                "OLAP_SCAN",
             ];
             
             for expected_op in &expected_operators {
