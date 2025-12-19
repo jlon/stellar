@@ -2,7 +2,7 @@
 -- Stellar - Unified Initial Database Schema
 -- ===========================================
 -- Purpose: Complete database initialization for new deployments
--- Created: 2025-12-18 (Merged from 7 migration files)
+-- Created: 2025-12-18 (Merged from 8 migration files)
 -- Source Files:
 --   1. 20250125000000_unified_database_schema.sql - Core tables
 --   2. 20250126000000_rbac_complete_permission_system.sql - RBAC system
@@ -11,6 +11,7 @@
 --   5. 20250130000000_fix_system_functions_proc_paths.sql - Fix function paths
 --   6. 20251210000000_add_sql_diagnose_permission.sql - SQL diagnose permission
 --   7. 20251214000000_merge_configs_and_blacklist.sql - FE configs and blacklist permissions
+--   8. 20251219000000_add_cluster_type.sql - Add cluster_type field for multi-engine support (StarRocks/Doris)
 
 -- ========================================
 -- SECTION 1: CORE TABLES
@@ -50,6 +51,7 @@ CREATE TABLE IF NOT EXISTS clusters (
     tags TEXT,
     catalog VARCHAR(100) DEFAULT 'default_catalog',
     deployment_mode VARCHAR(20) DEFAULT 'shared_nothing' NOT NULL,
+    cluster_type VARCHAR(20) DEFAULT 'starrocks' NOT NULL,
     is_active BOOLEAN DEFAULT 0,
     organization_id INTEGER NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -60,6 +62,7 @@ CREATE TABLE IF NOT EXISTS clusters (
 CREATE INDEX IF NOT EXISTS idx_clusters_name ON clusters(name);
 CREATE INDEX IF NOT EXISTS idx_clusters_is_active ON clusters(is_active);
 CREATE INDEX IF NOT EXISTS idx_clusters_deployment_mode ON clusters(deployment_mode);
+CREATE INDEX IF NOT EXISTS idx_clusters_cluster_type ON clusters(cluster_type);
 CREATE INDEX IF NOT EXISTS idx_clusters_organization_id ON clusters(organization_id);
 
 -- ==============================================
