@@ -52,6 +52,34 @@ impl AuditLogService {
         }
     }
 
+    /// Get audit table name and field mappings based on cluster type
+    fn get_audit_config(&self, cluster: &Cluster) -> (String, &'static str, &'static str, &'static str, &'static str) {
+        use crate::models::cluster::ClusterType;
+        
+        match cluster.cluster_type {
+            ClusterType::StarRocks => {
+                // StarRocks: starrocks_audit_db__.starrocks_audit_tbl__
+                (
+                    self.audit_config.full_table_name(),
+                    "timestamp",     // time field
+                    "queryTime",     // query_time field
+                    "isQuery",       // is_query field
+                    "queryType"      // stmt_type field
+                )
+            },
+            ClusterType::Doris => {
+                // Doris: __internal_schema.audit_log
+                (
+                    "__internal_schema.audit_log".to_string(),
+                    "time",          // time field
+                    "query_time",    // query_time field (already in ms)
+                    "is_query",      // is_query field
+                    "stmt_type"      // stmt_type field
+                )
+            }
+        }
+    }
+
     /// Get top tables by access count
     /// 
     /// This queries the audit log to find the most frequently accessed tables.
@@ -68,46 +96,109 @@ impl AuditLogService {
     ) -> ApiResult<Vec<TopTableByAccess>> {
         let pool = self.mysql_pool_manager.get_pool(cluster).await?;
         let mysql_client = MySQLClient::from_pool(pool);
-        let audit_table = self.audit_config.full_table_name();
+        let (audit_table, time_field, _query_time_field, is_query_field, stmt_type_field) = self.get_audit_config(cluster);
         let audit_table_filter = &self.audit_config.table;
-        let query = format!(
-            r#"
-            SELECT 
-                COALESCE(NULLIF(`catalog`, 'default_catalog'), '') as catalog,
-                COALESCE(NULLIF(`db`, ''), '') as database,
-                -- Extract full table reference from stmt (handles catalog.db.table format)
-                TRIM(BOTH '`' FROM 
-                    REGEXP_REPLACE(
+        
+        use crate::models::cluster::ClusterType;
+        
+        // Different SQL for StarRocks (supports REGEXP_REPLACE) and Doris (uses SUBSTRING_INDEX)
+        let query = match cluster.cluster_type {
+            ClusterType::StarRocks => format!(
+                r#"
+                SELECT 
+                    COALESCE(NULLIF(`catalog`, 'default_catalog'), '') as catalog,
+                    COALESCE(NULLIF(`db`, ''), '') as db_name,
+                    -- Extract full table reference from stmt (handles catalog.db.table format)
+                    TRIM(BOTH '`' FROM 
                         REGEXP_REPLACE(
-                            `stmt`, 
-                            '.*\\b(?:FROM|JOIN|INTO|TABLE)\\s+(`?[a-zA-Z0-9_]+`?(?:\\.[a-zA-Z0-9_]+){{1,2}}|`?[a-zA-Z0-9_]+`?).*', 
-                            '$1'
-                        ),
-                        '`', ''
-                    )
-                ) as full_table_name,
-                COUNT(*) as access_count,
-                MAX(`timestamp`) as last_access,
-                COUNT(DISTINCT `user`) as unique_users
-            FROM {audit_table}
-            WHERE `timestamp` >= DATE_SUB(NOW(), INTERVAL {hours} HOUR)
-                AND isQuery = 1
-                AND `state` = 'EOF'
-                AND `queryType` IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE')
-                AND `catalog` != ''
-                AND (`db` != 'information_schema' OR `db` IS NULL)
-                AND (`db` != '_statistics_' OR `db` IS NULL)
-                AND LOWER(`stmt`) NOT LIKE '%{audit_table_filter}%'
-            GROUP BY catalog, database, full_table_name
-            HAVING full_table_name != ''
-                AND full_table_name NOT LIKE '%(%'
-                AND full_table_name NOT LIKE '%SELECT%'
-                AND full_table_name NOT LIKE '%WHERE%'
-                AND full_table_name NOT LIKE '%GROUP%'
-            ORDER BY access_count DESC
-            LIMIT {limit}
-            "#,
-        );
+                            REGEXP_REPLACE(
+                                `stmt`, 
+                                '.*\\b(?:FROM|JOIN|INTO|TABLE)\\s+(`?[a-zA-Z0-9_]+`?(?:\\.[a-zA-Z0-9_]+){{1,2}}|`?[a-zA-Z0-9_]+`?).*', 
+                                '$1'
+                            ),
+                            '`', ''
+                        )
+                    ) as full_table_name,
+                    COUNT(*) as access_count,
+                    MAX(`{time_field}`) as last_access,
+                    COUNT(DISTINCT `user`) as unique_users
+                FROM {audit_table}
+                WHERE `{time_field}` >= DATE_SUB(NOW(), INTERVAL {hours} HOUR)
+                    AND {is_query_field} = 1
+                    AND `state` = 'EOF'
+                    AND `{stmt_type_field}` IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE', 'Query')
+                    AND `catalog` != ''
+                    AND (`db` != 'information_schema' OR `db` IS NULL)
+                    AND (`db` != '_statistics_' OR `db` IS NULL)
+                    AND (`db` != '__internal_schema' OR `db` IS NULL)
+                    AND LOWER(`stmt`) NOT LIKE '%{audit_table_filter}%'
+                GROUP BY catalog, db_name, full_table_name
+                HAVING full_table_name != ''
+                    AND full_table_name NOT LIKE '%(%'
+                    AND full_table_name NOT LIKE '%SELECT%'
+                    AND full_table_name NOT LIKE '%WHERE%'
+                    AND full_table_name NOT LIKE '%GROUP%'
+                ORDER BY access_count DESC
+                LIMIT {limit}
+                "#,
+            ),
+            ClusterType::Doris => format!(
+                r#"
+                SELECT 
+                    COALESCE(NULLIF(`catalog`, 'default_catalog'), '') as catalog,
+                    COALESCE(NULLIF(`db`, ''), '') as db_name,
+                    -- Simplified table extraction for Doris (no REGEXP_REPLACE)
+                    -- Extract table name after FROM keyword using SUBSTRING_INDEX
+                    LOWER(
+                        REPLACE(
+                            REPLACE(
+                                REPLACE(
+                                    TRIM(
+                                        SUBSTRING_INDEX(
+                                            SUBSTRING_INDEX(
+                                                UPPER(`stmt`), 
+                                                'FROM ', 
+                                                -1
+                                            ),
+                                            ' ',
+                                            1
+                                        )
+                                    ),
+                                    '`', ''
+                                ),
+                                ')', ''
+                            ),
+                            '\n', ''
+                        )
+                    ) as full_table_name,
+                    COUNT(*) as access_count,
+                    MAX(`{time_field}`) as last_access,
+                    COUNT(DISTINCT `user`) as unique_users
+                FROM {audit_table}
+                WHERE `{time_field}` >= DATE_SUB(NOW(), INTERVAL {hours} HOUR)
+                    AND {is_query_field} = 1
+                    AND `state` = 'EOF'
+                    AND `{stmt_type_field}` IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE', 'Query')
+                    AND (`catalog` != '' OR `catalog` IS NOT NULL)
+                    AND `db` NOT IN ('information_schema', '_statistics_', '__internal_schema', 'mysql')
+                    AND UPPER(`stmt`) LIKE '%FROM %'
+                    AND LOWER(`stmt`) NOT LIKE '%audit_log%'
+                GROUP BY catalog, db_name, full_table_name
+                HAVING full_table_name != ''
+                    AND full_table_name NOT LIKE '%(%'
+                    AND full_table_name NOT LIKE '%select%'
+                    AND full_table_name NOT LIKE '%where%'
+                    AND full_table_name NOT LIKE '%group%'
+                    AND full_table_name NOT LIKE '%information_schema%'
+                    AND full_table_name NOT LIKE '%__internal_schema%'
+                    AND full_table_name NOT LIKE '%audit_log%'
+                    AND LENGTH(full_table_name) > 0
+                    AND LENGTH(full_table_name) < 100
+                ORDER BY access_count DESC
+                LIMIT {limit}
+                "#,
+            ),
+        };
         
         tracing::debug!("Querying top tables by access: hours={}, limit={}", hours, limit);
         
@@ -140,11 +231,13 @@ impl AuditLogService {
                 let catalog = col_idx
                     .get("catalog")
                     .and_then(|&i| row.get(i))
+                    .map(|s| s.as_str())
                     .unwrap_or("");
                 
                 let db_field = col_idx
-                    .get("database")
+                    .get("db_name")
                     .and_then(|&i| row.get(i))
+                    .map(|s| s.as_str())
                     .unwrap_or("");
                 
                 // Parse full_table_name: could be "table", "db.table", or "catalog.db.table"
@@ -208,33 +301,61 @@ impl AuditLogService {
     ) -> ApiResult<Vec<SlowQuery>> {
         let pool = self.mysql_pool_manager.get_pool(cluster).await?;
         let mysql_client = MySQLClient::from_pool(pool);
-        let audit_table = self.audit_config.full_table_name();
+        let (audit_table, time_field, query_time_field, is_query_field, _stmt_type_field) = self.get_audit_config(cluster);
         
-        // Query audit logs for slow queries
-        let query = format!(
-            r#"
-            SELECT 
-                queryId as query_id,
-                `user`,
-                COALESCE(`db`, '') as `database`,
-                `queryTime` as duration_ms,
-                `scanRows` as scan_rows,
-                `scanBytes` as scan_bytes,
-                `returnRows` as return_rows,
-                `cpuCostNs` / 1000000 as cpu_cost_ms,
-                `memCostBytes` as mem_cost_bytes,
-                `timestamp`,
-                `state`,
-                LEFT(`stmt`, 200) as query_preview
-            FROM {audit_table}
-            WHERE `timestamp` >= DATE_SUB(NOW(), INTERVAL {hours} HOUR)
-                AND `queryTime` >= {min_duration_ms}
-                AND isQuery = 1
-                AND `state` = 'EOF'
-            ORDER BY `queryTime` DESC
-            LIMIT {limit}
-            "#,
-        );
+        use crate::models::cluster::ClusterType;
+        
+        // Query audit logs for slow queries - field names differ between StarRocks and Doris
+        let query = match cluster.cluster_type {
+            ClusterType::StarRocks => format!(
+                r#"
+                SELECT 
+                    queryId as query_id,
+                    `user`,
+                    COALESCE(`db`, '') as `database`,
+                    `queryTime` as duration_ms,
+                    `scanRows` as scan_rows,
+                    `scanBytes` as scan_bytes,
+                    `returnRows` as return_rows,
+                    `cpuCostNs` / 1000000 as cpu_cost_ms,
+                    `memCostBytes` as mem_cost_bytes,
+                    `timestamp`,
+                    `state`,
+                    LEFT(`stmt`, 200) as query_preview
+                FROM {audit_table}
+                WHERE `{time_field}` >= DATE_SUB(NOW(), INTERVAL {hours} HOUR)
+                    AND `{query_time_field}` >= {min_duration_ms}
+                    AND {is_query_field} = 1
+                    AND `state` = 'EOF'
+                ORDER BY `{query_time_field}` DESC
+                LIMIT {limit}
+                "#,
+            ),
+            ClusterType::Doris => format!(
+                r#"
+                SELECT 
+                    query_id,
+                    `user`,
+                    COALESCE(`db`, '') as `database`,
+                    `query_time` as duration_ms,
+                    `scan_rows`,
+                    `scan_bytes`,
+                    `return_rows`,
+                    `cpu_time_ms` as cpu_cost_ms,
+                    `peak_memory_bytes` as mem_cost_bytes,
+                    `time` as timestamp,
+                    `state`,
+                    LEFT(`stmt`, 200) as query_preview
+                FROM {audit_table}
+                WHERE `{time_field}` >= DATE_SUB(NOW(), INTERVAL {hours} HOUR)
+                    AND `{query_time_field}` >= {min_duration_ms}
+                    AND {is_query_field} = 1
+                    AND `state` = 'EOF'
+                ORDER BY `{query_time_field}` DESC
+                LIMIT {limit}
+                "#,
+            ),
+        };
         
         tracing::debug!(
             "Querying slow queries: hours={}, min_duration={}ms, limit={}",

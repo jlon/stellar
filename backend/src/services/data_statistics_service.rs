@@ -4,7 +4,7 @@
 
 use crate::config::AuditLogConfig;
 use crate::models::Cluster;
-use crate::services::{ClusterService, MaterializedViewService, MySQLClient, MySQLPoolManager};
+use crate::services::{AuditLogService, ClusterService, MaterializedViewService, MySQLClient, MySQLPoolManager, TopTableByAccess};
 use crate::utils::ApiResult;
 use chrono::{NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -21,14 +21,6 @@ pub struct TopTableBySize {
     pub rows: Option<i64>,
 }
 
-/// Top table by access count
-#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
-pub struct TopTableByAccess {
-    pub database: String,
-    pub table: String,
-    pub access_count: i64,
-    pub last_access: Option<String>,
-}
 
 /// Data statistics cache
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
@@ -69,7 +61,7 @@ pub struct DataStatisticsService {
     db: SqlitePool,
     cluster_service: Arc<ClusterService>,
     mysql_pool_manager: Arc<MySQLPoolManager>,
-    audit_config: AuditLogConfig,
+    audit_log_service: Arc<AuditLogService>,
 }
 
 impl DataStatisticsService {
@@ -80,7 +72,11 @@ impl DataStatisticsService {
         mysql_pool_manager: Arc<MySQLPoolManager>,
         audit_config: AuditLogConfig,
     ) -> Self {
-        Self { db, cluster_service, mysql_pool_manager, audit_config }
+        let audit_log_service = Arc::new(AuditLogService::new(
+            mysql_pool_manager.clone(),
+            audit_config,
+        ));
+        Self { db, cluster_service, mysql_pool_manager, audit_log_service }
     }
 
     /// Collect and update data statistics for a cluster
@@ -104,13 +100,18 @@ impl DataStatisticsService {
         // Get top tables by size (via MySQL client for detailed info)
         let top_tables_by_size = self.get_top_tables_by_size(&cluster, 20).await?;
 
-        // Get top tables by access (from query history or audit logs)
+        // Get top tables by access (from audit logs using AuditLogService)
         // Use time_range_start if provided, otherwise default to 3 days ago
         let time_range_start =
             time_range_start.unwrap_or_else(|| chrono::Utc::now() - chrono::Duration::days(3));
-        let top_tables_by_access = self
-            .get_top_tables_by_access(&cluster, 20, time_range_start)
-            .await?;
+        let hours = (chrono::Utc::now() - time_range_start).num_hours().max(1) as i32;
+        let top_tables_by_access = self.audit_log_service
+            .get_top_tables_by_access(&cluster, hours, 20)
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!("Failed to get top tables by access from audit logs: {}. Returning empty list.", e);
+                Vec::new()
+            });
 
         // Calculate total data size from all tables (not just top 20)
         let total_data_size = self.get_total_data_size_mysql(&mysql_client).await?;
@@ -325,249 +326,6 @@ impl DataStatisticsService {
         Ok(tables)
     }
 
-    /// Get top tables by access count
-    /// Note: This requires audit logs to be enabled in StarRocks
-    async fn get_top_tables_by_access(
-        &self,
-        cluster: &Cluster,
-        limit: usize,
-        time_range_start: chrono::DateTime<chrono::Utc>,
-    ) -> ApiResult<Vec<TopTableByAccess>> {
-        let pool = self.mysql_pool_manager.get_pool(cluster).await?;
-        let mysql_client = MySQLClient::from_pool(pool);
-
-        // Format time range start time for MySQL query
-        let start_time_str = time_range_start.format("%Y-%m-%d %H:%M:%S").to_string();
-
-        // First try: Query with table name extraction from stmt
-        // Extract table name after "FROM" keyword (simplified for StarRocks compatibility)
-        // Note: External catalogs (hive/iceberg/etc) have empty `db` field
-        let query_with_table = format!(
-            r#"
-            SELECT 
-                `catalog`,
-                `db` as database_name,
-                LOWER(
-                    REPLACE(
-                        REPLACE(
-                            SUBSTRING_INDEX(
-                                SUBSTRING_INDEX(
-                                    SUBSTRING_INDEX(stmt, 'FROM ', -1),
-                                    ' ', 
-                                    1
-                                ),
-                                '.',
-                                -1
-                            ),
-                            '`',
-                            ''
-                        ),
-                        ')',
-                        ''
-                    )
-                ) as table_name,
-                SUBSTRING_INDEX(
-                    SUBSTRING_INDEX(stmt, 'FROM ', -1),
-                    ' ', 
-                    1
-                ) as full_table_ref,
-                COUNT(*) as access_count
-            FROM {}
-            WHERE timestamp >= '{}'
-                AND `catalog` != ''
-                AND (`db` NOT IN ('information_schema', '_statistics_', 'sys', '{}', 'recycle_dw') OR `db` IS NULL OR `db` = '')
-                AND UPPER(stmt) LIKE '%FROM %'
-                AND LOWER(stmt) NOT LIKE '%{}%'
-            GROUP BY `catalog`, database_name, table_name, full_table_ref
-            HAVING table_name NOT LIKE '%select%'
-                AND table_name NOT LIKE '%(%'
-                AND table_name NOT LIKE '%where%'
-                AND table_name NOT LIKE '%group%'
-                AND LENGTH(table_name) > 0
-                AND LENGTH(table_name) < 100
-            ORDER BY access_count DESC
-            LIMIT {}
-            "#,
-            self.audit_config.full_table_name(),
-            start_time_str,
-            self.audit_config.database,
-            self.audit_config.table,
-            limit
-        );
-
-        tracing::debug!("Querying top tables by access with table name extraction");
-
-        match mysql_client.query(&query_with_table).await {
-            Ok(results) => {
-                let tables = results
-                    .into_iter()
-                    .filter_map(|row| {
-                        let catalog = row
-                            .get("catalog")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .trim();
-                        let database = row
-                            .get("database_name")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .trim();
-                        let table = row.get("table_name").and_then(|v| v.as_str())?.trim();
-                        let full_table_ref = row
-                            .get("full_table_ref")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .trim();
-
-                        // Try to parse access_count - could be i64 or string
-                        let access_count = row
-                            .get("access_count")
-                            .and_then(|v| v.as_i64())
-                            .or_else(|| {
-                                row.get("access_count")
-                                    .and_then(|v| v.as_str())
-                                    .and_then(|s| s.parse::<i64>().ok())
-                            })?;
-
-                        // Parse full_table_ref to extract database and table
-                        // Format: table, db.table, or catalog.db.table
-                        let full_ref_clean = full_table_ref.replace('`', "").trim().to_string();
-                        let parts: Vec<&str> = full_ref_clean.split('.').collect();
-
-                        let (final_db, final_table) = match parts.len() {
-                            3 => {
-                                // catalog.database.table (external catalog)
-                                (format!("{}.{}", parts[0], parts[1]), parts[2].to_string())
-                            },
-                            2 => {
-                                // database.table
-                                if catalog != "default_catalog" && !catalog.is_empty() {
-                                    // External catalog
-                                    (format!("{}.{}", catalog, parts[0]), parts[1].to_string())
-                                } else {
-                                    // Default catalog
-                                    (parts[0].to_string(), parts[1].to_string())
-                                }
-                            },
-                            1 => {
-                                // Just table name
-                                if !database.is_empty() {
-                                    if catalog != "default_catalog" && !catalog.is_empty() {
-                                        (format!("{}.{}", catalog, database), table.to_string())
-                                    } else {
-                                        (database.to_string(), table.to_string())
-                                    }
-                                } else {
-                                    // No database info, skip
-                                    tracing::debug!(
-                                        "Skipping table with no database info: {}",
-                                        table
-                                    );
-                                    return None;
-                                }
-                            },
-                            _ => {
-                                tracing::debug!(
-                                    "Invalid table reference format: {}",
-                                    full_ref_clean
-                                );
-                                return None;
-                            },
-                        };
-
-                        // Filter out system tables
-                        if final_db.contains("information_schema")
-                            || final_db.contains("_statistics_")
-                            || final_db.contains("sys")
-                            || final_db.contains(&self.audit_config.database)
-                            || final_table == self.audit_config.table
-                        {
-                            tracing::debug!(
-                                "Filtering out system table: {}.{}",
-                                final_db,
-                                final_table
-                            );
-                            return None;
-                        }
-
-                        Some(TopTableByAccess {
-                            database: final_db,
-                            table: final_table,
-                            access_count,
-                            last_access: None,
-                        })
-                    })
-                    .collect::<Vec<_>>();
-
-                tracing::info!("Retrieved {} top tables by access", tables.len());
-                Ok(tables)
-            },
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to query audit logs with table extraction: {}. Falling back to database-level stats.",
-                    e
-                );
-
-                // Fallback: database-level statistics
-                let query_db_only = format!(
-                    r#"
-                    SELECT 
-                        db as database_name,
-                        COUNT(*) as access_count
-                    FROM {}
-                    WHERE timestamp >= '{}'
-                        AND db NOT IN ('information_schema', '_statistics_', '', 'sys', '{}', 'recycle_dw')
-                    GROUP BY db
-                    ORDER BY access_count DESC
-                    LIMIT {}
-                    "#,
-                    self.audit_config.full_table_name(),
-                    start_time_str,
-                    self.audit_config.database,
-                    limit
-                );
-
-                match mysql_client.query(&query_db_only).await {
-                    Ok(results) => {
-                        let tables = results
-                            .into_iter()
-                            .filter_map(|row| {
-                                let database = row.get("database_name").and_then(|v| v.as_str())?;
-                                let access_count = row
-                                    .get("access_count")
-                                    .and_then(|v| v.as_i64())
-                                    .or_else(|| {
-                                        row.get("access_count")
-                                            .and_then(|v| v.as_str())
-                                            .and_then(|s| s.parse::<i64>().ok())
-                                    })?;
-
-                                Some(TopTableByAccess {
-                                    database: database.to_string(),
-                                    table: "(所有表)".to_string(), // Database-level fallback
-                                    access_count,
-                                    last_access: None,
-                                })
-                            })
-                            .collect::<Vec<_>>();
-
-                        tracing::info!(
-                            "Retrieved {} top databases by access (fallback)",
-                            tables.len()
-                        );
-                        Ok(tables)
-                    },
-                    Err(e) => {
-                        tracing::warn!(
-                            "Failed to query audit logs (fallback): {}. Returning empty list.",
-                            e
-                        );
-                        Ok(Vec::new())
-                    },
-                }
-            },
-        }
-    }
 
     /// Get materialized view statistics
     async fn get_mv_statistics(&self, cluster: &Cluster) -> ApiResult<(i32, i32, i32, i32)> {
@@ -765,7 +523,7 @@ impl DataStatisticsService {
 
     /// List user databases excluding system schemas
     async fn list_user_databases(&self, mysql_client: &MySQLClient) -> ApiResult<Vec<String>> {
-        let system_dbs = ["information_schema", "_statistics_", &self.audit_config.database, "sys"];
+        let system_dbs = ["information_schema", "_statistics_", "starrocks_audit_db__", "__internal_schema", "sys"];
 
         let mut databases = Vec::new();
         let (columns, rows) = mysql_client.query_raw("SHOW DATABASES").await?;

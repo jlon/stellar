@@ -1,3 +1,4 @@
+pub mod audit_log_service;
 pub mod auth_service;
 pub mod baseline_refresh_task;
 pub mod baseline_service;
@@ -20,12 +21,13 @@ pub mod system_function_service;
 pub mod user_role_service;
 pub mod user_service;
 
+pub use audit_log_service::{AuditLogService, SlowQuery, TopTableByAccess};
 pub use auth_service::AuthService;
 pub use baseline_refresh_task::start_baseline_refresh_task;
 pub use casbin_service::CasbinService;
 pub use cluster_service::ClusterService;
 pub use data_statistics_service::{
-    DataStatistics, DataStatisticsService, TopTableByAccess, TopTableBySize,
+    DataStatistics, DataStatisticsService, TopTableBySize,
 };
 pub use llm::{
     LLMAnalysisResult,
