@@ -58,15 +58,19 @@ export class ClusterFormComponent implements OnInit {
   ngOnInit(): void {
     // Determine if current user is super admin
     this.isSuperAdmin = this.authService.isSuperAdmin();
-    
+
     // Load organizations and current organization
     this.loadOrganizationData();
-    
+
     const id = this.route.snapshot.paramMap.get('id');
     if (id && id !== 'new') {
       this.isEditMode = true;
       this.clusterId = parseInt(id, 10);
       this.loadCluster();
+    } else {
+      // In create mode, password is optional (allow empty password)
+      this.clusterForm.get('password')?.clearValidators();
+      this.clusterForm.get('password')?.updateValueAndValidity();
     }
   }
   
@@ -256,14 +260,23 @@ export class ClusterFormComponent implements OnInit {
 
   private handleHealthCheckResult(health: any): void {
     if (health.status === 'healthy') {
-      const details = health.checks.map((c: any) => c.name + ': ' + c.message).join('\n');
-      this.toastrService.success('健康检查通过\n' + details, '连接成功');
+      // For healthy status, show detailed checks
+      const details = health.checks.map((c: any) => `✓ ${c.name}: ${c.message}`).join('\n');
+      this.toastrService.success(`健康检查通过\n\n${details}`, '连接成功');
     } else if (health.status === 'warning') {
-      const details = health.checks.map((c: any) => c.name + ': ' + c.message).join('\n');
-      this.toastrService.warning('健康检查发现问题\n' + details, '警告');
+      // For warning status, highlight problematic checks
+      const warnings = health.checks
+        .filter((c: any) => c.status !== 'ok')
+        .map((c: any) => `⚠ ${c.name}: ${c.message}`)
+        .join('\n');
+      this.toastrService.warning(`健康检查发现问题\n\n${warnings || '请检查集群配置'}`, '警告');
     } else {
-      const details = health.checks.map((c: any) => c.name + ': ' + c.message).join('\n');
-      this.toastrService.danger('健康检查失败\n' + details, '连接失败');
+      // For critical status, show error details
+      const errors = health.checks
+        .filter((c: any) => c.status === 'critical' || c.status === 'warning')
+        .map((c: any) => `✗ ${c.name}: ${c.message}`)
+        .join('\n');
+      this.toastrService.danger(`健康检查失败\n\n${errors || '请检查集群配置'}`, '连接失败');
     }
     this.loading = false;
   }

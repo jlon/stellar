@@ -6,6 +6,7 @@ pub mod casbin_service;
 pub mod cluster_adapter;
 pub mod cluster_service;
 pub mod data_statistics_service;
+pub mod db_auth_query_service;
 pub mod llm;
 pub mod materialized_view_service;
 pub mod metrics_collector_service;
@@ -14,6 +15,7 @@ pub mod mysql_pool_manager;
 pub mod organization_service;
 pub mod overview_service;
 pub mod permission_service;
+pub mod permission_request_service;
 pub mod profile_analyzer;
 pub mod role_service;
 pub mod starrocks_client;
@@ -27,6 +29,7 @@ pub use baseline_refresh_task::start_baseline_refresh_task;
 pub use casbin_service::CasbinService;
 pub use cluster_service::ClusterService;
 pub use data_statistics_service::{DataStatistics, DataStatisticsService, TopTableBySize};
+pub use db_auth_query_service::DbAuthQueryService;
 pub use llm::{
     LLMAnalysisResult, LLMError, LLMProvider, LLMProviderInfo, LLMServiceImpl, LLMUsageStats,
     RootCauseAnalysisRequest as LLMAnalysisRequest,
@@ -46,6 +49,7 @@ pub use overview_service::{
     TransactionStats,
 };
 pub use permission_service::PermissionService;
+pub use permission_request_service::PermissionRequestService;
 pub use role_service::RoleService;
 pub use starrocks_client::StarRocksClient;
 pub use system_function_service::SystemFunctionService;

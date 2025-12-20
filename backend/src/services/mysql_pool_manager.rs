@@ -80,7 +80,7 @@ impl MySQLPoolManager {
             .ip_or_hostname(&cluster.fe_host)
             .tcp_port(cluster.fe_query_port as u16)
             .user(Some(&cluster.username))
-            .pass(Some(&cluster.password_encrypted))
+            .pass(cluster.get_auth_password())
             .db_name(None::<String>)
             .prefer_socket(false)
             .ssl_opts(None::<SslOpts>)

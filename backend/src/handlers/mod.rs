@@ -7,6 +7,7 @@ pub mod materialized_view;
 pub mod organization;
 pub mod overview;
 pub mod permission;
+pub mod permission_request;
 pub mod profile;
 pub mod query;
 pub mod query_history;

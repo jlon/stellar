@@ -1,0 +1,46 @@
+<div class="accounts-container">
+  <!-- 加载中状态 -->
+  <div *ngIf="loading" class="text-center py-5">
+    <nb-spinner status="primary"></nb-spinner>
+    <p class="mt-3 text-muted">加载中...</p>
+  </div>
+
+  <!-- 未选择集群状态 -->
+  <nb-card *ngIf="isNoCluster && !loading" class="text-center py-5">
+    <nb-card-body>
+      <nb-icon icon="alert-outline" size="giant" status="warning"></nb-icon>
+      <h4 class="mt-3">请先选择集群</h4>
+      <p class="text-muted">请在左侧菜单中选择一个活跃的集群来查看账户列表。</p>
+    </nb-card-body>
+  </nb-card>
+
+  <!-- 错误状态 -->
+  <nb-alert *ngIf="error && !loading && !isNoCluster" status="danger" closable="false" class="mb-3">
+    <p class="alert-title">
+      <nb-icon icon="alert-circle-outline"></nb-icon>
+      加载失败
+    </p>
+    <p>{{ error }}</p>
+    <button nbButton size="small" status="danger" (click)="retry()" class="mt-2">
+      <nb-icon icon="refresh-outline"></nb-icon>
+      重试
+    </button>
+  </nb-alert>
+
+  <!-- 空状态 -->
+  <nb-card *ngIf="isEmpty && !loading && !error && !isNoCluster" class="text-center py-5">
+    <nb-card-body>
+      <nb-icon icon="inbox-outline" size="giant" status="info"></nb-icon>
+      <h4 class="mt-3">暂无账户数据</h4>
+      <p class="text-muted">该集群目前没有任何数据库账户。</p>
+    </nb-card-body>
+  </nb-card>
+
+  <!-- 数据表格 -->
+  <ng2-smart-table
+    *ngIf="!loading && !error && !isEmpty && !isNoCluster"
+    [settings]="settings"
+    [source]="source"
+  >
+  </ng2-smart-table>
+</div>

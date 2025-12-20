@@ -225,4 +225,14 @@ impl Cluster {
     pub fn is_doris(&self) -> bool {
         self.cluster_type == ClusterType::Doris
     }
+
+    /// Get password for authentication - returns None if password is empty
+    /// This is used for proper handling of no-password clusters
+    pub fn get_auth_password(&self) -> Option<&str> {
+        if self.password_encrypted.is_empty() {
+            None
+        } else {
+            Some(&self.password_encrypted)
+        }
+    }
 }
