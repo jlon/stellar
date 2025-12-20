@@ -1,5 +1,5 @@
 <div class="row">
-  <div class="col-lg-8 offset-lg-2">
+  <div class="col-lg-12">
     <nb-card>
       <nb-card-header>
         <h5>{{ isEditMode ? '编辑集群' : '添加集群' }}</h5>
@@ -7,35 +7,63 @@
       <nb-card-body>
         <form [formGroup]="clusterForm" (ngSubmit)="onSubmit()">
           <!-- Organization Selection (Super Admin Only) -->
-          <div class="form-group" *ngIf="isSuperAdmin">
-            <label for="organization" class="label">所属组织 *</label>
-            <nb-form-field>
-              <nb-select
-                formControlName="organization_id"
-                id="organization"
-                placeholder="请选择组织"
-                [status]="clusterForm.get('organization_id')?.invalid && clusterForm.get('organization_id')?.touched ? 'danger' : 'basic'"
-                fullWidth
-              >
-                <nb-option *ngFor="let org of organizations" [value]="org.id">
-                  {{ org.name }}
-                  <span class="text-hint" *ngIf="org.code"> ({{ org.code }})</span>
-                </nb-option>
-              </nb-select>
-            </nb-form-field>
-            <ng-container *ngIf="clusterForm.get('organization_id')?.invalid && clusterForm.get('organization_id')?.touched">
-              <small class="form-text text-danger">
-                请选择组织
-              </small>
-            </ng-container>
-          </div>
+          <div class="row">
+            <div class="col-md-6" *ngIf="isSuperAdmin">
+              <div class="form-group">
+                <label for="organization" class="label">所属组织 *</label>
+                <nb-form-field>
+                  <nb-select
+                    formControlName="organization_id"
+                    id="organization"
+                    placeholder="请选择组织"
+                    [status]="clusterForm.get('organization_id')?.invalid && clusterForm.get('organization_id')?.touched ? 'danger' : 'basic'"
+                    fullWidth
+                  >
+                    <nb-option *ngFor="let org of organizations" [value]="org.id">
+                      {{ org.name }}
+                      <span class="text-hint" *ngIf="org.code"> ({{ org.code }})</span>
+                    </nb-option>
+                  </nb-select>
+                </nb-form-field>
+                <ng-container *ngIf="clusterForm.get('organization_id')?.invalid && clusterForm.get('organization_id')?.touched">
+                  <small class="form-text text-danger">
+                    请选择组织
+                  </small>
+                </ng-container>
+              </div>
+            </div>
 
-          <!-- Organization Display (Org Admin) -->
-          <div class="form-group" *ngIf="!isSuperAdmin && currentOrganization">
-            <label class="label">所属组织</label>
-            <div class="alert alert-info d-flex align-items-center">
-              <nb-icon icon="info-outline" class="me-2"></nb-icon>
-              <span>{{ currentOrganization.name }} <span class="text-hint">({{ currentOrganization.code }})</span></span>
+            <div class="col-md-6" *ngIf="!isSuperAdmin && currentOrganization">
+              <div class="form-group">
+                <label class="label">所属组织</label>
+                <div class="alert alert-info d-flex align-items-center">
+                  <nb-icon icon="info-outline" class="me-2"></nb-icon>
+                  <span>{{ currentOrganization.name }} <span class="text-hint">({{ currentOrganization.code }})</span></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-md-6">
+              <div class="form-group">
+                <label for="deployment_mode" class="label">部署模式 *</label>
+                <nb-form-field>
+                  <nb-select
+                    formControlName="deployment_mode"
+                    id="deployment_mode"
+                    placeholder="请选择部署模式"
+                    [status]="clusterForm.get('deployment_mode')?.invalid && clusterForm.get('deployment_mode')?.touched ? 'danger' : 'basic'"
+                    fullWidth
+                  >
+                    <nb-option value="shared_nothing">存算一体 (Shared-Nothing)</nb-option>
+                    <nb-option value="shared_data">存算分离 (Shared-Data)</nb-option>
+                  </nb-select>
+                </nb-form-field>
+                <ng-container *ngIf="clusterForm.get('deployment_mode')?.invalid && clusterForm.get('deployment_mode')?.touched">
+                  <small class="form-text text-danger">
+                    请选择部署模式
+                  </small>
+                </ng-container>
+              </div>
             </div>
           </div>
 
@@ -96,43 +124,6 @@
                 />
               </div>
             </div>
-          </div>
-
-          <div class="row">
-            <div class="col-md-12">
-              <div class="form-group">
-                <label for="deployment_mode" class="label">部署模式 *</label>
-                <nb-form-field>
-                  <nb-select
-                    formControlName="deployment_mode"
-                    id="deployment_mode"
-                    placeholder="请选择部署模式"
-                    [status]="clusterForm.get('deployment_mode')?.invalid && clusterForm.get('deployment_mode')?.touched ? 'danger' : 'basic'"
-                    fullWidth
-                  >
-                    <nb-option value="shared_nothing">存算一体 (Shared-Nothing)</nb-option>
-                    <nb-option value="shared_data">存算分离 (Shared-Data)</nb-option>
-                  </nb-select>
-                </nb-form-field>
-                <ng-container *ngIf="clusterForm.get('deployment_mode')?.invalid && clusterForm.get('deployment_mode')?.touched">
-                  <small class="form-text text-danger">
-                    请选择部署模式
-                  </small>
-                </ng-container>
-              </div>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label for="description" class="label">描述</label>
-            <textarea
-              nbInput
-              fullWidth
-              id="description"
-              formControlName="description"
-              placeholder="输入集群描述（可选）"
-              rows="3"
-            ></textarea>
           </div>
 
           <h6 class="mt-4">连接信息</h6>
@@ -204,14 +195,14 @@
 
             <div class="col-md-6">
               <div class="form-group">
-                <label for="password" class="label">密码 {{ isEditMode ? '(留空表示不修改)' : '*' }}</label>
+                <label for="password" class="label">密码 {{ isEditMode ? '(留空表示不修改)' : '(可选)' }}</label>
                 <input
                   nbInput
                   fullWidth
                   type="password"
                   id="password"
                   formControlName="password"
-                  placeholder="输入密码"
+                  placeholder="输入密码或留空"
                   [status]="clusterForm.get('password')?.invalid && clusterForm.get('password')?.touched ? 'danger' : 'basic'"
                 />
               </div>
@@ -253,6 +244,21 @@
 
           <div class="form-group">
             <nb-checkbox formControlName="enable_ssl">启用 SSL</nb-checkbox>
+          </div>
+
+          <h6 class="mt-4">备注</h6>
+          <hr />
+
+          <div class="form-group">
+            <label for="description" class="label">描述</label>
+            <textarea
+              nbInput
+              fullWidth
+              id="description"
+              formControlName="description"
+              placeholder="输入集群描述（可选）"
+              rows="3"
+            ></textarea>
           </div>
 
           <div class="d-flex justify-content-between align-items-center mt-4 pt-3" style="border-top: 1px solid #edf1f7;">

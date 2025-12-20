@@ -83,6 +83,18 @@ export const MENU_ITEMS: NbMenuItem[] = [
     data: { permission: 'menu:variables' },
   } as NbMenuItem & { data?: { permission: string } },
   {
+    title: '集群运维',
+    icon: 'settings-outline',
+    data: { permission: 'menu:cluster-ops' },
+    children: [
+      {
+        title: '鉴权管控',
+        link: '/pages/cluster-ops/auth',
+        data: { permission: 'menu:cluster-ops:auth' },
+      } as NbMenuItem & { data?: { permission: string } },
+    ],
+  } as NbMenuItem & { data?: { permission: string } },
+  {
     title: '系统管理',
     icon: 'settings-outline',
     data: { permission: 'menu:system' }, // Parent menu permission

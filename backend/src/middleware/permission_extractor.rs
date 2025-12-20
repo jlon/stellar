@@ -13,6 +13,20 @@ pub fn extract_permission(method: &str, uri: &str) -> Option<(String, String)> {
     let path = uri.strip_prefix("/api/").unwrap_or(uri);
     let segments: Vec<&str> = path.split('/').collect();
 
+    // Special handling for /api/clusters/db-auth/* paths
+    // db-auth is a separate resource in the permissions model, not under clusters
+    if segments.get(0) == Some(&"clusters") && segments.get(1) == Some(&"db-auth") {
+        if method == "GET" && segments.len() == 3 {
+            let action = match segments.get(2) {
+                Some(&"accounts") => Some("accounts:list".to_string()),
+                Some(&"roles") => Some("roles:list".to_string()),
+                _ => None,
+            }?;
+            return Some(("db-auth".to_string(), action));
+        }
+        return None;
+    }
+
     let resource = match *(segments.first()?) {
         "roles" => "roles",
         "permissions" => "permissions",
@@ -93,6 +107,16 @@ fn extract_clusters_id_action(segments: &[&str], method: &str) -> Option<String>
         _ if segments.len() >= 3 => {
             let action = segments.get(2)?;
 
+            // Special handling for db-auth routes
+            if *action == "db-auth" && segments.len() >= 4 {
+                let db_action = segments.get(3)?;
+                return match (*db_action, method) {
+                    ("accounts", "GET") => Some("db-auth:accounts:list".to_string()),
+                    ("roles", "GET") => Some("db-auth:roles:list".to_string()),
+                    _ => Some("db-auth".to_string()),
+                };
+            }
+
             if method == "POST" && *action == "health" {
                 Some("health:post".to_string())
             } else if method == "POST" && *action == "sql" && segments.get(3) == Some(&"diagnose") {
@@ -113,6 +137,18 @@ fn extract_clusters_special_paths(segments: &[&str], method: &str) -> Option<Str
     let _len = segments.len();
 
     let handlers: Vec<RouteHandler> = vec![
+        // Handle /api/clusters/db-auth/accounts and /api/clusters/db-auth/roles
+        // Note: db-auth is a separate resource in permissions, not a clusters sub-action
+        // So we need to handle it specially to extract it as a separate resource
+        Box::new(|seg, m| {
+            if m == "GET" && seg.len() == 3 && seg.get(1) == Some(&"db-auth") {
+                // This handler returns None here because db-auth needs to be extracted
+                // at resource level, not action level. The caller should detect this pattern.
+                None
+            } else {
+                None
+            }
+        }),
         Box::new(|seg, m| {
             if m == "DELETE" && seg.len() == 4 && seg.get(1) == Some(&"backends") {
                 Some("backends:delete".to_string())

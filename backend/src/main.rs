@@ -16,9 +16,10 @@ use stellar::db;
 use stellar::embedded::WebAssets;
 use stellar::models;
 use stellar::services::{
-    AuthService, CasbinService, ClusterService, DataStatisticsService, LLMServiceImpl,
-    MetricsCollectorService, MySQLPoolManager, OrganizationService, OverviewService,
-    PermissionService, RoleService, SystemFunctionService, UserRoleService, UserService,
+    AuthService, CasbinService, ClusterService, DataStatisticsService, DbAuthQueryService,
+    LLMServiceImpl, MetricsCollectorService, MySQLPoolManager, OrganizationService, OverviewService,
+    PermissionRequestService, PermissionService, RoleService, SystemFunctionService,
+    UserRoleService, UserService,
 };
 use stellar::utils::{JwtUtil, ScheduledExecutor};
 use stellar::{AppState, handlers, middleware, services};
@@ -115,6 +116,19 @@ use stellar::{AppState, handlers, middleware, services};
         handlers::user::create_user,
         handlers::user::update_user,
         handlers::user::delete_user,
+
+        handlers::permission_request::list_my_requests,
+        handlers::permission_request::list_pending_approvals,
+        handlers::permission_request::get_request,
+        handlers::permission_request::submit_request,
+        handlers::permission_request::approve_request,
+        handlers::permission_request::reject_request,
+        handlers::permission_request::cancel_request,
+        handlers::permission_request::list_db_accounts,
+        handlers::permission_request::list_db_roles,
+        handlers::permission_request::list_db_accounts_active,
+        handlers::permission_request::list_db_roles_active,
+        handlers::permission_request::preview_sql,
     ),
     components(
         schemas(
@@ -194,6 +208,15 @@ use stellar::{AppState, handlers, middleware, services};
             services::TopTableBySize,
             services::TopTableByAccess,
             services::CapacityPrediction,
+            models::PermissionRequest,
+            models::PermissionRequestResponse,
+            models::SubmitRequestDto,
+            models::ApprovalDto,
+            models::RequestDetails,
+            models::RequestQueryFilter,
+            models::PaginatedResponse::<models::PermissionRequestResponse>,
+            models::DbAccountDto,
+            models::DbRoleDto,
         )
     ),
     tags(
@@ -208,6 +231,8 @@ use stellar::{AppState, handlers, middleware, services};
         (name = "Roles", description = "Role management"),
         (name = "Permissions", description = "Permission management"),
         (name = "Users", description = "User role management"),
+        (name = "Permission Requests", description = "Permission request workflow"),
+        (name = "Database Authentication", description = "Database account and role management"),
     ),
     modifiers(&SecurityAddon)
 )]
@@ -332,6 +357,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let llm_service = Arc::new(LLMServiceImpl::new(pool.clone(), true, 24));
     tracing::info!("LLM service initialized");
 
+    let db_auth_query_service = Arc::new(DbAuthQueryService::new(
+        Arc::clone(&mysql_pool_manager),
+        Arc::clone(&cluster_service),
+    ));
+    tracing::info!("DbAuthQueryService initialized with real cluster query support");
+
+    let permission_request_service = Arc::new(PermissionRequestService::new(pool.clone()));
+    tracing::info!("PermissionRequestService initialized");
+
     let app_state = AppState {
         db: pool.clone(),
         mysql_pool_manager: Arc::clone(&mysql_pool_manager),
@@ -350,6 +384,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         user_role_service: Arc::clone(&user_role_service),
         user_service: Arc::clone(&user_service),
         llm_service: Arc::clone(&llm_service),
+        db_auth_query_service: Arc::clone(&db_auth_query_service),
+        permission_request_service: Arc::clone(&permission_request_service),
     };
 
     if config.metrics.enabled {
@@ -573,6 +609,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/llm/providers/:id/deactivate", post(handlers::llm::deactivate_provider))
         .route("/api/llm/providers/:id/test", post(handlers::llm::test_provider_connection))
         .route("/api/llm/analyze/root-cause", post(handlers::llm::analyze_root_cause))
+        .route("/api/permission-requests/my", get(handlers::permission_request::list_my_requests))
+        .route("/api/permission-requests/pending", get(handlers::permission_request::list_pending_approvals))
+        .route("/api/permission-requests", post(handlers::permission_request::submit_request))
+        .route("/api/permission-requests/:request_id", get(handlers::permission_request::get_request))
+        .route("/api/permission-requests/:request_id/approve", post(handlers::permission_request::approve_request))
+        .route("/api/permission-requests/:request_id/reject", post(handlers::permission_request::reject_request))
+        .route("/api/permission-requests/:request_id/cancel", post(handlers::permission_request::cancel_request))
+        .route("/api/clusters/:cluster_id/db-auth/accounts", get(handlers::permission_request::list_db_accounts))
+        .route("/api/clusters/:cluster_id/db-auth/roles", get(handlers::permission_request::list_db_roles))
+        .route("/api/clusters/db-auth/accounts", get(handlers::permission_request::list_db_accounts_active))
+        .route("/api/clusters/db-auth/roles", get(handlers::permission_request::list_db_roles_active))
+        .route("/api/db-auth/preview-sql", post(handlers::permission_request::preview_sql))
         .with_state(Arc::clone(&app_state_arc))
         .layer(axum_middleware::from_fn_with_state(auth_state, middleware::auth_middleware));
 

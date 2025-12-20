@@ -525,6 +525,51 @@ CREATE TABLE IF NOT EXISTS llm_usage_stats (
 
 CREATE INDEX IF NOT EXISTS idx_llm_usage_date ON llm_usage_stats(date, provider_id);
 
+-- ==============================================
+-- 4.7 Permission Requests Table (新增鉴权管控工单)
+-- ==============================================
+CREATE TABLE IF NOT EXISTS permission_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    -- Basic Information
+    cluster_id INTEGER NOT NULL,
+    applicant_id INTEGER NOT NULL,
+    applicant_org_id INTEGER NOT NULL,
+    request_type VARCHAR(20) NOT NULL,  -- 'create_account' | 'grant_role' | 'grant_permission'
+
+    -- Request Details (stored as JSON)
+    request_details TEXT NOT NULL,      -- JSON: target_account, target_role, permissions, scope, etc.
+    reason TEXT NOT NULL,
+    valid_until TIMESTAMP,              -- Expiration time for temporary permissions
+
+    -- Approval Workflow
+    status VARCHAR(20) DEFAULT 'pending',  -- 'pending' | 'approved' | 'rejected' | 'executing' | 'completed' | 'failed'
+    approver_id INTEGER,
+    approval_comment TEXT,
+    approved_at TIMESTAMP,
+
+    -- Execution Information
+    executed_sql TEXT,                  -- Actual executed SQL statement
+    execution_result TEXT,              -- Execution result or error message
+    executed_at TIMESTAMP,
+
+    -- Audit
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (cluster_id) REFERENCES clusters(id),
+    FOREIGN KEY (applicant_id) REFERENCES users(id),
+    FOREIGN KEY (applicant_org_id) REFERENCES organizations(id),
+    FOREIGN KEY (approver_id) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pr_cluster ON permission_requests(cluster_id);
+CREATE INDEX IF NOT EXISTS idx_pr_applicant ON permission_requests(applicant_id);
+CREATE INDEX IF NOT EXISTS idx_pr_approver ON permission_requests(approver_id);
+CREATE INDEX IF NOT EXISTS idx_pr_status ON permission_requests(status);
+CREATE INDEX IF NOT EXISTS idx_pr_org ON permission_requests(applicant_org_id);
+CREATE INDEX IF NOT EXISTS idx_pr_created_at ON permission_requests(created_at DESC);
+
 -- ========================================
 -- SECTION 5: INDEXES AND CONSTRAINTS
 -- ========================================
@@ -631,6 +676,12 @@ INSERT OR IGNORE INTO permissions (code, name, type, resource, action, descripti
 ('menu:system:roles', '角色管理', 'menu', 'system:roles', 'view', '查看角色管理'),
 ('menu:system:organizations', '组织管理', 'menu', 'system:organizations', 'view', '组织管理菜单'),
 ('menu:system:llm', 'LLM管理', 'menu', 'system:llm', 'view', '查看LLM管理'),
+
+-- ============ 新增：集群运维模块 ============
+('menu:cluster-ops', '集群运维', 'menu', 'cluster-ops', 'view', '集群运维菜单(父级)'),
+('menu:cluster-ops:auth', '鉴权管控', 'menu', 'cluster-ops:auth', 'view', '鉴权管控子菜单'),
+('menu:cluster-ops:auth:requests', '权限申请', 'menu', 'cluster-ops:auth:requests', 'view', '查看权限申请'),
+('menu:cluster-ops:auth:approvals', '审批管理', 'menu', 'cluster-ops:auth:approvals', 'view', '查看审批管理'),
 
 -- API Permissions - Cluster Operations (10)
 ('api:clusters:list', '查询集群列表', 'api', 'clusters', 'list', 'GET /api/clusters'),
@@ -778,7 +829,22 @@ INSERT OR IGNORE INTO permissions (code, name, type, resource, action, descripti
 ('api:llm:providers:activate', '激活LLM提供商', 'api', 'llm', 'providers:activate', 'POST /api/llm/providers/:id/activate'),
 ('api:llm:providers:deactivate', '停用LLM提供商', 'api', 'llm', 'providers:deactivate', 'POST /api/llm/providers/:id/deactivate'),
 ('api:llm:providers:test', '测试LLM连接', 'api', 'llm', 'providers:test', 'POST /api/llm/providers/:id/test'),
-('api:llm:analyze:root-cause', 'LLM根因分析', 'api', 'llm', 'analyze:root-cause', 'POST /api/llm/analyze/root-cause');
+('api:llm:analyze:root-cause', 'LLM根因分析', 'api', 'llm', 'analyze:root-cause', 'POST /api/llm/analyze/root-cause'),
+
+-- ============ 新增：数据库权限相关 API ============
+-- API Permissions - Database Authentication (2)
+('api:db-auth:accounts:list', '查询数据库账户', 'api', 'db-auth', 'accounts:list', 'GET /api/clusters/:id/db-auth/accounts'),
+('api:db-auth:roles:list', '查询数据库角色', 'api', 'db-auth', 'roles:list', 'GET /api/clusters/:id/db-auth/roles'),
+
+-- API Permissions - Permission Requests (8)
+('api:permission-requests:my', '查询我的申请', 'api', 'permission-requests', 'my', 'GET /api/permission-requests/my'),
+('api:permission-requests:pending', '查询待我审批', 'api', 'permission-requests', 'pending', 'GET /api/permission-requests/pending'),
+('api:permission-requests:get', '查看工单详情', 'api', 'permission-requests', 'get', 'GET /api/permission-requests/:id'),
+('api:permission-requests:create', '提交权限申请', 'api', 'permission-requests', 'create', 'POST /api/permission-requests'),
+('api:permission-requests:approve', '审批通过', 'api', 'permission-requests', 'approve', 'POST /api/permission-requests/:id/approve'),
+('api:permission-requests:reject', '审批拒绝', 'api', 'permission-requests', 'reject', 'POST /api/permission-requests/:id/reject'),
+('api:permission-requests:cancel', '撤销申请', 'api', 'permission-requests', 'cancel', 'POST /api/permission-requests/:id/cancel'),
+('api:db-auth:preview-sql', '预览SQL', 'api', 'db-auth', 'preview-sql', 'POST /api/db-auth/preview-sql');
 
 -- ==============================================
 -- 7.6 Insert Default LLM Provider
@@ -807,6 +873,17 @@ WHERE code IN ('menu:nodes:frontends', 'menu:nodes:backends');
 UPDATE permissions
 SET parent_id = (SELECT id FROM permissions WHERE code = 'menu:queries')
 WHERE code IN ('menu:queries:execution', 'menu:queries:profiles', 'menu:queries:audit-logs', 'menu:queries:blacklist');
+
+-- ============ 新增：集群运维菜单层级 ============
+-- Cluster Ops menu children
+UPDATE permissions
+SET parent_id = (SELECT id FROM permissions WHERE code = 'menu:cluster-ops')
+WHERE code = 'menu:cluster-ops:auth';
+
+-- Cluster Ops Auth menu children
+UPDATE permissions
+SET parent_id = (SELECT id FROM permissions WHERE code = 'menu:cluster-ops:auth')
+WHERE code IN ('menu:cluster-ops:auth:requests', 'menu:cluster-ops:auth:approvals');
 
 -- ==============================================
 -- 8.2 Set Parent ID for API Permissions
@@ -928,6 +1005,32 @@ WHERE code IN (
 UPDATE permissions
 SET parent_id = (SELECT id FROM permissions WHERE code = 'menu:system:llm')
 WHERE code LIKE 'api:llm:%';
+
+-- ============ 新增：鉴权管控 API 层级 ============
+-- 权限申请 APIs
+UPDATE permissions
+SET parent_id = (SELECT id FROM permissions WHERE code = 'menu:cluster-ops:auth:requests')
+WHERE code IN (
+    'api:permission-requests:my',
+    'api:permission-requests:create',
+    'api:permission-requests:get',
+    'api:permission-requests:cancel',
+    'api:db-auth:preview-sql'
+);
+
+-- 审批管理 APIs
+UPDATE permissions
+SET parent_id = (SELECT id FROM permissions WHERE code = 'menu:cluster-ops:auth:approvals')
+WHERE code IN (
+    'api:permission-requests:pending',
+    'api:permission-requests:approve',
+    'api:permission-requests:reject'
+);
+
+-- 账户/角色查询 APIs
+UPDATE permissions
+SET parent_id = (SELECT id FROM permissions WHERE code = 'menu:cluster-ops:auth')
+WHERE code IN ('api:db-auth:accounts:list', 'api:db-auth:roles:list');
 
 -- ========================================
 -- SECTION 9: ROLE ASSIGNMENTS

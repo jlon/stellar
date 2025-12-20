@@ -1,0 +1,18 @@
+/* Component styles */
+.pending-approvals-container {
+  padding: 1rem 0;
+
+  .row {
+    margin-bottom: 1.5rem;
+  }
+
+  label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+  }
+
+  .form-control {
+    padding: 0.5rem;
+  }
+}

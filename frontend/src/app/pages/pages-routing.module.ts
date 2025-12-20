@@ -13,6 +13,11 @@ const routes: Routes = [{
         .then(m => m.StarRocksModule),
     },
     {
+      path: 'cluster-ops',
+      loadChildren: () => import(/* webpackChunkName: "cluster-ops" */ './cluster-ops/cluster-ops.module')
+        .then(m => m.ClusterOpsModule),
+    },
+    {
       path: 'user-settings',
       loadChildren: () => import('./user-settings/user-settings.module')
         .then(m => m.UserSettingsModule),
