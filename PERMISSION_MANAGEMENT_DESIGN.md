@@ -237,28 +237,19 @@ Role (可继承 16 级)
 ├─ 节点管理
 ├─ 查询管理
 │
-└─ 权限管理 ★ (权限新菜单)
+└─ 权限管理 ★ (权限统一菜单)
    │
-   ├─ 权限工单 (permission-workbench)
-   │  ├─ 我的申请             [my-requests]
-   │  │  └─ 申请列表 + 详情弹窗
-   │  │
-   │  └─ 待审批               [pending-approvals]
-   │     └─ 审批列表 + 批准/拒绝弹窗
+   ├─ [我的权限]  (permission-dashboard)
+   │  └─ 权限概览 + 权限清单 + 删除权限
    │
-   └─ 权限配置 (permission-config)
-      ├─ 系统用户             [system-users]
-      │  └─ 用户列表 + 用户详情弹窗 (查看权限)
-      │
-      ├─ 系统角色             [system-roles]
-      │  └─ 角色列表 + 角色详情弹窗 (查看权限、成员)
-      │
-      ├─ 数据库账户            [db-accounts]
-      │  └─ 账户列表 + 账户详情 (只读)
-      │
-      └─ 数据库角色            [db-roles]
-         └─ 角色列表 + 角色详情 (只读)
+   ├─ [权限申请]  (permission-request)
+   │  └─ 新建申请表单 + 我的申请列表
+   │
+   └─ [权限审批]  (permission-approval)
+      └─ 待审批列表 + 批准/拒绝操作
 ```
+
+**核心原则：** 权限的增删改全部通过申请工单流程，无直接修改接口。
 
 ---
 
@@ -438,87 +429,214 @@ interface DbPermission {
 
 ---
 
-## 前端界面结构
+## 前端界面设计
+
+### Tab 1: 我的权限（Permission Dashboard）
+
+**设计方案B：卡片仪表板**
+
+```
+┌──────────────────────────────────────────────────────┐
+│ 我的权限                              [刷新] [申请权限] │
+├──────────────────────────────────────────────────────┤
+│                                                      │
+│ 用户: analyst_user   [详细信息]                      │
+│                                                      │
+│ ┌────────┐ ┌────────┐ ┌────────┐ ┌──────────┐       │
+│ │ 拥有角色 │ │ 全局权限 │ │ DB权限  │ │ Table权限 │       │
+│ │   3个   │ │   2个   │ │  10个  │ │   15个   │       │
+│ └────────┘ └────────┘ └────────┘ └──────────┘       │
+│                                                      │
+│ ┌──────────────────────────────────────────────────┐ │
+│ │ 权限清单 (搜索) [过滤▼]                           │ │
+│ ├──────────────────────────────────────────────────┤ │
+│ │ 权限类型 │ 资源范围        │ 归属角色 │ 操作    │ │
+│ ├──────────────────────────────────────────────────┤ │
+│ │ USAGE    │ default_catalog │ db_admin │ [撤销]  │ │
+│ │ SELECT   │ my_db.t1        │ db_admin │ [撤销]  │ │
+│ │ INSERT   │ my_db.t1        │ db_admin │ [撤销]  │ │
+│ │ ALTER    │ my_db           │ db_admin │ [撤销]  │ │
+│ │ SELECT   │ public          │ user     │ [撤销]  │ │
+│ └──────────────────────────────────────────────────┘ │
+│                                                      │
+└──────────────────────────────────────────────────────┘
+```
+
+**核心功能：**
+- ✅ 展示当前用户的所有权限（按角色分组）
+- ✅ 支持搜索和过滤权限
+- ✅ **撤销权限按钮** → 跳转到权限申请，预填 `revoke_permission` 请求
+
+---
+
+### Tab 2: 权限申请（Permission Request）
+
+**上半部分：新建申请表单**
+
+```
+┌────────────────────────────────────────────────────────┐
+│ 新建权限申请                                           │
+├────────────────────────────────────────────────────────┤
+│                                                        │
+│ * 申请类型  [授予角色 ▼]  (3个选项)                   │
+│             ├─ 授予角色                               │
+│             ├─ 授予权限                               │
+│             └─ 撤销权限                               │
+│                                                        │
+│  ┌─────────────────────────────────────────────────┐  │
+│  │ 表单内容根据申请类型动态变化                      │  │
+│  │                                                   │  │
+│  │ 选择用户:    [analyst_user ▼]                   │  │
+│  │ + 创建新用户 (如无合适用户)                      │  │
+│  │                                                   │  │
+│  │ 选择角色:    [db_admin ▼]                      │  │
+│  │ + 创建新角色 (如无合适角色)                      │  │
+│  │                                                   │  │
+│  │ 申请理由:    [请详细说明申请权限的理由...]       │  │
+│  │                                                   │  │
+│  │ SQL预览:                                         │  │
+│  │ ┌────────────────────────────────────────────┐  │  │
+│  │ │ GRANT db_admin TO analyst_user             │  │  │
+│  │ └────────────────────────────────────────────┘  │  │
+│  │                                                   │  │
+│  │ [提交申请] [重置]                                │  │
+│  └─────────────────────────────────────────────────┘  │
+│                                                        │
+├────────────────────────────────────────────────────────┤
+│ 我的申请列表                                           │
+├────────────────────────────────────────────────────────┤
+│                                                        │
+│ [搜索] [状态过滤: 全部▼]                              │
+│                                                        │
+│ ┌──────────────────────────────────────────────────┐  │
+│ │ ID │ 申请类型  │ 目标    │ 状态  │ 创建时间   │ 操作│  │
+│ ├──────────────────────────────────────────────────┤  │
+│ │ 10 │ 授予角色  │ user1  │ 执行中│ 2025-12-20│[查看]│  │
+│ │ 9  │ 授予权限  │ user2  │ 已完成│ 2025-12-19│[查看]│  │
+│ │ 8  │ 撤销权限  │ user3  │ 待审批│ 2025-12-18│[查看]│  │
+│ │ 7  │ 授予角色  │ user4  │ 已拒绝│ 2025-12-17│[查看]│  │
+│ └──────────────────────────────────────────────────┘  │
+│                                                        │
+└────────────────────────────────────────────────────────┘
+```
+
+**表单动态化：**
+
+| 申请类型 | 显示字段 | SQL生成 |
+|---------|---------|--------|
+| **授予角色** | 用户 / 角色 | GRANT role TO user |
+| **授予权限** | 用户 / 资源类型 / Catalog / Database / Table / 权限列表 | GRANT perms ON resource TO user |
+| **撤销权限** | 用户 / 资源类型 / Catalog / Database / Table / 权限列表 | REVOKE perms ON resource FROM user |
+
+---
+
+### Tab 3: 权限审批（Permission Approval）
+
+```
+┌────────────────────────────────────────────────────────┐
+│ 待审批申请                                             │
+├────────────────────────────────────────────────────────┤
+│                                                        │
+│ [搜索] [申请类型过滤: 全部▼]                          │
+│                                                        │
+│ ┌──────────────────────────────────────────────────┐  │
+│ │ ID │ 申请类型  │ 申请人  │ 目标   │ 创建时间   │ 操作 │  │
+│ ├──────────────────────────────────────────────────┤  │
+│ │ 10 │ 授予角色  │ user5  │ user1  │ 2025-12-20 │[详情]│  │
+│ │ 9  │ 撤销权限  │ user6  │ user2  │ 2025-12-19 │[详情]│  │
+│ │ 8  │ 授予权限  │ user7  │ user3  │ 2025-12-18 │[详情]│  │
+│ └──────────────────────────────────────────────────┘  │
+│                                                        │
+└────────────────────────────────────────────────────────┘
+```
+
+**点击"详情"弹窗：**
+
+```
+┌────────────────────────────────────────────────┐
+│ 权限申请详情 (ID: 10)                          │
+├────────────────────────────────────────────────┤
+│                                                │
+│ 申请人:     user5                              │
+│ 申请类型:   授予角色                           │
+│ 目标用户:   user1                              │
+│ 目标角色:   db_admin                           │
+│ 申请理由:   提升用户权限以完成数据分析任务     │
+│ 创建时间:   2025-12-20 10:30:00               │
+│                                                │
+│ SQL预览:                                       │
+│ ┌──────────────────────────────────────────┐  │
+│ │ GRANT db_admin TO user1                  │  │
+│ └──────────────────────────────────────────┘  │
+│                                                │
+│ 审批意见: [请输入审批意见...]                  │
+│                                                │
+│ [批准] [拒绝] [返回]                           │
+│                                                │
+└────────────────────────────────────────────────┘
+```
+
+---
 
 ### 目录结构
 
 ```
 frontend/src/app/pages/cluster-ops/
-├─ permission-management/            ★ 新增
-│  │
-│  ├─ permission-management-routing.module.ts
-│  ├─ permission-management.module.ts
-│  ├─ permission-management.component.*
-│  │
-│  ├─ workbench/                      (权限工单)
-│  │  ├─ permission-workbench.component.*
-│  │  ├─ my-requests/
-│  │  ├─ pending-approvals/
-│  │  └─ shared/
-│  │     └─ request-detail-modal.component.*
-│  │
-│  └─ config/                         (权限配置)
-│     ├─ permission-config.component.*
-│     ├─ system-users/
-│     ├─ system-roles/
-│     ├─ db-accounts/
-│     ├─ db-roles/
-│     └─ shared/
-│        ├─ user-detail-modal.component.*
-│        ├─ role-detail-modal.component.*
-│        └─ permission-tree.component.*  (权限树展示)
-│
-└─ (其他模块...)
+└─ permission-management/               ★ 新增
+   ├─ permission-management-routing.module.ts
+   ├─ permission-management.module.ts
+   ├─ permission-management.component.ts        (主容器，Tab管理)
+   ├─ permission-management.component.html
+   │
+   ├─ dashboard/                                (我的权限)
+   │  ├─ permission-dashboard.component.*
+   │  └─ shared/
+   │     └─ permission-list.component.*         (权限清单表格)
+   │
+   ├─ request/                                  (权限申请)
+   │  ├─ permission-request.component.*
+   │  ├─ request-form.component.*              (动态表单)
+   │  └─ request-list.component.*
+   │
+   ├─ approval/                                 (权限审批)
+   │  ├─ permission-approval.component.*
+   │  └─ approval-detail-modal.component.*
+   │
+   └─ shared/                                   (共享组件)
+      ├─ sql-preview.component.*               (SQL预览框)
+      ├─ user-selector.component.*             (用户选择器)
+      ├─ role-selector.component.*             (角色选择器)
+      └─ resource-selector.component.*         (资源选择器)
+
+核心服务：
+└─ frontend/src/app/@core/data/
+   ├─ permission-request.service.ts           (权限工单API)
+   └─ permission-request.model.ts             (数据模型)
 ```
-
-### 关键组件
-
-#### 1. PermissionManagementComponent (主容器)
-
-```typescript
-@Component({
-  selector: 'ngx-permission-management',
-  template: `
-    <nb-tabset (selectedIndexChange)="onTabChange($event)">
-      <nb-tab tabTitle="权限工单" icon="inbox-outline">
-        <ngx-permission-workbench></ngx-permission-workbench>
-      </nb-tab>
-      <nb-tab tabTitle="权限配置" icon="settings-outline">
-        <ngx-permission-config></ngx-permission-config>
-      </nb-tab>
-    </nb-tabset>
-  `
-})
-export class PermissionManagementComponent {}
-```
-
-#### 2. PermissionWorkbenchComponent
-
-顶部：按钮 `+ 新建申请`
-内容：两个子 Tab
-
-- **My Requests**: 显示当前用户的所有权限申请
-- **Pending Approvals**: 显示需要当前用户审批的申请
-
-#### 3. PermissionConfigComponent
-
-四个子 Tab：
-
-- **系统用户** - 查询 `/api/users`，显示用户列表，支持查看用户权限
-- **系统角色** - 查询 `/api/roles`，显示角色列表，支持查看角色权限和成员
-- **数据库账户** - 查询 `/api/clusters/db-auth/accounts`（只读）
-- **数据库角色** - 查询 `/api/clusters/db-auth/roles`（只读）
-
----
 
 ## 权限工单流程
+
+### 工单类型（3种）
+
+权限申请支持以下三种操作：
+
+```
+1. 授予角色 (grant_role)
+   SQL: GRANT role_name TO user_name
+
+2. 授予权限 (grant_permission)
+   SQL: GRANT permission_list ON resource TO user_name
+
+3. 撤销权限 (revoke_permission) ★ 新增
+   SQL: REVOKE permission_list ON resource FROM user_name
+```
 
 ### 工单生命周期
 
 ```
-┌─────────┐
+┌──────────┐
 │ 创建申请 │  (applicant)
-└────┬────┘
+└────┬─────┘
      │ POST /api/permission-requests
      ↓
 ┌──────────────┐
@@ -526,83 +644,157 @@ export class PermissionManagementComponent {}
 │ (waiting)    │
 └────┬─────────┘
      │
-     ├─ 审批通过 [POST /api/permission-requests/:id/approve]  →  ┌──────────┐
-     │                                                            │ Approved │
-     │                                                            └────┬─────┘
-     │                                                                  │
-     │                                                                  ↓
-     │                                                           ┌──────────────┐
-     │                                                           │ Executing    │
-     │                                                           │ (executing)  │
-     │                                                           └────┬─────────┘
-     │                                                                  │
-     │                                                                  ├─ 成功 → ┌──────────┐
-     │                                                                  │        │ Completed│
-     │                                                                  │        └──────────┘
-     │                                                                  │
-     │                                                                  └─ 失败 → ┌────────┐
-     │                                                                           │ Failed │
-     │                                                                           └────────┘
+     ├─ 审批通过 [POST /api/permission-requests/:id/approve]
+     │   ↓
+     │   ┌──────────┐
+     │   │ Approved │
+     │   └────┬─────┘
+     │        │
+     │        ↓
+     │   ┌──────────────┐
+     │   │ Executing    │  (执行 GRANT/REVOKE SQL)
+     │   │ (executing)  │
+     │   └────┬─────────┘
+     │        │
+     │        ├─ 成功 → ┌──────────┐
+     │        │        │ Completed│
+     │        │        └──────────┘
+     │        │
+     │        └─ 失败 → ┌────────┐
+     │                  │ Failed │
+     │                  └────────┘
      │
-     └─ 拒绝 [POST /api/permission-requests/:id/reject]  →  ┌─────────┐
-                                                              │ Rejected│
-                                                              └─────────┘
+     └─ 拒绝 [POST /api/permission-requests/:id/reject]
+         ↓
+         ┌─────────┐
+         │ Rejected│
+         └─────────┘
 ```
 
-### 支持的申请类型
+### 支持的申请类型详解
 
-#### 1. 创建账户 (create_account)
-
-```typescript
-{
-  request_type: 'create_account',
-  request_details: {
-    action: 'create_account',
-    target_account: 'newuser@\'%\'',  // CREATE USER newuser@'%' ...
-    preview_sql: 'CREATE USER newuser@\'%\' IDENTIFIED BY ...'
-  },
-  reason: '新用户需要数据库访问权限'
-}
-```
-
-执行 SQL: `CREATE USER 'user'@'host' IDENTIFIED BY 'password'`
-
-#### 2. 授予角色 (grant_role)
+#### 1. 授予角色 (grant_role)
 
 ```typescript
 {
   request_type: 'grant_role',
   request_details: {
     action: 'grant_role',
-    target_user: 'user1',
-    target_role: 'db_admin',  // StarRocks 内置角色
-    preview_sql: 'GRANT db_admin TO user1'
+    target_user: 'analyst_user',      // 被授权用户
+    target_role: 'db_admin',           // 授予的角色
+    preview_sql: 'GRANT db_admin TO analyst_user'
   },
-  reason: '提升用户权限'
+  reason: '提升用户权限以完成数据分析任务'
 }
 ```
 
-执行 SQL: `GRANT role_name TO user_name`
+**生成的SQL（需根据引擎适配）:**
+- StarRocks: `GRANT db_admin TO analyst_user`
+- Doris: `GRANT db_admin TO 'analyst_user'@'%'`
 
-#### 3. 授予权限 (grant_permission)
+---
+
+#### 2. 授予权限 (grant_permission)
 
 ```typescript
 {
   request_type: 'grant_permission',
   request_details: {
     action: 'grant_permission',
-    target_user: 'user1',
-    scope: 'database',
-    database: 'my_db',
-    permissions: ['SELECT', 'INSERT'],  // StarRocks 权限
-    with_grant_option: false,
-    preview_sql: 'GRANT SELECT, INSERT ON DATABASE my_db TO user1'
+    target_user: 'analyst_user',
+    resource_type: 'database',         // Catalog / Database / Table / Column
+    catalog: 'default_catalog',        // (optional)
+    database: 'my_db',                 // (optional, depends on resource_type)
+    table: 'my_table',                 // (optional, only for Table level)
+    permissions: ['SELECT', 'INSERT'], // StarRocks: SELECT, INSERT, ...
+                                       // Doris: Select_priv, Load_priv, ...
+    preview_sql: 'GRANT SELECT, INSERT ON DATABASE my_db TO analyst_user'
   },
-  reason: '授予数据库查询和导入权限'
+  reason: '授予数据查询和导入权限'
 }
 ```
 
-执行 SQL: `GRANT SELECT, INSERT ON DATABASE my_db TO user1`
+**生成的SQL:**
+- StarRocks: `GRANT SELECT, INSERT ON DATABASE my_db TO analyst_user`
+- Doris: `GRANT SELECT_PRIV, LOAD_PRIV ON DATABASE my_db TO 'analyst_user'@'%'`
+
+---
+
+#### 3. 撤销权限 (revoke_permission) ★ 新增
+
+```typescript
+{
+  request_type: 'revoke_permission',
+  request_details: {
+    action: 'revoke_permission',
+    target_user: 'analyst_user',
+    resource_type: 'database',
+    catalog: 'default_catalog',
+    database: 'my_db',
+    permissions: ['INSERT'],           // 撤销哪些权限
+    preview_sql: 'REVOKE INSERT ON DATABASE my_db FROM analyst_user'
+  },
+  reason: '用户离职，撤销导入权限'
+}
+```
+
+**生成的SQL:**
+- StarRocks: `REVOKE INSERT ON DATABASE my_db FROM analyst_user`
+- Doris: `REVOKE LOAD_PRIV ON DATABASE my_db FROM 'analyst_user'@'%'`
+
+---
+
+### 权限请求数据模型（扩展）
+
+```typescript
+interface PermissionRequest {
+  // 基本信息
+  id: number;
+  cluster_id: number;
+  applicant_id: number;
+  applicant_org_id: number;
+
+  // 申请内容
+  request_type: 'grant_role' | 'grant_permission' | 'revoke_permission';
+  request_details: RequestDetails;
+  reason: string;
+
+  // 状态
+  status: 'pending' | 'approved' | 'rejected' | 'executing' | 'completed' | 'failed';
+
+  // 审批信息
+  approver_id?: number;
+  approval_comment?: string;
+  approved_at?: DateTime;
+
+  // 执行结果
+  executed_sql?: string;        // 实际执行的SQL
+  execution_result?: string;    // 执行结果（success / error message）
+  executed_at?: DateTime;
+
+  created_at: DateTime;
+  updated_at: DateTime;
+}
+
+interface RequestDetails {
+  action: 'grant_role' | 'grant_permission' | 'revoke_permission';
+
+  // 针对 grant_role / grant_permission / revoke_permission
+  target_user: string;
+  target_role?: string;         // 仅 grant_role 使用
+
+  // 针对 grant_permission / revoke_permission
+  resource_type: 'catalog' | 'database' | 'table' | 'column';
+  catalog?: string;
+  database?: string;
+  table?: string;
+  column?: string;
+  permissions: string[];        // 权限列表
+
+  // 预览 SQL
+  preview_sql?: string;
+}
+```
 
 ### 数据流
 
