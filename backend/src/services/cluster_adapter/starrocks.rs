@@ -81,6 +81,24 @@ impl StarRocksAdapter {
         tracing::info!("Retrieved {} compute nodes (shared-data mode)", compute_nodes.len());
         Ok(compute_nodes)
     }
+
+    // ========================================
+    // Permission Management Helper Methods for StarRocks
+    // ========================================
+
+    /// Build resource path for StarRocks
+    fn build_resource_path(resource_type: &str, database: &str, table: Option<&str>) -> String {
+        match resource_type {
+            "TABLE" => {
+                if let Some(table_name) = table {
+                    format!("{}.{}", database, table_name)
+                } else {
+                    format!("{}.*", database)
+                }
+            }
+            _ => format!("{}.*", database),
+        }
+    }
 }
 
 #[async_trait]
@@ -461,5 +479,104 @@ impl ClusterAdapter for StarRocksAdapter {
         }
 
         Ok(profile_content)
+    }
+
+    async fn create_user(&self, username: &str, password: &str) -> ApiResult<String> {
+        if password.is_empty() {
+            Ok(format!("CREATE USER '{}'@'%';", username))
+        } else {
+            Ok(format!(
+                "CREATE USER '{}'@'%' IDENTIFIED BY '{}';",
+                username, password
+            ))
+        }
+    }
+
+    async fn create_role(&self, role_name: &str) -> ApiResult<String> {
+        Ok(format!("CREATE ROLE '{}';", role_name))
+    }
+
+    async fn grant_permissions(
+        &self,
+        principal_type: &str,
+        principal_name: &str,
+        permissions: &[&str],
+        resource_type: &str,
+        database: &str,
+        table: Option<&str>,
+        with_grant_option: bool,
+    ) -> ApiResult<String> {
+        let perm_str = permissions.join(", ");
+        let resource = Self::build_resource_path(resource_type, database, table);
+        
+        let with_grant = if with_grant_option {
+            " WITH GRANT OPTION"
+        } else {
+            ""
+        };
+
+        let principal = match principal_type {
+            "ROLE" => format!("ROLE '{}'", principal_name),
+            "USER" => format!("USER '{}'@'%'", principal_name),
+            _ => return Err(ApiError::ValidationError(
+                "Principal type must be USER or ROLE".to_string(),
+            )),
+        };
+
+        Ok(format!(
+            "GRANT {} ON {} TO {};{}",
+            perm_str, resource, principal, with_grant
+        ))
+    }
+
+    async fn revoke_permissions(
+        &self,
+        principal_type: &str,
+        principal_name: &str,
+        permissions: &[&str],
+        resource_type: &str,
+        database: &str,
+        table: Option<&str>,
+    ) -> ApiResult<String> {
+        let perm_str = permissions.join(", ");
+        let resource = Self::build_resource_path(resource_type, database, table);
+        
+        let principal = match principal_type {
+            "ROLE" => format!("ROLE '{}'", principal_name),
+            "USER" => format!("USER '{}'@'%'", principal_name),
+            _ => return Err(ApiError::ValidationError(
+                "Principal type must be USER or ROLE".to_string(),
+            )),
+        };
+
+        Ok(format!(
+            "REVOKE {} ON {} FROM {};",
+            perm_str, resource, principal
+        ))
+    }
+
+    async fn grant_role(&self, role_name: &str, username: &str) -> ApiResult<String> {
+        Ok(format!(
+            "GRANT '{}' TO USER '{}'@'%';",
+            role_name, username
+        ))
+    }
+
+    async fn list_user_permissions(&self, username: &str) -> ApiResult<Vec<crate::models::DbUserPermissionDto>> {
+        tracing::debug!(
+            "[StarRocks] list_user_permissions not fully implemented yet; returning empty list (username={})",
+            username
+        );
+        Ok(Vec::new())
+    }
+
+    async fn list_db_accounts(&self) -> ApiResult<Vec<crate::models::DbAccountDto>> {
+        tracing::debug!("[StarRocks] list_db_accounts not fully implemented yet; returning empty list");
+        Ok(Vec::new())
+    }
+
+    async fn list_db_roles(&self) -> ApiResult<Vec<crate::models::DbRoleDto>> {
+        tracing::debug!("[StarRocks] list_db_roles not fully implemented yet; returning empty list");
+        Ok(Vec::new())
     }
 }

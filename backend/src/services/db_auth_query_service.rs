@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::models::{DbAccountDto, DbRoleDto};
+use crate::models::{DbAccountDto, DbRoleDto, DbUserPermissionDto};
 use crate::services::{MySQLPoolManager, ClusterService};
 use crate::utils::ApiResult;
 use mysql_async::prelude::Queryable;
@@ -162,5 +162,22 @@ impl DbAuthQueryService {
                 permissions_count: None,
             },
         ])
+    }
+
+    /// List current user's database permissions on a cluster
+    /// NOTE: For now this returns an empty list and logs a debug message.
+    ///       Later we can implement real SHOW GRANTS parsing per engine.
+    pub async fn list_user_permissions(
+        &self,
+        cluster_id: i64,
+        username: &str,
+    ) -> ApiResult<Vec<DbUserPermissionDto>> {
+        tracing::debug!(
+            "list_user_permissions is not fully implemented yet; returning empty list (cluster_id={}, username={})",
+            cluster_id,
+            username
+        );
+
+        Ok(Vec::new())
     }
 }

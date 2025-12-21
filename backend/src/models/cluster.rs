@@ -4,7 +4,7 @@ use sqlx::FromRow;
 use utoipa::ToSchema;
 
 /// Cluster type for OLAP engine
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema, sqlx::Type, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, ToSchema, sqlx::Type, Default)]
 #[serde(rename_all = "lowercase")]
 #[sqlx(type_name = "TEXT", rename_all = "lowercase")]
 pub enum ClusterType {

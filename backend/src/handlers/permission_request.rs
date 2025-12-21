@@ -8,7 +8,7 @@ use sqlx::Row;
 use crate::AppState;
 use crate::models::{
     SubmitRequestDto, ApprovalDto, PermissionRequestResponse, RequestQueryFilter,
-    PaginatedResponse, DbAccountDto, DbRoleDto,
+    PaginatedResponse, DbAccountDto, DbRoleDto, DbUserPermissionDto,
 };
 use crate::utils::ApiResult;
 
@@ -129,7 +129,9 @@ pub async fn submit_request(
 ) -> ApiResult<Json<i64>> {
     tracing::info!("User {} submitting permission request", user_id);
 
-    let request_id = state.permission_request_service.submit_request(user_id, req).await?;
+    let request_id = state.permission_request_service
+        .submit_request(user_id, req, &state.cluster_service, state.mysql_pool_manager.clone())
+        .await?;
 
     tracing::info!("Permission request created: id={}", request_id);
     Ok(Json(request_id))
@@ -282,13 +284,21 @@ pub async fn list_db_roles(
     tag = "Database Authentication"
 )]
 pub async fn preview_sql(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     Json(req): Json<SubmitRequestDto>,
 ) -> ApiResult<Json<serde_json::Value>> {
     tracing::debug!("Previewing SQL for request type: {}", req.request_type);
 
+    // Get cluster for SQL generation
+    let cluster = state.cluster_service.get_cluster(req.cluster_id).await?;
+
     // Use the static method from permission_request_service
-    let sql = crate::services::PermissionRequestService::generate_preview_sql_static(&req.request_type, &req.request_details)?;
+    let sql = crate::services::PermissionRequestService::generate_preview_sql_static(
+        &cluster,
+        &req.request_type, 
+        &req.request_details,
+        state.mysql_pool_manager.clone()
+    ).await?;
 
     Ok(Json(serde_json::json!({
         "sql": sql,
@@ -364,4 +374,47 @@ pub async fn list_db_roles_active(
     // List roles for the active cluster
     let roles = state.db_auth_query_service.list_roles(active_cluster.id).await?;
     Ok(Json(roles))
+}
+
+/// List current user's database permissions on active cluster ("我的权限")
+#[utoipa::path(
+    get,
+    path = "/api/clusters/db-auth/my-permissions",
+    responses(
+        (status = 200, description = "List of current user's database permissions", body = Vec<DbUserPermissionDto>),
+        (status = 404, description = "No active cluster found for your organization")
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Database Authentication"
+)]
+pub async fn list_my_db_permissions(
+    State(state): State<Arc<AppState>>,
+    Extension(user_id): Extension<i64>,
+) -> ApiResult<Json<Vec<DbUserPermissionDto>>> {
+    tracing::debug!("Listing database permissions for user {}", user_id);
+
+    // Get user's organization_id and username
+    let user = sqlx::query(
+        "SELECT organization_id, username FROM users WHERE id = ?"
+    )
+    .bind(user_id)
+    .fetch_one(&state.db)
+    .await?;
+
+    let org_id: Option<i64> = user.get("organization_id");
+    let username: String = user.get("username");
+
+    // Get active cluster for this organization
+    let active_cluster = state
+        .cluster_service
+        .get_active_cluster_by_org(org_id)
+        .await?;
+
+    // List permissions for this user on the active cluster
+    let permissions = state
+        .db_auth_query_service
+        .list_user_permissions(active_cluster.id, &username)
+        .await?;
+
+    Ok(Json(permissions))
 }

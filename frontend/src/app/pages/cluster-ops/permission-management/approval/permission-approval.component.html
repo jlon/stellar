@@ -1,0 +1,94 @@
+<div class="row">
+  <!-- Pending Requests List -->
+  <div class="col-12">
+    <nb-card>
+      <nb-card-header>
+        <h6>待审批申请</h6>
+      </nb-card-header>
+
+      <nb-card-body>
+        <!-- Type Filter -->
+        <div class="row mb-3">
+          <div class="col-md-4">
+            <label>申请类型</label>
+            <select
+              class="form-control"
+              [(ngModel)]="typeFilter"
+              (change)="onTypeFilterChange()"
+            >
+              <option *ngFor="let option of typeOptions" [value]="option.value">
+                {{ option.label }}
+              </option>
+            </select>
+          </div>
+          <div class="col-md-8">
+            <small class="text-muted d-block mt-3">
+              共 {{ filteredRequests.length }} 个待审批申请
+            </small>
+          </div>
+        </div>
+
+        <!-- Loading Spinner -->
+        <div *ngIf="requestsLoading" class="text-center p-4">
+          <nb-spinner></nb-spinner>
+          <p>加载申请中...</p>
+        </div>
+
+        <!-- Requests Table -->
+        <div *ngIf="!requestsLoading && filteredRequests.length > 0">
+          <table class="table table-striped table-hover">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>申请类型</th>
+                <th>申请人</th>
+                <th>目标</th>
+                <th>申请原因</th>
+                <th>申请时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let req of filteredRequests">
+                <td><small>#{{ req.id }}</small></td>
+                <td>
+                  <span class="badge badge-primary">
+                    {{ getRequestTypeLabel(req.request_type) }}
+                  </span>
+                </td>
+                <td>
+                  <small>{{ req.applicant_name }}</small>
+                </td>
+                <td>
+                  <code class="small">{{ getTargetDescription(req) }}</code>
+                </td>
+                <td>
+                  <small class="text-truncate d-inline-block" style="max-width: 250px" title="{{ req.reason }}">
+                    {{ req.reason }}
+                  </small>
+                </td>
+                <td>
+                  <small class="text-muted">{{ req.created_at }}</small>
+                </td>
+                <td>
+                  <button
+                    class="btn btn-sm btn-info"
+                    (click)="onViewDetail(req)"
+                    [disabled]="selectedRequest?.id === req.id"
+                  >
+                    详情
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Empty State -->
+        <div *ngIf="!requestsLoading && filteredRequests.length === 0" class="text-center p-4">
+          <p class="text-muted">暂无待审批申请</p>
+        </div>
+      </nb-card-body>
+    </nb-card>
+  </div>
+</div>

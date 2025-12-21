@@ -8,7 +8,7 @@ use crate::models::{
     UpdateOrderRequest,
 };
 use crate::services::{ClusterService, MySQLClient, MySQLPoolManager};
-use crate::utils::{ApiError, ApiResult};
+use crate::utils::{vec_to_map, ApiError, ApiResult, StringExt};
 
 #[derive(Clone)]
 pub struct SystemFunctionService {
@@ -47,11 +47,10 @@ impl SystemFunctionService {
 
         tracing::debug!("Found {} preference settings", preferences.len());
 
-        let preference_map: HashMap<i64, SystemFunctionPreference> = preferences
-            .into_iter()
-            .map(|p| (p.function_id, p))
-            .collect();
+        // 使用 vec_to_map 构建偏好设置映射
+        let preference_map = vec_to_map(preferences, |p| p.function_id);
 
+        // 使用 lambda 表达式合并函数和偏好设置
         let mut merged_functions: Vec<SystemFunction> = all_functions
             .into_iter()
             .map(|mut func| {
@@ -66,10 +65,12 @@ impl SystemFunctionService {
                 func
             })
             .collect();
+            
+        // 使用 lambda 表达式排序
         merged_functions.sort_by(|a, b| {
             a.category_order
                 .cmp(&b.category_order)
-                .then(a.display_order.cmp(&b.display_order))
+                .then_with(|| a.display_order.cmp(&b.display_order))
         });
 
         tracing::debug!(
@@ -93,22 +94,22 @@ impl SystemFunctionService {
             user_id
         );
 
-        let category_name = req.category_name.trim().to_string();
-        let function_name = req.function_name.trim().to_string();
-        let description = req.description.trim().to_string();
-        let sql_query = req.sql_query.trim().to_string();
+        // 使用 StringExt trait 进行字符串清理和验证
+        let category_name = req.category_name.trimmed();
+        let function_name = req.function_name.trimmed();
+        let description = req.description.trimmed();
+        let sql_query = req.sql_query.trimmed();
 
-        if category_name.is_empty() {
-            return Err(ApiError::validation_error("Category name cannot be empty"));
-        }
-        if function_name.is_empty() {
-            return Err(ApiError::validation_error("Function name cannot be empty"));
-        }
-        if description.is_empty() {
-            return Err(ApiError::validation_error("Function description cannot be empty"));
-        }
-        if sql_query.is_empty() {
-            return Err(ApiError::validation_error("SQL query cannot be empty"));
+        // 使用 lambda 表达式进行验证
+        let validations = [
+            (category_name.is_empty(), "Category name cannot be empty"),
+            (function_name.is_empty(), "Function name cannot be empty"),
+            (description.is_empty(), "Function description cannot be empty"),
+            (sql_query.is_empty(), "SQL query cannot be empty"),
+        ];
+        
+        if let Some((_, msg)) = validations.iter().find(|(is_empty, _)| *is_empty) {
+            return Err(ApiError::validation_error(*msg));
         }
 
         self.validate_sql_safety(&sql_query)?;
@@ -183,12 +184,8 @@ impl SystemFunctionService {
         .bind(function_id)
         .bind(cluster_id)
         .fetch_optional(&*self.db)
-        .await?;
-
-        let function = match function {
-            Some(f) => f,
-            None => return Err(ApiError::not_found("Function not found or deleted")),
-        };
+        .await?
+        .ok_or_else(|| ApiError::not_found("Function not found or deleted"))?;
 
         sqlx::query("UPDATE system_functions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?")
             .bind(function_id)
@@ -202,6 +199,7 @@ impl SystemFunctionService {
 
         let (columns, rows) = mysql_client.query_raw(&function.sql_query).await?;
 
+        // 使用 lambda 表达式转换结果
         let result: Vec<HashMap<String, Value>> = rows
             .into_iter()
             .map(|row| {
@@ -297,8 +295,8 @@ impl SystemFunctionService {
         .execute(&*self.db)
         .await?;
 
-        let functions = self.get_functions(cluster_id).await?;
-        functions
+        self.get_functions(cluster_id)
+            .await?
             .into_iter()
             .find(|f| f.id == function_id)
             .ok_or_else(|| ApiError::not_found("Function not found or deleted"))
@@ -310,22 +308,22 @@ impl SystemFunctionService {
         function_id: i64,
         req: UpdateFunctionRequest,
     ) -> ApiResult<SystemFunction> {
-        let category_name = req.category_name.trim().to_string();
-        let function_name = req.function_name.trim().to_string();
-        let description = req.description.trim().to_string();
-        let sql_query = req.sql_query.trim().to_string();
+        // 使用 StringExt trait 进行字符串清理
+        let category_name = req.category_name.trimmed();
+        let function_name = req.function_name.trimmed();
+        let description = req.description.trimmed();
+        let sql_query = req.sql_query.trimmed();
 
-        if category_name.is_empty() {
-            return Err(ApiError::validation_error("Category name cannot be empty"));
-        }
-        if function_name.is_empty() {
-            return Err(ApiError::validation_error("Function name cannot be empty"));
-        }
-        if description.is_empty() {
-            return Err(ApiError::validation_error("Function description cannot be empty"));
-        }
-        if sql_query.is_empty() {
-            return Err(ApiError::validation_error("SQL query cannot be empty"));
+        // 使用 lambda 表达式进行验证
+        let validations = [
+            (category_name.is_empty(), "Category name cannot be empty"),
+            (function_name.is_empty(), "Function name cannot be empty"),
+            (description.is_empty(), "Function description cannot be empty"),
+            (sql_query.is_empty(), "SQL query cannot be empty"),
+        ];
+        
+        if let Some((_, msg)) = validations.iter().find(|(is_empty, _)| *is_empty) {
+            return Err(ApiError::validation_error(*msg));
         }
 
         self.validate_sql_safety(&sql_query)?;
@@ -344,8 +342,8 @@ impl SystemFunctionService {
         .execute(&*self.db)
         .await?;
 
-        let functions = self.get_functions(cluster_id).await?;
-        functions
+        self.get_functions(cluster_id)
+            .await?
             .into_iter()
             .find(|f| f.id == function_id)
             .ok_or_else(|| ApiError::not_found("Function not found or deleted"))
@@ -372,20 +370,22 @@ impl SystemFunctionService {
             return Err(ApiError::invalid_sql("Only SELECT and SHOW type SQL queries are allowed"));
         }
 
-        let dangerous_keywords = vec![
+        // 使用 lambda 表达式检查危险关键字
+        let dangerous_keywords = [
             "DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "CREATE", "TRUNCATE", "EXEC", "EXECUTE",
             "CALL", "GRANT", "REVOKE", "COMMIT", "ROLLBACK",
         ];
 
-        for keyword in dangerous_keywords {
-            if trimmed_sql.contains(&format!(" {}", keyword))
+        let found_keyword = dangerous_keywords.iter().find(|&keyword| {
+            trimmed_sql.contains(&format!(" {}", keyword))
                 || trimmed_sql.contains(&format!("{} ", keyword))
-            {
-                return Err(ApiError::sql_safety_violation(format!(
-                    "SQL查询包含不允许的关键字：{}",
-                    keyword
-                )));
-            }
+        });
+
+        if let Some(keyword) = found_keyword {
+            return Err(ApiError::sql_safety_violation(format!(
+                "SQL查询包含不允许的关键字：{}",
+                keyword
+            )));
         }
 
         Ok(())

@@ -1038,13 +1038,42 @@ PermissionRequestService.createRequest()  (保存到数据库)
 
 ## 实现路线图
 
-### Phase 1: 权限工单模块 (Week 1-2)
+### Phase 1: 权限工单模块 (Week 1-2) ✅ COMPLETED
 
-- [ ] 拆分菜单结构（创建 permission-workbench 和 permission-config）
-- [ ] 迁移现有的 my-requests 和 pending-approvals 组件
-- [ ] 改进工单表单和流程
+- [x] 创建新的菜单结构（permission-management 3-tab 设计）
+- [x] 创建路由配置（permission-management-routing.module.ts）
+- [x] 创建主容器组件（permission-management.component.ts/html）
+- [x] 创建3个Tab组件占位符：
+  - [x] PermissionDashboardComponent (我的权限)
+  - [x] PermissionRequestComponent (权限申请)
+  - [x] PermissionApprovalComponent (权限审批)
+- [x] 更新 cluster-ops 路由（从 /auth 迁移到 /permission-management）
 
-### Phase 2: 权限配置模块 (Week 3-4)
+### Phase 2: 前端UI实现 (Week 1-2) ✅ COMPLETED
+
+#### Tab 1: Permission Dashboard 我的权限
+- [x] 统计卡片（拥有角色、全局权限、DB权限、表级权限）
+- [x] 权限清单表格（权限类型、资源范围、资源路径、授予角色、授予时间）
+- [x] 搜索和过滤功能
+- [x] 撤销按钮（emit事件给parent）
+- [x] 刷新按钮
+- [x] 空状态和加载状态
+
+#### Tab 2: Permission Request 权限申请
+- [x] 动态表单（3种请求类型）：
+  - [x] grant_role: 用户 + 角色
+  - [x] grant_permission: 用户 + 资源类型 + 权限列表
+  - [x] revoke_permission: 用户 + 资源类型 + 权限列表
+- [x] 实时SQL预览生成
+- [x] 表单验证和提交
+- [x] 我的申请列表（状态过滤）
+- [x] 状态标记和颜色编码
+
+#### Tab 3: Permission Approval 权限审批（占位符）
+- [ ] 待审批列表（filter）
+- [ ] 详情弹窗（显示申请信息和SQL预览）
+- [ ] 批准/拒绝操作
+- [ ] 审批意见输入
 
 - [ ] 创建系统用户管理页面（调用 `/api/users`）
 - [ ] 创建系统角色管理页面（调用 `/api/roles`）

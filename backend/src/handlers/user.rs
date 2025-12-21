@@ -3,8 +3,9 @@ use std::sync::Arc;
 use axum::{Json, extract::Path, extract::State};
 
 use crate::AppState;
+use crate::middleware::OrgContext;
 use crate::models::{AdminCreateUserRequest, AdminUpdateUserRequest, UserWithRolesResponse};
-use crate::utils::ApiResult;
+use crate::utils::{check_org_override, check_org_reassignment, ApiResult};
 
 /// List users with their roles
 #[utoipa::path(
@@ -18,7 +19,7 @@ use crate::utils::ApiResult;
 )]
 pub async fn list_users(
     State(state): State<Arc<AppState>>,
-    axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
+    axum::extract::Extension(org_ctx): axum::extract::Extension<OrgContext>,
 ) -> ApiResult<Json<Vec<UserWithRolesResponse>>> {
     tracing::debug!(
         "Listing users for user {} (org: {:?}, super_admin: {})",
@@ -48,7 +49,7 @@ pub async fn list_users(
 pub async fn get_user(
     State(state): State<Arc<AppState>>,
     Path(user_id): Path<i64>,
-    axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
+    axum::extract::Extension(org_ctx): axum::extract::Extension<OrgContext>,
 ) -> ApiResult<Json<UserWithRolesResponse>> {
     tracing::debug!(
         "Fetching user_id={} for user {} (org: {:?}, super_admin: {})",
@@ -79,14 +80,10 @@ pub async fn get_user(
 )]
 pub async fn create_user(
     State(state): State<Arc<AppState>>,
-    axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
+    axum::extract::Extension(org_ctx): axum::extract::Extension<OrgContext>,
     Json(payload): Json<AdminCreateUserRequest>,
 ) -> ApiResult<Json<UserWithRolesResponse>> {
-    if !org_ctx.is_super_admin && payload.organization_id.is_some() {
-        return Err(crate::utils::ApiError::forbidden(
-            "Organization administrators cannot override organization assignment",
-        ));
-    }
+    check_org_override(&org_ctx, payload.organization_id)?;
 
     tracing::info!(
         "Creating user: {} by user {} (org: {:?}, super_admin: {})",
@@ -124,7 +121,7 @@ pub async fn create_user(
 pub async fn update_user(
     State(state): State<Arc<AppState>>,
     Path(user_id): Path<i64>,
-    axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
+    axum::extract::Extension(org_ctx): axum::extract::Extension<OrgContext>,
     Json(payload): Json<AdminUpdateUserRequest>,
 ) -> ApiResult<Json<UserWithRolesResponse>> {
     let existing = state
@@ -132,14 +129,12 @@ pub async fn update_user(
         .get_user(user_id, org_ctx.organization_id, org_ctx.is_super_admin)
         .await?;
 
-    if !org_ctx.is_super_admin
-        && payload.organization_id.is_some()
-        && payload.organization_id != existing.user.organization_id
-    {
-        return Err(crate::utils::ApiError::forbidden(
-            "Organization administrators cannot reassign user organization",
-        ));
-    }
+    check_org_reassignment(
+        &org_ctx,
+        payload.organization_id,
+        existing.user.organization_id,
+        "user",
+    )?;
 
     tracing::info!(
         "Updating user_id={} by user {} (org: {:?}, super_admin: {})",
@@ -175,7 +170,7 @@ pub async fn update_user(
 pub async fn delete_user(
     State(state): State<Arc<AppState>>,
     Path(user_id): Path<i64>,
-    axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
+    axum::extract::Extension(org_ctx): axum::extract::Extension<OrgContext>,
 ) -> ApiResult<Json<()>> {
     tracing::info!(
         "Deleting user_id={} by user {} (org: {:?}, super_admin: {})",

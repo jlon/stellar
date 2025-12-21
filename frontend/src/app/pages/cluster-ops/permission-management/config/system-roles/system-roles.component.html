@@ -1,0 +1,231 @@
+<div class="row">
+  <!-- Search Section -->
+  <div class="col-12 mb-3">
+    <div class="input-group">
+      <input
+        type="text"
+        class="form-control"
+        placeholder="搜索角色名称或描述..."
+        [(ngModel)]="searchTerm"
+        (input)="onSearchChange()"
+      />
+      <div class="input-group-append">
+        <button class="btn btn-outline-secondary" type="button">
+          <i class="fas fa-search"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Roles List Section -->
+  <div class="col-12">
+    <nb-card>
+      <nb-card-header>
+        <h6>系统角色 ({{ filteredRoles.length }} / {{ systemRoles.length }})</h6>
+      </nb-card-header>
+
+      <nb-card-body>
+        <!-- Loading Spinner -->
+        <div *ngIf="rolesLoading" class="text-center p-4">
+          <nb-spinner></nb-spinner>
+          <p>加载角色中...</p>
+        </div>
+
+        <!-- Roles Table -->
+        <div *ngIf="!rolesLoading && filteredRoles.length > 0">
+          <table class="table table-striped table-hover">
+            <thead>
+              <tr>
+                <th>角色代码</th>
+                <th>角色名</th>
+                <th>描述</th>
+                <th>类型</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let role of filteredRoles">
+                <td><code>{{ role.code }}</code></td>
+                <td><strong>{{ role.name }}</strong></td>
+                <td><small>{{ role.description }}</small></td>
+                <td>
+                  <span
+                    class="badge"
+                    [class.badge-danger]="role.is_system"
+                    [class.badge-warning]="!role.is_system"
+                  >
+                    {{ getRoleTypeLabel(role.is_system) }}
+                  </span>
+                </td>
+                <td>
+                  <button
+                    class="btn btn-sm btn-info"
+                    (click)="onViewDetail(role)"
+                  >
+                    查看
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Empty State -->
+        <div *ngIf="!rolesLoading && filteredRoles.length === 0" class="text-center p-4">
+          <p class="text-muted">暂无角色</p>
+        </div>
+      </nb-card-body>
+    </nb-card>
+  </div>
+</div>
+
+<!-- Role Detail Modal -->
+<nb-card *ngIf="selectedRole" class="detail-modal-overlay" (click)="onCloseDetail()">
+  <div class="detail-modal-content" (click)="$event.stopPropagation()">
+    <nb-card>
+      <nb-card-header>
+        <div class="d-flex justify-content-between align-items-center">
+          <h6>角色详情: {{ selectedRole.name }}</h6>
+          <button
+            type="button"
+            class="btn btn-sm btn-ghost"
+            aria-label="关闭"
+            (click)="onCloseDetail()"
+          >
+            ✕
+          </button>
+        </div>
+      </nb-card-header>
+
+      <nb-card-body>
+        <!-- Loading State -->
+        <div *ngIf="roleDetailLoading" class="text-center p-4">
+          <nb-spinner></nb-spinner>
+          <p>加载角色详情中...</p>
+        </div>
+
+        <!-- Role Info -->
+        <div *ngIf="!roleDetailLoading" class="row mb-4">
+          <div class="col-md-6">
+            <div class="mb-3">
+              <label class="text-muted">角色代码</label>
+              <div><code>{{ selectedRole.code }}</code></div>
+            </div>
+            <div class="mb-3">
+              <label class="text-muted">角色名</label>
+              <div><strong>{{ selectedRole.name }}</strong></div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="mb-3">
+              <label class="text-muted">角色类型</label>
+              <div>
+                <span
+                  class="badge"
+                  [class.badge-danger]="selectedRole.is_system"
+                  [class.badge-warning]="!selectedRole.is_system"
+                >
+                  {{ getRoleTypeLabel(selectedRole.is_system) }}
+                </span>
+              </div>
+            </div>
+            <div class="mb-3">
+              <label class="text-muted">创建时间</label>
+              <div><small>{{ selectedRole.created_at }}</small></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Description -->
+        <div *ngIf="!roleDetailLoading" class="row mb-4">
+          <div class="col-12">
+            <label class="text-muted">描述</label>
+            <div>{{ selectedRole.description || '无描述' }}</div>
+          </div>
+        </div>
+
+        <!-- Permissions -->
+        <div *ngIf="!roleDetailLoading && selectedRole.permissions" class="row mb-4">
+          <div class="col-12">
+            <label class="text-muted">权限清单 ({{ selectedRole.permissions.length }})</label>
+            <div class="permission-tree mt-2">
+              <div class="permission-item" *ngFor="let perm of selectedRole.permissions">
+                <div>
+                  <strong>{{ perm.name }}</strong>
+                  <code class="ml-2">{{ perm.code }}</code>
+                </div>
+                <small class="text-muted" *ngIf="perm.description">{{ perm.description }}</small>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Close Button -->
+        <div class="row">
+          <div class="col-12">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              (click)="onCloseDetail()"
+            >
+              关闭
+            </button>
+          </div>
+        </div>
+      </nb-card-body>
+    </nb-card>
+  </div>
+</nb-card>
+
+<style>
+  .detail-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+
+  .detail-modal-content {
+    width: 90%;
+    max-width: 700px;
+    max-height: 90vh;
+    overflow-y: auto;
+    background: white;
+    border-radius: 4px;
+  }
+
+  .permission-tree {
+    .permission-item {
+      padding: 0.5rem 0;
+      font-size: 0.9rem;
+
+      code {
+        background-color: #f8f9fa;
+        padding: 0.2rem 0.4rem;
+        border-radius: 0.25rem;
+        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+      }
+    }
+  }
+
+  .badge {
+    &-danger {
+      background-color: #ff6b6b;
+    }
+
+    &-warning {
+      background-color: #ffa94d;
+    }
+
+    &-light {
+      background-color: #f8f9fa;
+      color: #212529;
+    }
+  }
+</style>

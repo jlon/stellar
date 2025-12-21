@@ -1,0 +1,192 @@
+<!-- 权限仪表板 - 全宽布局，无多余边距 -->
+<div class="permission-dashboard-wrapper">
+  <!-- 页面标题栏 -->
+  <div class="page-header">
+    <h5>我的权限</h5>
+    <button nbButton status="primary" size="small" (click)="loadPermissions()" [disabled]="loading">
+      <nb-icon icon="refresh-outline" [class.spin]="loading"></nb-icon>
+      {{ loading ? '加载中...' : '刷新' }}
+    </button>
+  </div>
+
+  <!-- 统计信息卡片 - 紧凑布局 -->
+  <div class="stats-row">
+    <nb-card status="primary" class="stat-card">
+      <nb-card-body>
+        <nb-icon icon="shield-outline" class="stat-icon"></nb-icon>
+        <div class="stat-content">
+          <h3>{{ stats.totalRoles }}</h3>
+          <small>拥有角色</small>
+        </div>
+      </nb-card-body>
+    </nb-card>
+
+    <nb-card status="success" class="stat-card">
+      <nb-card-body>
+        <nb-icon icon="globe-outline" class="stat-icon"></nb-icon>
+        <div class="stat-content">
+          <h3>{{ stats.globalPermissions }}</h3>
+          <small>全局权限</small>
+        </div>
+      </nb-card-body>
+    </nb-card>
+
+    <nb-card status="info" class="stat-card">
+      <nb-card-body>
+        <nb-icon icon="layers-outline" class="stat-icon"></nb-icon>
+        <div class="stat-content">
+          <h3>{{ stats.dbPermissions }}</h3>
+          <small>数据库权限</small>
+        </div>
+      </nb-card-body>
+    </nb-card>
+
+    <nb-card status="warning" class="stat-card">
+      <nb-card-body>
+        <nb-icon icon="grid-outline" class="stat-icon"></nb-icon>
+        <div class="stat-content">
+          <h3>{{ stats.tablePermissions }}</h3>
+          <small>表级权限</small>
+        </div>
+      </nb-card-body>
+    </nb-card>
+  </div>
+
+  <!-- 筛选和操作区域 -->
+  <div class="filter-section">
+    <div class="filter-controls">
+      <div class="search-box">
+        <input type="text" nbInput fullWidth placeholder="搜索权限..."
+               [(ngModel)]="searchText" (input)="applyFilters()">
+      </div>
+
+      <nb-select placeholder="资源范围" [(selected)]="filterScope" (selectedChange)="applyFilters()">
+        <nb-option value="all">全部</nb-option>
+        <nb-option value="catalog">Catalog</nb-option>
+        <nb-option value="database">Database</nb-option>
+        <nb-option value="table">Table</nb-option>
+      </nb-select>
+
+      <nb-select placeholder="风险等级" [(selected)]="filterRisk" (selectedChange)="applyFilters()">
+        <nb-option value="all">全部风险</nb-option>
+        <nb-option value="high">高风险</nb-option>
+        <nb-option value="medium">中风险</nb-option>
+        <nb-option value="low">低风险</nb-option>
+      </nb-select>
+    </div>
+
+    <div class="quick-actions">
+      <nb-checkbox [(ngModel)]="showExpiringOnly" (checkedChange)="applyFilters()">
+        仅显示即将到期
+      </nb-checkbox>
+      <nb-checkbox [(ngModel)]="showUnusedOnly" (checkedChange)="applyFilters()">
+        仅显示未使用
+      </nb-checkbox>
+
+      <button nbButton ghost status="warning" size="small"
+              (click)="quickRevokeExpiring()"
+              *ngIf="stats.expiringPermissions > 0">
+        <nb-icon icon="clock-outline"></nb-icon>
+        处理即将到期 ({{ stats.expiringPermissions }})
+      </button>
+
+      <button nbButton ghost status="info" size="small"
+              (click)="quickRevokeUnused()"
+              *ngIf="stats.unusedPermissions > 0">
+        <nb-icon icon="archive-outline"></nb-icon>
+        清理未使用 ({{ stats.unusedPermissions }})
+      </button>
+    </div>
+  </div>
+
+  <!-- 批量操作提示 -->
+  <nb-alert status="info" *ngIf="selectedPermissions.size > 0" class="batch-alert">
+    <div class="batch-alert-content">
+      <span>已选择 {{ selectedPermissions.size }} 个权限</span>
+      <div class="batch-actions">
+        <button nbButton status="danger" size="small" (click)="batchRevoke()">
+          批量撤销
+        </button>
+        <button nbButton status="basic" size="small" (click)="clearSelection()">
+          取消选择
+        </button>
+      </div>
+    </div>
+  </nb-alert>
+
+  <!-- 权限列表 -->
+  <div class="permissions-table-container" *ngIf="!loading">
+    <table class="permissions-table">
+      <thead>
+        <tr>
+          <th class="checkbox-column">
+            <nb-checkbox [(ngModel)]="selectAll" (checkedChange)="toggleSelectAll()"></nb-checkbox>
+          </th>
+          <th>权限类型</th>
+          <th>资源路径</th>
+          <th>授权角色</th>
+          <th>风险等级</th>
+          <th>使用情况</th>
+          <th>到期时间</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let perm of filteredPermissions"
+            [class.selected]="perm.selected">
+          <td class="checkbox-column">
+            <nb-checkbox [(ngModel)]="perm.selected" (checkedChange)="toggleSelection(perm)"></nb-checkbox>
+          </td>
+          <td>
+            <nb-badge status="primary" text="{{ perm.privilege_type }}"></nb-badge>
+          </td>
+          <td>
+            <code>{{ perm.resource_path }}</code>
+          </td>
+          <td>
+            <nb-badge status="info" text="{{ perm.granted_role || '直接授权' }}"></nb-badge>
+          </td>
+          <td>
+            <nb-badge [status]="getRiskColor(perm.risk_level)"
+                     text="{{ getRiskLabel(perm.risk_level) }}"></nb-badge>
+          </td>
+          <td>
+            <small class="text-muted">{{ getUsageStatus(perm) }}</small>
+          </td>
+          <td>
+            <small [class.text-warning]="perm.isExpiringSoon">
+              {{ formatExpiry(perm) }}
+            </small>
+          </td>
+          <td>
+            <button nbButton ghost status="danger" size="tiny"
+                    (click)="revokeWithAnalysis(perm)"
+                    nbTooltip="撤销此权限">
+              <nb-icon icon="trash-2-outline"></nb-icon>
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- 空状态 -->
+    <div *ngIf="filteredPermissions.length === 0" class="empty-state">
+      <nb-icon icon="inbox-outline" class="empty-icon"></nb-icon>
+      <h6>暂无权限数据</h6>
+      <p class="text-muted">
+        {{ searchText || showExpiringOnly || showUnusedOnly ? '尝试调整筛选条件' : '您当前没有任何数据库权限' }}
+      </p>
+      <button nbButton status="primary" size="small"
+              (click)="clearFilters()"
+              *ngIf="searchText || showExpiringOnly || showUnusedOnly">
+        重置筛选
+      </button>
+    </div>
+  </div>
+
+  <!-- 加载状态 -->
+  <div *ngIf="loading" class="loading-state">
+    <nb-spinner size="large" status="primary"></nb-spinner>
+    <p class="mt-3 text-muted">加载权限数据中...</p>
+  </div>
+</div>

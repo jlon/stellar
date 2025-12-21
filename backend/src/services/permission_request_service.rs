@@ -1,11 +1,13 @@
 use chrono::Utc;
 use serde_json;
 use sqlx::{SqlitePool, Row};
+use std::sync::Arc;
 
 use crate::models::{
-    PermissionRequest, PermissionRequestResponse, SubmitRequestDto, ApprovalDto,
-    RequestDetails, RequestQueryFilter, PaginatedResponse,
+    PermissionRequestResponse, SubmitRequestDto, ApprovalDto,
+    RequestDetails, RequestQueryFilter, PaginatedResponse, Cluster,
 };
+use crate::services::{ClusterService, MySQLPoolManager, create_adapter};
 use crate::utils::{ApiError, ApiResult};
 
 /// Service for managing permission request workflow (submission, approval, execution)
@@ -15,7 +17,12 @@ pub struct PermissionRequestService {
 }
 
 impl PermissionRequestService {
-    pub fn new(pool: SqlitePool) -> Self {
+    pub fn new(
+        pool: SqlitePool,
+        _cluster_service: ClusterService,
+        _mysql_pool_manager: std::sync::Arc<MySQLPoolManager>,
+    ) -> Self {
+        // NOTE: For now we only need the SQLite pool here; cluster-related logic is handled elsewhere.
         Self { pool }
     }
 
@@ -25,6 +32,8 @@ impl PermissionRequestService {
         &self,
         applicant_id: i64,
         req: SubmitRequestDto,
+        cluster_service: &ClusterService,
+        mysql_pool_manager: Arc<MySQLPoolManager>,
     ) -> ApiResult<i64> {
         // Get applicant's organization from database
         let applicant = sqlx::query(
@@ -38,8 +47,11 @@ impl PermissionRequestService {
         let org_id = org_id
             .ok_or_else(|| ApiError::InvalidInput("User must belong to an organization".to_string()))?;
 
-        // Generate preview SQL
-        let preview_sql = Self::generate_preview_sql(&req.request_type, &req.request_details)?;
+        // Get cluster for SQL generation
+        let cluster = cluster_service.get_cluster(req.cluster_id).await?;
+
+        // Generate preview SQL using cluster-specific adapter
+        let preview_sql = Self::generate_preview_sql(&cluster, &req.request_type, &req.request_details, mysql_pool_manager).await?;
 
         // Insert request record
         let now = Utc::now();
@@ -181,6 +193,9 @@ impl PermissionRequestService {
         approver_id: i64,
         dto: ApprovalDto,
     ) -> ApiResult<()> {
+        // Check if approver has permission to approve this request
+        self.check_approval_permission(request_id, approver_id).await?;
+
         let now = Utc::now();
 
         sqlx::query(
@@ -189,8 +204,8 @@ impl PermissionRequestService {
         )
         .bind(approver_id)
         .bind(&dto.comment)
-        .bind(&now)
-        .bind(&now)
+        .bind(now)
+        .bind(now)
         .bind(request_id)
         .execute(&self.pool)
         .await?;
@@ -213,6 +228,9 @@ impl PermissionRequestService {
         approver_id: i64,
         dto: ApprovalDto,
     ) -> ApiResult<()> {
+        // Check if approver has permission to reject this request
+        self.check_approval_permission(request_id, approver_id).await?;
+
         let now = Utc::now();
 
         sqlx::query(
@@ -221,8 +239,8 @@ impl PermissionRequestService {
         )
         .bind(approver_id)
         .bind(&dto.comment)
-        .bind(&now)
-        .bind(&now)
+        .bind(now)
+        .bind(now)
         .bind(request_id)
         .execute(&self.pool)
         .await?;
@@ -286,62 +304,227 @@ impl PermissionRequestService {
 
     // Private helper methods
 
-    // Public static method for generating preview SQL (used by handlers and services)
-    pub fn generate_preview_sql_static(
+    /// Public static method for generating preview SQL (used by handlers and services)
+    pub async fn generate_preview_sql_static(
+        cluster: &Cluster,
         request_type: &str,
         details: &RequestDetails,
+        mysql_pool_manager: Arc<MySQLPoolManager>,
     ) -> ApiResult<String> {
-        Self::generate_preview_sql(request_type, details)
+        Self::generate_preview_sql(cluster, request_type, details, mysql_pool_manager).await
     }
 
-    fn generate_preview_sql(
+    /// Generate real executable preview SQL based on cluster type and request details.
+    /// Uses cluster-specific adapter for proper SQL dialect generation.
+    async fn generate_preview_sql(
+        cluster: &Cluster,
         request_type: &str,
         details: &RequestDetails,
+        mysql_pool_manager: Arc<MySQLPoolManager>,
     ) -> ApiResult<String> {
-        let sql = match request_type {
-            "create_account" => {
-                let account = details.target_account.as_ref()
-                    .ok_or(ApiError::ValidationError("Missing target_account".to_string()))?;
-                format!("CREATE USER '{}' IDENTIFIED BY 'password';", account)
-            },
-            "grant_role" => {
-                let account = details.target_account.as_ref()
-                    .ok_or(ApiError::ValidationError("Missing target_account".to_string()))?;
-                let role = details.target_role.as_ref()
-                    .ok_or(ApiError::ValidationError("Missing target_role".to_string()))?;
-                format!("GRANT {} TO '{}';", role, account)
-            },
+        // Create cluster-specific adapter
+        let adapter = create_adapter(cluster.clone(), mysql_pool_manager);
+        
+        match request_type {
             "grant_permission" => {
-                let account = details.target_account.as_ref()
-                    .ok_or(ApiError::ValidationError("Missing target_account".to_string()))?;
-                let perms = details.permissions.as_ref()
-                    .ok_or(ApiError::ValidationError("Missing permissions".to_string()))?;
+                // 1. 权限列表
+                let perms = details
+                    .permissions
+                    .as_ref()
+                    .ok_or(ApiError::ValidationError(
+                        "Missing permissions for grant_permission".to_string(),
+                    ))?;
+                if perms.is_empty() {
+                    return Err(ApiError::ValidationError(
+                        "At least one permission is required".to_string(),
+                    ));
+                }
+
+                // Convert Vec<String> to Vec<&str> for adapter methods
+                let perms_ref: Vec<&str> = perms.iter().map(|s| s.as_str()).collect();
+
+                // 2. 资源路径（database / table），默认 database 级
+                let resource_type = details
+                    .resource_type
+                    .as_deref()
+                    .or(details.scope.as_deref())
+                    .unwrap_or("database");
+
+                let database = details
+                    .database
+                    .as_ref()
+                    .ok_or(ApiError::ValidationError(
+                        "Missing database for grant_permission".to_string(),
+                    ))?;
+
+                let table = details.table.as_deref();
+
+                // 3. WITH GRANT OPTION（可选）
+                let with_grant_option = details.with_grant_option.unwrap_or(false);
+
+                // 4. 场景分支：使用集群适配器生成 SQL
+                if let Some(new_user) = &details.new_user_name {
+                    // 场景 C：新建用户 + 授权
+                    let password = details
+                        .new_user_password
+                        .as_deref()
+                        .unwrap_or("");
+
+                    let mut sqls = Vec::new();
+                    sqls.push(adapter.create_user(new_user, password).await?);
+                    
+                    let grant_sql = adapter
+                        .grant_permissions(
+                            "USER",
+                            new_user,
+                            &perms_ref,
+                            resource_type,
+                            database,
+                            table,
+                            with_grant_option,
+                        )
+                        .await?;
+                    sqls.push(grant_sql);
+
+                    Ok(sqls.join(" "))
+                } else if let Some(new_role) = &details.new_role_name {
+                    // 场景 B：新建角色 + 授权角色 + 把角色授予用户
+                    let target_user = details
+                        .target_user
+                        .as_ref()
+                        .ok_or(ApiError::ValidationError(
+                            "Missing target_user for grant_permission with new_role".to_string(),
+                        ))?;
+
+                    let mut sqls = Vec::new();
+                    sqls.push(adapter.create_role(new_role).await?);
+                    
+                    let grant_sql = adapter
+                        .grant_permissions(
+                            "ROLE",
+                            new_role,
+                            &perms_ref,
+                            resource_type,
+                            database,
+                            table,
+                            with_grant_option,
+                        )
+                        .await?;
+                    sqls.push(grant_sql);
+                    
+                    sqls.push(adapter.grant_role(new_role, target_user).await?);
+
+                    Ok(sqls.join(" "))
+                } else if let Some(user) = &details.target_user {
+                    // 场景 A1：已有用户直接授予权限
+                    let grant_sql = adapter
+                        .grant_permissions(
+                            "USER",
+                            user,
+                            &perms_ref,
+                            resource_type,
+                            database,
+                            table,
+                            with_grant_option,
+                        )
+                        .await?;
+                    Ok(grant_sql)
+                } else if let Some(role) = &details.target_role {
+                    // 场景 A2：已有角色授予权限
+                    let grant_sql = adapter
+                        .grant_permissions(
+                            "ROLE",
+                            role,
+                            &perms_ref,
+                            resource_type,
+                            database,
+                            table,
+                            with_grant_option,
+                        )
+                        .await?;
+                    Ok(grant_sql)
+                } else {
+                    Err(ApiError::ValidationError(
+                        "Missing principal (user/role/new_user/new_role) for grant_permission"
+                            .to_string(),
+                    ))
+                }
+            }
+            "grant_role" => {
+                let target_user = details
+                    .target_user
+                    .as_ref()
+                    .ok_or(ApiError::ValidationError(
+                        "Missing target_user for grant_role".to_string(),
+                    ))?;
+                let target_role = details
+                    .target_role
+                    .as_ref()
+                    .ok_or(ApiError::ValidationError(
+                        "Missing target_role for grant_role".to_string(),
+                    ))?;
+                Ok(format!("GRANT '{}' TO USER '{}'@'%';", target_role, target_user))
+            }
+            "revoke_permission" => {
+                let perms = details
+                    .permissions
+                    .as_ref()
+                    .ok_or(ApiError::ValidationError(
+                        "Missing permissions for revoke_permission".to_string(),
+                    ))?;
+                if perms.is_empty() {
+                    return Err(ApiError::ValidationError(
+                        "At least one permission is required".to_string(),
+                    ));
+                }
                 let perm_str = perms.join(", ");
 
-                let object = match details.scope.as_deref() {
-                    Some("table") => {
-                        let db = details.database.as_ref()
-                            .ok_or(ApiError::ValidationError("Missing database".to_string()))?;
-                        let tbl = details.table.as_ref()
-                            .ok_or(ApiError::ValidationError("Missing table".to_string()))?;
-                        format!("{}.{}", db, tbl)
-                    },
-                    Some("database") => {
-                        let db = details.database.as_ref()
-                            .ok_or(ApiError::ValidationError("Missing database".to_string()))?;
-                        format!("{}.*", db)
-                    },
-                    _ => "*.*".to_string(),
+                let resource_type = details
+                    .resource_type
+                    .as_deref()
+                    .or(details.scope.as_deref())
+                    .unwrap_or("database");
+
+                let database = details
+                    .database
+                    .as_ref()
+                    .ok_or(ApiError::ValidationError(
+                        "Missing database for revoke_permission".to_string(),
+                    ))?;
+
+                let resource = match resource_type {
+                    "table" => {
+                        let table = details
+                            .table
+                            .as_ref()
+                            .ok_or(ApiError::ValidationError(
+                                "Missing table for table-level permission".to_string(),
+                            ))?;
+                        format!("{}.{}", database, table)
+                    }
+                    _ => format!("{}.*", database),
                 };
 
-                format!("GRANT {} ON {} TO '{}';", perm_str, object, account)
-            },
-            _ => return Err(ApiError::ValidationError(format!("Unknown request_type: {}", request_type))),
-        };
+                let user = details
+                    .target_user
+                    .as_ref()
+                    .ok_or(ApiError::ValidationError(
+                        "Missing target_user for revoke_permission".to_string(),
+                    ))?;
 
-        Ok(sql)
+                Ok(format!(
+                    "REVOKE {} ON {} FROM USER '{}'@'%';",
+                    perm_str, resource, user
+                ))
+            }
+            _ => Err(ApiError::ValidationError(format!(
+                "Unknown request_type: {}",
+                request_type
+            ))),
+        }
     }
 
+    /// Execute request in background (currently只更新状态，不真正连集群执行)
     async fn execute_request_internal(pool: &SqlitePool, request_id: i64) -> ApiResult<()> {
         // Query for executed_sql field
         let request = sqlx::query(
@@ -401,5 +584,44 @@ impl PermissionRequestService {
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
         })
+    }
+
+    /// Check if the approver has permission to approve/reject this request
+    /// Only organization admins or super admins can approve requests
+    async fn check_approval_permission(&self, request_id: i64, approver_id: i64) -> ApiResult<()> {
+        // Get the request to find the applicant's organization
+        let request = sqlx::query(
+            "SELECT pr.applicant_org_id, u.username as approver_name, u.organization_id as approver_org_id
+             FROM permission_requests pr
+             JOIN users u ON u.id = ?
+             WHERE pr.id = ?"
+        )
+        .bind(approver_id)
+        .bind(request_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        let (applicant_org_id, _approver_name, approver_org_id) = match request {
+            Some(row) => {
+                let applicant_org_id: Option<i64> = row.get("applicant_org_id");
+                let _approver_name: String = row.get("approver_name");
+                let approver_org_id: Option<i64> = row.get("approver_org_id");
+                (applicant_org_id, _approver_name, approver_org_id)
+            }
+            None => return Err(ApiError::not_found("Permission request not found".to_string())),
+        };
+
+        // Check if approver belongs to the same organization as the applicant
+        if applicant_org_id != approver_org_id {
+            return Err(ApiError::forbidden(
+                "You can only approve requests from users in your organization".to_string()
+            ));
+        }
+
+        // TODO: In a real implementation, you would check if the user has admin role
+        // For now, we'll allow any user in the organization to approve
+        // This should be enhanced to check for specific admin roles
+
+        Ok(())
     }
 }

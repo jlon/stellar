@@ -4,9 +4,9 @@ use crate::models::{
 };
 use crate::services::{casbin_service::CasbinService, permission_service::PermissionService};
 use crate::utils::organization_filter::apply_organization_filter;
-use crate::utils::{ApiError, ApiResult};
+use crate::utils::{vec_to_map, ApiError, ApiResult};
 use sqlx::SqlitePool;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -292,39 +292,43 @@ impl RoleService {
                 .fetch_all(&self.pool)
                 .await?;
 
-        let mut perm_map: HashMap<i64, &crate::models::Permission> = HashMap::new();
-        for perm in &all_permissions {
-            perm_map.insert(perm.id, perm);
-        }
+        // 使用 vec_to_map 构建权限映射
+        let perm_map = vec_to_map(all_permissions.iter().collect::<Vec<_>>(), |p| p.id);
 
-        let mut menu_to_apis: HashMap<i64, Vec<i64>> = HashMap::new();
-        for api_perm in all_permissions.iter().filter(|p| p.r#type == "api") {
-            if let Some(parent_id) = api_perm.parent_id {
-                menu_to_apis.entry(parent_id).or_default().push(api_perm.id);
-            }
-        }
+        // 使用 lambda 表达式构建 menu -> APIs 映射
+        let menu_to_apis: HashMap<i64, Vec<i64>> = all_permissions
+            .iter()
+            .filter(|p| p.r#type == "api" && p.parent_id.is_some())
+            .fold(HashMap::new(), |mut acc, api_perm| {
+                if let Some(parent_id) = api_perm.parent_id {
+                    acc.entry(parent_id).or_default().push(api_perm.id);
+                }
+                acc
+            });
 
         let mut extended_permission_ids = req.permission_ids.clone();
 
-        let mut api_count = 0;
-        for permission_id in &req.permission_ids {
+        // 自动关联 API 权限
+        let api_count = req.permission_ids.iter().fold(0, |count, permission_id| {
             if let Some(perm) = perm_map.get(permission_id)
                 && perm.r#type == "menu"
                 && let Some(api_ids) = menu_to_apis.get(permission_id)
             {
                 extended_permission_ids.extend(api_ids.iter());
-                api_count += api_ids.len();
                 tracing::debug!(
                     "Menu permission {} (code: {}) auto-associated with {} API permissions",
                     permission_id,
                     perm.code,
                     api_ids.len()
                 );
+                count + api_ids.len()
+            } else {
+                count
             }
-        }
+        });
 
-        let mut parent_count = 0;
-        for permission_id in req.permission_ids.clone() {
+        // 自动授予父级菜单权限
+        let parent_count = req.permission_ids.iter().fold(0, |mut count, &permission_id| {
             let mut current_id = permission_id;
 
             while let Some(perm) = perm_map.get(&current_id) {
@@ -334,7 +338,7 @@ impl RoleService {
                             && !extended_permission_ids.contains(&parent_id)
                         {
                             extended_permission_ids.push(parent_id);
-                            parent_count += 1;
+                            count += 1;
                             tracing::debug!(
                                 "Auto-granting parent menu permission {} (code: {}) for permission {} (code: {})",
                                 parent_id,
@@ -348,12 +352,13 @@ impl RoleService {
                         break;
                     }
                 } else {
-                    break; // No more parents
+                    break;
                 }
             }
-        }
+            count
+        });
 
-        use std::collections::HashSet;
+        // 使用 lambda 表达式去重并排序
         let mut final_permission_ids: Vec<i64> = extended_permission_ids
             .into_iter()
             .collect::<HashSet<i64>>()
@@ -379,6 +384,7 @@ impl RoleService {
             .execute(&mut *tx)
             .await?;
 
+        // 使用 futures 批量插入（如果需要更高性能可以考虑）
         for permission_id in &final_permission_ids {
             sqlx::query("INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)")
                 .bind(role_id)

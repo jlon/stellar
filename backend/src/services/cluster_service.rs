@@ -14,44 +14,35 @@ pub struct ClusterService {
 }
 
 /// Convert raw error messages into user-friendly messages for health checks
-/// This simplifies technical error details while preserving key information
 fn simplify_health_check_error(error: &str) -> String {
     let error_lower = error.to_lowercase();
 
-    // Check for authentication errors (MySQL error 28000)
+    // Check error patterns using if-else
     if error_lower.contains("28000") || error_lower.contains("access denied") {
         return "认证失败: 请检查用户名和密码是否正确".to_string();
     }
 
-    // Check for connection errors
-    if error_lower.contains("connection refused")
-        || error_lower.contains("refused")
-        || error_lower.contains("cannot connect")
-    {
+    if error_lower.contains("connection refused") || error_lower.contains("refused") || error_lower.contains("cannot connect") {
         return "无法连接: 请检查集群地址和端口是否正确".to_string();
     }
 
-    // Check for timeout errors
     if error_lower.contains("timeout") {
         return "连接超时: 请检查网络连接和集群状态".to_string();
     }
 
-    // Check for DNS resolution errors
     if error_lower.contains("unknown host") || error_lower.contains("resolve") {
         return "解析失败: 无法解析集群地址，请检查是否输入正确".to_string();
     }
 
     // Default: return a generic message with error code if available
-    if let Some(code_start) = error.find("ERROR ") {
-        if let Some(code_end) = error[code_start..].find(':') {
-            let error_code = &error[code_start + 6..code_start + code_end];
-            format!("连接失败 ({}): 请检查集群配置", error_code)
-        } else {
-            "连接失败: 请检查集群配置".to_string()
-        }
-    } else {
-        "连接失败: 请检查集群配置".to_string()
-    }
+    error.find("ERROR ")
+        .and_then(|code_start| {
+            error[code_start..].find(':').map(|code_end| {
+                let error_code = &error[code_start + 6..code_start + code_end];
+                format!("连接失败 ({}): 请检查集群配置", error_code)
+            })
+        })
+        .unwrap_or_else(|| "连接失败: 请检查集群配置".to_string())
 }
 
 impl ClusterService {
