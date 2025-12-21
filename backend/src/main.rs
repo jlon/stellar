@@ -363,7 +363,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ));
     tracing::info!("DbAuthQueryService initialized with real cluster query support");
 
-    let permission_request_service = Arc::new(PermissionRequestService::new(pool.clone()));
+    let permission_request_service = Arc::new(PermissionRequestService::new(
+        pool.clone(),
+        cluster_service.as_ref().clone(),
+        Arc::clone(&mysql_pool_manager),
+    ));
     tracing::info!("PermissionRequestService initialized");
 
     let app_state = AppState {
@@ -620,6 +624,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/clusters/:cluster_id/db-auth/roles", get(handlers::permission_request::list_db_roles))
         .route("/api/clusters/db-auth/accounts", get(handlers::permission_request::list_db_accounts_active))
         .route("/api/clusters/db-auth/roles", get(handlers::permission_request::list_db_roles_active))
+        .route("/api/clusters/db-auth/my-permissions", get(handlers::permission_request::list_my_db_permissions))
         .route("/api/db-auth/preview-sql", post(handlers::permission_request::preview_sql))
         .with_state(Arc::clone(&app_state_arc))
         .layer(axum_middleware::from_fn_with_state(auth_state, middleware::auth_middleware));

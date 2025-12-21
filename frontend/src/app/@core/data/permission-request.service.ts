@@ -9,6 +9,7 @@ import {
   PaginatedResponse,
   DbAccountDto,
   DbRoleDto,
+  DbUserPermissionDto,
 } from './permission-request.model';
 
 /**
@@ -107,6 +108,14 @@ export class PermissionRequestService {
    */
   previewSql(data: SubmitRequestDto): Observable<{ sql: string; request_type: string }> {
     return this.api.post<{ sql: string; request_type: string }>('/db-auth/preview-sql', data);
+  }
+
+  /**
+   * 查询当前用户的数据库权限列表
+   * Backend uses SHOW GRANTS to retrieve actual permissions from database
+   */
+  listMyDbPermissions(): Observable<DbUserPermissionDto[]> {
+    return this.api.get<DbUserPermissionDto[]>(`/clusters/db-auth/my-permissions`);
   }
 
   /**

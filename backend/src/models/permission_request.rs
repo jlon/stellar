@@ -28,14 +28,29 @@ pub struct PermissionRequest {
 /// Request Details JSON structure
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct RequestDetails {
-    pub action: String,  // 'create_account' | 'grant_role' | 'grant_permission'
-    pub target_account: Option<String>,  // e.g., "user@'%'"
+    // High-level action type
+    pub action: Option<String>, // 'grant_role' | 'grant_permission' | 'revoke_permission'
+
+    // Principals
+    pub target_user: Option<String>,
+    pub target_account: Option<String>, // e.g., "user@'%'"
     pub target_role: Option<String>,
-    pub scope: Option<String>,  // 'global' | 'database' | 'table'
+
+    // Resource scope
+    pub scope: Option<String>,        // 'global' | 'database' | 'table'
+    pub resource_type: Option<String>, // 'catalog' | 'database' | 'table' | 'column'
+    pub catalog: Option<String>,
     pub database: Option<String>,
     pub table: Option<String>,
-    pub permissions: Option<Vec<String>>,  // ['SELECT', 'INSERT']
+
+    // Permissions
+    pub permissions: Option<Vec<String>>, // ["SELECT", "INSERT"]
     pub with_grant_option: Option<bool>,
+
+    // Auto-provision principals on approval
+    pub new_user_name: Option<String>,
+    pub new_user_password: Option<String>,
+    pub new_role_name: Option<String>,
 }
 
 /// Request submission DTO
@@ -104,6 +119,21 @@ pub struct DbRoleDto {
     pub role_name: String,
     pub role_type: String,  // 'built-in' | 'custom'
     pub permissions_count: Option<i64>,
+}
+
+/// Database user permission DTO (for "我的权限" dashboard)
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct DbUserPermissionDto {
+    /// Local incremental ID for frontend table display
+    pub id: i32,
+    /// Privilege type, e.g. "SELECT", "INSERT", "ALL"
+    pub privilege_type: String,
+    /// Resource type, e.g. "database" | "table"
+    pub resource_type: String,
+    /// Resource path, e.g. "db_name.*" or "db_name.table_name"
+    pub resource_path: String,
+    /// Role name if this permission comes from a role grant
+    pub granted_role: Option<String>,
 }
 
 /// Pagination result

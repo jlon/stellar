@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnDestroy } from '@angular/core';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
@@ -11,13 +11,15 @@ import { takeUntil } from 'rxjs/operators';
  * - 管理4个Tab页面（我的申请、待审批、账户列表、角色列表）
  * - 处理Tab切换逻辑
  * - 提供跨Tab的事件通信（如刷新列表）
+ *
+ * @deprecated Use PermissionManagementComponent instead
  */
 @Component({
   selector: 'ngx-cluster-ops-auth',
   templateUrl: './auth.component.html',
   styleUrls: ['./auth.component.scss'],
 })
-export class AuthComponent implements OnInit, OnDestroy {
+export class AuthComponent implements OnDestroy {
   activeTabIndex = 0;
 
   // 用于跨Tab通信的事件流
@@ -29,10 +31,6 @@ export class AuthComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
 
   constructor() {}
-
-  ngOnInit(): void {
-    // 初始化逻辑（如果需要）
-  }
 
   ngOnDestroy(): void {
     // 清理资源

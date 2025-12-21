@@ -114,6 +114,51 @@ pub trait ClusterAdapter: Send + Sync {
 
     /// Get profile detail by query_id
     async fn get_profile(&self, query_id: &str) -> ApiResult<String>;
+
+    // ========================================
+    // Permission Management Methods
+    // ========================================
+
+    /// Create a new database user
+    async fn create_user(&self, username: &str, password: &str) -> ApiResult<String>;
+
+    /// Create a new database role
+    async fn create_role(&self, role_name: &str) -> ApiResult<String>;
+
+    /// Grant permissions to a user or role
+    async fn grant_permissions(
+        &self,
+        principal_type: &str, // "USER" or "ROLE"
+        principal_name: &str,
+        permissions: &[&str],
+        resource_type: &str, // "DATABASE" or "TABLE"
+        database: &str,
+        table: Option<&str>,
+        with_grant_option: bool,
+    ) -> ApiResult<String>;
+
+    /// Revoke permissions from a user
+    async fn revoke_permissions(
+        &self,
+        principal_type: &str, // "USER" or "ROLE"
+        principal_name: &str,
+        permissions: &[&str],
+        resource_type: &str, // "DATABASE" or "TABLE"
+        database: &str,
+        table: Option<&str>,
+    ) -> ApiResult<String>;
+
+    /// Grant a role to a user
+    async fn grant_role(&self, role_name: &str, username: &str) -> ApiResult<String>;
+
+    /// List user permissions (for "我的权限" dashboard)
+    async fn list_user_permissions(&self, username: &str) -> ApiResult<Vec<crate::models::DbUserPermissionDto>>;
+
+    /// List all database accounts
+    async fn list_db_accounts(&self) -> ApiResult<Vec<crate::models::DbAccountDto>>;
+
+    /// List all database roles
+    async fn list_db_roles(&self) -> ApiResult<Vec<crate::models::DbRoleDto>>;
 }
 
 /// Create adapter based on cluster type (factory method)

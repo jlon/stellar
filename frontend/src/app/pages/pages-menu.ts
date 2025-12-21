@@ -88,8 +88,8 @@ export const MENU_ITEMS: NbMenuItem[] = [
     data: { permission: 'menu:cluster-ops' },
     children: [
       {
-        title: '鉴权管控',
-        link: '/pages/cluster-ops/auth',
+        title: '权限管理',
+        link: '/pages/cluster-ops/permission-management',
         data: { permission: 'menu:cluster-ops:auth' },
       } as NbMenuItem & { data?: { permission: string } },
     ],

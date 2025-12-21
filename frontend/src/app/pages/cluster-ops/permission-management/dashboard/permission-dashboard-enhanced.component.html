@@ -1,0 +1,712 @@
+<div class="permission-dashboard-enhanced" [@slideIn]>
+  <!-- Header Section with Actions -->
+  <div class="dashboard-header">
+    <div class="header-content">
+      <h4>我的权限管理中心</h4>
+      <p class="text-hint">管理和监控您的所有数据库权限</p>
+    </div>
+
+    <div class="header-actions">
+      <!-- View Mode Switcher -->
+      <nb-button-group size="small" class="view-switcher">
+        <button nbButton [status]="viewMode === 'cards' ? 'primary' : 'basic'"
+                (click)="viewMode = 'cards'">
+          <nb-icon icon="grid-outline"></nb-icon>
+        </button>
+        <button nbButton [status]="viewMode === 'table' ? 'primary' : 'basic'"
+                (click)="viewMode = 'table'">
+          <nb-icon icon="list-outline"></nb-icon>
+        </button>
+        <button nbButton [status]="viewMode === 'grouped' ? 'primary' : 'basic'"
+                (click)="viewMode = 'grouped'">
+          <nb-icon icon="folder-outline"></nb-icon>
+        </button>
+      </nb-button-group>
+
+      <button nbButton status="primary" (click)="loadPermissions()" [disabled]="loading">
+        <nb-icon icon="refresh-outline" [class.spin]="loading"></nb-icon>
+        刷新
+      </button>
+    </div>
+  </div>
+
+  <!-- Statistics Cards with Enhanced Design -->
+  <div class="stats-container">
+    <nb-card class="stat-card" [class.warning]="stats.expiringPermissions > 0" [@cardAnimation]>
+      <nb-card-body>
+        <div class="stat-icon expiring">
+          <nb-icon icon="clock-outline"></nb-icon>
+        </div>
+        <div class="stat-content">
+          <h2>{{ stats.expiringPermissions }}</h2>
+          <span>即将到期</span>
+          <button *ngIf="stats.expiringPermissions > 0"
+                  nbButton ghost size="tiny" status="warning"
+                  (click)="quickRevokeExpiring()">
+            快速处理
+          </button>
+        </div>
+      </nb-card-body>
+    </nb-card>
+
+    <nb-card class="stat-card" [class.info]="stats.unusedPermissions > 0" [@cardAnimation]>
+      <nb-card-body>
+        <div class="stat-icon unused">
+          <nb-icon icon="archive-outline"></nb-icon>
+        </div>
+        <div class="stat-content">
+          <h2>{{ stats.unusedPermissions }}</h2>
+          <span>未使用</span>
+          <button *ngIf="stats.unusedPermissions > 0"
+                  nbButton ghost size="tiny" status="info"
+                  (click)="quickRevokeUnused()">
+            清理
+          </button>
+        </div>
+      </nb-card-body>
+    </nb-card>
+
+    <nb-card class="stat-card" [class.danger]="stats.highRiskPermissions > 0" [@cardAnimation]>
+      <nb-card-body>
+        <div class="stat-icon risk">
+          <nb-icon icon="alert-triangle-outline"></nb-icon>
+        </div>
+        <div class="stat-content">
+          <h2>{{ stats.highRiskPermissions }}</h2>
+          <span>高风险权限</span>
+        </div>
+      </nb-card-body>
+    </nb-card>
+
+    <nb-card class="stat-card" [@cardAnimation]>
+      <nb-card-body>
+        <div class="stat-icon total">
+          <nb-icon icon="shield-outline"></nb-icon>
+        </div>
+        <div class="stat-content">
+          <h2>{{ permissions.length }}</h2>
+          <span>总权限数</span>
+        </div>
+      </nb-card-body>
+    </nb-card>
+  </div>
+
+  <!-- Filters and Search Bar -->
+  <nb-card class="filter-card">
+    <nb-card-body>
+      <div class="filter-container">
+        <!-- Search Input -->
+        <div class="search-box">
+          <nb-icon icon="search-outline" class="search-icon"></nb-icon>
+          <input type="text" nbInput fullWidth
+                 placeholder="搜索权限类型、资源路径、角色..."
+                 [(ngModel)]="searchText"
+                 (input)="applyFilters()">
+        </div>
+
+        <!-- Quick Filters -->
+        <div class="quick-filters">
+          <nb-select [(selected)]="filterScope" (selectedChange)="applyFilters()"
+                     placeholder="资源范围">
+            <nb-option value="all">全部范围</nb-option>
+            <nb-option value="catalog">Catalog</nb-option>
+            <nb-option value="database">Database</nb-option>
+            <nb-option value="table">Table</nb-option>
+          </nb-select>
+
+          <nb-select [(selected)]="filterRisk" (selectedChange)="applyFilters()"
+                     placeholder="风险等级">
+            <nb-option value="all">全部风险</nb-option>
+            <nb-option value="high">
+              <nb-icon icon="alert-triangle-outline" status="danger"></nb-icon>
+              高风险
+            </nb-option>
+            <nb-option value="medium">
+              <nb-icon icon="alert-circle-outline" status="warning"></nb-icon>
+              中风险
+            </nb-option>
+            <nb-option value="low">
+              <nb-icon icon="checkmark-circle-outline" status="success"></nb-icon>
+              低风险
+            </nb-option>
+          </nb-select>
+
+          <nb-select [(selected)]="groupBy" (selectedChange)="applyFilters()"
+                     placeholder="分组方式" *ngIf="viewMode === 'grouped'">
+            <nb-option value="none">不分组</nb-option>
+            <nb-option value="scope">按范围分组</nb-option>
+            <nb-option value="role">按角色分组</nb-option>
+            <nb-option value="risk">按风险分组</nb-option>
+          </nb-select>
+        </div>
+
+        <!-- Toggle Switches -->
+        <div class="filter-toggles">
+          <nb-checkbox [(ngModel)]="showExpiringOnly" (checkedChange)="applyFilters()">
+            仅显示即将到期
+          </nb-checkbox>
+          <nb-checkbox [(ngModel)]="showUnusedOnly" (checkedChange)="applyFilters()">
+            仅显示未使用
+          </nb-checkbox>
+        </div>
+
+        <!-- Batch Actions -->
+        <div class="batch-actions" *ngIf="selectedPermissions.size > 0">
+          <span class="selection-count">
+            已选择 <strong>{{ selectedPermissions.size }}</strong> 项
+          </span>
+          <button nbButton status="danger" size="small" (click)="batchRevoke()">
+            <nb-icon icon="trash-2-outline"></nb-icon>
+            批量撤销
+          </button>
+          <button nbButton status="basic" size="small" (click)="selectedPermissions.clear(); applyFilters()">
+            取消选择
+          </button>
+        </div>
+      </div>
+    </nb-card-body>
+  </nb-card>
+
+  <!-- Permissions Display -->
+  <div class="permissions-container">
+    <!-- Loading State -->
+    <div *ngIf="loading" class="loading-container">
+      <nb-spinner size="large" status="primary"></nb-spinner>
+      <p>正在加载权限数据...</p>
+    </div>
+
+    <!-- Cards View -->
+    <div *ngIf="!loading && viewMode === 'cards'" class="cards-view">
+      <div class="permission-cards">
+        <nb-card *ngFor="let perm of filteredPermissions"
+                 class="permission-card"
+                 [class.selected]="perm.selected"
+                 [class.expiring]="perm.isExpiringSoon"
+                 [@cardAnimation]>
+
+          <!-- Card Header with Selection and Risk -->
+          <div class="card-header">
+            <nb-checkbox [(ngModel)]="perm.selected" (checkedChange)="toggleSelection(perm)">
+            </nb-checkbox>
+
+            <div class="card-badges">
+              <nb-badge [status]="getRiskColor(perm.risk_level)" position="top right">
+                <nb-icon [icon]="getRiskIcon(perm.risk_level)"></nb-icon>
+                {{ perm.risk_level === 'high' ? '高' : perm.risk_level === 'medium' ? '中' : '低' }}风险
+              </nb-badge>
+
+              <nb-badge *ngIf="perm.isExpiringSoon" status="warning" position="top right">
+                <nb-icon icon="clock-outline"></nb-icon>
+                {{ perm.daysUntilExpiry }}天
+              </nb-badge>
+            </div>
+          </div>
+
+          <nb-card-body>
+            <!-- Permission Type -->
+            <div class="permission-type">
+              <nb-icon icon="shield-outline" class="type-icon"></nb-icon>
+              <span class="type-name">{{ perm.privilege_type }}</span>
+            </div>
+
+            <!-- Resource Path -->
+            <div class="resource-path">
+              <nb-icon icon="folder-outline"></nb-icon>
+              <code>{{ perm.resource_path }}</code>
+            </div>
+
+            <!-- Meta Information -->
+            <div class="permission-meta">
+              <div class="meta-item">
+                <nb-icon icon="people-outline"></nb-icon>
+                <span>{{ perm.granted_role || '直接授权' }}</span>
+              </div>
+
+              <div class="meta-item">
+                <nb-icon icon="activity-outline"></nb-icon>
+                <span>{{ getUsageStatus(perm) }}</span>
+              </div>
+
+              <div class="meta-item" *ngIf="perm.expires_at">
+                <nb-icon icon="calendar-outline"></nb-icon>
+                <span>{{ formatExpiry(perm) }}</span>
+              </div>
+            </div>
+
+            <!-- Usage Progress Bar -->
+            <div class="usage-indicator" *ngIf="perm.usage_count > 0">
+              <label>使用频率</label>
+              <nb-progress-bar
+                [value]="Math.min(perm.usage_count, 100)"
+                [status]="perm.usage_count > 50 ? 'success' : perm.usage_count > 20 ? 'info' : 'basic'"
+                [displayValue]="true">
+              </nb-progress-bar>
+            </div>
+          </nb-card-body>
+
+          <!-- Card Actions -->
+          <nb-card-footer>
+            <button nbButton ghost status="primary" size="small"
+                    nbTooltip="查看详情"
+                    (click)="quickActionPermission = perm; showQuickActions = true">
+              <nb-icon icon="eye-outline"></nb-icon>
+            </button>
+
+            <button nbButton ghost status="warning" size="small"
+                    nbTooltip="分析撤销影响"
+                    (click)="revokeWithAnalysis(perm)">
+              <nb-icon icon="activity-outline"></nb-icon>
+            </button>
+
+            <button nbButton ghost status="danger" size="small"
+                    nbTooltip="撤销权限"
+                    (click)="revokeWithAnalysis(perm)">
+              <nb-icon icon="trash-2-outline"></nb-icon>
+              撤销
+            </button>
+          </nb-card-footer>
+        </nb-card>
+      </div>
+
+      <!-- Empty State -->
+      <nb-card *ngIf="filteredPermissions.length === 0" class="empty-state">
+        <nb-card-body>
+          <div class="empty-content">
+            <nb-icon icon="inbox-outline" class="empty-icon"></nb-icon>
+            <h5>没有找到权限</h5>
+            <p class="text-hint">
+              {{ searchText || showExpiringOnly || showUnusedOnly ? '尝试调整筛选条件' : '您当前没有任何数据库权限' }}
+            </p>
+            <button nbButton status="primary" (click)="searchText = ''; showExpiringOnly = false; showUnusedOnly = false; applyFilters()">
+              重置筛选
+            </button>
+          </div>
+        </nb-card-body>
+      </nb-card>
+    </div>
+
+    <!-- Table View (Simplified) -->
+    <nb-card *ngIf="!loading && viewMode === 'table'" class="table-view">
+      <nb-card-body>
+        <table class="permissions-table">
+          <thead>
+            <tr>
+              <th>
+                <nb-checkbox [(ngModel)]="selectAll" (checkedChange)="toggleSelectAll()">
+                </nb-checkbox>
+              </th>
+              <th>权限类型</th>
+              <th>资源路径</th>
+              <th>角色</th>
+              <th>风险等级</th>
+              <th>使用情况</th>
+              <th>到期时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let perm of filteredPermissions"
+                [class.selected]="perm.selected"
+                [@cardAnimation]>
+              <td>
+                <nb-checkbox [(ngModel)]="perm.selected" (checkedChange)="toggleSelection(perm)">
+                </nb-checkbox>
+              </td>
+              <td>
+                <nb-badge status="primary">{{ perm.privilege_type }}</nb-badge>
+              </td>
+              <td><code>{{ perm.resource_path }}</code></td>
+              <td>{{ perm.granted_role || '-' }}</td>
+              <td>
+                <nb-badge [status]="getRiskColor(perm.risk_level)">
+                  {{ perm.risk_level }}
+                </nb-badge>
+              </td>
+              <td>{{ getUsageStatus(perm) }}</td>
+              <td>
+                <span [class.text-warning]="perm.isExpiringSoon">
+                  {{ formatExpiry(perm) }}
+                </span>
+              </td>
+              <td>
+                <nb-actions size="small">
+                  <nb-action icon="eye-outline" (click)="quickActionPermission = perm; showQuickActions = true">
+                  </nb-action>
+                  <nb-action icon="trash-2-outline" (click)="revokeWithAnalysis(perm)">
+                  </nb-action>
+                </nb-actions>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </nb-card-body>
+    </nb-card>
+  </div>
+
+  <!-- Quick Actions Panel (Slide-in) -->
+  <div class="quick-actions-panel" [class.show]="showQuickActions" [@slideIn]>
+    <div class="panel-content" *ngIf="quickActionPermission">
+      <div class="panel-header">
+        <h5>权限详情</h5>
+        <button nbButton ghost status="basic" size="small" (click)="showQuickActions = false">
+          <nb-icon icon="close-outline"></nb-icon>
+        </button>
+      </div>
+
+      <div class="panel-body">
+        <div class="detail-item">
+          <label>权限类型</label>
+          <span>{{ quickActionPermission.privilege_type }}</span>
+        </div>
+
+        <div class="detail-item">
+          <label>资源路径</label>
+          <code>{{ quickActionPermission.resource_path }}</code>
+        </div>
+
+        <div class="detail-item">
+          <label>授权角色</label>
+          <span>{{ quickActionPermission.granted_role || '直接授权' }}</span>
+        </div>
+
+        <div class="detail-item">
+          <label>授权时间</label>
+          <span>{{ quickActionPermission.granted_at | date: 'yyyy-MM-dd HH:mm' }}</span>
+        </div>
+
+        <div class="detail-item" *ngIf="quickActionPermission.last_used">
+          <label>最后使用</label>
+          <span>{{ quickActionPermission.last_used | date: 'yyyy-MM-dd HH:mm' }}</span>
+        </div>
+
+        <div class="detail-item">
+          <label>使用次数</label>
+          <span>{{ quickActionPermission.usage_count }} 次</span>
+        </div>
+
+        <div class="panel-actions">
+          <button nbButton fullWidth status="danger" (click)="revokeWithAnalysis(quickActionPermission); showQuickActions = false">
+            <nb-icon icon="trash-2-outline"></nb-icon>
+            撤销此权限
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Custom Styles -->
+<style>
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  .spin {
+    animation: spin 1s linear infinite;
+  }
+
+  .permission-dashboard-enhanced {
+    padding: 1.5rem;
+  }
+
+  .dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+  }
+
+  .header-content h4 {
+    margin-bottom: 0.25rem;
+  }
+
+  .header-actions {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+  }
+
+  .stats-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  .stat-card {
+    transition: all 0.3s ease;
+    cursor: pointer;
+  }
+
+  .stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+
+  .stat-card nb-card-body {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .stat-icon {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    font-size: 24px;
+  }
+
+  .stat-icon.expiring {
+    background: rgba(255, 170, 0, 0.1);
+    color: #ffaa00;
+  }
+
+  .stat-icon.unused {
+    background: rgba(0, 149, 255, 0.1);
+    color: #0095ff;
+  }
+
+  .stat-icon.risk {
+    background: rgba(255, 61, 113, 0.1);
+    color: #ff3d71;
+  }
+
+  .stat-icon.total {
+    background: rgba(0, 214, 143, 0.1);
+    color: #00d68f;
+  }
+
+  .stat-content h2 {
+    margin: 0;
+    font-size: 2rem;
+    font-weight: 600;
+  }
+
+  .filter-card {
+    margin-bottom: 2rem;
+  }
+
+  .filter-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: center;
+  }
+
+  .search-box {
+    flex: 1;
+    min-width: 300px;
+    position: relative;
+  }
+
+  .search-icon {
+    position: absolute;
+    left: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-hint-color);
+  }
+
+  .search-box input {
+    padding-left: 3rem;
+  }
+
+  .quick-filters {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .filter-toggles {
+    display: flex;
+    gap: 1rem;
+  }
+
+  .batch-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    background: var(--background-basic-color-2);
+    border-radius: 0.25rem;
+  }
+
+  .cards-view {
+    margin-top: 1rem;
+  }
+
+  .permission-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 1rem;
+  }
+
+  .permission-card {
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .permission-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+
+  .permission-card.selected {
+    border: 2px solid var(--color-primary-default);
+  }
+
+  .permission-card.expiring {
+    border-left: 4px solid var(--color-warning-default);
+  }
+
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    padding: 1rem 1rem 0;
+  }
+
+  .card-badges {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .permission-type {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+  }
+
+  .resource-path {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .resource-path code {
+    flex: 1;
+    padding: 0.25rem 0.5rem;
+    background: var(--background-basic-color-3);
+    border-radius: 0.25rem;
+    font-size: 0.875rem;
+  }
+
+  .permission-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .meta-item {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.875rem;
+    color: var(--text-hint-color);
+  }
+
+  .usage-indicator {
+    margin-top: 1rem;
+  }
+
+  .usage-indicator label {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--text-hint-color);
+  }
+
+  .permissions-table {
+    width: 100%;
+  }
+
+  .permissions-table th {
+    text-align: left;
+    padding: 0.75rem;
+    border-bottom: 2px solid var(--border-basic-color);
+  }
+
+  .permissions-table td {
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--border-basic-color);
+  }
+
+  .permissions-table tr.selected {
+    background: var(--background-basic-color-2);
+  }
+
+  .empty-state {
+    margin-top: 2rem;
+  }
+
+  .empty-content {
+    text-align: center;
+    padding: 3rem;
+  }
+
+  .empty-icon {
+    font-size: 4rem;
+    color: var(--text-hint-color);
+    margin-bottom: 1rem;
+  }
+
+  .quick-actions-panel {
+    position: fixed;
+    right: -400px;
+    top: 0;
+    width: 400px;
+    height: 100vh;
+    background: var(--background-basic-color-1);
+    box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+    transition: right 0.3s ease;
+    z-index: 1000;
+  }
+
+  .quick-actions-panel.show {
+    right: 0;
+  }
+
+  .panel-content {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem;
+    border-bottom: 1px solid var(--border-basic-color);
+  }
+
+  .panel-body {
+    flex: 1;
+    padding: 1.5rem;
+    overflow-y: auto;
+  }
+
+  .detail-item {
+    margin-bottom: 1.5rem;
+  }
+
+  .detail-item label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--text-hint-color);
+  }
+
+  .panel-actions {
+    padding: 1.5rem;
+    border-top: 1px solid var(--border-basic-color);
+  }
+</style>

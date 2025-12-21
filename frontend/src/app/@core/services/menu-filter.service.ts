@@ -64,6 +64,7 @@ export class MenuFilterService {
    * Extract menu code from link
    * Examples: '/pages/starrocks/dashboard' -> 'dashboard'
    *           '/pages/starrocks/queries/execution' -> 'queries'
+   *           '/pages/cluster-ops/permission-management' -> 'cluster-ops:permission-management'
    */
   private extractMenuCodeFromLink(link: string): string | null {
     if (!link) {
@@ -72,12 +73,12 @@ export class MenuFilterService {
 
     // Remove leading slash and split by '/'
     const parts = link.replace(/^\//, '').split('/');
-    
+
     // Try to find starrocks segment and get next segment
     const starrocksIndex = parts.indexOf('starrocks');
     if (starrocksIndex >= 0 && starrocksIndex < parts.length - 1) {
       const menuSegment = parts[starrocksIndex + 1];
-      
+
       // Map common segments to menu codes
       const segmentMap: { [key: string]: string } = {
         dashboard: 'dashboard',
@@ -92,6 +93,20 @@ export class MenuFilterService {
       };
 
       return segmentMap[menuSegment] || menuSegment;
+    }
+
+    // Try to find cluster-ops segment and get next segment
+    const clusterOpsIndex = parts.indexOf('cluster-ops');
+    if (clusterOpsIndex >= 0 && clusterOpsIndex < parts.length - 1) {
+      const menuSegment = parts[clusterOpsIndex + 1];
+
+      // Map cluster-ops segments to menu codes
+      const clusterOpsMap: { [key: string]: string } = {
+        'permission-management': 'cluster-ops:permission-management',
+        'auth': 'cluster-ops:auth', // For backward compatibility
+      };
+
+      return clusterOpsMap[menuSegment] || `cluster-ops:${menuSegment}`;
     }
 
     return null;

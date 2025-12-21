@@ -1,0 +1,6 @@
+<!-- 使用标准的权限撤销组件，遵循 ngx-admin 原生样式 -->
+<ngx-permission-dashboard-standard
+  [refresh$]="refresh$"
+  [clusterId]="1"
+  (revokePermission)="onRevoke($event)">
+</ngx-permission-dashboard-standard>

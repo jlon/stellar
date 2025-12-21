@@ -4,19 +4,26 @@
  */
 
 export interface RequestDetails {
-  target_account?: string;
+  action?: 'grant_role' | 'grant_permission' | 'revoke_permission';
+  target_user?: string;
   target_role?: string;
+  target_account?: string;
   permissions?: string[];
   scope?: 'global' | 'database' | 'table';
   database?: string;
   table?: string;
+  resource_type?: 'catalog' | 'database' | 'table' | 'column';
+  catalog?: string;
   with_grant_option?: boolean;
   valid_until?: string;
+  new_user_name?: string;
+  new_user_password?: string;
+  new_role_name?: string;
 }
 
 export interface SubmitRequestDto {
   cluster_id: number;
-  request_type: 'create_account' | 'grant_role' | 'grant_permission';
+  request_type: 'create_account' | 'grant_role' | 'grant_permission' | 'revoke_permission';
   request_details: RequestDetails;
   reason: string;
   valid_until?: string;
@@ -33,11 +40,11 @@ export interface PermissionRequest {
   applicant_id: number;
   applicant_name?: string;
   applicant_org_id: number;
-  request_type: 'create_account' | 'grant_role' | 'grant_permission';
+  request_type: 'create_account' | 'grant_role' | 'grant_permission' | 'revoke_permission';
   request_details: RequestDetails;
   reason: string;
   valid_until?: string;
-  status: 'pending' | 'approved' | 'rejected' | 'completed';
+  status: 'pending' | 'approved' | 'rejected' | 'executing' | 'completed' | 'failed';
   approver_id?: number;
   approver_name?: string;
   approval_comment?: string;
@@ -61,7 +68,7 @@ export interface PermissionRequestResponse {
   request_details: RequestDetails;
   reason: string;
   valid_until?: string;
-  status: 'pending' | 'approved' | 'rejected' | 'completed';
+  status: 'pending' | 'approved' | 'rejected' | 'executing' | 'completed' | 'failed';
   approver_id?: number;
   approver_name?: string;
   approval_comment?: string;
@@ -99,4 +106,13 @@ export interface DbRoleDto {
   role_name: string;
   role_type: 'built-in' | 'custom';
   permissions_count?: number;
+}
+
+export interface DbUserPermissionDto {
+  id: string;
+  privilege_type: string;
+  resource_scope: string;
+  resource_path: string;
+  granted_role?: string;
+  granted_at?: string;
 }

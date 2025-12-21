@@ -10,7 +10,7 @@ use crate::models::{
 };
 use crate::services::casbin_service::CasbinService;
 use crate::utils::organization_filter::apply_organization_filter;
-use crate::utils::{ApiError, ApiResult};
+use crate::utils::{diff_sets, ApiError, ApiResult};
 
 #[derive(FromRow)]
 struct UserRoleRecord {
@@ -403,11 +403,11 @@ impl UserService {
             .await?;
 
         let current_ids = self.collect_user_role_ids(tx, user_id).await?;
-        let current_set: HashSet<i64> = current_ids.iter().copied().collect();
+        
+        // 使用 diff_sets 计算需要添加和删除的角色
+        let (to_add, to_remove) = diff_sets(&current_ids, &unique_ids.into_iter().collect::<Vec<_>>());
 
-        let to_add: Vec<i64> = unique_ids.difference(&current_set).copied().collect();
-        let to_remove: Vec<i64> = current_set.difference(&unique_ids).copied().collect();
-
+        // 使用 lambda 表达式处理删除操作
         for role_id in &to_remove {
             {
                 let conn = tx.as_mut();
@@ -423,6 +423,7 @@ impl UserService {
                 .await?;
         }
 
+        // 使用 lambda 表达式处理添加操作
         for role_id in &to_add {
             {
                 let conn = tx.as_mut();
@@ -520,10 +521,16 @@ impl UserService {
         .fetch_all(&self.pool)
         .await?;
 
-        let mut map: HashMap<i64, Vec<RoleResponse>> = HashMap::new();
-        for row in rows {
-            map.entry(row.user_id).or_default().push(self.map_role(row));
-        }
+        // 使用 lambda 表达式进行分组
+        let map = rows.into_iter().fold(
+            HashMap::new(),
+            |mut acc: HashMap<i64, Vec<RoleResponse>>, row| {
+                let user_id = row.user_id;
+                acc.entry(user_id).or_default().push(self.map_role(row));
+                acc
+            },
+        );
+        
         Ok(map)
     }
 
