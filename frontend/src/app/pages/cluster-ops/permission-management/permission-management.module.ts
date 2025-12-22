@@ -24,16 +24,12 @@ import { Ng2SmartTableModule } from 'ng2-smart-table';
 
 import { PermissionManagementComponent } from './permission-management.component';
 import { PermissionManagementRoutingModule } from './permission-management-routing.module';
-import { PermissionDashboardComponent } from './dashboard/permission-dashboard.component';
-import { PermissionDashboardEnhancedComponent, RevokeReasonDialogComponent } from './dashboard/permission-dashboard-enhanced.component';
 import { PermissionDashboardStandardComponent } from './dashboard/permission-dashboard-standard.component';
 import { PermissionRequestComponent } from './request/permission-request.component';
 import { PermissionApprovalComponent } from './approval/permission-approval.component';
 import { PermissionApprovalDetailDialogComponent } from './approval/permission-approval-detail-dialog.component';
 import { ConfirmationDialogComponent } from './shared/confirmation-dialog.component';
 import { CascadeSelectorComponent } from './shared/cascade-selector.component';
-import { DbAccountsComponent } from './config/db-accounts/db-accounts.component';
-import { DbRolesComponent } from './config/db-roles/db-roles.component';
 
 /**
  * PermissionManagementModule
@@ -48,17 +44,12 @@ import { DbRolesComponent } from './config/db-roles/db-roles.component';
 @NgModule({
   declarations: [
     PermissionManagementComponent,
-    PermissionDashboardComponent,
-    PermissionDashboardEnhancedComponent,
     PermissionDashboardStandardComponent,
-    RevokeReasonDialogComponent,
     PermissionRequestComponent,
     PermissionApprovalComponent,
     PermissionApprovalDetailDialogComponent,
     ConfirmationDialogComponent,
     CascadeSelectorComponent,
-    DbAccountsComponent,
-    DbRolesComponent,
   ],
   imports: [
     CommonModule,

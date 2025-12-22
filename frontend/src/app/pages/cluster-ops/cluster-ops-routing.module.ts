@@ -9,12 +9,6 @@ const routes: Routes = [
         (m) => m.PermissionManagementModule
       ),
   },
-  // Legacy alias for backward compatibility
-  {
-    path: 'auth',
-    redirectTo: 'permission-management',
-    pathMatch: 'full',
-  },
 ];
 
 @NgModule({
