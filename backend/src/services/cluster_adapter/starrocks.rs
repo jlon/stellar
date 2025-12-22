@@ -87,18 +87,115 @@ impl StarRocksAdapter {
     // ========================================
 
     /// Build resource path for StarRocks
+    /// Supports:
+    /// - catalog level: CATALOG catalog_name or ALL CATALOGS
+    /// - database level: database.* or catalog.database.* or *.* (all databases)
+    /// - table level: database.table or catalog.database.table or database.* (all tables)
     fn build_resource_path(resource_type: &str, database: &str, table: Option<&str>) -> String {
-        match resource_type {
+        match resource_type.to_uppercase().as_str() {
+            "CATALOG" => {
+                // Catalog level permissions
+                if database == "*" {
+                    "ALL CATALOGS".to_string()
+                } else {
+                    format!("CATALOG {}", database)
+                }
+            }
             "TABLE" => {
-                if let Some(table_name) = table {
-                    format!("{}.{}", database, table_name)
+                // Table level permissions
+                if database == "*" {
+                    // All databases, all tables
+                    "*.*".to_string()
+                } else if let Some(table_name) = table {
+                    if table_name == "*" {
+                        // Specific database, all tables
+                        format!("{}.*", database)
+                    } else {
+                        // Specific database and table
+                        format!("{}.{}", database, table_name)
+                    }
+                } else {
+                    // No table specified, default to all tables in database
+                    format!("{}.*", database)
+                }
+            }
+            _ => {
+                // Database level permissions (default)
+                if database == "*" {
+                    "*.*".to_string()
                 } else {
                     format!("{}.*", database)
                 }
             }
-            _ => format!("{}.*", database),
         }
     }
+
+    /// Parse a GRANT statement into structured permission data
+    fn parse_grant_statement(statement: &str) -> Option<ParsedGrant> {
+        let statement = statement.trim();
+        
+        // Check if it's a role grant: GRANT 'role_name' TO 'user'@'%'
+        if statement.starts_with("GRANT '") || statement.starts_with("GRANT \"") {
+            // Role grant
+            let role_start = 7; // After "GRANT '"
+            if let Some(role_end) = statement[role_start..].find('\'').or_else(|| statement[role_start..].find('"')) {
+                let role_name = &statement[role_start..role_start + role_end];
+                return Some(ParsedGrant {
+                    privileges: vec!["ROLE".to_string()],
+                    resource_type: "ROLE".to_string(),
+                    resource_path: role_name.to_string(),
+                    granted_role: Some(role_name.to_string()),
+                });
+            }
+        }
+
+        // Regular privilege grant: GRANT privileges ON resource TO user
+        if !statement.starts_with("GRANT ") {
+            return None;
+        }
+
+        // Find "ON" keyword
+        let on_pos = statement.find(" ON ")?;
+        let privileges_str = &statement[6..on_pos]; // After "GRANT "
+        
+        // Find "TO" keyword
+        let to_pos = statement.find(" TO ")?;
+        let resource_str = &statement[on_pos + 4..to_pos]; // After " ON "
+
+        // Parse privileges
+        let privileges: Vec<String> = privileges_str
+            .split(',')
+            .map(|s| s.trim().to_uppercase())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        // Parse resource (e.g., "db_name.*", "db_name.table_name", "*.*")
+        let resource_path = resource_str.trim().to_string();
+        let resource_type = if resource_path == "*.*" {
+            "GLOBAL".to_string()
+        } else if resource_path.ends_with(".*") {
+            "DATABASE".to_string()
+        } else if resource_path.contains('.') {
+            "TABLE".to_string()
+        } else {
+            "CATALOG".to_string()
+        };
+
+        Some(ParsedGrant {
+            privileges,
+            resource_type,
+            resource_path,
+            granted_role: None,
+        })
+    }
+}
+
+/// Helper struct for parsed GRANT statement
+struct ParsedGrant {
+    privileges: Vec<String>,
+    resource_type: String,
+    resource_path: String,
+    granted_role: Option<String>,
 }
 
 #[async_trait]
@@ -315,12 +412,16 @@ impl ClusterAdapter for StarRocksAdapter {
     async fn list_databases(&self, catalog: Option<&str>) -> ApiResult<Vec<String>> {
         let mysql_client = self.mysql_client().await?;
 
+        // Use session mode to ensure SET CATALOG and SHOW DATABASES run on the same connection
+        let mut session = mysql_client.create_session().await?;
+
         if let Some(cat) = catalog {
-            let switch_sql = format!("SET CATALOG {}", cat);
-            mysql_client.execute(&switch_sql).await?;
+            if !cat.is_empty() && cat != "default_catalog" {
+                session.use_catalog(cat, &self.cluster.cluster_type).await?;
+            }
         }
 
-        let (_, rows) = mysql_client.query_raw("SHOW DATABASES").await?;
+        let (_, rows, _) = session.execute("SHOW DATABASES").await?;
 
         let mut databases = Vec::new();
         for row in rows {
@@ -563,20 +664,235 @@ impl ClusterAdapter for StarRocksAdapter {
     }
 
     async fn list_user_permissions(&self, username: &str) -> ApiResult<Vec<crate::models::DbUserPermissionDto>> {
-        tracing::debug!(
-            "[StarRocks] list_user_permissions not fully implemented yet; returning empty list (username={})",
-            username
-        );
-        Ok(Vec::new())
+        tracing::debug!("[StarRocks] Listing permissions for user: {}", username);
+        
+        let mut conn = self.mysql_pool_manager.get_pool(&self.cluster).await?
+            .get_conn()
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to get connection from pool: {}", e);
+                crate::utils::ApiError::InternalError(format!("Database connection failed: {}", e))
+            })?;
+
+        // StarRocks syntax: SHOW GRANTS FOR 'username'
+        let query_str = format!("SHOW GRANTS FOR '{}'", username);
+
+        use mysql_async::prelude::Queryable;
+        use mysql_async::Row;
+        
+        let rows: Vec<Row> = match conn.query(&query_str).await {
+            Ok(rows) => rows,
+            Err(e) => {
+                tracing::debug!("SHOW GRANTS query failed for user {}: {}", username, e);
+                return Ok(Vec::new());
+            }
+        };
+
+        let mut permissions: Vec<crate::models::DbUserPermissionDto> = Vec::new();
+        let mut id_counter = 1;
+
+        for row in rows {
+            // StarRocks returns: (UserIdentity, Catalog, Grants) - 3 columns
+            let grant_statement: Option<String> = row.get("Grants")
+                .or_else(|| {
+                    let col_count = row.columns().len();
+                    if col_count > 0 {
+                        row.get(col_count - 1)
+                    } else {
+                        None
+                    }
+                });
+
+            if let Some(grant_stmt) = grant_statement {
+                tracing::debug!("Parsing user grant statement: {}", grant_stmt);
+                
+                if let Some(parsed) = Self::parse_grant_statement(&grant_stmt) {
+                    for priv_type in parsed.privileges {
+                        permissions.push(crate::models::DbUserPermissionDto {
+                            id: id_counter,
+                            privilege_type: priv_type,
+                            resource_type: parsed.resource_type.clone(),
+                            resource_path: parsed.resource_path.clone(),
+                            granted_role: parsed.granted_role.clone(),
+                        });
+                        id_counter += 1;
+                    }
+                }
+            }
+        }
+
+        Ok(permissions)
+    }
+
+    async fn list_role_permissions(&self, role_name: &str) -> ApiResult<Vec<crate::models::DbUserPermissionDto>> {
+        tracing::debug!("[StarRocks] Listing permissions for role: {}", role_name);
+        
+        let mut conn = self.mysql_pool_manager.get_pool(&self.cluster).await?
+            .get_conn()
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to get connection from pool: {}", e);
+                crate::utils::ApiError::InternalError(format!("Database connection failed: {}", e))
+            })?;
+
+        // StarRocks syntax: SHOW GRANTS FOR ROLE 'role_name'
+        let query_str = format!("SHOW GRANTS FOR ROLE '{}'", role_name);
+
+        use mysql_async::prelude::Queryable;
+        use mysql_async::Row;
+        
+        let rows: Vec<Row> = match conn.query(&query_str).await {
+            Ok(rows) => rows,
+            Err(e) => {
+                tracing::debug!("SHOW GRANTS FOR ROLE query failed for role {}: {}", role_name, e);
+                return Ok(Vec::new());
+            }
+        };
+
+        let mut permissions: Vec<crate::models::DbUserPermissionDto> = Vec::new();
+        let mut id_counter = 1;
+
+        for row in rows {
+            // StarRocks returns: (RoleIdentity, Catalog, Grants) - 3 columns
+            let grant_statement: Option<String> = row.get("Grants")
+                .or_else(|| {
+                    let col_count = row.columns().len();
+                    if col_count > 0 {
+                        row.get(col_count - 1)
+                    } else {
+                        None
+                    }
+                });
+
+            if let Some(grant_stmt) = grant_statement {
+                tracing::debug!("Parsing role grant statement: {}", grant_stmt);
+                
+                if let Some(parsed) = Self::parse_grant_statement(&grant_stmt) {
+                    for priv_type in parsed.privileges {
+                        permissions.push(crate::models::DbUserPermissionDto {
+                            id: id_counter,
+                            privilege_type: priv_type,
+                            resource_type: parsed.resource_type.clone(),
+                            resource_path: parsed.resource_path.clone(),
+                            granted_role: Some(role_name.to_string()),
+                        });
+                        id_counter += 1;
+                    }
+                }
+            }
+        }
+
+        Ok(permissions)
     }
 
     async fn list_db_accounts(&self) -> ApiResult<Vec<crate::models::DbAccountDto>> {
-        tracing::debug!("[StarRocks] list_db_accounts not fully implemented yet; returning empty list");
-        Ok(Vec::new())
+        tracing::debug!("[StarRocks] Listing database accounts");
+        
+        let mut conn = self.mysql_pool_manager.get_pool(&self.cluster).await?
+            .get_conn()
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to get connection from pool: {}", e);
+                crate::utils::ApiError::InternalError(format!("Database connection failed: {}", e))
+            })?;
+
+        // StarRocks uses SHOW AUTHENTICATION to list users
+        let query_str = "SHOW AUTHENTICATION";
+
+        use mysql_async::prelude::Queryable;
+        use mysql_async::Row;
+        
+        let rows: Vec<Row> = match conn.query(query_str).await {
+            Ok(rows) => rows,
+            Err(e) => {
+                tracing::debug!("SHOW AUTHENTICATION failed: {}", e);
+                return Ok(Vec::new());
+            }
+        };
+
+        let mut accounts: Vec<crate::models::DbAccountDto> = Vec::new();
+        for row in rows {
+            // SHOW AUTHENTICATION returns: UserIdentity, Password, AuthPlugin, UserForAuthPlugin
+            let user_identity: Option<String> = row.get("UserIdentity");
+            
+            if let Some(identity) = user_identity {
+                // Parse 'username'@'host' format
+                let (account_name, host) = Self::parse_user_identity(&identity);
+                
+                if !accounts.iter().any(|a| a.account_name == account_name && a.host == host) {
+                    accounts.push(crate::models::DbAccountDto {
+                        account_name,
+                        host,
+                        roles: vec![],
+                    });
+                }
+            }
+        }
+
+        Ok(accounts)
     }
 
     async fn list_db_roles(&self) -> ApiResult<Vec<crate::models::DbRoleDto>> {
-        tracing::debug!("[StarRocks] list_db_roles not fully implemented yet; returning empty list");
-        Ok(Vec::new())
+        tracing::debug!("[StarRocks] Listing database roles");
+        
+        let mut conn = self.mysql_pool_manager.get_pool(&self.cluster).await?
+            .get_conn()
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to get connection from pool: {}", e);
+                crate::utils::ApiError::InternalError(format!("Database connection failed: {}", e))
+            })?;
+
+        // StarRocks uses SHOW ROLES
+        let query_str = "SHOW ROLES";
+
+        use mysql_async::prelude::Queryable;
+        use mysql_async::Row;
+        
+        let rows: Vec<Row> = match conn.query(query_str).await {
+            Ok(rows) => rows,
+            Err(e) => {
+                tracing::debug!("SHOW ROLES query failed: {}", e);
+                return Ok(Vec::new());
+            }
+        };
+
+        let mut roles: Vec<crate::models::DbRoleDto> = Vec::new();
+        for row in rows {
+            // SHOW ROLES returns: Name column
+            let role_name: Option<String> = row.get("Name");
+            
+            if let Some(name) = role_name {
+                let role_type = if name == "admin" || name == "operator" || name == "public" || name == "root" {
+                    "built-in".to_string()
+                } else {
+                    "custom".to_string()
+                };
+
+                roles.push(crate::models::DbRoleDto {
+                    role_name: name,
+                    role_type,
+                    permissions_count: None,
+                });
+            }
+        }
+
+        Ok(roles)
+    }
+}
+
+impl StarRocksAdapter {
+    /// Parse user identity string like 'username'@'host' or username@host
+    fn parse_user_identity(identity: &str) -> (String, String) {
+        if identity.contains('@') {
+            let parts: Vec<&str> = identity.splitn(2, '@').collect();
+            let account_name = parts[0].trim_matches('\'').trim_matches('"').to_string();
+            let host = parts.get(1)
+                .map(|h| h.trim_matches('\'').trim_matches('"').to_string())
+                .unwrap_or_else(|| "%".to_string());
+            (account_name, host)
+        } else {
+            (identity.trim_matches('\'').trim_matches('"').to_string(), "%".to_string())
+        }
     }
 }

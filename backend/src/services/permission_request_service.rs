@@ -350,12 +350,20 @@ impl PermissionRequestService {
                     .or(details.scope.as_deref())
                     .unwrap_or("database");
 
-                let database = details
-                    .database
-                    .as_ref()
-                    .ok_or(ApiError::ValidationError(
-                        "Missing database for grant_permission".to_string(),
-                    ))?;
+                // For catalog-level permissions, database is not required
+                // For database/table level, database is required (can be "*" for all)
+                let database = if resource_type.to_lowercase() == "catalog" {
+                    // For catalog level, use catalog name or "*" for all catalogs
+                    details.catalog.as_deref().unwrap_or("*").to_string()
+                } else {
+                    details
+                        .database
+                        .as_ref()
+                        .ok_or(ApiError::ValidationError(
+                            "Missing database for grant_permission".to_string(),
+                        ))?
+                        .clone()
+                };
 
                 let table = details.table.as_deref();
 
@@ -379,7 +387,7 @@ impl PermissionRequestService {
                             new_user,
                             &perms_ref,
                             resource_type,
-                            database,
+                            &database,
                             table,
                             with_grant_option,
                         )
@@ -405,7 +413,7 @@ impl PermissionRequestService {
                             new_role,
                             &perms_ref,
                             resource_type,
-                            database,
+                            &database,
                             table,
                             with_grant_option,
                         )
@@ -423,7 +431,7 @@ impl PermissionRequestService {
                             user,
                             &perms_ref,
                             resource_type,
-                            database,
+                            &database,
                             table,
                             with_grant_option,
                         )
@@ -437,7 +445,7 @@ impl PermissionRequestService {
                             role,
                             &perms_ref,
                             resource_type,
-                            database,
+                            &database,
                             table,
                             with_grant_option,
                         )
@@ -477,7 +485,8 @@ impl PermissionRequestService {
                         "At least one permission is required".to_string(),
                     ));
                 }
-                let perm_str = perms.join(", ");
+
+                let perms_ref: Vec<&str> = perms.iter().map(|s| s.as_str()).collect();
 
                 let resource_type = details
                     .resource_type
@@ -485,25 +494,20 @@ impl PermissionRequestService {
                     .or(details.scope.as_deref())
                     .unwrap_or("database");
 
-                let database = details
-                    .database
-                    .as_ref()
-                    .ok_or(ApiError::ValidationError(
-                        "Missing database for revoke_permission".to_string(),
-                    ))?;
-
-                let resource = match resource_type {
-                    "table" => {
-                        let table = details
-                            .table
-                            .as_ref()
-                            .ok_or(ApiError::ValidationError(
-                                "Missing table for table-level permission".to_string(),
-                            ))?;
-                        format!("{}.{}", database, table)
-                    }
-                    _ => format!("{}.*", database),
+                // For catalog-level permissions, database is not required
+                let database = if resource_type.to_lowercase() == "catalog" {
+                    details.catalog.as_deref().unwrap_or("*").to_string()
+                } else {
+                    details
+                        .database
+                        .as_ref()
+                        .ok_or(ApiError::ValidationError(
+                            "Missing database for revoke_permission".to_string(),
+                        ))?
+                        .clone()
                 };
+
+                let table = details.table.as_deref();
 
                 let user = details
                     .target_user
@@ -512,10 +516,17 @@ impl PermissionRequestService {
                         "Missing target_user for revoke_permission".to_string(),
                     ))?;
 
-                Ok(format!(
-                    "REVOKE {} ON {} FROM USER '{}'@'%';",
-                    perm_str, resource, user
-                ))
+                let revoke_sql = adapter
+                    .revoke_permissions(
+                        "USER",
+                        user,
+                        &perms_ref,
+                        resource_type,
+                        &database,
+                        table,
+                    )
+                    .await?;
+                Ok(revoke_sql)
             }
             _ => Err(ApiError::ValidationError(format!(
                 "Unknown request_type: {}",

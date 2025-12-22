@@ -9,8 +9,9 @@ import {
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { Subject, forkJoin } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
+import { LocalDataSource } from 'ng2-smart-table';
 import { PermissionRequestService } from '../../../../@core/data/permission-request.service';
-import { PermissionRequestResponse, SubmitRequestDto } from '../../../../@core/data/permission-request.model';
+import { PermissionRequestResponse, SubmitRequestDto, DbAccountDto, DbRoleDto } from '../../../../@core/data/permission-request.model';
 import { NodeService } from '../../../../@core/data/node.service';
 import { NbToastrService } from '@nebular/theme';
 
@@ -70,6 +71,8 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
   catalogs: string[] = [];
   databases: string[] = [];
   tables: string[] = [];
+  dbAccounts: string[] = []; // Database accounts list
+  dbRoles: string[] = []; // Database roles list
 
   // Loading states
   loadingAccounts = false;
@@ -128,6 +131,82 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
   filteredRequests: PermissionRequestResponse[] = [];
   requestsLoading = false;
   statusFilter = 'all';
+  requestSource: LocalDataSource = new LocalDataSource();
+
+  // ng2-smart-table settings
+  tableSettings = {
+    mode: 'external',
+    hideSubHeader: true,
+    noDataMessage: '暂无申请记录',
+    actions: {
+      add: false,
+      edit: false,
+      delete: false,
+    },
+    pager: {
+      display: true,
+      perPage: 10,
+    },
+    columns: {
+      id: {
+        title: 'ID',
+        type: 'number',
+        width: '60px',
+      },
+      request_type: {
+        title: '类型',
+        type: 'html',
+        width: '100px',
+        valuePrepareFunction: (value: string) => {
+          const labels: {[key: string]: string} = {
+            'grant_role': '授予角色',
+            'grant_permission': '授予权限',
+            'revoke_permission': '撤销权限',
+          };
+          return `<span class="badge badge-primary">${labels[value] || value}</span>`;
+        },
+      },
+      target: {
+        title: '目标',
+        type: 'string',
+      },
+      permissions: {
+        title: '权限',
+        type: 'string',
+      },
+      reason: {
+        title: '原因',
+        type: 'string',
+      },
+      status: {
+        title: '状态',
+        type: 'html',
+        width: '90px',
+        valuePrepareFunction: (value: string) => {
+          const statusMap: {[key: string]: {label: string, badge: string}} = {
+            'pending': { label: '待审批', badge: 'warning' },
+            'approved': { label: '已批准', badge: 'info' },
+            'executing': { label: '执行中', badge: 'primary' },
+            'completed': { label: '已完成', badge: 'success' },
+            'rejected': { label: '已拒绝', badge: 'danger' },
+            'failed': { label: '失败', badge: 'danger' },
+          };
+          const s = statusMap[value] || { label: value, badge: 'default' };
+          return `<span class="badge badge-${s.badge}">${s.label}</span>`;
+        },
+      },
+      created_at: {
+        title: '创建时间',
+        type: 'string',
+        width: '150px',
+        valuePrepareFunction: (value: string) => {
+          if (!value) return '-';
+          // 格式化 ISO 日期字符串为 YYYY-MM-DD HH:mm:ss
+          return value.replace('T', ' ').substring(0, 19);
+        },
+      },
+    },
+  };
 
   // Status options
   statusOptions = [
@@ -184,6 +263,10 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
       table: [''], // Added: Table selector
       permissions: [[]], // Array of permission values (e.g., ['SELECT', 'INSERT'])
       reason: ['', Validators.required],
+      // Inline create fields
+      new_user_name: [''],
+      new_user_password: [''],
+      new_role_name: [''],
     });
 
     // Setup cascade watchers
@@ -225,20 +308,32 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
 
 
   /**
-   * Load initial data (catalogs)
+   * Load initial data (catalogs, accounts, roles)
    */
   private loadInitialData(): void {
     this.loadingCatalogs = true;
+    this.loadingAccounts = true;
+    this.loadingRoles = true;
 
-    this.nodeService.getCatalogs().subscribe({
-      next: (catalogs) => {
-        this.catalogs = catalogs;
+    forkJoin({
+      catalogs: this.nodeService.getCatalogs(),
+      accounts: this.permissionService.listDbAccounts(),
+      roles: this.permissionService.listDbRoles(),
+    }).subscribe({
+      next: (result) => {
+        this.catalogs = result.catalogs;
+        this.dbAccounts = result.accounts.map(acc => acc.account_name || '');
+        this.dbRoles = result.roles.map(role => role.role_name || '');
         this.loadingCatalogs = false;
+        this.loadingAccounts = false;
+        this.loadingRoles = false;
       },
       error: (err) => {
         console.error('Failed to load initial data:', err);
         this.toastr.danger('加载基础数据失败', '错误');
         this.loadingCatalogs = false;
+        this.loadingAccounts = false;
+        this.loadingRoles = false;
       },
     });
   }
@@ -325,15 +420,37 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
   }
 
   onTargetUserChange(value: string): void {
+    if (value === '__CREATE_NEW_USER__') {
+      this.isCreatingUser = true;
+      this.requestForm.patchValue({
+        target_user: '',
+        new_user_name: '',
+        new_user_password: '',
+      });
+    } else {
+      this.isCreatingUser = false;
       this.requestForm.patchValue({
         target_user: value,
+        new_user_name: '',
+        new_user_password: '',
       });
+    }
   }
 
   onTargetRoleChange(value: string): void {
+    if (value === '__CREATE_NEW_ROLE__') {
+      this.isCreatingRole = true;
+      this.requestForm.patchValue({
+        target_role: '',
+        new_role_name: '',
+      });
+    } else {
+      this.isCreatingRole = false;
       this.requestForm.patchValue({
         target_role: value,
-    });
+        new_role_name: '',
+      });
+    }
   }
 
   /**
@@ -462,7 +579,7 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
   /**
    * Load user's permission requests
    */
-  private loadMyRequests(): void {
+  loadMyRequests(): void {
     this.requestsLoading = true;
 
     this.permissionService.listMyRequests({ page: 1, page_size: 100 }).subscribe({
@@ -497,6 +614,18 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
         (req) => req.status === this.statusFilter,
       );
     }
+    
+    // Transform data for ng2-smart-table
+    const tableData = this.filteredRequests.map(req => ({
+      id: req.id,
+      request_type: req.request_type,
+      target: this.getRequestTarget(req),
+      permissions: this.getRequestPermissions(req),
+      reason: req.reason?.substring(0, 50) + (req.reason?.length > 50 ? '...' : ''),
+      status: req.status,
+      created_at: req.created_at,
+    }));
+    this.requestSource.load(tableData);
   }
 
   /**
@@ -566,5 +695,95 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
       return req.request_details.permissions.join(', ');
     }
     return '-';
+  }
+
+  /**
+   * Prefill form for revoke request (called from dashboard)
+   */
+  prefillRevokeRequest(permission: any): void {
+    // Set request type to revoke_permission first
+    this.requestForm.patchValue({
+      request_type: 'revoke_permission',
+      permissions: [permission.privilege_type],
+      reason: `申请撤销权限: ${permission.privilege_type} on ${permission.resource_path}`,
+    }, { emitEvent: false });
+
+    // Set resource type without triggering cascade
+    const resourceType = this.mapResourceType(permission.resource_type);
+    this.requestForm.patchValue({
+      resource_type: resourceType,
+    }, { emitEvent: false });
+
+    // If granted through a role, set target_role
+    if (permission.granted_role) {
+      this.requestForm.patchValue({
+        target_role: permission.granted_role,
+      }, { emitEvent: false });
+    }
+
+    // Note: Don't auto-fill catalog/database/table as it triggers API calls
+    // User should select them manually
+
+    this.toastr.info('已预填撤销信息，请选择用户并补充申请原因', '预填完成');
+  }
+
+  /**
+   * Map backend resource type to form resource type
+   */
+  private mapResourceType(backendType: string): string {
+    const mapping: {[key: string]: string} = {
+      'GLOBAL': 'catalog',
+      'SYSTEM': 'catalog',
+      'CATALOG': 'catalog',
+      'DATABASE': 'database',
+      'TABLE': 'table',
+      'ROLE': 'catalog', // Role grants are at catalog level
+    };
+    return mapping[backendType?.toUpperCase()] || 'database';
+  }
+
+  /**
+   * Parse resource path and fill form fields
+   */
+  private parseAndFillResourcePath(resourcePath: string, resourceType: string): void {
+    if (!resourcePath) return;
+
+    // Resource path formats:
+    // - CATALOG: catalog_name or *.*
+    // - DATABASE: database_name.* or catalog.database.*
+    // - TABLE: database.table or catalog.database.table
+
+    const parts = resourcePath.split('.');
+
+    if (resourceType === 'CATALOG' || resourceType === 'GLOBAL' || resourceType === 'SYSTEM') {
+      if (parts[0] && parts[0] !== '*') {
+        this.requestForm.patchValue({ catalog: parts[0] });
+      }
+    } else if (resourceType === 'DATABASE') {
+      if (parts.length >= 1 && parts[0] !== '*') {
+        // Could be database.* or catalog.database.*
+        if (parts.length === 2) {
+          this.requestForm.patchValue({ database: parts[0] });
+        } else if (parts.length === 3) {
+          this.requestForm.patchValue({
+            catalog: parts[0],
+            database: parts[1],
+          });
+        }
+      }
+    } else if (resourceType === 'TABLE') {
+      if (parts.length === 2) {
+        this.requestForm.patchValue({
+          database: parts[0],
+          table: parts[1],
+        });
+      } else if (parts.length === 3) {
+        this.requestForm.patchValue({
+          catalog: parts[0],
+          database: parts[1],
+          table: parts[2],
+        });
+      }
+    }
   }
 }

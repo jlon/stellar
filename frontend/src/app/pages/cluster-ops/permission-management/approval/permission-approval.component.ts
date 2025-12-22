@@ -6,32 +6,16 @@ import {
   Output,
   EventEmitter,
 } from '@angular/core';
-import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { FormBuilder, FormGroup } from '@angular/forms';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
+import { LocalDataSource } from 'ng2-smart-table';
 import { NbDialogService, NbToastrService } from '@nebular/theme';
 import { PermissionRequestService } from '../../../../@core/data/permission-request.service';
 import { PermissionRequestResponse } from '../../../../@core/data/permission-request.model';
 import { PermissionApprovalDetailDialogComponent } from './permission-approval-detail-dialog.component';
 import { ConfirmationDialogComponent } from '../shared/confirmation-dialog.component';
 
-/**
- * PermissionApprovalComponent
- * Tab 3: 权限审批 (Permission Approval)
- *
- * Purpose:
- * - Review pending permission requests
- * - Show request details with SQL preview
- * - Approve or reject requests with optional comments
- * - Track approval workflow
- *
- * Features:
- * - Pending requests list with pagination
- * - Detail modal dialog with full request information
- * - Approval/rejection with comment
- * - Status tracking and timestamps
- * - Automatic list refresh after action
- */
 @Component({
   selector: 'ngx-permission-approval',
   templateUrl: './permission-approval.component.html',
@@ -47,7 +31,70 @@ export class PermissionApprovalComponent implements OnInit, OnDestroy {
   requestsLoading = false;
   typeFilter = 'all';
 
-  // Request type options
+  // ng2-smart-table - 使用标准edit按钮查看详情（与dashboard、audit-logs保持一致）
+  approvalSource: LocalDataSource = new LocalDataSource();
+  tableSettings = {
+    mode: 'external',
+    hideSubHeader: true,
+    noDataMessage: '暂无待审批申请',
+    actions: {
+      columnTitle: '操作',
+      add: false,
+      edit: true,
+      delete: false,
+      position: 'right',
+    },
+    edit: {
+      editButtonContent: '<i class="nb-search"></i>',  // 使用搜索图标表示查看详情
+    },
+    pager: {
+      display: true,
+      perPage: 10,
+    },
+    columns: {
+      id: {
+        title: 'ID',
+        type: 'number',
+        width: '50px',
+      },
+      request_type: {
+        title: '类型',
+        type: 'html',
+        width: '90px',
+        valuePrepareFunction: (value: string) => {
+          const labels: { [key: string]: string } = {
+            grant_role: '授予角色',
+            grant_permission: '授予权限',
+            revoke_permission: '撤销权限',
+          };
+          return `<span class="badge badge-primary">${labels[value] || value}</span>`;
+        },
+      },
+      applicant_name: {
+        title: '申请人',
+        type: 'string',
+        width: '80px',
+      },
+      target: {
+        title: '目标',
+        type: 'string',
+      },
+      reason: {
+        title: '申请原因',
+        type: 'string',
+      },
+      created_at: {
+        title: '申请时间',
+        type: 'string',
+        width: '180px',
+        valuePrepareFunction: (value: string) => {
+          if (!value) return '-';
+          return value.replace('T', ' ').substring(0, 19);
+        },
+      },
+    },
+  };
+
   typeOptions = [
     { label: '全部', value: 'all' },
     { label: '授予角色', value: 'grant_role' },
@@ -55,7 +102,6 @@ export class PermissionApprovalComponent implements OnInit, OnDestroy {
     { label: '撤销权限', value: 'revoke_permission' },
   ];
 
-  // Modal/Dialog state
   selectedRequest: PermissionRequestResponse | null = null;
   approvalForm: FormGroup;
   approvalInProgress = false;
@@ -75,11 +121,9 @@ export class PermissionApprovalComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     if (this.refresh$) {
-      this.refresh$
-        .pipe(takeUntil(this.destroy$))
-        .subscribe(() => {
-          this.loadPendingRequests();
-        });
+      this.refresh$.pipe(takeUntil(this.destroy$)).subscribe(() => {
+        this.loadPendingRequests();
+      });
     }
     this.loadPendingRequests();
   }
@@ -89,12 +133,8 @@ export class PermissionApprovalComponent implements OnInit, OnDestroy {
     this.destroy$.complete();
   }
 
-  /**
-   * Load pending approval requests (only 'pending' status)
-   */
-  private loadPendingRequests(): void {
+  loadPendingRequests(): void {
     this.requestsLoading = true;
-
     this.permissionService.listPendingApprovals().subscribe({
       next: (requests) => {
         this.pendingRequests = requests;
@@ -109,16 +149,10 @@ export class PermissionApprovalComponent implements OnInit, OnDestroy {
     });
   }
 
-  /**
-   * Apply type filter to pending requests
-   */
   onTypeFilterChange(): void {
     this.applyFilters();
   }
 
-  /**
-   * Apply filters to requests list
-   */
   private applyFilters(): void {
     if (this.typeFilter === 'all') {
       this.filteredRequests = [...this.pendingRequests];
@@ -127,11 +161,26 @@ export class PermissionApprovalComponent implements OnInit, OnDestroy {
         (req) => req.request_type === this.typeFilter,
       );
     }
+
+    const tableData = this.filteredRequests.map(req => ({
+      id: req.id,
+      request_type: req.request_type,
+      applicant_name: req.applicant_name,
+      target: this.getTargetDescription(req),
+      reason: req.reason?.substring(0, 50) + (req.reason?.length > 50 ? '...' : ''),
+      created_at: req.created_at,
+    }));
+    this.approvalSource.load(tableData);
   }
 
-  /**
-   * Open detail modal for a request using ngx-admin native dialog service
-   */
+  // 使用edit事件处理查看详情
+  onEditRow(event: any): void {
+    const request = this.filteredRequests.find(r => r.id === event.data.id);
+    if (request) {
+      this.onViewDetail(request);
+    }
+  }
+
   onViewDetail(request: PermissionRequestResponse): void {
     const dialogRef = this.dialogService.open(PermissionApprovalDetailDialogComponent, {
       context: {
@@ -154,9 +203,7 @@ export class PermissionApprovalComponent implements OnInit, OnDestroy {
     });
   }
 
-  /**
-   * Perform approval action with confirmation dialog
-   */
+
   private performApproval(request: PermissionRequestResponse): void {
     const dialogRef = this.dialogService.open(ConfirmationDialogComponent, {
       context: {
@@ -195,9 +242,6 @@ export class PermissionApprovalComponent implements OnInit, OnDestroy {
     });
   }
 
-  /**
-   * Perform rejection action with confirmation dialog
-   */
   private performRejection(request: PermissionRequestResponse): void {
     const dialogRef = this.dialogService.open(ConfirmationDialogComponent, {
       context: {
@@ -237,37 +281,31 @@ export class PermissionApprovalComponent implements OnInit, OnDestroy {
     });
   }
 
-  /**
-   * Close detail modal - deprecated method kept for compatibility
-   */
-  onCloseDetail(): void {
-    // No longer needed with dialog service
-    this.selectedRequest = null;
-    this.approvalForm.reset();
-  }
-
-  /**
-   * Get request type label in Chinese
-   */
-  getRequestTypeLabel(requestType: string): string {
-    const typeMap: { [key: string]: string } = {
-      grant_role: '授予角色',
-      grant_permission: '授予权限',
-      revoke_permission: '撤销权限',
-    };
-    return typeMap[requestType] || requestType;
-  }
-
-  /**
-   * Get target description for the request
-   */
   getTargetDescription(request: PermissionRequestResponse): string {
     const details = request.request_details;
+    if (!details) return '-';
+
     if (request.request_type === 'grant_role') {
-      return `${details?.target_user} ← ${details?.target_role}`;
+      return `${details.target_user || '-'} ← ${details.target_role || '-'}`;
     } else {
-      const scope = details?.scope || details?.database;
-      return `${details?.target_user} @ ${scope}`;
+      const user = details.target_user || '-';
+      const resourceType = details.resource_type?.toLowerCase();
+      let scope = '';
+      if (resourceType === 'catalog') {
+        scope = details.catalog || '*';
+      } else if (resourceType === 'database') {
+        const catalog = details.catalog ? `${details.catalog}.` : '';
+        scope = `${catalog}${details.database || '*'}.*`;
+      } else if (resourceType === 'table') {
+        const catalog = details.catalog ? `${details.catalog}.` : '';
+        const db = details.database || '*';
+        const table = details.table || '*';
+        scope = `${catalog}${db}.${table}`;
+      } else {
+        scope = details.scope || details.database || details.catalog || '-';
+      }
+      const perms = details.permissions?.join(', ') || '';
+      return perms ? `${user} @ ${scope} (${perms})` : `${user} @ ${scope}`;
     }
   }
 }

@@ -6,107 +6,120 @@
 :host {
   display: block;
   width: 100% !important;
-      padding: 0 !important;
+  padding: 0 !important;
   margin: 0 !important;
 }
 
 .permission-management {
-  padding: 0 !important; // 移除所有padding，实现全宽布局
-  margin: 0 !important; // 移除所有margin
-  width: 100% !important; // 确保全宽
-  max-width: 100% !important; // 移除任何max-width限制
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
   
-  // Override nb-card default styles for full-width layout
   > nb-card {
-    margin: 0 !important; // 移除所有margin
+    margin: 0 !important;
     margin-bottom: 0 !important;
-    width: 100% !important; // 确保全宽
-    max-width: 100% !important; // 移除任何max-width限制
+    width: 100% !important;
+    max-width: 100% !important;
     
     nb-card-body {
-      padding-top: 0 !important; // 移除顶部空白
-      padding-bottom: 1rem !important; // 保留底部间距
-      padding-left: 0.6rem !important; // 左右各0.5rem (8px)
-      padding-right: 0.6rem !important;
+      padding-top: 0 !important;
+      padding-bottom: 0.5rem !important;
+      padding-left: 0.5rem !important;
+      padding-right: 0.5rem !important;
       width: 100% !important;
       max-width: 100% !important;
       margin: 0 !important;
       
-      // 确保tabset也没有左右padding
       > nb-tabset {
-      padding: 0 !important;
+        padding: 0 !important;
         margin: 0 !important;
         width: 100% !important;
+      }
     }
   }
 }
-}
 
 :host ::ng-deep {
-  // 1. 覆盖页面级别的容器样式（如果有）
-  nb-layout-column {
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-  }
-  
-  // 2. 修复Tab间距问题 - ngx-admin的tabset结构：.tabset > .tabs > .tab
-  // 关键：覆盖 fullWidth="true" 导致的 justify-content: space-around
+  // Tab样式 - 给图标添加颜色
   nb-tabset {
     width: 100% !important;
     
-    // 覆盖 full-width 类的 space-around 对齐方式
     &.full-width .tabset {
-      justify-content: flex-start !important; // 改为左对齐，覆盖默认的 space-around
+      justify-content: flex-start !important;
     }
     
     .tabset {
       padding: 0 !important;
       margin: 0 !important;
-      margin-bottom: 0 !important; // 移除底部margin，确保与内容对齐
+      margin-bottom: 0.5rem !important;
       width: 100% !important;
-      justify-content: flex-start !important; // 确保左对齐
+      justify-content: flex-start !important;
       
-      // .tabs 是Tab列表容器，移除间距，左对齐
-      // 关键修复：移除 .tabs 的 padding，让 Tab 标题与内容区域左边缘对齐
       .tabs {
         gap: 0 !important;
         display: flex !important;
-        justify-content: flex-start !important; // Tab标题左对齐
-        padding-left: 0 !important; // 移除左侧 padding，与内容区域对齐
+        justify-content: flex-start !important;
+        padding-left: 0 !important;
         padding-right: 0 !important;
-        }
+      }
 
-      // Tab项之间无间距，覆盖ngx-admin默认的text-align: center
       .tab {
         margin: 0 !important;
         margin-right: 0 !important;
-        text-align: left !important; // 覆盖ngx-admin默认的text-align: center
+        text-align: left !important;
         
-        // Tab链接 - 确保左对齐
         a.tab-link,
         .tab-link,
         a {
           margin: 0 !important;
-          text-align: left !important; // Tab链接文本左对齐
+          text-align: left !important;
           display: flex !important;
-          justify-content: flex-start !important; // 内容左对齐
+          justify-content: flex-start !important;
           align-items: center !important;
+          padding: 0.75rem 1.25rem !important;
+          
+          // Tab图标样式 - 添加颜色
+          nb-icon {
+            margin-right: 0.5rem;
+            font-size: 1.25rem;
+          }
+        }
+        
+        // 我的权限 Tab - 蓝色图标
+        &:nth-child(1) a nb-icon {
+          color: #3366ff;
+        }
+        
+        // 权限申请 Tab - 绿色图标
+        &:nth-child(2) a nb-icon {
+          color: #00d68f;
+        }
+        
+        // 权限审批 Tab - 橙色图标
+        &:nth-child(3) a nb-icon {
+          color: #ffaa00;
+        }
+        
+        // 激活状态的Tab - 图标颜色保持不变
+        &.active a nb-icon {
+          opacity: 1;
+        }
       }
     }
-  }
 
-    // 关键：覆盖 nb-tab.content-active 的默认 padding (16px 32px)
+    // Tab内容区域 - 减少padding
     nb-tab {
       padding: 0 !important;
       width: 100% !important;
       
       &.content-active {
-        padding: 0 !important; // 移除所有 padding，让内容与 Tab 标题对齐
+        padding: 0 !important;
       }
     }
   }
   
-  // 3. 修复内容空白问题 - 覆盖子组件的宽度和padding限制
+  // 内容区域样式
   .tab-content {
     padding: 0 !important;
     width: 100% !important;
@@ -121,7 +134,6 @@
       margin: 0 !important;
       max-width: 100% !important;
       
-      // 确保所有子元素都没有左右padding/margin
       > * {
         padding-left: 0 !important;
         padding-right: 0 !important;
@@ -129,6 +141,24 @@
         margin-right: 0 !important;
         max-width: 100% !important;
       }
+    }
+  }
+  
+  // 减少表单卡片的内边距
+  .permission-form-card {
+    nb-card-body {
+      padding: 0.75rem !important;
+    }
+  }
+  
+  // 减少表格卡片的内边距
+  nb-card {
+    nb-card-header {
+      padding: 0.75rem 1rem !important;
+    }
+    
+    nb-card-body {
+      padding: 0.5rem 0.75rem !important;
     }
   }
 }

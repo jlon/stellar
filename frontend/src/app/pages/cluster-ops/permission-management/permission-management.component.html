@@ -12,6 +12,7 @@
             <ng-template nbTabContent>
               <ngx-permission-dashboard-standard
               [refresh$]="refreshDashboard$"
+              (switchToRequest)="onSwitchToRequest($event)"
               ></ngx-permission-dashboard-standard>
             </ng-template>
         </nb-tab>

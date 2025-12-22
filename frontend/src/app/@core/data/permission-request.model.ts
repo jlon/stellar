@@ -109,9 +109,9 @@ export interface DbRoleDto {
 }
 
 export interface DbUserPermissionDto {
-  id: string;
+  id: number;
   privilege_type: string;
-  resource_scope: string;
+  resource_type: string;  // ROLE, GLOBAL, SYSTEM, CATALOG, DATABASE, TABLE
   resource_path: string;
   granted_role?: string;
   granted_at?: string;

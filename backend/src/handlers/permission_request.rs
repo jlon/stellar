@@ -377,6 +377,8 @@ pub async fn list_db_roles_active(
 }
 
 /// List current user's database permissions on active cluster ("我的权限")
+/// This shows permissions for the cluster's registered database user (e.g., starrocks, root)
+/// NOT the Stellar system user
 #[utoipa::path(
     get,
     path = "/api/clusters/db-auth/my-permissions",
@@ -393,16 +395,15 @@ pub async fn list_my_db_permissions(
 ) -> ApiResult<Json<Vec<DbUserPermissionDto>>> {
     tracing::debug!("Listing database permissions for user {}", user_id);
 
-    // Get user's organization_id and username
+    // Get user's organization_id
     let user = sqlx::query(
-        "SELECT organization_id, username FROM users WHERE id = ?"
+        "SELECT organization_id FROM users WHERE id = ?"
     )
     .bind(user_id)
     .fetch_one(&state.db)
     .await?;
 
     let org_id: Option<i64> = user.get("organization_id");
-    let username: String = user.get("username");
 
     // Get active cluster for this organization
     let active_cluster = state
@@ -410,10 +411,72 @@ pub async fn list_my_db_permissions(
         .get_active_cluster_by_org(org_id)
         .await?;
 
-    // List permissions for this user on the active cluster
+    // Use the cluster's registered database username (e.g., starrocks, root)
+    // NOT the Stellar system username
+    let db_username = &active_cluster.username;
+    tracing::debug!(
+        "Querying permissions for cluster '{}' database user '{}'",
+        active_cluster.name,
+        db_username
+    );
+
+    // List permissions for the cluster's database user
     let permissions = state
         .db_auth_query_service
-        .list_user_permissions(active_cluster.id, &username)
+        .list_user_permissions(active_cluster.id, db_username)
+        .await?;
+
+    Ok(Json(permissions))
+}
+
+/// List permissions for a specific role on active cluster
+/// Uses SHOW GRANTS FOR ROLE 'role_name' to get role's permissions
+#[utoipa::path(
+    get,
+    path = "/api/clusters/db-auth/role-permissions/{role_name}",
+    params(
+        ("role_name" = String, Path, description = "Role name"),
+    ),
+    responses(
+        (status = 200, description = "List of role's permissions", body = Vec<DbUserPermissionDto>),
+        (status = 404, description = "No active cluster found")
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Database Authentication"
+)]
+pub async fn list_role_permissions(
+    State(state): State<Arc<AppState>>,
+    Extension(user_id): Extension<i64>,
+    Path(role_name): Path<String>,
+) -> ApiResult<Json<Vec<DbUserPermissionDto>>> {
+    tracing::debug!("Listing permissions for role {} by user {}", role_name, user_id);
+
+    // Get user's organization_id
+    let user = sqlx::query(
+        "SELECT organization_id FROM users WHERE id = ?"
+    )
+    .bind(user_id)
+    .fetch_one(&state.db)
+    .await?;
+
+    let org_id: Option<i64> = user.get("organization_id");
+
+    // Get active cluster for this organization
+    let active_cluster = state
+        .cluster_service
+        .get_active_cluster_by_org(org_id)
+        .await?;
+
+    tracing::debug!(
+        "Querying permissions for role '{}' on cluster '{}'",
+        role_name,
+        active_cluster.name
+    );
+
+    // List permissions for the role
+    let permissions = state
+        .db_auth_query_service
+        .list_role_permissions(active_cluster.id, &role_name)
         .await?;
 
     Ok(Json(permissions))
