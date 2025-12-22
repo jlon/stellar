@@ -119,6 +119,14 @@ export class PermissionRequestService {
   }
 
   /**
+   * 查询指定角色的权限列表
+   * Backend uses SHOW GRANTS FOR ROLE to retrieve role's permissions
+   */
+  listRolePermissions(roleName: string): Observable<DbUserPermissionDto[]> {
+    return this.api.get<DbUserPermissionDto[]>(`/clusters/db-auth/role-permissions/${encodeURIComponent(roleName)}`);
+  }
+
+  /**
    * 构建查询参数对象
    */
   private buildFilterParams(filter?: RequestQueryFilter): any {

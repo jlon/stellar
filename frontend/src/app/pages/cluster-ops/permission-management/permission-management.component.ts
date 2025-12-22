@@ -1,9 +1,10 @@
 // @ts-nocheck
-import { Component, OnDestroy } from '@angular/core';
+import { Component, OnDestroy, ViewChild } from '@angular/core';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { PermissionService } from '../../../@core/data/permission.service';
 import { AuthService } from '../../../@core/data/auth.service';
+import { PermissionRequestComponent } from './request/permission-request.component';
 
 @Component({
   selector: 'ngx-permission-management',
@@ -13,10 +14,15 @@ import { AuthService } from '../../../@core/data/auth.service';
 export class PermissionManagementComponent implements OnDestroy {
   activeTabIndex = 0;
 
+  // 预填的撤销权限信息
+  prefillRevokeData: any = null;
+
   // Event streams for cross-tab communication (Permission Request tabs)
   refreshDashboard$ = new Subject<void>();
   refreshMyRequests$ = new Subject<void>();
   refreshPendingApprovals$ = new Subject<void>();
+
+  @ViewChild(PermissionRequestComponent) requestComponent: PermissionRequestComponent;
 
   private destroy$ = new Subject<void>();
 
@@ -94,5 +100,26 @@ export class PermissionManagementComponent implements OnDestroy {
   onRequestProcessed(): void {
     this.triggerRefreshPendingApprovals();
     this.triggerRefreshMyRequests();
+  }
+
+  /**
+   * Handle switch to request tab (from Dashboard)
+   * - Switch to request tab
+   * - Prefill revoke data if provided
+   */
+  onSwitchToRequest(event: {type: string, permission?: any}): void {
+    this.activeTabIndex = 1; // Switch to request tab
+
+    if (event.type === 'revoke_permission' && event.permission) {
+      // Store prefill data for request component
+      this.prefillRevokeData = event.permission;
+
+      // If request component is already loaded, prefill it
+      setTimeout(() => {
+        if (this.requestComponent) {
+          this.requestComponent.prefillRevokeRequest(event.permission);
+        }
+      }, 100);
+    }
   }
 }

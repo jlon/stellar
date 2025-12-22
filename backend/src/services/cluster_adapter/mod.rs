@@ -154,6 +154,9 @@ pub trait ClusterAdapter: Send + Sync {
     /// List user permissions (for "我的权限" dashboard)
     async fn list_user_permissions(&self, username: &str) -> ApiResult<Vec<crate::models::DbUserPermissionDto>>;
 
+    /// List role permissions (for role detail view)
+    async fn list_role_permissions(&self, role_name: &str) -> ApiResult<Vec<crate::models::DbUserPermissionDto>>;
+
     /// List all database accounts
     async fn list_db_accounts(&self) -> ApiResult<Vec<crate::models::DbAccountDto>>;
 

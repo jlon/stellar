@@ -1,91 +1,194 @@
-<!-- 统计信息卡片 - 使用单独的div控制，参考cluster-overview -->
-<div class="metric-cards-row">
-  <nb-card status="primary" class="metric-card">
-    <nb-card-body>
-      <div class="metric-card__icon">
-        <nb-icon icon="shield-outline" status="primary"></nb-icon>
+<!-- 统计卡片 - 紧凑横向布局 -->
+<div class="stats-bar">
+  <div class="stat-item">
+    <nb-icon icon="shield-outline" status="primary"></nb-icon>
+    <span class="stat-value">{{ stats.totalRoles }}</span>
+    <span class="stat-label">角色</span>
   </div>
-      <div class="metric-card__content">
-        <span class="metric-card__title">拥有角色</span>
-        <h3 class="metric-card__value">{{ stats.totalRoles }}</h3>
-        </div>
-      </nb-card-body>
-    </nb-card>
-
-  <nb-card status="success" class="metric-card">
-      <nb-card-body>
-      <div class="metric-card__icon">
-        <nb-icon icon="globe-outline" status="success"></nb-icon>
-      </div>
-      <div class="metric-card__content">
-        <span class="metric-card__title">全局权限</span>
-        <h3 class="metric-card__value">{{ stats.globalPermissions }}</h3>
-        </div>
-      </nb-card-body>
-    </nb-card>
-
-  <nb-card status="info" class="metric-card">
-      <nb-card-body>
-      <div class="metric-card__icon">
-        <nb-icon icon="layers-outline" status="info"></nb-icon>
-      </div>
-      <div class="metric-card__content">
-        <span class="metric-card__title">数据库权限</span>
-        <h3 class="metric-card__value">{{ stats.dbPermissions }}</h3>
-        </div>
-      </nb-card-body>
-    </nb-card>
-
-  <nb-card status="warning" class="metric-card">
-      <nb-card-body>
-      <div class="metric-card__icon">
-        <nb-icon icon="grid-outline" status="warning"></nb-icon>
-      </div>
-      <div class="metric-card__content">
-        <span class="metric-card__title">表级权限</span>
-        <h3 class="metric-card__value">{{ stats.tablePermissions }}</h3>
-        </div>
-      </nb-card-body>
-    </nb-card>
+  <div class="stat-item">
+    <nb-icon icon="globe-outline" status="success"></nb-icon>
+    <span class="stat-value">{{ stats.globalPermissions }}</span>
+    <span class="stat-label">全局</span>
   </div>
+  <div class="stat-item">
+    <nb-icon icon="layers-outline" status="info"></nb-icon>
+    <span class="stat-value">{{ stats.dbPermissions }}</span>
+    <span class="stat-label">库级</span>
+  </div>
+  <div class="stat-item">
+    <nb-icon icon="grid-outline" status="warning"></nb-icon>
+    <span class="stat-value">{{ stats.tablePermissions }}</span>
+    <span class="stat-label">表级</span>
+  </div>
+</div>
 
-
-<!-- 批量操作提示 - 使用nb-alert -->
-<nb-alert status="info" *ngIf="selectedPermissions.size > 0" class="mb-3">
-  <div class="d-flex justify-content-between align-items-center">
-      <span>已选择 {{ selectedPermissions.size }} 个权限</span>
-    <div class="d-flex gap-2">
-        <button nbButton status="danger" size="small" (click)="batchRevoke()">
-          批量撤销
-        </button>
-        <button nbButton status="basic" size="small" (click)="clearSelection()">
-          取消选择
+<!-- 权限表格 -->
+<nb-card>
+  <nb-card-header>
+    <div class="d-flex justify-content-between align-items-center">
+      <div class="d-flex align-items-center">
+        <h6 class="mb-0">权限列表</h6>
+        <span class="text-hint ml-2" style="font-size: 12px;">
+          共 {{ filteredPermissions.length }} 条
+        </span>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <button nbButton status="primary" size="small" (click)="loadPermissions()">
+          <nb-icon icon="refresh-outline"></nb-icon>
         </button>
       </div>
     </div>
-  </nb-alert>
+  </nb-card-header>
 
-<!-- 加载状态 - 使用ngx-admin标准组件 -->
-<div *ngIf="loading" class="text-center py-5">
-  <nb-spinner size="giant" status="primary"></nb-spinner>
-    <p class="mt-3 text-muted">加载权限数据中...</p>
-</div>
-
-<!-- 权限列表 - 使用ng2-smart-table，参考backends组件，直接使用，无wrapper -->
-<ng2-smart-table
-  *ngIf="!loading"
-  [settings]="settings"
-  [source]="source"
-  (deleteConfirm)="onDeleteConfirm($event)">
-</ng2-smart-table>
-
-<!-- 空状态 - 使用nb-card，参考backends组件 -->
-<nb-card *ngIf="!loading && filteredPermissions.length === 0" class="text-center py-5">
   <nb-card-body>
-    <nb-icon icon="inbox-outline" size="giant" status="info"></nb-icon>
-    <h4 class="mt-3">暂无权限数据</h4>
-    <p class="text-muted">
-      您当前没有任何数据库权限
-    </p>
+    <div *ngIf="loading" class="text-center p-4">
+      <nb-spinner status="primary"></nb-spinner>
+    </div>
+
+    <ng2-smart-table
+      *ngIf="!loading && filteredPermissions.length > 0"
+      [settings]="settings"
+      [source]="source"
+      (edit)="onEditRow($event)">
+    </ng2-smart-table>
+
+    <!-- 空状态 -->
+    <div *ngIf="!loading && filteredPermissions.length === 0" class="empty-state">
+      <nb-icon icon="inbox-outline" class="empty-icon"></nb-icon>
+      <p>暂无权限数据</p>
+      <button nbButton status="primary" size="small" (click)="switchToRequest.emit({type: 'grant_permission'})">
+        <nb-icon icon="plus-outline"></nb-icon> 申请权限
+      </button>
+    </div>
   </nb-card-body>
 </nb-card>
+
+<!-- 权限详情对话框 - 使用ngx-admin原生风格 -->
+<div class="detail-dialog-overlay" *ngIf="showDetailDialog" (click)="closeDetailDialog()">
+  <nb-card class="detail-dialog" [ngClass]="{'detail-dialog-wide': isRolePermission}" (click)="$event.stopPropagation()">
+    <!-- 头部：带颜色图标圆圈 -->
+    <nb-card-header class="dialog-header">
+      <div class="header-content">
+        <div class="header-icon" [ngClass]="{
+          'icon-danger': selectedPermission?.risk_level === 'high',
+          'icon-warning': selectedPermission?.risk_level === 'medium',
+          'icon-success': selectedPermission?.risk_level !== 'high' && selectedPermission?.risk_level !== 'medium'
+        }">
+          <nb-icon [icon]="isRolePermission ? 'people-outline' : 'shield-outline'"></nb-icon>
+        </div>
+        <div class="header-text">
+          <span class="header-title">{{ isRolePermission ? '角色权限详情' : '权限详情' }}</span>
+          <span class="header-subtitle">{{ selectedPermission?.privilege_type }} - {{ selectedPermission?.resource_type }}</span>
+        </div>
+      </div>
+      <button nbButton ghost status="basic" size="small" (click)="closeDetailDialog()">
+        <nb-icon icon="close-outline"></nb-icon>
+      </button>
+    </nb-card-header>
+
+    <nb-card-body *ngIf="selectedPermission" class="dialog-body">
+      <!-- 核心信息列表 -->
+      <nb-list class="info-list">
+        <nb-list-item>
+          <div class="list-item-content">
+            <span class="item-label">权限类型</span>
+            <span class="tag tag-primary">{{ selectedPermission.privilege_type }}</span>
+          </div>
+        </nb-list-item>
+        <nb-list-item>
+          <div class="list-item-content">
+            <span class="item-label">资源类型</span>
+            <span class="tag tag-info">{{ selectedPermission.resource_type }}</span>
+          </div>
+        </nb-list-item>
+        <nb-list-item>
+          <div class="list-item-content">
+            <span class="item-label">资源路径</span>
+            <code class="item-code">{{ selectedPermission.resource_path }}</code>
+          </div>
+        </nb-list-item>
+        <nb-list-item>
+          <div class="list-item-content">
+            <span class="item-label">授权方式</span>
+            <span class="item-value">
+              <nb-icon [icon]="selectedPermission.granted_role ? 'people-outline' : 'person-outline'" class="mr-1"></nb-icon>
+              {{ selectedPermission.granted_role || '直接授权' }}
+            </span>
+          </div>
+        </nb-list-item>
+        <nb-list-item>
+          <div class="list-item-content">
+            <span class="item-label">风险等级</span>
+            <span class="tag" [ngClass]="{
+              'tag-danger': selectedPermission.risk_level === 'high',
+              'tag-warning': selectedPermission.risk_level === 'medium',
+              'tag-success': selectedPermission.risk_level !== 'high' && selectedPermission.risk_level !== 'medium'
+            }">{{ getRiskLabel(selectedPermission.risk_level) }}</span>
+          </div>
+        </nb-list-item>
+      </nb-list>
+
+      <!-- 权限说明 -->
+      <nb-accordion class="mt-3">
+        <nb-accordion-item [expanded]="true">
+          <nb-accordion-item-header>
+            <nb-icon icon="info-outline" class="mr-2"></nb-icon>
+            权限说明
+          </nb-accordion-item-header>
+          <nb-accordion-item-body>
+            <p class="description-text">{{ getPrivilegeDescription(selectedPermission.privilege_type) }}</p>
+            <div class="meta-info">
+              <div class="meta-row">
+                <nb-icon icon="compass-outline" status="primary"></nb-icon>
+                <span class="meta-label">影响范围</span>
+                <span class="meta-value">{{ getResourceScopeDescription(selectedPermission.resource_type, selectedPermission.resource_path) }}</span>
+              </div>
+              <div class="meta-row" *ngIf="getPrivilegeUsage(selectedPermission.privilege_type)">
+                <nb-icon icon="briefcase-outline" status="info"></nb-icon>
+                <span class="meta-label">使用场景</span>
+                <span class="meta-value">{{ getPrivilegeUsage(selectedPermission.privilege_type) }}</span>
+              </div>
+            </div>
+          </nb-accordion-item-body>
+        </nb-accordion-item>
+
+        <!-- 角色包含的权限 -->
+        <nb-accordion-item *ngIf="isRolePermission" [expanded]="true">
+          <nb-accordion-item-header>
+            <nb-icon icon="list-outline" class="mr-2"></nb-icon>
+            角色 "{{ selectedPermission.resource_path }}" 包含的权限
+          </nb-accordion-item-header>
+          <nb-accordion-item-body>
+            <div *ngIf="loadingRolePermissions" class="loading-hint">
+              <nb-spinner size="small" status="primary"></nb-spinner>
+              <span>加载中...</span>
+            </div>
+
+            <div *ngIf="!loadingRolePermissions && rolePermissions.length === 0" class="empty-hint">
+              <nb-icon icon="alert-circle-outline"></nb-icon>
+              <span>该角色暂无权限或无法查询</span>
+            </div>
+
+            <nb-list *ngIf="!loadingRolePermissions && rolePermissions.length > 0" class="role-permissions-list">
+              <nb-list-item *ngFor="let perm of rolePermissions" class="role-perm-item">
+                <div class="perm-info">
+                  <span class="tag tag-primary mr-2">{{ perm.privilege_type }}</span>
+                  <span class="perm-resource">{{ perm.resource_type }}</span>
+                </div>
+                <code class="perm-path">{{ perm.resource_path }}</code>
+              </nb-list-item>
+            </nb-list>
+          </nb-accordion-item-body>
+        </nb-accordion-item>
+      </nb-accordion>
+    </nb-card-body>
+
+    <nb-card-footer class="dialog-footer">
+      <button nbButton status="basic" (click)="closeDetailDialog()">关闭</button>
+      <button nbButton status="danger" outline (click)="requestRevoke(selectedPermission); closeDetailDialog()">
+        <nb-icon icon="trash-2-outline"></nb-icon>
+        申请撤销
+      </button>
+    </nb-card-footer>
+  </nb-card>
+</div>

@@ -625,6 +625,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/clusters/db-auth/accounts", get(handlers::permission_request::list_db_accounts_active))
         .route("/api/clusters/db-auth/roles", get(handlers::permission_request::list_db_roles_active))
         .route("/api/clusters/db-auth/my-permissions", get(handlers::permission_request::list_my_db_permissions))
+        .route("/api/clusters/db-auth/role-permissions/:role_name", get(handlers::permission_request::list_role_permissions))
         .route("/api/db-auth/preview-sql", post(handlers::permission_request::preview_sql))
         .with_state(Arc::clone(&app_state_arc))
         .layer(axum_middleware::from_fn_with_state(auth_state, middleware::auth_middleware));

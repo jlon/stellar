@@ -1,1 +1,218 @@
-// Permission Request Styles
+// Permission Request Component Styles
+// Using flexbox layout to prevent horizontal scrollbar
+
+// Container
+.permission-request-container {
+  width: 100%;
+  overflow-x: hidden;
+}
+
+// Form section
+.form-section {
+  margin-bottom: 0.5rem;
+}
+
+// Form card with subtle styling
+.permission-form-card {
+  border-radius: 0.5rem;
+  margin-bottom: 0.5rem !important;
+  
+  nb-card-body {
+    padding: 0.75rem !important;
+  }
+}
+
+// Compact labels
+.label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: nb-theme(text-hint-color);
+  margin-bottom: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+// Flexbox form row - auto wrap
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+// Form field - fixed width for consistency (加大20%)
+.form-field {
+  flex: 0 0 auto;
+  width: 220px;  // 140px * 1.2 = 168px
+  min-width: 144px;  // 120px * 1.2 = 144px
+  max-width: 220px;  // 160px * 1.2 = 192px
+}
+
+// Full width field for permissions
+.form-field-full {
+  flex: 1 1 100%;
+  width: 100%;
+}
+
+// Reason field - takes remaining space
+.form-field-reason {
+  flex: 1 1 auto;
+  min-width: 200px;
+}
+
+// Actions field - fixed width
+.form-field-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+// Submit row alignment
+.form-row-submit {
+  align-items: flex-end;
+}
+
+// Permission chips - modern tag-style selection
+.permission-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.permission-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.625rem;
+  border-radius: 1rem;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: nb-theme(background-basic-color-2);
+  border: 1px solid nb-theme(border-basic-color-3);
+  color: nb-theme(text-basic-color);
+  
+  &:hover {
+    background: nb-theme(background-basic-color-3);
+    border-color: nb-theme(color-primary-default);
+  }
+  
+  &.selected {
+    background: nb-theme(color-primary-transparent-100);
+    border-color: nb-theme(color-primary-default);
+    color: nb-theme(color-primary-default);
+  }
+  
+  .chip-icon {
+    font-size: 0.875rem;
+    margin-right: 0.25rem;
+  }
+}
+
+// Table section
+.table-section {
+  width: 100%;
+}
+
+// 减少表格卡片的间距
+:host ::ng-deep {
+  nb-card {
+    margin-bottom: 0.5rem !important;
+    
+    nb-card-header {
+      padding: 0.5rem 0.75rem !important;
+      
+      h6 {
+        font-size: 0.875rem;
+        margin: 0;
+      }
+    }
+    
+    nb-card-body {
+      padding: 0.5rem 0.75rem !important;
+    }
+  }
+  
+  // ng2-smart-table 样式 - 使用 ngx-admin 原生风格
+  ng2-smart-table {
+    table {
+      font-size: 0.8125rem;
+      
+      th {
+        padding: 0.5rem 0.625rem !important;
+        font-weight: 600;
+        color: nb-theme(text-hint-color);
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.03em;
+      }
+      
+      td {
+        padding: 0.5rem 0.625rem !important;
+        color: nb-theme(text-basic-color);
+      }
+    }
+    
+    // Badge 样式 - 与 ngx-admin 风格一致
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.125rem 0.5rem;
+      border-radius: 0.25rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+      
+      &.badge-primary {
+        background: #e8f0fe;
+        color: #3366ff;
+      }
+      
+      &.badge-info {
+        background: #e0f7fa;
+        color: #0095ff;
+      }
+      
+      &.badge-success {
+        background: #e8f5e9;
+        color: #00d68f;
+      }
+      
+      &.badge-warning {
+        background: #fff8e1;
+        color: #ffaa00;
+      }
+      
+      &.badge-danger {
+        background: #ffebee;
+        color: #ff3d71;
+      }
+      
+      &.badge-default {
+        background: #f5f5f5;
+        color: #8f9bb3;
+      }
+    }
+  }
+  
+  // 确保select不会溢出
+  nb-select {
+    max-width: 100%;
+  }
+  
+  // Select placeholder样式 - 当选中空值时显示灰色
+  nb-select.empty-value {
+    button.select-button {
+      color: #8f9bb3 !important;
+      
+      nb-icon {
+        color: #8f9bb3 !important;
+      }
+    }
+  }
+}
+
+// Gap utility for older browsers
+.gap-2 {
+  gap: 0.5rem;
+}

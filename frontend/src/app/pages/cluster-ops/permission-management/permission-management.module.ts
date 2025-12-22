@@ -19,6 +19,8 @@ import {
   NbTagModule,
   NbTooltipModule,
   NbProgressBarModule,
+  NbAccordionModule,
+  NbListModule,
 } from '@nebular/theme';
 import { Ng2SmartTableModule } from 'ng2-smart-table';
 
@@ -73,6 +75,8 @@ import { CascadeSelectorComponent } from './shared/cascade-selector.component';
     NbTagModule,
     NbTooltipModule,
     NbProgressBarModule,
+    NbAccordionModule,
+    NbListModule,
     Ng2SmartTableModule,
   ],
   schemas: [NO_ERRORS_SCHEMA],

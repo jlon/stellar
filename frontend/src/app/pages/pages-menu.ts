@@ -78,13 +78,13 @@ export const MENU_ITEMS: NbMenuItem[] = [
   } as NbMenuItem & { data?: { permission: string } },
   {
     title: '变量管理',
-    icon: 'settings-2-outline',
+    icon: 'options-2-outline',
     link: '/pages/starrocks/variables',
     data: { permission: 'menu:variables' },
   } as NbMenuItem & { data?: { permission: string } },
   {
     title: '集群运维',
-    icon: 'settings-outline',
+    icon: 'shield-outline',
     data: { permission: 'menu:cluster-ops' },
     children: [
       {
@@ -96,7 +96,7 @@ export const MENU_ITEMS: NbMenuItem[] = [
   } as NbMenuItem & { data?: { permission: string } },
   {
     title: '系统管理',
-    icon: 'settings-outline',
+    icon: 'people-outline',
     data: { permission: 'menu:system' }, // Parent menu permission
     children: [
       {

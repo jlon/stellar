@@ -1,1 +1,24 @@
-// Permission Approval Styles
+// Permission Approval - 使用 ngx-admin 原生样式
+
+.empty-state {
+  text-align: center;
+  padding: 3rem 1rem;
+
+  .empty-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+  }
+
+  p {
+    color: nb-theme(text-hint-color);
+    margin-bottom: 0;
+  }
+}
+
+.gap-2 {
+  gap: 0.5rem;
+}
+
+.ml-2 {
+  margin-left: 0.5rem;
+}
