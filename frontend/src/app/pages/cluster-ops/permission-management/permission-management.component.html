@@ -1,55 +1,39 @@
-<!-- 权限管理主容器 - 无标题，全屏Tab布局 -->
-<div class="permission-management-container">
-  <nb-card class="fullscreen-card">
-    <nb-card-body class="no-padding">
-      <!-- 紧凑型Tab布局 -->
+<div class="permission-management">
+  <nb-card>
+    <nb-card-body>
       <nb-tabset
         [activeTabId]="activeTabIndex"
-        (changeTab)="onTabChange($event)"
+        (changeTab)="onTabChange($event.tabId)"
+        responsive="true"
         fullWidth="true"
-        class="compact-tabs rounded-tabs"
       >
         <!-- Tab 1: 我的权限 -->
         <nb-tab tabTitle="我的权限" tabId="0" tabIcon="shield-outline">
-          <div class="tab-content-wrapper">
-            <ngx-permission-dashboard
+            <ng-template nbTabContent>
+              <ngx-permission-dashboard-standard
               [refresh$]="refreshDashboard$"
-            ></ngx-permission-dashboard>
-          </div>
+              ></ngx-permission-dashboard-standard>
+            </ng-template>
         </nb-tab>
 
         <!-- Tab 2: 权限申请 -->
         <nb-tab tabTitle="权限申请" tabId="1" tabIcon="plus-circle-outline">
-          <div class="tab-content-wrapper">
+            <ng-template nbTabContent>
             <ngx-permission-request
               (submitted)="onRequestSubmitted()"
               [refresh$]="refreshMyRequests$"
             ></ngx-permission-request>
-          </div>
+            </ng-template>
         </nb-tab>
 
         <!-- Tab 3: 权限审批 (管理员) -->
         <nb-tab *ngIf="canViewApprovalTab()" tabTitle="权限审批" tabId="2" tabIcon="checkmark-circle-outline">
-          <div class="tab-content-wrapper">
+            <ng-template nbTabContent>
             <ngx-permission-approval
               (processed)="onRequestProcessed()"
               [refresh$]="refreshPendingApprovals$"
             ></ngx-permission-approval>
-          </div>
-        </nb-tab>
-
-        <!-- Tab 4: 数据库账户 (管理员) -->
-        <nb-tab *ngIf="canViewConfigTabs()" tabTitle="数据库账户" tabId="5" tabIcon="people-outline">
-          <div class="tab-content-wrapper">
-            <ngx-db-accounts [refresh$]="refreshConfigData$"></ngx-db-accounts>
-          </div>
-        </nb-tab>
-
-        <!-- Tab 5: 数据库角色 (管理员) -->
-        <nb-tab *ngIf="canViewConfigTabs()" tabTitle="数据库角色" tabId="6" tabIcon="award-outline">
-          <div class="tab-content-wrapper">
-            <ngx-db-roles [refresh$]="refreshConfigData$"></ngx-db-roles>
-          </div>
+            </ng-template>
         </nb-tab>
       </nb-tabset>
     </nb-card-body>

@@ -67,8 +67,6 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
   ];
 
   // Real data from API
-  dbAccounts: string[] = [];  // Database users
-  dbRoles: string[] = [];      // Database roles
   catalogs: string[] = [];
   databases: string[] = [];
   tables: string[] = [];
@@ -186,14 +184,10 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
       table: [''], // Added: Table selector
       permissions: [[]], // Array of permission values (e.g., ['SELECT', 'INSERT'])
       reason: ['', Validators.required],
-      new_user_name: [''],
-      new_user_password: [''],
-      new_role_name: [''],
     });
 
     // Setup cascade watchers
     this.setupCascadeWatchers();
-    this.setupNewPrincipalWatchers();
   }
 
   /**
@@ -229,54 +223,21 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
       });
   }
 
-  /**
-   * Setup watchers for inline new user/role fields
-   */
-  private setupNewPrincipalWatchers(): void {
-    this.requestForm.get('new_user_name')?.valueChanges
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((name) => {
-        if (name) {
-          this.requestForm.patchValue({ target_user: name }, { emitEvent: false });
-        }
-      });
-
-    this.requestForm.get('new_role_name')?.valueChanges
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((roleName) => {
-        if (roleName) {
-          this.requestForm.patchValue({ target_role: roleName }, { emitEvent: false });
-        }
-      });
-  }
 
   /**
-   * Load initial data (accounts, roles, catalogs)
+   * Load initial data (catalogs)
    */
   private loadInitialData(): void {
-    this.loadingAccounts = true;
-    this.loadingRoles = true;
     this.loadingCatalogs = true;
 
-    forkJoin({
-      accounts: this.permissionService.listDbAccounts(),
-      roles: this.permissionService.listDbRoles(),
-      catalogs: this.nodeService.getCatalogs(),
-    }).subscribe({
-      next: (result) => {
-        this.dbAccounts = result.accounts.map(a => a.account_name);
-        this.dbRoles = result.roles.map(r => r.role_name);
-        this.catalogs = result.catalogs;
-
-        this.loadingAccounts = false;
-        this.loadingRoles = false;
+    this.nodeService.getCatalogs().subscribe({
+      next: (catalogs) => {
+        this.catalogs = catalogs;
         this.loadingCatalogs = false;
       },
       error: (err) => {
         console.error('Failed to load initial data:', err);
         this.toastr.danger('加载基础数据失败', '错误');
-        this.loadingAccounts = false;
-        this.loadingRoles = false;
         this.loadingCatalogs = false;
       },
     });
@@ -364,91 +325,15 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
   }
 
   onTargetUserChange(value: string): void {
-    const newUserCtrl = this.requestForm.get('new_user_name');
-
-    if (value === '__CREATE_NEW_USER__') {
-      this.isCreatingUser = true;
-      this.requestForm.patchValue({
-        target_user: '',
-      });
-      newUserCtrl?.setValidators([Validators.required]);
-    } else {
-      this.isCreatingUser = false;
       this.requestForm.patchValue({
         target_user: value,
-        new_user_name: '',
-        new_user_password: '',
       });
-      newUserCtrl?.clearValidators();
-    }
-
-    newUserCtrl?.updateValueAndValidity({ emitEvent: false });
   }
 
   onTargetRoleChange(value: string): void {
-    const newRoleCtrl = this.requestForm.get('new_role_name');
-
-    if (value === '__CREATE_NEW_ROLE__') {
-      this.isCreatingRole = true;
-      this.requestForm.patchValue({
-        target_role: '',
-      });
-      newRoleCtrl?.setValidators([Validators.required]);
-    } else {
-      this.isCreatingRole = false;
       this.requestForm.patchValue({
         target_role: value,
-        new_role_name: '',
-      });
-      newRoleCtrl?.clearValidators();
-    }
-
-    newRoleCtrl?.updateValueAndValidity({ emitEvent: false });
-  }
-
-  /**
-   * Toggle inline create user mode
-   */
-  toggleCreateUser(): void {
-    this.isCreatingUser = !this.isCreatingUser;
-    const newUserCtrl = this.requestForm.get('new_user_name');
-
-    if (this.isCreatingUser) {
-      this.requestForm.patchValue({
-        target_user: '',
-      });
-      newUserCtrl?.setValidators([Validators.required]);
-    } else {
-      this.requestForm.patchValue({
-        new_user_name: '',
-        new_user_password: '',
-      });
-      newUserCtrl?.clearValidators();
-    }
-
-    newUserCtrl?.updateValueAndValidity({ emitEvent: false });
-  }
-
-  /**
-   * Toggle inline create role mode
-   */
-  toggleCreateRole(): void {
-    this.isCreatingRole = !this.isCreatingRole;
-    const newRoleCtrl = this.requestForm.get('new_role_name');
-
-    if (this.isCreatingRole) {
-      this.requestForm.patchValue({
-        target_role: '',
-      });
-      newRoleCtrl?.setValidators([Validators.required]);
-    } else {
-      this.requestForm.patchValue({
-        new_role_name: '',
-      });
-      newRoleCtrl?.clearValidators();
-    }
-
-    newRoleCtrl?.updateValueAndValidity({ emitEvent: false });
+    });
   }
 
   /**

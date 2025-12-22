@@ -1,6 +1,7 @@
 import { Component, OnInit, OnDestroy, Input, Output, EventEmitter } from '@angular/core';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
+import { LocalDataSource } from 'ng2-smart-table';
 import { PermissionRequestService } from '../../../../@core/data/permission-request.service';
 import { DbUserPermissionDto } from '../../../../@core/data/permission-request.model';
 import { NbToastrService, NbDialogService } from '@nebular/theme';
@@ -34,15 +35,86 @@ export class PermissionDashboardStandardComponent implements OnInit, OnDestroy {
   loading = false;
   permissions: PermissionRecord[] = [];
   filteredPermissions: PermissionRecord[] = [];
+  source: LocalDataSource = new LocalDataSource();
 
-  // 筛选
-  searchText = '';
-  filterScope = 'all';
-  filterRisk = 'all';
-  showExpiringOnly = false;
-  showUnusedOnly = false;
+  // 选择
   selectAll = false;
   selectedPermissions = new Set<string>();
+
+  // ng2-smart-table 配置 - 参考backends组件
+  settings = {
+    mode: 'external',
+    hideSubHeader: false, // ng2-smart-table内置搜索功能
+    noDataMessage: '暂无权限数据',
+    actions: {
+      columnTitle: '操作',
+      add: false,
+      edit: false,
+      delete: true,
+      position: 'right',
+    },
+    delete: {
+      deleteButtonContent: '<i class="nb-trash"></i>',
+      confirmDelete: true,
+    },
+    pager: {
+      display: true,
+      perPage: 15,
+    },
+    columns: {
+      privilege_type: {
+        title: '权限类型',
+        type: 'html',
+        width: '12%',
+        valuePrepareFunction: (cell: string) => {
+          return `<span class="badge badge-primary">${cell}</span>`;
+        },
+      },
+      resource_path: {
+        title: '资源路径',
+        type: 'string',
+        width: '20%',
+        valuePrepareFunction: (cell: string) => {
+          return `<code>${cell}</code>`;
+        },
+      },
+      granted_role: {
+        title: '授权角色',
+        type: 'html',
+        width: '12%',
+        valuePrepareFunction: (cell: string) => {
+          const role = cell || '直接授权';
+          return `<span class="badge badge-info">${role}</span>`;
+        },
+      },
+      risk_level: {
+        title: '风险等级',
+        type: 'html',
+        width: '10%',
+        valuePrepareFunction: (cell: string, row: PermissionRecord) => {
+          const color = this.getRiskColor(cell);
+          const label = this.getRiskLabel(cell);
+          return `<span class="badge badge-${color}">${label}</span>`;
+        },
+      },
+      usage_status: {
+        title: '使用情况',
+        type: 'string',
+        width: '12%',
+        valuePrepareFunction: (cell: any, row: PermissionRecord) => {
+          return this.getUsageStatus(row);
+        },
+      },
+      expiry: {
+        title: '到期时间',
+        type: 'string',
+        width: '12%',
+        valuePrepareFunction: (cell: any, row: PermissionRecord) => {
+          return this.formatExpiry(row);
+        },
+      },
+    },
+  };
 
   // 统计
   stats = {
@@ -85,7 +157,7 @@ export class PermissionDashboardStandardComponent implements OnInit, OnDestroy {
     this.permissionService.listMyDbPermissions().subscribe({
       next: (permissions: DbUserPermissionDto[]) => {
         this.permissions = this.enhancePermissions(permissions);
-        this.applyFilters();
+        this.updatePermissionsDisplay();
         this.calculateStats();
         this.loading = false;
         this.checkExpiringPermissions();
@@ -162,54 +234,12 @@ export class PermissionDashboardStandardComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * 应用筛选
+   * 更新权限列表显示
    */
-  applyFilters(): void {
-    let filtered = [...this.permissions];
-
-    // 搜索筛选
-    if (this.searchText) {
-      const search = this.searchText.toLowerCase();
-      filtered = filtered.filter(p =>
-        p.privilege_type.toLowerCase().includes(search) ||
-        p.resource_path.toLowerCase().includes(search) ||
-        (p.granted_role || '').toLowerCase().includes(search)
-      );
-    }
-
-    // 范围筛选
-    if (this.filterScope !== 'all') {
-      filtered = filtered.filter(p => p.resource_scope.toLowerCase() === this.filterScope);
-    }
-
-    // 风险筛选
-    if (this.filterRisk !== 'all') {
-      filtered = filtered.filter(p => p.risk_level === this.filterRisk);
-    }
-
-    // 即将到期筛选
-    if (this.showExpiringOnly) {
-      filtered = filtered.filter(p => p.isExpiringSoon);
-    }
-
-    // 未使用筛选
-    if (this.showUnusedOnly) {
-      filtered = filtered.filter(p => p.usage_count === 0);
-    }
-
-    this.filteredPermissions = filtered;
-  }
-
-  /**
-   * 清空筛选条件
-   */
-  clearFilters(): void {
-    this.searchText = '';
-    this.filterScope = 'all';
-    this.filterRisk = 'all';
-    this.showExpiringOnly = false;
-    this.showUnusedOnly = false;
-    this.applyFilters();
+  private updatePermissionsDisplay(): void {
+    this.filteredPermissions = [...this.permissions];
+    // 更新 ng2-smart-table 数据源
+    this.source.load(this.filteredPermissions);
   }
 
   /**
@@ -281,6 +311,14 @@ export class PermissionDashboardStandardComponent implements OnInit, OnDestroy {
   }
 
   /**
+   * ng2-smart-table 删除确认事件
+   */
+  onDeleteConfirm(event: any): void {
+    const permission = event.data as PermissionRecord;
+    this.revokeWithAnalysis(permission);
+  }
+
+  /**
    * 单个权限撤销（带影响分析）
    */
   revokeWithAnalysis(permission: PermissionRecord): void {
@@ -324,65 +362,6 @@ export class PermissionDashboardStandardComponent implements OnInit, OnDestroy {
     });
   }
 
-  /**
-   * 快速撤销未使用的权限
-   */
-  quickRevokeUnused(): void {
-    const unusedPerms = this.permissions.filter(p => p.usage_count === 0);
-
-    if (unusedPerms.length === 0) {
-      this.toastr.info('没有未使用的权限', '提示');
-      return;
-    }
-
-    const dialogRef = this.dialogService.open(ConfirmationDialogComponent, {
-      context: {
-        title: '清理未使用权限',
-        message: `发现 ${unusedPerms.length} 个未使用的权限，是否全部撤销？`,
-        confirmText: '清理',
-        confirmButtonStatus: 'warning',
-        showCommentInput: true,
-        commentLabel: '撤销原因',
-        commentPlaceholder: '批量清理未使用权限',
-      },
-    });
-
-    dialogRef.onClose.subscribe((result) => {
-      if (result?.confirmed) {
-        this.submitRevokeRequest(unusedPerms, result.comment || '清理未使用权限');
-      }
-    });
-  }
-
-  /**
-   * 快速撤销即将到期的权限
-   */
-  quickRevokeExpiring(): void {
-    const expiringPerms = this.permissions.filter(p => p.isExpiringSoon);
-
-    if (expiringPerms.length === 0) {
-      this.toastr.info('没有即将到期的权限', '提示');
-      return;
-    }
-
-    const dialogRef = this.dialogService.open(ConfirmationDialogComponent, {
-      context: {
-        title: '处理即将到期权限',
-        message: `有 ${expiringPerms.length} 个权限即将到期，是否提前撤销？`,
-        confirmText: '撤销',
-        confirmButtonStatus: 'warning',
-        showCommentInput: true,
-        commentLabel: '撤销原因',
-        commentPlaceholder: '权限即将到期，提前撤销',
-      },
-    });
-
-    dialogRef.onClose.subscribe((result) => {
-      if (result?.confirmed) {
-        this.submitRevokeRequest(expiringPerms, result.comment || '权限即将到期');
-      }
-    });
-  }
 
   /**
    * 提交撤销请求
@@ -402,7 +381,7 @@ export class PermissionDashboardStandardComponent implements OnInit, OnDestroy {
       }
     });
 
-    this.applyFilters();
+    this.updatePermissionsDisplay();
     this.calculateStats();
     this.clearSelection();
   }
