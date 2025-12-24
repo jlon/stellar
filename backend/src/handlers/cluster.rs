@@ -29,7 +29,7 @@ use serde::Deserialize;
 pub async fn create_cluster(
     State(state): State<Arc<AppState>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
-    Json(req): Json<CreateClusterRequest>,
+    Json(mut req): Json<CreateClusterRequest>,
 ) -> ApiResult<Json<ClusterResponse>> {
     tracing::info!(
         "Cluster creation request: name={}, host={} by user {} (org: {:?}, super_admin: {})",
@@ -45,6 +45,31 @@ pub async fn create_cluster(
         req.fe_http_port,
         req.enable_ssl
     );
+
+    // Check if user is org admin or super admin for admin_user fields
+    let is_org_admin = if let Some(org_id) = org_ctx.organization_id {
+        let exists: Option<(i64,)> = sqlx::query_as(
+            "SELECT 1 FROM user_roles ur 
+             JOIN roles r ON ur.role_id = r.id 
+             WHERE ur.user_id = ? AND r.code LIKE 'org_admin_%' AND r.organization_id = ?
+             LIMIT 1",
+        )
+        .bind(org_ctx.user_id)
+        .bind(org_id)
+        .fetch_optional(&state.db)
+        .await
+        .unwrap_or(None);
+        exists.is_some()
+    } else {
+        false
+    };
+
+    // Only allow org admins and super admins to set admin_user fields
+    if !org_ctx.is_super_admin && !is_org_admin {
+        req.admin_user = None;
+        req.admin_password = None;
+        tracing::debug!("User {} is not org admin or super admin, clearing admin_user fields", org_ctx.user_id);
+    }
 
     let cluster = state
         .cluster_service
@@ -216,11 +241,36 @@ pub async fn update_cluster(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<OrgContext>,
-    Json(req): Json<UpdateClusterRequest>,
+    Json(mut req): Json<UpdateClusterRequest>,
 ) -> ApiResult<Json<ClusterResponse>> {
     let existing = state.cluster_service.get_cluster(id).await?;
     check_org_access(&org_ctx, existing.organization_id, "update clusters")?;
     check_org_reassignment(&org_ctx, req.organization_id, existing.organization_id, "cluster")?;
+
+    // Check if user is org admin or super admin for admin_user fields
+    let is_org_admin = if let Some(org_id) = org_ctx.organization_id {
+        let exists: Option<(i64,)> = sqlx::query_as(
+            "SELECT 1 FROM user_roles ur 
+             JOIN roles r ON ur.role_id = r.id 
+             WHERE ur.user_id = ? AND r.code LIKE 'org_admin_%' AND r.organization_id = ?
+             LIMIT 1",
+        )
+        .bind(org_ctx.user_id)
+        .bind(org_id)
+        .fetch_optional(&state.db)
+        .await
+        .unwrap_or(None);
+        exists.is_some()
+    } else {
+        false
+    };
+
+    // Only allow org admins and super admins to set admin_user fields
+    if !org_ctx.is_super_admin && !is_org_admin {
+        req.admin_user = None;
+        req.admin_password = None;
+        tracing::debug!("User {} is not org admin or super admin, clearing admin_user fields", org_ctx.user_id);
+    }
 
     let cluster = state.cluster_service.update_cluster(id, req).await?;
     Ok(Json(cluster.into()))
@@ -305,6 +355,8 @@ impl HealthCheckRequest {
             organization_id: None,
             deployment_mode: crate::models::cluster::DeploymentMode::default(),
             cluster_type: crate::models::cluster::ClusterType::default(),
+            admin_user: None,
+            admin_password_encrypted: None,
         })
     }
 }

@@ -160,7 +160,9 @@ pub async fn approve_request(
 ) -> ApiResult<Json<serde_json::Value>> {
     tracing::info!("User {} approving request {}", user_id, request_id);
 
-    state.permission_request_service.approve_request(request_id, user_id, dto).await?;
+    state.permission_request_service
+        .approve_request(request_id, user_id, dto, &state.cluster_service, state.mysql_pool_manager.clone())
+        .await?;
 
     tracing::info!("Request {} approved by user {}", request_id, user_id);
     Ok(Json(serde_json::json!({"status": "approved"})))

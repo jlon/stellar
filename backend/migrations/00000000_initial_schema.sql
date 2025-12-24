@@ -2,7 +2,8 @@
 -- Stellar - Unified Initial Database Schema
 -- ===========================================
 -- Purpose: Complete database initialization for new deployments
--- Created: 2025-12-18 (Merged from 8 migration files)
+-- Created: 2025-12-18 (Merged from 9 migration files)
+-- Updated: 2025-12-22 (Merged db-auth permissions)
 -- Source Files:
 --   1. 20250125000000_unified_database_schema.sql - Core tables
 --   2. 20250126000000_rbac_complete_permission_system.sql - RBAC system
@@ -12,6 +13,8 @@
 --   6. 20251210000000_add_sql_diagnose_permission.sql - SQL diagnose permission
 --   7. 20251214000000_merge_configs_and_blacklist.sql - FE configs and blacklist permissions
 --   8. 20251219000000_add_cluster_type.sql - Add cluster_type field for multi-engine support (StarRocks/Doris)
+--   9. 20251222000000_add_db_auth_permissions.sql - Add db-auth my-permissions and role-permissions APIs
+--   10. 20251223153903_add_cluster_admin_user.sql - Add admin_user and admin_password_encrypted fields
 
 -- ========================================
 -- SECTION 1: CORE TABLES
@@ -46,6 +49,8 @@ CREATE TABLE IF NOT EXISTS clusters (
     fe_query_port INTEGER NOT NULL DEFAULT 9030,
     username VARCHAR(100) NOT NULL,
     password_encrypted VARCHAR(255) NOT NULL,
+    admin_user VARCHAR(100) NULL,
+    admin_password_encrypted VARCHAR(255) NULL,
     enable_ssl BOOLEAN DEFAULT 0,
     connection_timeout INTEGER DEFAULT 10,
     tags TEXT,
@@ -64,6 +69,7 @@ CREATE INDEX IF NOT EXISTS idx_clusters_is_active ON clusters(is_active);
 CREATE INDEX IF NOT EXISTS idx_clusters_deployment_mode ON clusters(deployment_mode);
 CREATE INDEX IF NOT EXISTS idx_clusters_cluster_type ON clusters(cluster_type);
 CREATE INDEX IF NOT EXISTS idx_clusters_organization_id ON clusters(organization_id);
+CREATE INDEX IF NOT EXISTS idx_clusters_admin_user ON clusters(admin_user) WHERE admin_user IS NOT NULL;
 
 -- ==============================================
 -- 1.3 Monitor History Table
@@ -832,9 +838,11 @@ INSERT OR IGNORE INTO permissions (code, name, type, resource, action, descripti
 ('api:llm:analyze:root-cause', 'LLM根因分析', 'api', 'llm', 'analyze:root-cause', 'POST /api/llm/analyze/root-cause'),
 
 -- ============ 新增：数据库权限相关 API ============
--- API Permissions - Database Authentication (2)
+-- API Permissions - Database Authentication (4)
 ('api:db-auth:accounts:list', '查询数据库账户', 'api', 'db-auth', 'accounts:list', 'GET /api/clusters/:id/db-auth/accounts'),
 ('api:db-auth:roles:list', '查询数据库角色', 'api', 'db-auth', 'roles:list', 'GET /api/clusters/:id/db-auth/roles'),
+('api:db-auth:my-permissions', '查询我的数据库权限', 'api', 'db-auth', 'my-permissions', 'GET /api/clusters/db-auth/my-permissions'),
+('api:db-auth:role-permissions', '查询角色权限详情', 'api', 'db-auth', 'role-permissions', 'GET /api/clusters/db-auth/role-permissions/:role_name'),
 
 -- API Permissions - Permission Requests (8)
 ('api:permission-requests:my', '查询我的申请', 'api', 'permission-requests', 'my', 'GET /api/permission-requests/my'),
@@ -1015,7 +1023,9 @@ WHERE code IN (
     'api:permission-requests:create',
     'api:permission-requests:get',
     'api:permission-requests:cancel',
-    'api:db-auth:preview-sql'
+    'api:db-auth:preview-sql',
+    'api:db-auth:my-permissions',
+    'api:db-auth:role-permissions'
 );
 
 -- 审批管理 APIs
@@ -1171,7 +1181,7 @@ WHERE p.code IN ('menu:queries:execution', 'menu:queries:profiles', 'menu:querie
 --   - 1 default organization (default_org)
 --   - 25 system functions across 8 categories
 --   - 19 menu permissions (including hierarchies)
---   - 143 API permissions (all features including SQL diagnose and blacklist)
+--   - 145 API permissions (all features including SQL diagnose, blacklist, and db-auth)
 --   - 1 LLM provider (DeepSeek, inactive by default)
 --   - All permissions assigned to admin and super_admin roles
 --   - Admin user mapped to both admin and super_admin roles
@@ -1183,7 +1193,7 @@ WHERE p.code IN ('menu:queries:execution', 'menu:queries:profiles', 'menu:querie
 --     - Materialized Views, System Functions, Sessions, Variables
 --     - System Management (parent + users + roles + organizations + llm)
 --
---   API Permissions (143):
+--   API Permissions (145):
 --     - Cluster CRUD & Health (10)
 --     - Cluster Overview (8)
 --     - Nodes Management (3)
@@ -1196,6 +1206,7 @@ WHERE p.code IN ('menu:queries:execution', 'menu:queries:profiles', 'menu:querie
 --     - Auth (3)
 --     - Organizations (5)
 --     - LLM Management (11)
+--     - Database Authentication (4 including my-permissions and role-permissions)
 --
 -- Next Steps:
 --   1. Run this migration: cargo sqlx migrate run
