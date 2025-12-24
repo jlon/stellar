@@ -13,6 +13,7 @@ export interface User {
   organization_id?: number;
   created_at: string;
   is_super_admin?: boolean;
+  is_org_admin?: boolean;
   active_cluster_id?: never;  // Removed field - should never exist
 }
 

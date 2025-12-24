@@ -160,18 +160,25 @@ pub async fn analyze_root_cause(
     State(state): State<Arc<AppState>>,
     Json(req): Json<RootCauseAnalysisApiRequest>,
 ) -> Result<impl IntoResponse, LLMApiError> {
+    use crate::models::cluster::ClusterType;
     use crate::services::llm::{
         ExecutionPlanForLLM, QuerySummaryForLLM, RootCauseAnalysisRequest,
         RootCauseAnalysisResponse,
     };
 
     let complexity = QueryComplexity::from_sql(&req.sql_statement);
+    let cluster_type = req
+        .cluster_type
+        .as_ref()
+        .map(|s| ClusterType::from_str_loose(s))
+        .unwrap_or_default();
 
     let llm_request = RootCauseAnalysisRequest::builder()
         .query_summary(QuerySummaryForLLM {
-            sql_statement: req.sql_statement.clone(), // Full SQL, not truncated
+            sql_statement: req.sql_statement.clone(),
             query_type: req.query_type.clone(),
             query_complexity: Some(format!("{:?}", complexity)),
+            cluster_type,
             total_time_seconds: req.total_time_seconds,
             scan_bytes: req.scan_bytes,
             output_rows: req.output_rows,
@@ -182,7 +189,7 @@ pub async fn analyze_root_cause(
         })
         .execution_plan(ExecutionPlanForLLM {
             dag_description: req.dag_description.clone(),
-            hotspot_nodes: vec![], // TODO: parse from request
+            hotspot_nodes: vec![],
         })
         .diagnostics(req.diagnostics.clone().unwrap_or_default())
         .key_metrics(req.key_metrics.clone().unwrap_or_default())
@@ -202,6 +209,9 @@ pub struct RootCauseAnalysisApiRequest {
     pub query_id: String,
     #[serde(default)]
     pub cluster_id: Option<i64>,
+    /// Cluster type: "starrocks" or "doris" (case-insensitive)
+    #[serde(default)]
+    pub cluster_type: Option<String>,
     pub sql_statement: String,
     pub query_type: String,
     pub total_time_seconds: f64,

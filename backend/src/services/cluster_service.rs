@@ -103,8 +103,8 @@ impl ClusterService {
         let result = sqlx::query(
             "INSERT INTO clusters (name, description, fe_host, fe_http_port, fe_query_port, 
              username, password_encrypted, enable_ssl, connection_timeout, tags, catalog, 
-             is_active, created_by, organization_id, deployment_mode, cluster_type)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             is_active, created_by, organization_id, deployment_mode, cluster_type, admin_user, admin_password_encrypted)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&req.name)
         .bind(&req.description)
@@ -122,6 +122,8 @@ impl ClusterService {
         .bind(target_org_id)
         .bind(req.deployment_mode.to_string())
         .bind(req.cluster_type.to_string())
+        .bind(&req.admin_user)
+        .bind(&req.admin_password)
         .execute(&self.pool)
         .await?;
 
@@ -309,6 +311,16 @@ impl ClusterService {
         if let Some(cluster_type) = &req.cluster_type {
             updates.push("cluster_type = ?");
             params.push(cluster_type.to_string());
+        }
+        if let Some(admin_user) = &req.admin_user {
+            updates.push("admin_user = ?");
+            params.push(admin_user.clone());
+        }
+        // Only update admin_password_encrypted if password is provided (not None)
+        // If None, keep existing value
+        if let Some(admin_password) = &req.admin_password {
+            updates.push("admin_password_encrypted = ?");
+            params.push(admin_password.clone());
         }
 
         if updates.is_empty() {

@@ -212,6 +212,40 @@
           <h6 class="mt-4">高级选项</h6>
           <hr />
 
+          <!-- Admin User Fields (Only visible to org admins and super admins) -->
+          <div class="row" *ngIf="isOrgAdmin || isSuperAdmin">
+            <div class="col-md-12">
+            </div>
+            <div class="col-md-6">
+              <div class="form-group">
+                <label for="admin_user" class="label">管理用户（可选）</label>
+                <input
+                  nbInput
+                  fullWidth
+                  type="text"
+                  id="admin_user"
+                  formControlName="admin_user"
+                  placeholder="root"
+                />
+                <small class="form-text text-muted">用于执行权限授权操作的用户名</small>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="form-group">
+                <label for="admin_password" class="label">管理密码 {{ isEditMode ? '(留空表示不修改)' : '' }}</label>
+                <input
+                  nbInput
+                  fullWidth
+                  type="password"
+                  id="admin_password"
+                  formControlName="admin_password"
+                  placeholder="输入管理用户密码"
+                />
+                <small class="form-text text-muted">管理用户的密码</small>
+              </div>
+            </div>
+          </div>
+
           <div class="row">
             <div class="col-md-6">
               <div class="form-group">
