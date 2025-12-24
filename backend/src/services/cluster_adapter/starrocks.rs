@@ -366,10 +366,12 @@ impl ClusterAdapter for StarRocksAdapter {
 
         let body = serde_json::json!({ "query": sql });
 
+        // Use connection user for HTTP API operations (not for permission grants)
+        // Permission grants use admin user via temporary MySQL connection in execute_request_internal
         let response = self
             .http_client
             .post(&url)
-            .basic_auth(&self.cluster.username, Some(&self.cluster.password_encrypted))
+            .basic_auth(&self.cluster.username, self.cluster.get_auth_password())
             .json(&body)
             .send()
             .await

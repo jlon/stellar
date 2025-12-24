@@ -24,6 +24,25 @@ impl std::fmt::Display for ClusterType {
     }
 }
 
+impl ClusterType {
+    /// Returns the display name for UI and prompts
+    pub const fn display_name(&self) -> &'static str {
+        match self {
+            ClusterType::StarRocks => "StarRocks",
+            ClusterType::Doris => "Doris",
+        }
+    }
+
+    /// Parse from string (case-insensitive)
+    pub fn from_str_loose(s: &str) -> Self {
+        if s.eq_ignore_ascii_case("doris") {
+            ClusterType::Doris
+        } else {
+            ClusterType::StarRocks
+        }
+    }
+}
+
 /// Deployment mode for cluster
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema, sqlx::Type, Default)]
 #[serde(rename_all = "snake_case")]
@@ -69,6 +88,11 @@ pub struct Cluster {
     pub deployment_mode: DeploymentMode,
     #[serde(default)]
     pub cluster_type: ClusterType,
+    /// Admin user for permission execution (optional, only visible to org admins and super admins)
+    pub admin_user: Option<String>,
+    /// Admin password encrypted (optional, never serialized)
+    #[serde(skip_serializing)]
+    pub admin_password_encrypted: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -95,6 +119,12 @@ pub struct CreateClusterRequest {
     pub deployment_mode: DeploymentMode,
     #[serde(default)]
     pub cluster_type: ClusterType,
+    /// Admin user for permission execution (optional, only configurable by org admins and super admins)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub admin_user: Option<String>,
+    /// Admin password (optional, only configurable by org admins and super admins)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub admin_password: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -113,6 +143,13 @@ pub struct UpdateClusterRequest {
     pub organization_id: Option<i64>,
     pub deployment_mode: Option<DeploymentMode>,
     pub cluster_type: Option<ClusterType>,
+    /// Admin user for permission execution (optional, only configurable by org admins and super admins)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub admin_user: Option<String>,
+    /// Admin password (optional, only configurable by org admins and super admins)
+    /// If provided, will update admin_password_encrypted; if None, keeps existing value
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub admin_password: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -135,6 +172,9 @@ pub struct ClusterResponse {
     pub organization_id: Option<i64>,
     pub deployment_mode: DeploymentMode,
     pub cluster_type: ClusterType,
+    /// Admin user for permission execution (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub admin_user: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -201,6 +241,7 @@ impl From<Cluster> for ClusterResponse {
             organization_id: cluster.organization_id,
             deployment_mode: cluster.deployment_mode,
             cluster_type: cluster.cluster_type,
+            admin_user: cluster.admin_user,
         }
     }
 }
@@ -234,5 +275,18 @@ impl Cluster {
         } else {
             Some(&self.password_encrypted)
         }
+    }
+
+    /// Get execution credentials for permission operations
+    /// Returns admin user credentials if configured, otherwise falls back to connection user
+    pub fn get_execution_credentials(&self) -> (&str, Option<&str>) {
+        if let (Some(admin_user), Some(admin_pass)) = 
+            (&self.admin_user, &self.admin_password_encrypted) {
+            if !admin_pass.is_empty() {
+                return (admin_user, Some(admin_pass));
+            }
+        }
+        // Fallback to connection user
+        (&self.username, self.get_auth_password())
     }
 }

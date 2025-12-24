@@ -1000,6 +1000,7 @@ mod llm_integration_tests {
             AggDetailForLLM, ExchangeDetailForLLM, JoinDetailForLLM, OperatorDetailForLLM,
             ProfileDataForLLM, ScanDetailForLLM, TimeDistributionForLLM,
         };
+        use crate::models::cluster::ClusterType;
 
         let summary = response.summary.as_ref();
 
@@ -1014,6 +1015,7 @@ mod llm_integration_tests {
                 "{:?}",
                 crate::services::profile_analyzer::analyzer::QueryComplexity::from_sql(&sql)
             )),
+            cluster_type: ClusterType::StarRocks,
             total_time_seconds: summary
                 .map(|s| s.total_time_ms.unwrap_or(0.0) / 1000.0)
                 .unwrap_or(0.0),
@@ -1609,6 +1611,7 @@ mod llm_integration_tests {
 mod prompt_generation_tests {
     #[allow(unused_imports)]
     use super::*;
+    use crate::models::cluster::ClusterType;
     use crate::services::llm::scenarios::root_cause::{
         DiagnosticForLLM, ExecutionPlanForLLM, KeyMetricsForLLM, ProfileDataForLLM,
         QuerySummaryForLLM, RootCauseAnalysisRequest, ScanDetailForLLM, build_system_prompt,
@@ -1650,6 +1653,7 @@ mod prompt_generation_tests {
                 sql_statement: "SELECT * FROM orders".to_string(),
                 query_type: "SELECT".to_string(),
                 query_complexity: Some("Simple".to_string()),
+                cluster_type: ClusterType::StarRocks,
                 total_time_seconds: 5.0,
                 scan_bytes: 100 * 1024 * 1024,
                 output_rows: 50000,
@@ -1719,6 +1723,7 @@ mod prompt_generation_tests {
                 sql_statement: "SELECT * FROM events".to_string(),
                 query_type: "SELECT".to_string(),
                 query_complexity: Some("Simple".to_string()),
+                cluster_type: ClusterType::StarRocks,
                 total_time_seconds: 30.0,
                 scan_bytes: 1024 * 1024 * 1024,
                 output_rows: 100000,
@@ -1740,10 +1745,10 @@ mod prompt_generation_tests {
         let prompt = build_system_prompt(&request);
 
         assert!(prompt.contains("Iceberg 外表"), "Should mention Iceberg tables");
-        assert!(prompt.contains("rewrite_data_files"), "Should suggest Iceberg file compaction");
-        assert!(prompt.contains("DataCache"), "Should suggest DataCache for external tables");
+        assert!(prompt.contains("Time Travel"), "Should suggest Iceberg Time Travel");
+        assert!(prompt.contains("enable_scan_datacache"), "Should suggest DataCache for external tables");
         assert!(
-            prompt.contains("不能用 ALTER TABLE 改分桶"),
+            prompt.contains("ALTER TABLE external_table SET"),
             "Should warn about external table limitations"
         );
 
@@ -1763,6 +1768,7 @@ mod prompt_generation_tests {
                 sql_statement: "SELECT * FROM t".to_string(),
                 query_type: "SELECT".to_string(),
                 query_complexity: Some("Simple".to_string()),
+                cluster_type: ClusterType::StarRocks,
                 total_time_seconds: 10.0,
                 scan_bytes: 0,
                 output_rows: 0,
@@ -1819,6 +1825,7 @@ mod prompt_generation_tests {
                 sql_statement: "SELECT * FROM t".to_string(),
                 query_type: "SELECT".to_string(),
                 query_complexity: Some("Simple".to_string()),
+                cluster_type: ClusterType::StarRocks,
                 total_time_seconds: 10.0,
                 scan_bytes: 0,
                 output_rows: 0,
@@ -1855,6 +1862,7 @@ mod prompt_generation_tests {
                 sql_statement: "SELECT 1".to_string(),
                 query_type: "SELECT".to_string(),
                 query_complexity: Some("Simple".to_string()),
+                cluster_type: ClusterType::StarRocks,
                 total_time_seconds: 0.1,
                 scan_bytes: 0,
                 output_rows: 1,

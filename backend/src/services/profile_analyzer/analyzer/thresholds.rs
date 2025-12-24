@@ -186,17 +186,19 @@ impl DynamicThresholds {
     /// 2. Otherwise: use query type baseline * complexity factor
     #[allow(dead_code)] // Used by QueryType directly in Q001
     pub fn get_query_time_threshold_ms(&self) -> f64 {
+        let min_threshold = self.get_min_threshold_by_complexity();
+
         if let Some(baseline) = &self.baseline {
             let adaptive_threshold = baseline.stats.p95_ms + 2.0 * baseline.stats.std_dev_ms;
-
-            let min_threshold = self.get_min_threshold_by_complexity();
             return adaptive_threshold.max(min_threshold);
         }
 
         let base = self.query_type.get_time_threshold_ms();
         let complexity_factor = self.get_complexity_factor();
+        let calculated = base * complexity_factor;
 
-        base * complexity_factor
+        // Ensure we don't go below minimum threshold for the complexity level
+        calculated.max(min_threshold)
     }
 
     /// Get complexity factor for threshold adjustment
@@ -241,7 +243,7 @@ impl DynamicThresholds {
 
         let base = match parallelism {
             p if p > 32 => 3.5,
-            p if p > 16 => 3.0,
+            p if p >= 16 => 3.0,  // Changed from > 16 to >= 16
             p if p > 8 => 2.5,
             _ => 2.0,
         };
