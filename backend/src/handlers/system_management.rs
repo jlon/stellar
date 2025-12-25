@@ -53,7 +53,7 @@ pub async fn get_system_functions(
 
     let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
 
-    let functions = get_all_system_functions(&adapter, &params).await?;
+    let functions = get_all_system_functions(adapter.as_ref(), &params).await?;
 
     Ok(Json(functions))
 }
@@ -98,13 +98,13 @@ pub async fn get_system_function_detail(
         format!("/{}", function_name)
     };
 
-    let detail = get_function_details(&adapter, &proc_path).await?;
+    let detail = get_function_details(adapter.as_ref(), &proc_path).await?;
 
     Ok(Json(detail))
 }
 
 async fn get_all_system_functions(
-    _adapter: &Box<dyn ClusterAdapter>,
+    _adapter: &dyn ClusterAdapter,
     params: &SystemQueryParams,
 ) -> ApiResult<Vec<SystemFunction>> {
     let mut functions = vec![
@@ -292,7 +292,7 @@ async fn get_all_system_functions(
 }
 
 async fn get_function_details(
-    adapter: &Box<dyn ClusterAdapter>,
+    adapter: &dyn ClusterAdapter,
     proc_path: &str,
 ) -> ApiResult<SystemFunctionDetail> {
     let mut detail_data = Vec::new();

@@ -280,11 +280,11 @@ impl Cluster {
     /// Get execution credentials for permission operations
     /// Returns admin user credentials if configured, otherwise falls back to connection user
     pub fn get_execution_credentials(&self) -> (&str, Option<&str>) {
-        if let (Some(admin_user), Some(admin_pass)) = 
-            (&self.admin_user, &self.admin_password_encrypted) {
-            if !admin_pass.is_empty() {
-                return (admin_user, Some(admin_pass));
-            }
+        if let (Some(admin_user), Some(admin_pass)) =
+            (&self.admin_user, &self.admin_password_encrypted)
+            && !admin_pass.is_empty()
+        {
+            return (admin_user, Some(admin_pass));
         }
         // Fallback to connection user
         (&self.username, self.get_auth_password())

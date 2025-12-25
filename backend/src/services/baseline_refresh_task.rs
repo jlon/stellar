@@ -161,7 +161,7 @@ impl ScheduledTask for BaselineRefreshTask {
 /// Shutdown handle for stopping the task
 ///
 /// # Example
-/// ```rust
+/// ```ignore
 /// let shutdown_handle = start_baseline_refresh_task(
 ///     pool_manager.clone(),
 ///     cluster_service.clone(),
