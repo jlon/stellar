@@ -906,8 +906,6 @@ async fn handle_loads_query_for_doris(
         mapped_rows.push(mapped_row);
     }
 
-    if sql.to_uppercase().contains("ORDER BY CREATE_TIME DESC") {}
-
     let limit = if let Some(caps) = Regex::new(r#"(?i)LIMIT\s+(\d+)"#)
         .ok()
         .and_then(|re| re.captures(sql))

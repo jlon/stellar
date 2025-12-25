@@ -262,7 +262,7 @@ impl ClusterAdapter for StarRocksAdapter {
         for row in rows {
             if row.len() >= 7 {
                 sessions.push(Session {
-                    id: row.get(0).cloned().unwrap_or_default(),
+                    id: row.first().cloned().unwrap_or_default(),
                     user: row.get(1).cloned().unwrap_or_default(),
                     host: row.get(2).cloned().unwrap_or_default(),
                     db: row.get(3).cloned(),
@@ -417,10 +417,11 @@ impl ClusterAdapter for StarRocksAdapter {
         // Use session mode to ensure SET CATALOG and SHOW DATABASES run on the same connection
         let mut session = mysql_client.create_session().await?;
 
-        if let Some(cat) = catalog {
-            if !cat.is_empty() && cat != "default_catalog" {
-                session.use_catalog(cat, &self.cluster.cluster_type).await?;
-            }
+        if let Some(cat) = catalog
+            && !cat.is_empty()
+            && cat != "default_catalog"
+        {
+            session.use_catalog(cat, &self.cluster.cluster_type).await?;
         }
 
         let (_, rows, _) = session.execute("SHOW DATABASES").await?;

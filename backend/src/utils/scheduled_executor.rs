@@ -60,7 +60,7 @@ impl ScheduledExecutor {
     /// - The task's `should_terminate()` returns true
     ///
     /// # Example
-    /// ```rust
+    /// ```ignore
     /// let executor = ScheduledExecutor::new("my-task", Duration::from_secs(30));
     /// let handle = executor.shutdown_handle();
     /// executor.start(my_task).await;
@@ -124,7 +124,7 @@ impl ScheduledExecutor {
 /// Macro to easily implement ScheduledTask for a type with async method
 ///
 /// # Example
-/// ```rust
+/// ```ignore
 /// struct MyTask {
 ///     db: SqlitePool,
 /// }

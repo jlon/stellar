@@ -15,6 +15,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 /// Cluster adapter trait - unified interface for StarRocks and Doris
+#[allow(clippy::too_many_arguments)]
 #[async_trait]
 pub trait ClusterAdapter: Send + Sync {
     /// Get cluster type
