@@ -171,19 +171,19 @@ impl DorisAdapter {
 
                                 if let Some(idx) = index_name_col {
                                     for index_row in index_rows {
-                                        if let Some(index_name) = index_row.get(idx) {
-                                            if index_name == mv_name {
-                                                tracing::debug!(
-                                                    "[Doris] Found Rollup '{}' in table '{}.{}'",
-                                                    mv_name,
-                                                    db_name,
-                                                    table_name
-                                                );
-                                                return Ok(MaterializedViewType::Rollup(
-                                                    db_name.clone(),
-                                                    table_name.clone(),
-                                                ));
-                                            }
+                                        if let Some(index_name) = index_row.get(idx)
+                                            && index_name == mv_name
+                                        {
+                                            tracing::debug!(
+                                                "[Doris] Found Rollup '{}' in table '{}.{}'",
+                                                mv_name,
+                                                db_name,
+                                                table_name
+                                            );
+                                            return Ok(MaterializedViewType::Rollup(
+                                                db_name.clone(),
+                                                table_name.clone(),
+                                            ));
                                         }
                                     }
                                 }
@@ -757,10 +757,11 @@ impl ClusterAdapter for DorisAdapter {
         // Use session mode to ensure SWITCH and SHOW DATABASES run on the same connection
         let mut session = mysql_client.create_session().await?;
 
-        if let Some(cat) = catalog {
-            if !cat.is_empty() && cat != "default_catalog" {
-                session.use_catalog(cat, &self.cluster.cluster_type).await?;
-            }
+        if let Some(cat) = catalog
+            && !cat.is_empty()
+            && cat != "default_catalog"
+        {
+            session.use_catalog(cat, &self.cluster.cluster_type).await?;
         }
 
         let (_, rows, _) = session.execute("SHOW DATABASES").await?;
@@ -931,10 +932,8 @@ impl ClusterAdapter for DorisAdapter {
                                                             .get(8)
                                                             .unwrap_or(&"FINISHED".to_string())
                                                             .clone();
-                                                        create_t =
-                                                            job_row.get(2).map(|s| s.clone());
-                                                        finish_t =
-                                                            job_row.get(3).map(|s| s.clone());
+                                                        create_t = job_row.get(2).cloned();
+                                                        finish_t = job_row.get(3).cloned();
                                                         break;
                                                     }
                                                 }
@@ -999,16 +998,15 @@ impl ClusterAdapter for DorisAdapter {
                     let sql = format!("DESC {}.{} ALL", db, table_name);
                     if let Ok((_, rows)) = mysql_client.query_raw(&sql).await {
                         for row in rows {
-                            if let Some(index_name) = row.first() {
-                                if index_name == mv_name {
-                                    let ddl_sql =
-                                        format!("SHOW CREATE TABLE {}.{}", db, table_name);
-                                    let (_, ddl_rows) = mysql_client.query_raw(&ddl_sql).await?;
-                                    if let Some(ddl_row) = ddl_rows.first() {
-                                        if let Some(ddl) = ddl_row.get(1) {
-                                            return Ok(ddl.clone());
-                                        }
-                                    }
+                            if let Some(index_name) = row.first()
+                                && index_name == mv_name
+                            {
+                                let ddl_sql = format!("SHOW CREATE TABLE {}.{}", db, table_name);
+                                let (_, ddl_rows) = mysql_client.query_raw(&ddl_sql).await?;
+                                if let Some(ddl_row) = ddl_rows.first()
+                                    && let Some(ddl) = ddl_row.get(1)
+                                {
+                                    return Ok(ddl.clone());
                                 }
                             }
                         }
@@ -1324,7 +1322,7 @@ impl ClusterAdapter for DorisAdapter {
                     tracing::info!(
                         "[Doris] SHOW PROC '/compactions' not supported, using '/cluster_health/tablet_health' as alternative"
                     );
-                    let sql = format!("SHOW PROC '/cluster_health/tablet_health'");
+                    let sql = "SHOW PROC '/cluster_health/tablet_health'".to_string();
                     let mysql_client = self.mysql_client().await?;
                     return mysql_client.query(&sql).await;
                 },
@@ -1356,7 +1354,7 @@ impl ClusterAdapter for DorisAdapter {
                     tracing::info!(
                         "[Doris] SHOW PROC '/compute_nodes' not supported, using '/backends' instead (Doris backends serve both storage and compute)"
                     );
-                    let sql = format!("SHOW PROC '/backends'");
+                    let sql = "SHOW PROC '/backends'".to_string();
                     let mysql_client = self.mysql_client().await?;
                     return mysql_client.query(&sql).await;
                 },
@@ -1364,13 +1362,13 @@ impl ClusterAdapter for DorisAdapter {
                     tracing::info!(
                         "[Doris] SHOW PROC '/global_current_queries' not supported, using '/current_queries' instead"
                     );
-                    let sql = format!("SHOW PROC '/current_queries'");
+                    let sql = "SHOW PROC '/current_queries'".to_string();
                     let mysql_client = self.mysql_client().await?;
                     return mysql_client.query(&sql).await;
                 },
                 "catalog" => {
                     tracing::info!("[Doris] Mapping '/catalog' to '/catalogs'");
-                    let sql = format!("SHOW PROC '/catalogs'");
+                    let sql = "SHOW PROC '/catalogs'".to_string();
                     let mysql_client = self.mysql_client().await?;
                     return mysql_client.query(&sql).await;
                 },
@@ -1426,7 +1424,7 @@ impl ClusterAdapter for DorisAdapter {
                 // Total (index 4) -> time
                 // Task State (index 5) -> state
                 // Sql Statement (index 9) -> statement
-                query_id: row.get(0).cloned().unwrap_or_default(),
+                query_id: row.first().cloned().unwrap_or_default(),
                 start_time: row.get(2).cloned().unwrap_or_default(),
                 time: row.get(4).cloned().unwrap_or_default(),
                 state: row.get(5).cloned().unwrap_or_default(),
@@ -1624,83 +1622,91 @@ impl ClusterAdapter for DorisAdapter {
             // StorageVaultPrivs, WorkloadGroupPrivs, ComputeGroupPrivs
             
             // Parse Roles (granted roles)
-            if let Some(roles_str) = get_string_value(&row, "Roles") {
-                if !roles_str.is_empty() && roles_str != "NULL" {
-                    for role in roles_str.split(',') {
-                        let role = role.trim();
-                        if !role.is_empty() {
-                            permissions.push(crate::models::DbUserPermissionDto {
-                                id: id_counter,
-                                privilege_type: "ROLE".to_string(),
-                                resource_type: "ROLE".to_string(),
-                                resource_path: role.to_string(),
-                                granted_role: Some(role.to_string()),
-                            });
-                            id_counter += 1;
-                        }
+            if let Some(roles_str) = get_string_value(&row, "Roles")
+                && !roles_str.is_empty()
+                && roles_str != "NULL"
+            {
+                for role in roles_str.split(',') {
+                    let role = role.trim();
+                    if !role.is_empty() {
+                        permissions.push(crate::models::DbUserPermissionDto {
+                            id: id_counter,
+                            privilege_type: "ROLE".to_string(),
+                            resource_type: "ROLE".to_string(),
+                            resource_path: role.to_string(),
+                            granted_role: Some(role.to_string()),
+                        });
+                        id_counter += 1;
                     }
                 }
             }
 
             // Parse GlobalPrivs (e.g., "Node_priv,Admin_priv")
-            if let Some(privs_str) = get_string_value(&row, "GlobalPrivs") {
-                if !privs_str.is_empty() && privs_str != "NULL" {
-                    for privilege in privs_str.split(',') {
-                        let privilege = privilege.trim().replace("_priv", "").to_uppercase();
-                        if !privilege.is_empty() {
-                            permissions.push(crate::models::DbUserPermissionDto {
-                                id: id_counter,
-                                privilege_type: privilege,
-                                resource_type: "GLOBAL".to_string(),
-                                resource_path: "*".to_string(),
-                                granted_role: None,
-                            });
-                            id_counter += 1;
-                        }
+            if let Some(privs_str) = get_string_value(&row, "GlobalPrivs")
+                && !privs_str.is_empty()
+                && privs_str != "NULL"
+            {
+                for privilege in privs_str.split(',') {
+                    let privilege = privilege.trim().replace("_priv", "").to_uppercase();
+                    if !privilege.is_empty() {
+                        permissions.push(crate::models::DbUserPermissionDto {
+                            id: id_counter,
+                            privilege_type: privilege,
+                            resource_type: "GLOBAL".to_string(),
+                            resource_path: "*".to_string(),
+                            granted_role: None,
+                        });
+                        id_counter += 1;
                     }
                 }
             }
 
             // Parse CatalogPrivs (e.g., "catalog_name: Select_priv, Insert_priv")
-            if let Some(privs_str) = get_string_value(&row, "CatalogPrivs") {
-                if !privs_str.is_empty() && privs_str != "NULL" {
-                    Self::parse_doris_resource_privs(&privs_str, "CATALOG", &mut permissions, &mut id_counter);
-                }
+            if let Some(privs_str) = get_string_value(&row, "CatalogPrivs")
+                && !privs_str.is_empty()
+                && privs_str != "NULL"
+            {
+                Self::parse_doris_resource_privs(&privs_str, "CATALOG", &mut permissions, &mut id_counter);
             }
 
             // Parse DatabasePrivs (e.g., "internal.information_schema: Select_priv; internal.mysql: Select_priv")
-            if let Some(privs_str) = get_string_value(&row, "DatabasePrivs") {
-                if !privs_str.is_empty() && privs_str != "NULL" {
-                    Self::parse_doris_resource_privs(&privs_str, "DATABASE", &mut permissions, &mut id_counter);
-                }
+            if let Some(privs_str) = get_string_value(&row, "DatabasePrivs")
+                && !privs_str.is_empty()
+                && privs_str != "NULL"
+            {
+                Self::parse_doris_resource_privs(&privs_str, "DATABASE", &mut permissions, &mut id_counter);
             }
 
             // Parse TablePrivs
-            if let Some(privs_str) = get_string_value(&row, "TablePrivs") {
-                if !privs_str.is_empty() && privs_str != "NULL" {
-                    Self::parse_doris_resource_privs(&privs_str, "TABLE", &mut permissions, &mut id_counter);
-                }
+            if let Some(privs_str) = get_string_value(&row, "TablePrivs")
+                && !privs_str.is_empty()
+                && privs_str != "NULL"
+            {
+                Self::parse_doris_resource_privs(&privs_str, "TABLE", &mut permissions, &mut id_counter);
             }
 
             // Parse ColPrivs (column privileges)
-            if let Some(privs_str) = get_string_value(&row, "ColPrivs") {
-                if !privs_str.is_empty() && privs_str != "NULL" {
-                    Self::parse_doris_resource_privs(&privs_str, "COLUMN", &mut permissions, &mut id_counter);
-                }
+            if let Some(privs_str) = get_string_value(&row, "ColPrivs")
+                && !privs_str.is_empty()
+                && privs_str != "NULL"
+            {
+                Self::parse_doris_resource_privs(&privs_str, "COLUMN", &mut permissions, &mut id_counter);
             }
 
             // Parse ResourcePrivs
-            if let Some(privs_str) = get_string_value(&row, "ResourcePrivs") {
-                if !privs_str.is_empty() && privs_str != "NULL" {
-                    Self::parse_doris_resource_privs(&privs_str, "RESOURCE", &mut permissions, &mut id_counter);
-                }
+            if let Some(privs_str) = get_string_value(&row, "ResourcePrivs")
+                && !privs_str.is_empty()
+                && privs_str != "NULL"
+            {
+                Self::parse_doris_resource_privs(&privs_str, "RESOURCE", &mut permissions, &mut id_counter);
             }
 
             // Parse WorkloadGroupPrivs (e.g., "normal: Usage_priv")
-            if let Some(privs_str) = get_string_value(&row, "WorkloadGroupPrivs") {
-                if !privs_str.is_empty() && privs_str != "NULL" {
-                    Self::parse_doris_resource_privs(&privs_str, "WORKLOAD_GROUP", &mut permissions, &mut id_counter);
-                }
+            if let Some(privs_str) = get_string_value(&row, "WorkloadGroupPrivs")
+                && !privs_str.is_empty()
+                && privs_str != "NULL"
+            {
+                Self::parse_doris_resource_privs(&privs_str, "WORKLOAD_GROUP", &mut permissions, &mut id_counter);
             }
         }
 

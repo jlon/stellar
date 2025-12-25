@@ -2,6 +2,15 @@
 //!
 //! This library contains all the core modules for the Stellar application.
 
+// Allow some clippy lints that are too strict for this codebase
+#![allow(clippy::collapsible_if)]
+#![allow(clippy::needless_borrows_for_generic_args)]
+#![allow(clippy::manual_contains)]
+#![allow(clippy::manual_map)]
+#![allow(clippy::let_and_return)]
+#![allow(clippy::manual_pattern_char_comparison)]
+#![allow(clippy::if_same_then_else)]
+
 use sqlx::SqlitePool;
 use std::sync::Arc;
 
