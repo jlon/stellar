@@ -92,6 +92,11 @@ export const MENU_ITEMS: NbMenuItem[] = [
         link: '/pages/cluster-ops/permission-management',
         data: { permission: 'menu:cluster-ops:auth' },
       } as NbMenuItem & { data?: { permission: string } },
+      {
+        title: '资源组管理',
+        link: '/pages/cluster-ops/resource-groups',
+        data: { permission: 'menu:cluster-ops:resource-groups' },
+      } as NbMenuItem & { data?: { permission: string } },
     ],
   } as NbMenuItem & { data?: { permission: string } },
   {

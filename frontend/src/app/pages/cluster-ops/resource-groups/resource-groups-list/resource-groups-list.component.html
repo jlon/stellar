@@ -1,0 +1,81 @@
+<div class="row">
+  <div class="col-12">
+    <nb-card>
+      <nb-card-header>
+        <div class="d-flex justify-content-between align-items-center">
+          <!-- Left: Title | Cluster Name -->
+          <div class="d-flex align-items-center gap-2">
+            <h5 class="mb-0">资源组管理</h5>
+            <span class="text-hint">|</span>
+            <span class="text-hint" style="font-size: 13px;">
+              集群: <strong>{{ activeCluster?.name || '未选择' }}</strong>
+            </span>
+          </div>
+
+          <!-- Right: Action Buttons -->
+          <div class="d-flex align-items-center gap-2">
+            <button
+              nbButton
+              status="info"
+              size="small"
+              (click)="viewUsage()"
+            >
+              <nb-icon icon="activity-outline"></nb-icon>
+              使用情况
+            </button>
+            <button
+              nbButton
+              status="warning"
+              size="small"
+              (click)="viewAnalysis()"
+            >
+              <nb-icon icon="bar-chart-outline"></nb-icon>
+              使用分析
+            </button>
+            <button
+              nbButton
+              status="primary"
+              size="small"
+              (click)="createResourceGroup()"
+            >
+              <nb-icon icon="plus-outline"></nb-icon>
+              创建资源组
+            </button>
+          </div>
+        </div>
+      </nb-card-header>
+
+      <nb-card-body>
+        <div *ngIf="loading" class="text-center">
+          <nb-spinner status="primary"></nb-spinner>
+        </div>
+
+        <ng2-smart-table
+          *ngIf="!loading"
+          [settings]="settings"
+          [source]="source"
+          (custom)="onCustomAction($event)"
+        >
+        </ng2-smart-table>
+      </nb-card-body>
+    </nb-card>
+  </div>
+</div>
+
+<!-- 确认删除对话框模板 -->
+<ng-template #deleteConfirmDialog let-data let-ref="dialogRef">
+  <nb-card>
+    <nb-card-header>{{ data.title }}</nb-card-header>
+    <nb-card-body>
+      <p>{{ data.message }}</p>
+    </nb-card-body>
+    <nb-card-footer class="d-flex justify-content-end">
+      <button nbButton ghost status="basic" class="me-2" (click)="ref.close(false)">
+        取消
+      </button>
+      <button nbButton status="danger" (click)="ref.close(true)">
+        确认删除
+      </button>
+    </nb-card-footer>
+  </nb-card>
+</ng-template>

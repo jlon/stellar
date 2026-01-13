@@ -16,6 +16,7 @@ use crate::models::{
 };
 use crate::services::create_adapter;
 use crate::services::mysql_client::MySQLClient;
+use crate::services::QueryExecutionHistoryService;
 use crate::utils::{ApiError, ApiResult};
 
 // Get list of catalogs using MySQL client
@@ -561,6 +562,23 @@ pub async fn execute_sql(
     }
 
     let total_execution_time_ms = total_start.elapsed().as_millis();
+
+    let history_service = QueryExecutionHistoryService::new(state.db.clone());
+    for result in &results {
+        let _ = history_service
+            .record_execution(
+                org_ctx.user_id,
+                cluster.id,
+                request.catalog.as_deref(),
+                request.database.as_deref(),
+                &result.sql,
+                Some(result.execution_time_ms as i64),
+                Some(result.row_count as i64),
+                result.success,
+                result.error.as_deref(),
+            )
+            .await;
+    }
 
     Ok(Json(QueryExecuteResponse { results, total_execution_time_ms }))
 }

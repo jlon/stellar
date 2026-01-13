@@ -88,7 +88,9 @@ main.rs              # 应用入口，路由注册，中间件配置
 │   ├── cluster_service.rs          # 集群管理
 │   ├── overview_service.rs         # 集群概览与监控
 │   ├── metrics_collector_service.rs # 指标采集后台任务
-│   ├── audit_log_service.rs        # 审计日志查询
+│   ├── materialized_view_service.rs # 物化视图管理
+│   ├── permission_service.rs        # StarRocks 用户权限管理
+│   ├── permission_request_service.rs # 权限申请审批流程
 │   ├── profile_analyzer/           # Query Profile 智能分析 ⭐
 │   │   ├── parser/                 # Profile 文本解析
 │   │   ├── analyzer/               # 规则引擎与诊断
@@ -160,20 +162,21 @@ app/
 2. **分析阶段** (`analyzer/`): 规则引擎评估 → 生成诊断建议
 3. **LLM 增强** (`llm/`): 复杂场景调用 LLM 生成优化建议
 
-**规则系统** (`backend/src/services/profile_analyzer/analyzer/rules/`):
+**规则模块** (`backend/src/services/profile_analyzer/analyzer/rules/`):
 
-| 规则分类 | 规则 ID | 检测内容 | 文件 |
-|---------|---------|---------|------|
-| 扫描算子 | S001 | 数据倾斜 (max/avg) | scan.rs |
-| 扫描算子 | S002 | IO 倾斜 (IOTime 不均) | scan.rs |
-| 扫描算子 | S003 | 过滤效率差 | scan.rs |
-| Join 算子 | J001 | Join 结果爆炸 | join.rs |
-| Join 算子 | J002 | Join 倾斜 | join.rs |
-| Join 算子 | J003 | 大表驱动小表 | join.rs |
-| 聚合算子 | A001 | Aggregation 倾斜 | aggregate.rs |
-| 聚合算子 | A002 | 高基数聚合 | aggregate.rs |
-| 通用规则 | G001 | 最耗时节点 | common.rs |
-| 通用规则 | G003 | 执行时间倾斜 | common.rs |
+| 模块 | 文件 | 说明 |
+|-----|------|------|
+| 扫描算子 | scan.rs | 数据倾斜、IO 倾斜、过滤效率 |
+| Join 算子 | join.rs | Join 爆炸、倾斜、驱动表选择 |
+| 聚合算子 | aggregate.rs | 聚合倾斜、高基数聚合 |
+| 排序算子 | sort.rs | 排序性能问题 |
+| Exchange | exchange.rs | 数据交换瓶颈 |
+| Fragment | fragment.rs | 执行片段问题 |
+| Project | project.rs | 投影算子问题 |
+| Sink | sink.rs | 数据写入问题 |
+| Query | query.rs | 查询级别规则 |
+| Planner | planner.rs | 执行计划优化建议 |
+| 通用规则 | common.rs | 最耗时节点、执行时间倾斜 |
 
 **关键设计模式**:
 - **3 层阈值保护**: 全局时间 (1s) → 绝对值 (500ms) → 动态阈值 (集群变量)
@@ -189,7 +192,7 @@ app/
 
 ### Rust 代码规范
 
-1. **遵循 clippy 规则**: 所有 PR 必须通过 `cargo clippy --release --all-targets -- --deny warnings`
+1. **遵循 clippy 规则**: 所有 PR 必须通过 `cargo clippy --release --all-targets -- --deny warnings --allow clippy::uninlined-format-args`
 2. **错误处理**: 使用 `anyhow::Result` (业务逻辑) + `thiserror` (库错误类型)
 3. **异步编程**: 优先 `async/await`，使用 `tokio::spawn` 处理并发
 4. **模块化**: 功能按 `services/` 组织，保持单一职责

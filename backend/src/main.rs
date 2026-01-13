@@ -70,6 +70,9 @@ use stellar::{AppState, handlers, middleware, services};
         handlers::query::add_sql_blacklist,
         handlers::query::delete_sql_blacklist,
         handlers::query_history::list_query_history,
+        handlers::query_execution_history::list_execution_history,
+        handlers::query_execution_history::delete_execution_history,
+        handlers::query_execution_history::clear_execution_history,
 
         handlers::sessions::get_sessions,
         handlers::sessions::kill_session,
@@ -129,6 +132,14 @@ use stellar::{AppState, handlers, middleware, services};
         handlers::permission_request::list_db_accounts_active,
         handlers::permission_request::list_db_roles_active,
         handlers::permission_request::preview_sql,
+
+        handlers::resource_group::list_resource_groups,
+        handlers::resource_group::get_resource_group,
+        handlers::resource_group::create_resource_group,
+        handlers::resource_group::update_resource_group,
+        handlers::resource_group::delete_resource_group,
+        handlers::resource_group::get_resource_group_usage,
+        handlers::resource_group::analyze_resource_usage,
     ),
     components(
         schemas(
@@ -161,6 +172,8 @@ use stellar::{AppState, handlers, middleware, services};
             models::CatalogsWithDatabasesResponse,
             models::QueryHistoryItem,
             models::QueryHistoryResponse,
+            models::QueryExecutionHistory,
+            models::QueryExecutionHistoryResponse,
             models::ProfileListItem,
             models::ProfileDetail,
             models::RuntimeInfo,
@@ -217,6 +230,16 @@ use stellar::{AppState, handlers, middleware, services};
             models::PaginatedResponse::<models::PermissionRequestResponse>,
             models::DbAccountDto,
             models::DbRoleDto,
+            models::ResourceGroup,
+            models::Classifier,
+            models::CreateResourceGroupRequest,
+            models::UpdateResourceGroupRequest,
+            models::ClassifierRequest,
+            models::ResourceGroupUsage,
+            models::ResourceUsageAnalysis,
+            models::UserCpuUsage,
+            models::UserMemoryUsage,
+            models::UserConcurrency,
         )
     ),
     tags(
@@ -233,6 +256,7 @@ use stellar::{AppState, handlers, middleware, services};
         (name = "Users", description = "User role management"),
         (name = "Permission Requests", description = "Permission request workflow"),
         (name = "Database Authentication", description = "Database account and role management"),
+        (name = "Resource Groups", description = "Resource group management"),
     ),
     modifiers(&SecurityAddon)
 )]
@@ -450,6 +474,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/clusters/queries/:query_id", delete(handlers::query::kill_query))
         .route("/api/clusters/queries/history", get(handlers::query_history::list_query_history))
         .route(
+            "/api/clusters/queries/execution-history",
+            get(handlers::query_execution_history::list_execution_history)
+                .delete(handlers::query_execution_history::clear_execution_history),
+        )
+        .route(
+            "/api/clusters/queries/execution-history/:id",
+            delete(handlers::query_execution_history::delete_execution_history),
+        )
+        .route(
             "/api/clusters/sql-blacklist",
             get(handlers::query::list_sql_blacklist).post(handlers::query::add_sql_blacklist),
         )
@@ -627,6 +660,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/clusters/db-auth/my-permissions", get(handlers::permission_request::list_my_db_permissions))
         .route("/api/clusters/db-auth/role-permissions/:role_name", get(handlers::permission_request::list_role_permissions))
         .route("/api/db-auth/preview-sql", post(handlers::permission_request::preview_sql))
+        .route("/api/clusters/resource-groups", get(handlers::resource_group::list_resource_groups).post(handlers::resource_group::create_resource_group))
+        .route("/api/clusters/resource-groups/usage", get(handlers::resource_group::get_resource_group_usage))
+        .route("/api/clusters/resource-groups/analysis", get(handlers::resource_group::analyze_resource_usage))
+        .route("/api/clusters/resource-groups/:name", get(handlers::resource_group::get_resource_group).put(handlers::resource_group::update_resource_group).delete(handlers::resource_group::delete_resource_group))
         .with_state(Arc::clone(&app_state_arc))
         .layer(axum_middleware::from_fn_with_state(auth_state, middleware::auth_middleware));
 

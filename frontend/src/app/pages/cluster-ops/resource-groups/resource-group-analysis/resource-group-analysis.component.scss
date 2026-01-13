@@ -1,0 +1,101 @@
+.d-flex {
+  display: flex;
+}
+
+.justify-content-between {
+  justify-content: space-between;
+}
+
+.justify-content-center {
+  justify-content: center;
+}
+
+.align-items-center {
+  align-items: center;
+}
+
+.me-2 {
+  margin-right: 0.5rem;
+}
+
+.mb-3 {
+  margin-bottom: 1rem;
+}
+
+.mt-2 {
+  margin-top: 0.5rem;
+}
+
+.p-4 {
+  padding: 1.5rem;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.text-muted {
+  color: #8f9bb3;
+}
+
+.small {
+  font-size: 0.875rem;
+}
+
+nb-card-header h4 {
+  margin: 0;
+}
+
+.tab-content {
+  padding: 1rem 0;
+}
+
+.tab-content h5 {
+  margin-bottom: 0.5rem;
+}
+
+.tab-content p {
+  margin-bottom: 1rem;
+}
+
+.user-card {
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  }
+}
+
+.user-icon {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+  color: #40dc7e;
+}
+
+:host ::ng-deep {
+  .ng2-smart-table {
+    th, td {
+      text-align: center;
+      vertical-align: middle;
+    }
+  }
+  
+  nb-alert {
+    display: flex;
+    align-items: center;
+    
+    nb-icon {
+      margin-right: 0.5rem;
+    }
+  }
+  
+  nb-tab {
+    padding: 0;
+  }
+  
+  nb-select {
+    min-width: 120px;
+  }
+}

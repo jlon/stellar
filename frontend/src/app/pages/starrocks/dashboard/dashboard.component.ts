@@ -294,17 +294,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
       return '—';
     }
     
-    // Find Frontend Nodes check (backend now returns real FE count)
     const feCheck = clusterCard.health.checks.find(c => 
       c.name.toLowerCase().includes('frontend') || 
       c.name.toLowerCase().includes('fe')
     );
     
-    if (feCheck && feCheck.message) {
-      // Extract number from messages like:
-      // "All 3 FE nodes are online"
-      // "2/3 FE nodes are online"
-      const match = feCheck.message.match(/(\d+)/);
+    if (feCheck && feCheck.message && feCheck.status !== 'critical') {
+      const match = feCheck.message.match(/^(?:All\s+)?(\d+)(?:\/\d+)?\s+FE/i);
       if (match) {
         return match[1];
       }
@@ -318,14 +314,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (!clusterCard.health?.checks) {
       return '—';
     }
-    // Look for "Compute Nodes" check (backend returns this name)
     const computeCheck = clusterCard.health.checks.find(c => 
       c.name.toLowerCase().includes('compute')
     );
-    if (computeCheck?.message) {
-      // Extract first number from message like "All 3 BE nodes are online"
-      const match = computeCheck.message.match(/(\d+)/);
-      return match ? match[1] : '—';
+    if (computeCheck?.message && computeCheck.status !== 'critical') {
+      const match = computeCheck.message.match(/^(?:All\s+)?(\d+)(?:\/\d+)?\s+(?:BE|CN)/i);
+      if (match) {
+        return match[1];
+      }
     }
     return '—';
   }

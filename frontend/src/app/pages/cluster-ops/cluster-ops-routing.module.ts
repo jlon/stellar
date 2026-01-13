@@ -9,6 +9,13 @@ const routes: Routes = [
         (m) => m.PermissionManagementModule
       ),
   },
+  {
+    path: 'resource-groups',
+    loadChildren: () =>
+      import('./resource-groups/resource-groups.module').then(
+        (m) => m.ResourceGroupsModule
+      ),
+  },
 ];
 
 @NgModule({
