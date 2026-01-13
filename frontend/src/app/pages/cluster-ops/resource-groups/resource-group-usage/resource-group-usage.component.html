@@ -1,0 +1,71 @@
+<div class="row">
+  <div class="col-12">
+    <nb-card>
+      <nb-card-header class="d-flex justify-content-between align-items-center">
+        <h4>资源组使用情况</h4>
+        <div>
+          <button
+            nbButton
+            ghost
+            status="basic"
+            size="small"
+            class="me-2"
+            (click)="toggleAutoRefresh()"
+            [nbTooltip]="autoRefresh ? '关闭自动刷新' : '开启自动刷新'"
+          >
+            <nb-icon [icon]="autoRefresh ? 'pause-circle-outline' : 'play-circle-outline'"></nb-icon>
+            {{ autoRefresh ? '自动刷新' : '手动刷新' }}
+          </button>
+          <button
+            nbButton
+            status="info"
+            size="small"
+            class="me-2"
+            (click)="refreshData()"
+            [disabled]="loading"
+            nbTooltip="立即刷新数据"
+          >
+            <nb-icon icon="refresh-outline"></nb-icon>
+            刷新
+          </button>
+          <button
+            nbButton
+            ghost
+            status="basic"
+            size="small"
+            (click)="goBack()"
+            nbTooltip="返回资源组列表"
+          >
+            <nb-icon icon="arrow-back-outline"></nb-icon>
+            返回
+          </button>
+        </div>
+      </nb-card-header>
+
+      <nb-card-body>
+        <div *ngIf="autoRefresh" class="mb-3">
+          <nb-alert status="info" size="small">
+            <nb-icon icon="info-outline"></nb-icon>
+            自动刷新已开启，每 {{ refreshInterval }} 秒更新一次数据
+          </nb-alert>
+        </div>
+
+        <div *ngIf="loading" class="d-flex justify-content-center p-4">
+          <nb-spinner size="large"></nb-spinner>
+        </div>
+
+        <ng2-smart-table
+          *ngIf="!loading"
+          [settings]="settings"
+          [source]="source"
+        >
+        </ng2-smart-table>
+
+        <div *ngIf="!loading && source.count() === 0" class="text-center p-4">
+          <nb-icon icon="inbox-outline" class="text-muted" style="font-size: 3rem;"></nb-icon>
+          <p class="text-muted mt-2">当前没有资源组在使用资源</p>
+        </div>
+      </nb-card-body>
+    </nb-card>
+  </div>
+</div>

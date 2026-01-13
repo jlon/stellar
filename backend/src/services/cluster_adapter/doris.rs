@@ -370,69 +370,6 @@ impl DorisAdapter {
         }
     }
 
-    /// Parse a GRANT statement into structured permission data
-    fn parse_grant_statement(statement: &str) -> Option<DorisParsedGrant> {
-        let statement = statement.trim();
-        
-        // Check if it's a role grant: GRANT 'role_name' TO 'user'@'%'
-        if statement.starts_with("GRANT '") || statement.starts_with("GRANT \"") {
-            // Role grant
-            let role_start = 7; // After "GRANT '"
-            if let Some(role_end) = statement[role_start..].find('\'').or_else(|| statement[role_start..].find('"')) {
-                let role_name = &statement[role_start..role_start + role_end];
-                return Some(DorisParsedGrant {
-                    privileges: vec!["ROLE".to_string()],
-                    resource_type: "ROLE".to_string(),
-                    resource_path: role_name.to_string(),
-                    granted_role: Some(role_name.to_string()),
-                });
-            }
-        }
-
-        // Regular privilege grant: GRANT privileges ON resource TO user
-        if !statement.starts_with("GRANT ") {
-            return None;
-        }
-
-        // Find "ON" keyword
-        let on_pos = statement.find(" ON ")?;
-        let privileges_str = &statement[6..on_pos]; // After "GRANT "
-        
-        // Find "TO" keyword
-        let to_pos = statement.find(" TO ")?;
-        let resource_str = &statement[on_pos + 4..to_pos]; // After " ON "
-
-        // Parse privileges (Doris uses _priv suffix like Select_priv, Load_priv)
-        let privileges: Vec<String> = privileges_str
-            .split(',')
-            .map(|s| {
-                let trimmed = s.trim().to_uppercase();
-                // Remove _PRIV suffix if present
-                trimmed.trim_end_matches("_PRIV").to_string()
-            })
-            .filter(|s| !s.is_empty())
-            .collect();
-
-        // Parse resource (e.g., "db_name.*", "db_name.table_name", "*.*")
-        let resource_path = resource_str.trim().to_string();
-        let resource_type = if resource_path == "*.*" || resource_path == "*.*.*" {
-            "GLOBAL".to_string()
-        } else if resource_path.ends_with(".*") || resource_path.ends_with(".*.*") {
-            "DATABASE".to_string()
-        } else if resource_path.contains('.') {
-            "TABLE".to_string()
-        } else {
-            "CATALOG".to_string()
-        };
-
-        Some(DorisParsedGrant {
-            privileges,
-            resource_type,
-            resource_path,
-            granted_role: None,
-        })
-    }
-
     /// Parse Doris resource privileges format: "resource_path: Priv1, Priv2; resource_path2: Priv3"
     fn parse_doris_resource_privs(
         privs_str: &str,
@@ -469,14 +406,6 @@ impl DorisAdapter {
             }
         }
     }
-}
-
-/// Helper struct for parsed GRANT statement (Doris)
-struct DorisParsedGrant {
-    privileges: Vec<String>,
-    resource_type: String,
-    resource_path: String,
-    granted_role: Option<String>,
 }
 
 #[async_trait]

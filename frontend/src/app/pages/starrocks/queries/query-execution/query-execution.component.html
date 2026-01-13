@@ -178,108 +178,286 @@
                   </div>
 
                   <!-- Query Results (attached to editor panel) -->
-                  <div class="results-section" *ngIf="queryResult">
-                    <!-- Single Result (when only 1 SQL) -->
-                    <nb-card *ngIf="queryResults.length === 1" class="result-card">
-                      <nb-card-header>
-                        <div class="result-header">
-                          <h6 class="mb-0">查询结果</h6>
-                          <div class="result-actions">
-                            <div class="result-stat-item">
-                              <nb-icon icon="clock-outline" status="success" class="stat-icon"></nb-icon>
-                              <span class="stat-label">执行耗时:</span>
-                              <span class="stat-value stat-time">{{ executionTime }}ms</span>
-                            </div>
-                            <div class="result-stat-item">
-                              <nb-icon icon="list-outline" status="info" class="stat-icon"></nb-icon>
-                              <span class="stat-label">返回行数:</span>
-                              <span class="stat-value stat-count">{{ rowCount | number }}</span>
-                            </div>
-                            <button 
-                              *ngIf="queryResults[0].success"
-                              nbButton 
-                              size="small" 
-                              status="success"
-                              (click)="exportResults(0)"
-                              class="ml-2">
-                              <nb-icon icon="download-outline"></nb-icon>
-                              导出 CSV
-                            </button>
-                          </div>
-                        </div>
-                      </nb-card-header>
-                      <nb-card-body>
-                        <div *ngIf="queryResults[0].error" class="error-message mb-3">
-                          <nb-alert status="danger" [title]="'执行失败'">{{ queryResults[0].error }}</nb-alert>
-                        </div>
-                        <ng2-smart-table 
-                          *ngIf="resultSettings[0] && queryResults[0].success" 
-                          [settings]="resultSettings[0]" 
-                          [source]="resultSources[0]">
-                        </ng2-smart-table>
-                        <div *ngIf="queryResults[0].success && rowCount === 0" class="no-data-message">
-                          <nb-icon icon="inbox-outline"></nb-icon>
-                          <p>查询未返回任何数据</p>
-                        </div>
-                      </nb-card-body>
-                    </nb-card>
-
-                    <!-- Multiple Results (using nb-tabset) -->
-                    <nb-card *ngIf="queryResults.length > 1" class="result-card">
-                      <nb-card-body>
-                        <div class="tabset-with-export">
-                          <nb-tabset #tabsetRef class="result-tabset" (changeTab)="currentResultIndex = $event.tabId ? parseInt($event.tabId.split('-')[1]) : 0">
-                            <nb-tab 
-                              *ngFor="let result of queryResults; let i = index" 
-                              [tabTitle]="'结果' + (i + 1)"
-                              [tabId]="'result-' + i"
-                              [active]="i === 0">
-                              <div class="tab-content-wrapper">
-                                <!-- Error Message -->
-                                <div *ngIf="result.error" class="error-message mb-3">
-                                  <nb-alert status="danger" [title]="'执行失败'">{{ result.error }}</nb-alert>
+                  <div class="results-section" *ngIf="queryResult || showHistoryTab">
+                    <nb-card class="result-card">
+                      <nb-card-body class="p-0">
+                        <nb-tabset class="result-history-tabset" (changeTab)="onResultTabChange($event.tabId)">
+                          <!-- 结果 Tab -->
+                          <nb-tab tabTitle="结果" tabIcon="file-text-outline" tabId="result" [active]="resultTabId === 'result'">
+                            <div class="tab-content-padding" *ngIf="queryResult">
+                              <!-- Single Result -->
+                              <div *ngIf="queryResults.length === 1">
+                                <div class="result-header mb-2">
+                                  <div class="result-actions">
+                                    <div class="result-stat-item">
+                                      <nb-icon icon="clock-outline" status="success" class="stat-icon"></nb-icon>
+                                      <span class="stat-label">执行耗时:</span>
+                                      <span class="stat-value stat-time">{{ executionTime }}ms</span>
+                                    </div>
+                                    <div class="result-stat-item">
+                                      <nb-icon icon="list-outline" status="info" class="stat-icon"></nb-icon>
+                                      <span class="stat-label">返回行数:</span>
+                                      <span class="stat-value stat-count">{{ rowCount | number }}</span>
+                                    </div>
+                                    <button 
+                                      *ngIf="queryResults[0].success"
+                                      nbButton 
+                                      size="small" 
+                                      status="success"
+                                      (click)="exportResults(0)"
+                                      class="ml-2">
+                                      <nb-icon icon="download-outline"></nb-icon>
+                                      导出 CSV
+                                    </button>
+                                  </div>
                                 </div>
-
-                                <!-- Result Table -->
+                                <div *ngIf="queryResults[0].error" class="error-message mb-3">
+                                  <nb-alert status="danger" [title]="'执行失败'">{{ queryResults[0].error }}</nb-alert>
+                                </div>
                                 <ng2-smart-table 
-                                  *ngIf="resultSettings[i] && result.success" 
-                                  [settings]="resultSettings[i]" 
-                                  [source]="resultSources[i]">
+                                  *ngIf="resultSettings[0] && queryResults[0].success" 
+                                  [settings]="resultSettings[0]" 
+                                  [source]="resultSources[0]">
                                 </ng2-smart-table>
-
-                                <!-- Result Stats at bottom right -->
-                                <div *ngIf="result.success" class="result-stats-footer">
-                                  <span class="stats-text">
-                                    <nb-icon icon="list-outline" class="stats-icon"></nb-icon>
-                                    {{ result.row_count }} 行
-                                    <span class="stats-separator">|</span>
-                                    <nb-icon icon="clock-outline" class="stats-icon"></nb-icon>
-                                    {{ result.execution_time_ms }}ms
-                                  </span>
-                                </div>
-
-                                <!-- No Data Message -->
-                                <div *ngIf="result.success && result.row_count === 0" class="no-data-message">
+                                <div *ngIf="queryResults[0].success && rowCount === 0" class="no-data-message">
                                   <nb-icon icon="inbox-outline"></nb-icon>
                                   <p>查询未返回任何数据</p>
                                 </div>
                               </div>
-                            </nb-tab>
-                          </nb-tabset>
 
-                          <!-- Export button aligned with tabs -->
-                          <div class="export-button-wrapper" *ngIf="queryResults.length > 0 && queryResults[currentResultIndex]?.success && queryResults[currentResultIndex]?.row_count > 0">
-                            <button 
-                              nbButton 
-                              size="small" 
-                              status="success"
-                              (click)="exportResults(currentResultIndex)"
-                              class="export-btn">
-                              <nb-icon icon="download-outline" class="export-icon"></nb-icon>
-                              导出 CSV
-                            </button>
-                          </div>
-                        </div>
+                              <!-- Multiple Results -->
+                              <div *ngIf="queryResults.length > 1">
+                                <div class="tabset-with-export">
+                                  <nb-tabset #tabsetRef class="result-tabset" (changeTab)="currentResultIndex = $event.tabId ? parseInt($event.tabId.split('-')[1]) : 0">
+                                    <nb-tab 
+                                      *ngFor="let result of queryResults; let i = index" 
+                                      [tabTitle]="'结果' + (i + 1)"
+                                      [tabId]="'result-' + i"
+                                      [active]="i === 0">
+                                      <div class="tab-content-wrapper">
+                                        <div *ngIf="result.error" class="error-message mb-3">
+                                          <nb-alert status="danger" [title]="'执行失败'">{{ result.error }}</nb-alert>
+                                        </div>
+                                        <ng2-smart-table 
+                                          *ngIf="resultSettings[i] && result.success" 
+                                          [settings]="resultSettings[i]" 
+                                          [source]="resultSources[i]">
+                                        </ng2-smart-table>
+                                        <div *ngIf="result.success" class="result-stats-footer">
+                                          <span class="stats-text">
+                                            <nb-icon icon="list-outline" class="stats-icon"></nb-icon>
+                                            {{ result.row_count }} 行
+                                            <span class="stats-separator">|</span>
+                                            <nb-icon icon="clock-outline" class="stats-icon"></nb-icon>
+                                            {{ result.execution_time_ms }}ms
+                                          </span>
+                                        </div>
+                                        <div *ngIf="result.success && result.row_count === 0" class="no-data-message">
+                                          <nb-icon icon="inbox-outline"></nb-icon>
+                                          <p>查询未返回任何数据</p>
+                                        </div>
+                                      </div>
+                                    </nb-tab>
+                                  </nb-tabset>
+                                  <div class="export-button-wrapper" *ngIf="queryResults.length > 0 && queryResults[currentResultIndex]?.success && queryResults[currentResultIndex]?.row_count > 0">
+                                    <button 
+                                      nbButton 
+                                      size="small" 
+                                      status="success"
+                                      (click)="exportResults(currentResultIndex)"
+                                      class="export-btn">
+                                      <nb-icon icon="download-outline" class="export-icon"></nb-icon>
+                                      导出 CSV
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            <div class="tab-content-padding empty-result" *ngIf="!queryResult">
+                              <nb-icon icon="file-text-outline" class="empty-icon"></nb-icon>
+                              <p class="text-hint">执行查询后结果将显示在这里</p>
+                            </div>
+                          </nb-tab>
+
+                          <!-- 图表 Tab -->
+                          <nb-tab tabTitle="图表" tabIcon="pie-chart-outline" tabId="chart" [active]="resultTabId === 'chart'" [badgeText]="chartConfigs.length > 0 ? chartConfigs.length.toString() : ''" badgeStatus="primary">
+                            <div class="tab-content-padding chart-tab-content">
+                              <div class="chart-layout">
+                                <!-- 左侧字段列表 -->
+                                <div class="chart-field-panel">
+                                  <div class="field-panel-header">
+                                    <nb-icon icon="grid-outline"></nb-icon>
+                                    <span>字段</span>
+                                    <span class="field-count" *ngIf="selectedChartFields.length > 0">({{ selectedChartFields.length }})</span>
+                                  </div>
+                                  <div class="field-list" *ngIf="chartFields.length > 0">
+                                    <div *ngFor="let field of chartFields; let i = index" 
+                                         class="field-item"
+                                         [class.numeric]="field.type === 'numeric'"
+                                         [class.selected]="field.selected"
+                                         (click)="addChartFromField(field)"
+                                         [nbTooltip]="field.name">
+                                      <nb-checkbox 
+                                        [checked]="field.selected" 
+                                        (checkedChange)="toggleFieldSelection(field, $event)"
+                                        (click)="$event.stopPropagation()"
+                                        class="field-checkbox">
+                                      </nb-checkbox>
+                                      <nb-icon [icon]="field.type === 'numeric' ? 'bar-chart-outline' : 'file-text-outline'"></nb-icon>
+                                      <span class="field-name">{{ field.name }}</span>
+                                      <span class="field-order" *ngIf="field.selected">{{ selectedChartFields.indexOf(field) + 1 }}</span>
+                                    </div>
+                                  </div>
+                                  <div class="field-empty" *ngIf="chartFields.length === 0">
+                                    <nb-icon icon="alert-circle-outline"></nb-icon>
+                                    <span>执行查询后显示字段</span>
+                                  </div>
+                                  
+                                  <!-- 多字段选择操作栏 -->
+                                  <div class="field-selection-bar" *ngIf="chartFields.length > 0">
+                                    <div class="selection-hint">{{ getSelectedFieldsHint() }}</div>
+                                    <div class="selection-actions" *ngIf="selectedChartFields.length > 0">
+                                      <button nbButton size="tiny" status="success" (click)="smartGenerateChart()">
+                                        <nb-icon icon="flash-outline"></nb-icon>
+                                        智能生成
+                                      </button>
+                                      <div class="chart-type-dropdown">
+                                        <button nbButton size="tiny" status="basic" (click)="toggleChartTypeMenu()">
+                                          <nb-icon icon="options-2-outline"></nb-icon>
+                                          <nb-icon [icon]="showChartTypeMenu ? 'chevron-up-outline' : 'chevron-down-outline'"></nb-icon>
+                                        </button>
+                                        <div class="chart-type-menu" *ngIf="showChartTypeMenu">
+                                          <button nbButton ghost size="tiny" (click)="generateChartFromSelection('bar')">
+                                            <nb-icon icon="bar-chart-outline"></nb-icon> 柱状图
+                                          </button>
+                                          <button nbButton ghost size="tiny" (click)="generateChartFromSelection('line')">
+                                            <nb-icon icon="trending-up-outline"></nb-icon> 折线图
+                                          </button>
+                                          <button nbButton ghost size="tiny" (click)="generateChartFromSelection('pie')">
+                                            <nb-icon icon="pie-chart-outline"></nb-icon> 饼图
+                                          </button>
+                                          <button nbButton ghost size="tiny" (click)="generateChartFromSelection('scatter')">
+                                            <nb-icon icon="radio-button-on-outline"></nb-icon> 散点图
+                                          </button>
+                                        </div>
+                                      </div>
+                                      <button nbButton ghost size="tiny" (click)="clearFieldSelection()">
+                                        <nb-icon icon="close-outline"></nb-icon>
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <!-- 右侧图表看板 -->
+                                <div class="chart-board-panel">
+                                  <div class="board-header">
+                                    <span class="board-title">图表看板</span>
+                                    <span class="board-count" *ngIf="chartConfigs.length > 0">{{ chartConfigs.length }} 个图表</span>
+                                    <button *ngIf="chartConfigs.length > 0" nbButton ghost size="tiny" status="danger" nbTooltip="清除所有图表" (click)="clearAllCharts()">
+                                      <nb-icon icon="trash-2-outline"></nb-icon>
+                                    </button>
+                                  </div>
+                                  <div class="chart-board" *ngIf="chartConfigs.length > 0">
+                                    <div *ngFor="let config of chartConfigs" class="chart-card">
+                                      <div class="chart-card-header">
+                                        <nb-icon icon="move-outline" class="drag-handle"></nb-icon>
+                                        <span class="chart-title">{{ config.title }}</span>
+                                        <span class="chart-mode-badge" *ngIf="config.mode === 'xy'">X-Y</span>
+                                        <span class="chart-mode-badge multi" *ngIf="config.mode === 'multi'">多维</span>
+                                        <div class="chart-actions">
+                                          <button nbButton ghost size="tiny" nbTooltip="设置" (click)="openChartConfig(config)">
+                                            <nb-icon icon="settings-2-outline"></nb-icon>
+                                          </button>
+                                          <button nbButton ghost size="tiny" status="danger" nbTooltip="删除" (click)="removeChart(config)">
+                                            <nb-icon icon="close-outline"></nb-icon>
+                                          </button>
+                                        </div>
+                                      </div>
+                                      <div class="chart-card-body">
+                                        <div echarts [options]="chartOptions.get(config.id)" class="chart-container"></div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div class="board-empty" *ngIf="chartConfigs.length === 0">
+                                    <nb-icon icon="pie-chart-outline"></nb-icon>
+                                    <p>点击左侧字段添加图表</p>
+                                    <span class="hint">单击：快速生成单字段图表</span>
+                                    <span class="hint">勾选多个：生成 X-Y 关系图或多维饼图</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </nb-tab>
+
+                          <!-- 历史 Tab -->
+                          <nb-tab tabTitle="历史" tabIcon="clock-outline" tabId="history" [active]="resultTabId === 'history'" [badgeText]="executionHistoryTotal > 0 ? executionHistoryTotal.toString() : ''" badgeStatus="info">
+                            <div class="tab-content-padding">
+                              <div *ngIf="loadingHistory" class="history-loading">
+                                <nb-spinner status="primary" size="small" [message]="''"></nb-spinner>
+                              </div>
+                              <div *ngIf="!loadingHistory && executionHistory.length === 0" class="history-empty">
+                                <nb-icon icon="clock-outline"></nb-icon>
+                                <span>暂无查询历史</span>
+                              </div>
+                              <div *ngIf="!loadingHistory && executionHistory.length > 0" class="history-container">
+                                <div class="history-toolbar">
+                                  <span class="history-count">共 {{ executionHistoryTotal }} 条记录</span>
+                                  <button nbButton size="tiny" status="danger" ghost (click)="clearAllHistory()">
+                                    <nb-icon icon="trash-2-outline"></nb-icon>清空
+                                  </button>
+                                </div>
+                                <div class="history-timeline">
+                                  <div *ngFor="let item of executionHistory; let i = index" 
+                                       class="history-entry" 
+                                       [class.is-error]="!item.success"
+                                       (click)="applyHistorySQL(item)">
+                                    <div class="entry-indicator">
+                                      <div class="indicator-dot" [class.error]="!item.success"></div>
+                                      <div class="indicator-line" *ngIf="i < executionHistory.length - 1"></div>
+                                    </div>
+                                    <div class="entry-content">
+                                      <div class="entry-header">
+                                        <div class="entry-meta">
+                                          <span class="entry-time">{{ item.created_at | date:'MM-dd HH:mm:ss' }}</span>
+                                          <span class="entry-db" *ngIf="item.catalog || item.database_name">
+                                            <nb-icon icon="layers-outline"></nb-icon>
+                                            {{ item.catalog }}<span *ngIf="item.catalog && item.database_name">.</span>{{ item.database_name }}
+                                          </span>
+                                        </div>
+                                        <div class="entry-status">
+                                          <span *ngIf="item.success" class="status-badge success">
+                                            <nb-icon icon="checkmark-outline"></nb-icon>
+                                            {{ item.row_count }} 行
+                                            <span class="status-divider">|</span>
+                                            {{ item.execution_time_ms }}ms
+                                          </span>
+                                          <span *ngIf="!item.success" class="status-badge error">
+                                            <nb-icon icon="close-outline"></nb-icon>
+                                            执行失败
+                                          </span>
+                                        </div>
+                                      </div>
+                                      <div class="entry-sql">
+                                        <code>{{ item.sql_statement | slice:0:200 }}{{ item.sql_statement.length > 200 ? '...' : '' }}</code>
+                                      </div>
+                                      <div class="entry-actions">
+                                        <button nbButton ghost size="tiny" nbTooltip="应用到编辑器" (click)="applyHistorySQL(item); $event.stopPropagation()">
+                                          <nb-icon icon="edit-outline"></nb-icon>
+                                        </button>
+                                        <button nbButton ghost size="tiny" nbTooltip="复制SQL" (click)="copyHistorySQL(item, $event)">
+                                          <nb-icon icon="copy-outline"></nb-icon>
+                                        </button>
+                                        <button nbButton ghost size="tiny" status="danger" nbTooltip="删除" (click)="deleteHistoryItem(item, $event)">
+                                          <nb-icon icon="trash-2-outline"></nb-icon>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </nb-tab>
+                        </nb-tabset>
                       </nb-card-body>
                     </nb-card>
                   </div>
@@ -444,6 +622,46 @@
     <nb-icon [icon]="item.icon"></nb-icon>
     <span>{{ item.label }}</span>
   </button>
+</div>
+
+<!-- Chart Config Dialog -->
+<div class="chart-config-overlay" *ngIf="showChartConfig" (click)="cancelChartConfig()">
+  <div class="chart-config-dialog" (click)="$event.stopPropagation()">
+    <div class="config-header">
+      <span>图表配置</span>
+      <button nbButton ghost size="tiny" (click)="cancelChartConfig()">
+        <nb-icon icon="close-outline"></nb-icon>
+      </button>
+    </div>
+    <div class="config-body" *ngIf="editingChart">
+      <div class="config-field">
+        <label>标题</label>
+        <input nbInput fullWidth [(ngModel)]="editingChart.title" placeholder="图表标题">
+      </div>
+      <div class="config-field">
+        <label>图表类型</label>
+        <nb-select fullWidth [(selected)]="editingChart.chartType">
+          <nb-option value="bar">柱状图</nb-option>
+          <nb-option value="line">折线图</nb-option>
+          <nb-option value="pie">饼图</nb-option>
+        </nb-select>
+      </div>
+      <div class="config-field" *ngIf="editingChart.fieldType === 'numeric'">
+        <label>聚合方式</label>
+        <nb-select fullWidth [(selected)]="editingChart.aggregation">
+          <nb-option value="COUNT">计数 (COUNT)</nb-option>
+          <nb-option value="SUM">求和 (SUM)</nb-option>
+          <nb-option value="AVG">平均值 (AVG)</nb-option>
+          <nb-option value="MAX">最大值 (MAX)</nb-option>
+          <nb-option value="MIN">最小值 (MIN)</nb-option>
+        </nb-select>
+      </div>
+    </div>
+    <div class="config-footer">
+      <button nbButton status="basic" size="small" (click)="cancelChartConfig()">取消</button>
+      <button nbButton status="primary" size="small" (click)="saveChartConfig()">保存</button>
+    </div>
+  </div>
 </div>
 
 <!-- Info Dialog Template -->

@@ -138,15 +138,17 @@
 }
 
 .realtime-query-container {
-  padding: 0.3rem; // Uniform padding on all sides
-  width: 100%; // Ensure full width
+  padding: 0.3rem;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
 
   .query-split-layout {
     display: flex;
     align-items: stretch;
     gap: 0;
-    min-height: 100%;
     width: 100%;
+    flex: 1;
   }
 
   .nav-tree-wrapper {
@@ -430,12 +432,14 @@
     padding-left: 0.75rem;
     display: flex;
     flex-direction: column;
+    flex: 1;
 
     .results-section {
       margin-top: 1rem;
       display: flex;
       flex-direction: column;
       gap: 0.75rem;
+      flex: 1;
     }
 
     .sql-editor-section {
@@ -762,8 +766,9 @@
   }
   
   .result-card {
-    margin-bottom: 1rem;
-    width: 100%; // Full width
+    margin-bottom: 0;
+    width: 100%;
+    flex: 1;
   }
   
   .error-message {
@@ -1505,5 +1510,629 @@ pre {
       font-size: 0.75rem;
       color: nb-theme(text-hint-color);
     }
+  }
+}
+
+// Result/History tabset styles
+.result-history-tabset {
+  ::ng-deep {
+    .tabset {
+      border-bottom: 1px solid nb-theme(border-basic-color-3);
+    }
+    
+    .tab-link {
+      padding: 0.75rem 1.25rem;
+    }
+  }
+}
+
+.tab-content-padding {
+  padding: 1rem;
+}
+
+.empty-result,
+.empty-history {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  color: nb-theme(text-hint-color);
+  
+  .empty-icon {
+    font-size: 2.5rem;
+    margin-bottom: 0.75rem;
+    opacity: 0.5;
+  }
+  
+  p {
+    margin: 0;
+    font-size: 0.875rem;
+  }
+}
+
+.history-header {
+  display: flex;
+  justify-content: flex-end;
+}
+
+// History Timeline Design
+.history-loading,
+.history-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  gap: 0.75rem;
+  color: nb-theme(text-hint-color);
+  
+  nb-icon {
+    font-size: 2.5rem;
+    opacity: 0.5;
+  }
+}
+
+.history-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.history-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  background: nb-theme(background-basic-color-2);
+  border-radius: nb-theme(border-radius);
+  
+  .history-count {
+    font-size: 0.8rem;
+    color: nb-theme(text-hint-color);
+  }
+}
+
+.history-timeline {
+  display: flex;
+  flex-direction: column;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.history-entry {
+  display: flex;
+  gap: 0.75rem;
+  cursor: pointer;
+  
+  &:hover .entry-content {
+    background: nb-theme(background-basic-color-3);
+    border-color: nb-theme(color-primary-400);
+  }
+  
+  &:hover .entry-actions {
+    opacity: 1;
+  }
+  
+  &.is-error {
+    .indicator-dot {
+      background: nb-theme(color-danger-500);
+      box-shadow: 0 0 0 3px rgba(nb-theme(color-danger-500), 0.15);
+    }
+    
+    .entry-content {
+      border-left: 3px solid nb-theme(color-danger-500);
+    }
+  }
+}
+
+.entry-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 1rem;
+  width: 20px;
+  flex-shrink: 0;
+  
+  .indicator-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: nb-theme(color-success-500);
+    box-shadow: 0 0 0 3px rgba(nb-theme(color-success-500), 0.15);
+    flex-shrink: 0;
+    
+    &.error {
+      background: nb-theme(color-danger-500);
+      box-shadow: 0 0 0 3px rgba(nb-theme(color-danger-500), 0.15);
+    }
+  }
+  
+  .indicator-line {
+    width: 2px;
+    flex: 1;
+    background: nb-theme(border-basic-color-3);
+    margin-top: 0.5rem;
+  }
+}
+
+.entry-content {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.5rem;
+  background: nb-theme(background-basic-color-2);
+  border: 1px solid nb-theme(border-basic-color-3);
+  border-radius: nb-theme(border-radius);
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+.entry-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.5rem;
+  gap: 0.5rem;
+}
+
+.entry-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  
+  .entry-time {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: nb-theme(text-basic-color);
+  }
+  
+  .entry-db {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.7rem;
+    color: nb-theme(text-hint-color);
+    
+    nb-icon {
+      font-size: 0.75rem;
+    }
+  }
+}
+
+.entry-status {
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 500;
+    
+    nb-icon {
+      font-size: 0.8rem;
+    }
+    
+    .status-divider {
+      opacity: 0.5;
+      margin: 0 0.15rem;
+    }
+    
+    &.success {
+      background: rgba(nb-theme(color-success-500), 0.1);
+      color: nb-theme(color-success-600);
+    }
+    
+    &.error {
+      background: rgba(nb-theme(color-danger-500), 0.1);
+      color: nb-theme(color-danger-600);
+    }
+  }
+}
+
+.entry-sql {
+  code {
+    display: block;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: nb-theme(text-basic-color);
+    background: nb-theme(background-basic-color-1);
+    padding: 0.5rem 0.75rem;
+    border-radius: 4px;
+    border: 1px solid nb-theme(border-basic-color-4);
+    word-break: break-all;
+    white-space: pre-wrap;
+  }
+}
+
+.entry-actions {
+  display: flex;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  
+  button {
+    padding: 0.25rem 0.5rem;
+    
+    nb-icon {
+      font-size: 0.9rem;
+    }
+  }
+}
+
+// ==================== Chart Tab Styles ====================
+
+.chart-tab-content {
+  height: 100%;
+  min-height: 400px;
+}
+
+.chart-layout {
+  display: flex;
+  gap: 1rem;
+  height: 100%;
+  min-height: 400px;
+}
+
+// 左侧字段面板
+.chart-field-panel {
+  width: 200px;
+  flex-shrink: 0;
+  background: nb-theme(background-basic-color-2);
+  border: 1px solid nb-theme(border-basic-color-3);
+  border-radius: nb-theme(border-radius);
+  display: flex;
+  flex-direction: column;
+  
+  .field-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid nb-theme(border-basic-color-3);
+    font-weight: 600;
+    font-size: 0.85rem;
+    
+    nb-icon {
+      font-size: 1rem;
+      color: nb-theme(color-primary-500);
+    }
+    
+    .field-count {
+      font-size: 0.75rem;
+      color: nb-theme(color-primary-500);
+      font-weight: 500;
+    }
+  }
+  
+  .field-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.5rem;
+  }
+  
+  .field-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 0.25rem;
+    border-radius: nb-theme(border-radius);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    
+    .field-checkbox {
+      flex-shrink: 0;
+    }
+    
+    nb-icon {
+      font-size: 1rem;
+      color: nb-theme(text-hint-color);
+    }
+    
+    .field-name {
+      flex: 1;
+      font-size: 0.8rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .field-order {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: nb-theme(color-primary-500);
+      color: #fff;
+      font-size: 0.7rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    
+    &:hover {
+      background: nb-theme(background-basic-color-3);
+    }
+    
+    &.numeric nb-icon {
+      color: nb-theme(color-info-500);
+    }
+    
+    &.selected {
+      background: nb-theme(color-primary-transparent-100);
+      border: 1px solid nb-theme(color-primary-300);
+    }
+  }
+  
+  .field-selection-bar {
+    padding: 0.75rem;
+    border-top: 1px solid nb-theme(border-basic-color-3);
+    background: nb-theme(background-basic-color-3);
+    
+    .selection-hint {
+      font-size: 0.75rem;
+      color: nb-theme(text-hint-color);
+      margin-bottom: 0.5rem;
+    }
+    
+    .selection-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      
+      .chart-type-dropdown {
+        position: relative;
+        
+        .chart-type-menu {
+          position: absolute;
+          bottom: 100%;
+          left: 0;
+          background: nb-theme(background-basic-color-1);
+          border: 1px solid nb-theme(border-basic-color-3);
+          border-radius: nb-theme(border-radius);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+          padding: 0.25rem;
+          margin-bottom: 0.25rem;
+          z-index: 10;
+          min-width: 120px;
+          
+          button {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            width: 100%;
+            justify-content: flex-start;
+            padding: 0.5rem 0.75rem;
+            
+            &:hover {
+              background: nb-theme(background-basic-color-3);
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  .field-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+    color: nb-theme(text-hint-color);
+    text-align: center;
+    
+    nb-icon {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+      opacity: 0.5;
+    }
+    
+    span {
+      font-size: 0.8rem;
+    }
+  }
+}
+
+// 右侧图表看板
+.chart-board-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  
+  .board-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+    
+    .board-title {
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    
+    .board-count {
+      font-size: 0.75rem;
+      color: nb-theme(text-hint-color);
+      background: nb-theme(background-basic-color-2);
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+    }
+  }
+  
+  .chart-board {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 1rem;
+    flex: 1;
+    overflow-y: auto;
+  }
+  
+  .board-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: nb-theme(background-basic-color-2);
+    border: 2px dashed nb-theme(border-basic-color-3);
+    border-radius: nb-theme(border-radius);
+    padding: 3rem;
+    text-align: center;
+    
+    nb-icon {
+      font-size: 3rem;
+      color: nb-theme(text-disabled-color);
+      margin-bottom: 1rem;
+    }
+    
+    p {
+      font-size: 1rem;
+      color: nb-theme(text-basic-color);
+      margin-bottom: 0.5rem;
+    }
+    
+    .hint {
+      display: block;
+      font-size: 0.8rem;
+      color: nb-theme(text-hint-color);
+      margin-top: 0.25rem;
+    }
+  }
+}
+
+// 图表卡片
+.chart-card {
+  background: nb-theme(background-basic-color-1);
+  border: 1px solid nb-theme(border-basic-color-3);
+  border-radius: nb-theme(border-radius);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  
+  .chart-card-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: nb-theme(background-basic-color-2);
+    border-bottom: 1px solid nb-theme(border-basic-color-3);
+    
+    .drag-handle {
+      font-size: 1rem;
+      color: nb-theme(text-disabled-color);
+      cursor: move;
+    }
+    
+    .chart-title {
+      flex: 1;
+      font-size: 0.85rem;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .chart-mode-badge {
+      font-size: 0.65rem;
+      padding: 0.15rem 0.4rem;
+      border-radius: 3px;
+      background: nb-theme(color-info-100);
+      color: nb-theme(color-info-600);
+      font-weight: 500;
+      flex-shrink: 0;
+      
+      &.multi {
+        background: nb-theme(color-success-100);
+        color: nb-theme(color-success-600);
+      }
+    }
+    
+    .chart-actions {
+      display: flex;
+      gap: 0.25rem;
+      
+      button {
+        padding: 0.2rem;
+        
+        nb-icon {
+          font-size: 0.9rem;
+        }
+      }
+    }
+  }
+  
+  .chart-card-body {
+    padding: 0.5rem;
+    
+    .chart-container {
+      width: 100%;
+      height: 250px;
+    }
+  }
+}
+
+
+// Chart Config Dialog
+.chart-config-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.chart-config-dialog {
+  background: nb-theme(background-basic-color-1);
+  border-radius: nb-theme(border-radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  width: 400px;
+  max-width: 90vw;
+  
+  .config-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem;
+    border-bottom: 1px solid nb-theme(border-basic-color-3);
+    font-weight: 600;
+  }
+  
+  .config-body {
+    padding: 1rem;
+    
+    .config-field {
+      margin-bottom: 1rem;
+      
+      &:last-child {
+        margin-bottom: 0;
+      }
+      
+      label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-size: 0.85rem;
+        color: nb-theme(text-hint-color);
+      }
+    }
+  }
+  
+  .config-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 1rem;
+    border-top: 1px solid nb-theme(border-basic-color-3);
   }
 }

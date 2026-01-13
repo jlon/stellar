@@ -17,6 +17,8 @@ pub mod overview_service;
 pub mod permission_service;
 pub mod permission_request_service;
 pub mod profile_analyzer;
+pub mod query_execution_history_service;
+pub mod resource_group_service;
 pub mod role_service;
 pub mod starrocks_client;
 pub mod system_function_service;
@@ -50,6 +52,8 @@ pub use overview_service::{
 };
 pub use permission_service::PermissionService;
 pub use permission_request_service::PermissionRequestService;
+pub use query_execution_history_service::QueryExecutionHistoryService;
+pub use resource_group_service::ResourceGroupService;
 pub use role_service::RoleService;
 pub use starrocks_client::StarRocksClient;
 pub use system_function_service::SystemFunctionService;

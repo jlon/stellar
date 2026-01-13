@@ -1,0 +1,398 @@
+<div class="row">
+  <div class="col-12">
+    <nb-card>
+      <nb-card-header>
+        <h5>{{ isEditMode ? '编辑资源组' : '创建资源组' }}</h5>
+      </nb-card-header>
+
+      <nb-card-body>
+        <div *ngIf="loading" class="d-flex justify-content-center p-4">
+          <nb-spinner size="large"></nb-spinner>
+        </div>
+
+        <form *ngIf="!loading" [formGroup]="form" (ngSubmit)="onSubmit()">
+          <nb-tabset #tabset>
+            <!-- 基础配置 -->
+            <nb-tab tabTitle="基础配置">
+              <div class="row">
+                <div class="col-md-12">
+                  <div class="form-group">
+                    <label for="name" class="label">资源组名称 *</label>
+                    <input
+                      nbInput
+                      fullWidth
+                      type="text"
+                      id="name"
+                      formControlName="name"
+                      placeholder="请输入资源组名称"
+                      [readonly]="isEditMode"
+                      [status]="form.get('name')?.invalid && form.get('name')?.touched ? 'danger' : 'basic'"
+                    />
+                    <small class="form-text text-danger" *ngIf="form.get('name')?.invalid && form.get('name')?.touched">
+                      <span *ngIf="form.get('name')?.errors?.['required']">资源组名称不能为空</span>
+                      <span *ngIf="form.get('name')?.errors?.['pattern']">资源组名称只能包含字母、数字和下划线</span>
+                    </small>
+                  </div>
+                </div>
+              </div>
+            </nb-tab>
+
+            <!-- CPU 配置 -->
+            <nb-tab tabTitle="CPU 配置">
+              <div class="tab-required-hint">
+                <nb-icon icon="alert-circle-outline"></nb-icon>
+                <span>请至少配置一个资源限制</span>
+              </div>
+              
+              <div class="row">
+                <div class="col-md-6">
+                  <div class="form-group">
+                    <label for="cpu_weight" class="label">CPU 权重 (1-100)</label>
+                    <input
+                      nbInput
+                      fullWidth
+                      type="number"
+                      id="cpu_weight"
+                      formControlName="cpu_weight"
+                      placeholder="请输入 CPU 权重"
+                      min="1"
+                      max="100"
+                      [status]="form.get('cpu_weight')?.invalid && form.get('cpu_weight')?.touched ? 'danger' : 'basic'"
+                    />
+                    <small class="form-text text-hint">相对权重，数值越大获得的 CPU 时间越多</small>
+                    <small class="form-text text-danger" *ngIf="form.get('cpu_weight')?.invalid && form.get('cpu_weight')?.touched">
+                      <span *ngIf="form.get('cpu_weight')?.errors?.['min']">CPU 权重最小值为 1</span>
+                      <span *ngIf="form.get('cpu_weight')?.errors?.['max']">CPU 权重最大值为 100</span>
+                    </small>
+                  </div>
+                </div>
+
+                <div class="col-md-6">
+                  <div class="form-group">
+                    <label for="exclusive_cpu_cores" class="label">独占 CPU 核数</label>
+                    <input
+                      nbInput
+                      fullWidth
+                      type="number"
+                      id="exclusive_cpu_cores"
+                      formControlName="exclusive_cpu_cores"
+                      placeholder="请输入独占 CPU 核数"
+                      min="0"
+                      [status]="form.get('exclusive_cpu_cores')?.invalid && form.get('exclusive_cpu_cores')?.touched ? 'danger' : 'basic'"
+                    />
+                    <small class="form-text text-hint">为该资源组独占的 CPU 核心数</small>
+                    <small class="form-text text-danger" *ngIf="form.get('exclusive_cpu_cores')?.invalid && form.get('exclusive_cpu_cores')?.touched">
+                      <span *ngIf="form.get('exclusive_cpu_cores')?.errors?.['min']">独占 CPU 核数不能小于 0</span>
+                    </small>
+                  </div>
+                </div>
+              </div>
+            </nb-tab>
+
+            <!-- 内存配置 -->
+            <nb-tab tabTitle="内存配置">
+              <div class="row">
+                <div class="col-md-6">
+                  <div class="form-group">
+                    <label for="mem_limit" class="label">内存限制</label>
+                    <input
+                      nbInput
+                      fullWidth
+                      type="text"
+                      id="mem_limit"
+                      formControlName="mem_limit"
+                      placeholder="如: 50% 或 10GB"
+                      status="basic"
+                    />
+                    <small class="form-text text-hint">支持百分比或绝对值，如: 50% 或 10GB</small>
+                  </div>
+                </div>
+
+                <div class="col-md-6">
+                  <div class="form-group">
+                    <label for="spill_mem_limit_threshold" class="label">落盘内存阈值</label>
+                    <input
+                      nbInput
+                      fullWidth
+                      type="text"
+                      id="spill_mem_limit_threshold"
+                      formControlName="spill_mem_limit_threshold"
+                      placeholder="如: 80%"
+                      status="basic"
+                    />
+                    <small class="form-text text-hint">内存使用超过此阈值时开始落盘</small>
+                  </div>
+                </div>
+              </div>
+            </nb-tab>
+
+            <!-- 并发控制 -->
+            <nb-tab tabTitle="并发控制">
+              <div class="row">
+                <div class="col-md-6">
+                  <div class="form-group">
+                    <label for="concurrency_limit" class="label">并发限制</label>
+                    <input
+                      nbInput
+                      fullWidth
+                      type="number"
+                      id="concurrency_limit"
+                      formControlName="concurrency_limit"
+                      placeholder="请输入最大并发查询数"
+                      min="1"
+                      [status]="form.get('concurrency_limit')?.invalid && form.get('concurrency_limit')?.touched ? 'danger' : 'basic'"
+                    />
+                    <small class="form-text text-hint">同时运行的最大查询数量</small>
+                    <small class="form-text text-danger" *ngIf="form.get('concurrency_limit')?.invalid && form.get('concurrency_limit')?.touched">
+                      <span *ngIf="form.get('concurrency_limit')?.errors?.['min']">并发限制最小值为 1</span>
+                    </small>
+                  </div>
+                </div>
+              </div>
+            </nb-tab>
+
+            <!-- 大查询限制 -->
+            <nb-tab tabTitle="大查询限制">
+              <div class="row">
+                <div class="col-md-4">
+                  <div class="form-group">
+                    <label for="big_query_cpu_second_limit" class="label">CPU 时间上限 (秒)</label>
+                    <input
+                      nbInput
+                      fullWidth
+                      type="number"
+                      id="big_query_cpu_second_limit"
+                      formControlName="big_query_cpu_second_limit"
+                      placeholder="请输入 CPU 时间上限"
+                      min="0"
+                      status="basic"
+                    />
+                    <small class="form-text text-hint">单个查询的最大 CPU 时间</small>
+                  </div>
+                </div>
+
+                <div class="col-md-4">
+                  <div class="form-group">
+                    <label for="big_query_scan_rows_limit" class="label">扫描行数上限</label>
+                    <input
+                      nbInput
+                      fullWidth
+                      type="number"
+                      id="big_query_scan_rows_limit"
+                      formControlName="big_query_scan_rows_limit"
+                      placeholder="请输入扫描行数上限"
+                      min="0"
+                      status="basic"
+                    />
+                    <small class="form-text text-hint">单个查询的最大扫描行数</small>
+                  </div>
+                </div>
+
+                <div class="col-md-4">
+                  <div class="form-group">
+                    <label for="big_query_mem_limit" class="label">内存上限</label>
+                    <input
+                      nbInput
+                      fullWidth
+                      type="text"
+                      id="big_query_mem_limit"
+                      formControlName="big_query_mem_limit"
+                      placeholder="如: 10GB"
+                      status="basic"
+                    />
+                    <small class="form-text text-hint">单个查询的最大内存使用</small>
+                  </div>
+                </div>
+              </div>
+            </nb-tab>
+
+            <!-- 分类器配置 -->
+            <nb-tab tabTitle="分类器配置">
+              <div class="tab-required-hint">
+                <nb-icon icon="alert-circle-outline"></nb-icon>
+                <span>至少添加一个分类器（必填）</span>
+              </div>
+              
+              <div class="classifier-intro">
+                <nb-icon icon="info-outline" class="info-icon"></nb-icon>
+                <div class="intro-content">
+                  <p class="intro-title">关于分类器</p>
+                  <p class="intro-text">分类器用于自动将查询分配到此资源组。您可以根据用户名、角色名、查询类型、来源 IP 或数据库名等条件进行配置。</p>
+                </div>
+              </div>
+
+              <div class="mb-3">
+                <button
+                  type="button"
+                  nbButton
+                  status="primary"
+                  size="small"
+                  (click)="addClassifier()"
+                >
+                  <nb-icon icon="plus-outline"></nb-icon>
+                  添加分类器
+                </button>
+              </div>
+
+              <div formArrayName="classifiers">
+                <nb-card
+                  *ngFor="let classifier of classifiers.controls; let i = index"
+                  class="classifier-card"
+                >
+                  <nb-card-header class="d-flex justify-content-between align-items-center">
+                    <span>分类器 {{ i + 1 }}</span>
+                    <button
+                      type="button"
+                      nbButton
+                      ghost
+                      status="danger"
+                      size="tiny"
+                      (click)="removeClassifier(i)"
+                    >
+                      <nb-icon icon="trash-2-outline"></nb-icon>
+                    </button>
+                  </nb-card-header>
+
+                  <nb-card-body [formGroupName]="i">
+                    <div class="row">
+                      <div class="col-md-4">
+                        <div class="form-group">
+                          <label [for]="'user_' + i" class="label">用户名</label>
+                          <input
+                            nbInput
+                            fullWidth
+                            type="text"
+                            [id]="'user_' + i"
+                            formControlName="user"
+                            placeholder="请输入用户名"
+                            status="basic"
+                          />
+                        </div>
+                      </div>
+
+                      <div class="col-md-4">
+                        <div class="form-group">
+                          <label [for]="'role_' + i" class="label">角色名</label>
+                          <input
+                            nbInput
+                            fullWidth
+                            type="text"
+                            [id]="'role_' + i"
+                            formControlName="role"
+                            placeholder="请输入角色名"
+                            status="basic"
+                          />
+                        </div>
+                      </div>
+
+                      <div class="col-md-4">
+                        <div class="form-group">
+                          <label [for]="'query_type_' + i" class="label">查询类型</label>
+                          <nb-form-field>
+                            <nb-select
+                              fullWidth
+                              multiple
+                              [id]="'query_type_' + i"
+                              formControlName="query_type"
+                              placeholder="请选择查询类型"
+                            >
+                              <nb-option
+                                *ngFor="let option of queryTypeOptions"
+                                [value]="option.value"
+                              >
+                                {{ option.label }}
+                              </nb-option>
+                            </nb-select>
+                          </nb-form-field>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="row">
+                      <div class="col-md-4">
+                        <div class="form-group">
+                          <label [for]="'source_ip_' + i" class="label">来源 IP</label>
+                          <input
+                            nbInput
+                            fullWidth
+                            type="text"
+                            [id]="'source_ip_' + i"
+                            formControlName="source_ip"
+                            placeholder="如: 192.168.1.0/24"
+                            status="basic"
+                          />
+                          <small class="form-text text-hint">支持 CIDR 格式</small>
+                        </div>
+                      </div>
+
+                      <div class="col-md-4">
+                        <div class="form-group">
+                          <label [for]="'db_' + i" class="label">数据库名</label>
+                          <input
+                            nbInput
+                            fullWidth
+                            type="text"
+                            [id]="'db_' + i"
+                            formControlName="db"
+                            placeholder="请输入数据库名"
+                            status="basic"
+                          />
+                        </div>
+                      </div>
+
+                      <div class="col-md-4">
+                        <div class="form-group">
+                          <label [for]="'weight_' + i" class="label">权重</label>
+                          <input
+                            nbInput
+                            fullWidth
+                            type="number"
+                            [id]="'weight_' + i"
+                            formControlName="weight"
+                            placeholder="请输入权重"
+                            min="1"
+                            status="basic"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </nb-card-body>
+                </nb-card>
+              </div>
+
+              <div *ngIf="classifiers.length === 0" class="empty-state">
+                <nb-icon icon="layers-outline" class="empty-icon"></nb-icon>
+                <p class="empty-text">暂无分类器</p>
+                <p class="empty-hint">点击上方"添加分类器"按钮开始配置</p>
+              </div>
+            </nb-tab>
+          </nb-tabset>
+        </form>
+      </nb-card-body>
+
+      <nb-card-footer class="d-flex justify-content-end">
+        <button
+          type="button"
+          nbButton
+          ghost
+          status="basic"
+          class="me-2"
+          (click)="cancel()"
+          [disabled]="loading"
+        >
+          取消
+        </button>
+        <button
+          type="submit"
+          nbButton
+          status="primary"
+          (click)="onSubmit()"
+          [disabled]="loading || form.invalid"
+        >
+          <nb-icon *ngIf="loading" icon="loader-outline" class="spin"></nb-icon>
+          {{ isEditMode ? '更新' : '创建' }}
+        </button>
+      </nb-card-footer>
+    </nb-card>
+  </div>
+</div>

@@ -1,10 +1,10 @@
 import { Component, OnInit, OnDestroy, ViewChild, AfterViewInit, ElementRef, HostListener, TemplateRef, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
-import { NbDialogRef, NbDialogService, NbMenuItem, NbMenuService, NbToastrService, NbThemeService } from '@nebular/theme';
+import { NbDialogRef, NbDialogService, NbMenuItem, NbMenuService, NbSidebarService, NbToastrService, NbThemeService } from '@nebular/theme';
 import { LocalDataSource } from 'ng2-smart-table';
 import { Subject, Observable, forkJoin, of, fromEvent } from 'rxjs';
 import { map, catchError, takeUntil, debounceTime, finalize } from 'rxjs/operators';
-import { NodeService, Query, QueryExecuteResult, SingleQueryResult, TableInfo, TableObjectType, SqlDiagResponse, SqlDiagResult, PerfIssue } from '../../../../@core/data/node.service';
+import { NodeService, Query, QueryExecuteResult, SingleQueryResult, TableInfo, TableObjectType, SqlDiagResponse, SqlDiagResult, PerfIssue, QueryExecutionHistoryItem } from '../../../../@core/data/node.service';
 import { ClusterContextService } from '../../../../@core/data/cluster-context.service';
 import { Cluster } from '../../../../@core/data/cluster.service';
 import { ErrorHandler } from '../../../../@core/utils/error-handler';
@@ -23,6 +23,37 @@ import { renderMetricBadge, MetricThresholds } from '../../../../@core/utils/met
 import { renderLongText } from '../../../../@core/utils/text-truncate';
 import { ConfirmDialogService } from '../../../../@core/services/confirm-dialog.service';
 import { AuthService } from '../../../../@core/data/auth.service';
+
+// Chart 相关类型定义
+type FieldType = 'numeric' | 'text';
+type AggregationType = 'COUNT' | 'SUM' | 'AVG' | 'MAX' | 'MIN';
+type ChartType = 'bar' | 'line' | 'pie' | 'scatter';
+type ChartMode = 'single' | 'xy' | 'multi';
+
+interface ChartField {
+  name: string;
+  type: FieldType;
+  columnIndex: number;
+  selected?: boolean;
+}
+
+interface ChartConfig {
+  id: string;
+  title: string;
+  fieldName: string;
+  fieldType: FieldType;
+  chartType: ChartType;
+  aggregation: AggregationType;
+  columnIndex: number;
+  mode?: ChartMode;
+  xFieldIndex?: number;
+  yFieldIndices?: number[];
+}
+
+interface ChartDataPoint {
+  label: string;
+  value: number;
+}
 
 type NavNodeType = 'catalog' | 'database' | 'group' | 'table';
 
@@ -364,16 +395,15 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   // Real-time query state
   sqlInput: string = '';
   queryResult: QueryExecuteResult | null = null;
-  resultSettings: any[] = []; // Array of settings for multiple results
+  resultSettings: any[] = [];
   executing: boolean = false;
   executionTime: number = 0;
   rowCount: number = 0;
-  queryLimit: number = 1000; // Default limit for query results
+  queryLimit: number = 1000;
   
-  // Multiple query results
   queryResults: SingleQueryResult[] = [];
-  resultSources: LocalDataSource[] = []; // Array of data sources for multiple results
-  currentResultIndex: number = 0; // Track current selected tab index
+  resultSources: LocalDataSource[] = [];
+  currentResultIndex: number = 0;
   limitOptions = [
     { value: 100, label: '100 行' },
     { value: 500, label: '500 行' },
@@ -381,10 +411,26 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     { value: 5000, label: '5000 行' },
     { value: 10000, label: '10000 行' },
   ];
+
+  resultTabId: string = 'result';
+  showHistoryTab: boolean = true;
+  executionHistory: QueryExecutionHistoryItem[] = [];
+  executionHistoryTotal: number = 0;
+  loadingHistory: boolean = false;
   
-  // SQL Editor collapse state (default to expanded)
-  sqlEditorCollapsed: boolean = false; // Default: expanded
-  editorHeight: number = 400; // Default height
+  // Chart Tab 相关属性
+  chartFields: ChartField[] = [];
+  chartConfigs: ChartConfig[] = [];
+  chartOptions: Map<string, any> = new Map();
+  showChartConfig: boolean = false;
+  editingChart: ChartConfig | null = null;
+  selectedChartFields: ChartField[] = [];
+  showChartTypeMenu: boolean = false;
+  private chartColors: string[] = [];
+  private chartGenerateSubject$ = new Subject<void>();
+  
+  sqlEditorCollapsed: boolean = false;
+  editorHeight: number = 400;
   
   // Running queries settings
   runningSettings = {
@@ -485,12 +531,12 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     private toastrService: NbToastrService,
     private clusterContext: ClusterContextService,
     private themeService: NbThemeService,
+    private sidebarService: NbSidebarService,
     private dialogService: NbDialogService,
     private confirmDialogService: ConfirmDialogService,
     private authService: AuthService,
     private cdr: ChangeDetectorRef,
   ) {
-    // Try to get clusterId from route first (for direct navigation)
     const routeClusterId = parseInt(this.route.snapshot.paramMap.get('clusterId') || '0', 10);
     this.clusterId = routeClusterId;
   }
@@ -521,6 +567,20 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       .subscribe((theme: any) => {
         this.currentTheme = theme?.name || 'default';
         this.updateEditorTheme();
+        const vars = theme?.variables || {};
+        this.chartColors = [
+          vars.primary || '#3366ff',
+          vars.success || '#00d68f',
+          vars.info || '#0095ff',
+          vars.warning || '#ffaa00',
+          vars.danger || '#ff3d71',
+          vars.primaryLight || '#598bff',
+          vars.successLight || '#2ce69b',
+          vars.infoLight || '#42aaff',
+          vars.warningLight || '#ffc94d',
+          vars.dangerLight || '#ff708d',
+        ];
+        this.refreshAllCharts();
         this.cdr.markForCheck();
       });
 
@@ -533,6 +593,13 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       .subscribe(() => {
     this.calculateEditorHeight();
       });
+
+    this.chartGenerateSubject$
+      .pipe(
+        debounceTime(500),
+        takeUntil(this.destroy$)
+      )
+      .subscribe(() => this.doAutoGenerateChart());
   }
 
   @HostListener('document:mousemove', ['$event'])
@@ -4630,7 +4697,8 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   ngOnInit(): void {
-    // Subscribe to active cluster changes
+    this.sidebarService.compact('menu-sidebar');
+    
     this.clusterContext.activeCluster$
       .pipe(takeUntil(this.destroy$))
       .subscribe(cluster => {
@@ -4641,7 +4709,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
             this.clusterId = newClusterId;
             this.resetNavigationState();
             this.loadCatalogs();
-            // Only load running tab on cluster change
+            this.loadExecutionHistory();
             if (this.selectedTab === 'running') {
               this.loadCurrentTab();
             } else {
@@ -4652,9 +4720,13 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         }
       });
 
-    // Initial load only for running tab
-    if (this.clusterId && this.clusterId > 0 && this.selectedTab === 'running') {
-      this.loadCurrentTab();
+    if (this.clusterId && this.clusterId > 0) {
+      this.loadExecutionHistory();
+      if (this.selectedTab === 'running') {
+        this.loadCurrentTab();
+      } else {
+        this.loading = false;
+      }
     } else {
       this.loading = false;
     }
@@ -5209,6 +5281,9 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         this.rowCount = totalRowCount;
         this.executing = false;
 
+        this.loadExecutionHistory();
+        this.parseQueryResultToFields();
+
         if (result.results.length > 1) {
           this.toastrService.success(
             `执行 ${result.results.length} 个SQL，成功 ${successCount} 个，共返回 ${totalRowCount} 行`,
@@ -5509,5 +5584,744 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     } catch {
       return sql;
     }
+  }
+
+  onResultTabChange(tabId: string): void {
+    this.resultTabId = tabId;
+    if (tabId === 'history') {
+      this.loadExecutionHistory();
+    }
+    this.cdr.markForCheck();
+  }
+
+  loadExecutionHistory(): void {
+    if (!this.clusterId) return;
+    
+    this.loadingHistory = true;
+    this.cdr.markForCheck();
+    
+    this.nodeService.listExecutionHistory(50, 0)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (response) => {
+          this.executionHistory = response.data;
+          this.executionHistoryTotal = response.total;
+          this.loadingHistory = false;
+          this.cdr.markForCheck();
+        },
+        error: () => {
+          this.executionHistory = [];
+          this.executionHistoryTotal = 0;
+          this.loadingHistory = false;
+          this.cdr.markForCheck();
+        },
+      });
+  }
+
+  applyHistorySQL(item: QueryExecutionHistoryItem): void {
+    this.sqlInput = item.sql_statement;
+    if (this.editorView) {
+      const transaction = this.editorView.state.update({
+        changes: { from: 0, to: this.editorView.state.doc.length, insert: item.sql_statement },
+      });
+      this.editorView.dispatch(transaction);
+    }
+    if (item.catalog) {
+      this.selectedCatalog = item.catalog;
+    }
+    if (item.database_name) {
+      this.selectedDatabase = item.database_name;
+    }
+    this.resultTabId = 'result';
+    this.cdr.markForCheck();
+  }
+
+  copyHistorySQL(item: QueryExecutionHistoryItem, event: Event): void {
+    event.stopPropagation();
+    navigator.clipboard.writeText(item.sql_statement).then(() => {
+      this.toastrService.success('SQL 已复制到剪贴板', '成功');
+    }).catch(() => {
+      this.toastrService.danger('复制失败', '错误');
+    });
+  }
+
+  deleteHistoryItem(item: QueryExecutionHistoryItem, event: Event): void {
+    event.stopPropagation();
+    this.nodeService.deleteExecutionHistory(item.id)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: () => {
+          this.executionHistory = this.executionHistory.filter(h => h.id !== item.id);
+          this.executionHistoryTotal = Math.max(0, this.executionHistoryTotal - 1);
+          this.toastrService.success('已删除', '成功');
+          this.cdr.markForCheck();
+        },
+        error: () => {
+          this.toastrService.danger('删除失败', '错误');
+        },
+      });
+  }
+
+  clearAllHistory(): void {
+    this.confirmDialogService.confirm(
+      '确认清空',
+      '确定要清空所有查询历史吗？此操作不可撤销。',
+      '清空',
+      '取消',
+      'danger'
+    ).pipe(takeUntil(this.destroy$)).subscribe((confirmed) => {
+      if (confirmed) {
+        this.nodeService.clearExecutionHistory()
+          .pipe(takeUntil(this.destroy$))
+          .subscribe({
+            next: () => {
+              this.executionHistory = [];
+              this.executionHistoryTotal = 0;
+              this.toastrService.success('已清空历史', '成功');
+              this.cdr.markForCheck();
+            },
+            error: () => {
+              this.toastrService.danger('清空失败', '错误');
+            },
+          });
+      }
+    });
+  }
+
+  // ==================== Chart Tab 相关方法 ====================
+
+  private get CHART_COLORS(): string[] {
+    return this.chartColors.length > 0 ? this.chartColors : [
+      '#3366ff', '#00d68f', '#0095ff', '#ffaa00', '#ff3d71',
+      '#598bff', '#2ce69b', '#42aaff', '#ffc94d', '#ff708d'
+    ];
+  }
+
+  private refreshAllCharts(): void {
+    for (const config of this.chartConfigs) {
+      this.generateChartOption(config);
+    }
+  }
+
+  private inferFieldType(values: string[]): FieldType {
+    const sampleSize = Math.min(values.length, 100);
+    const sample = values.slice(0, sampleSize);
+    const nonEmptyValues = sample.filter(v => v !== null && v !== '' && v !== 'NULL');
+    
+    if (nonEmptyValues.length === 0) {
+      return 'text';
+    }
+    
+    const allNumeric = nonEmptyValues.every(v => !isNaN(parseFloat(v)) && isFinite(Number(v)));
+    return allNumeric ? 'numeric' : 'text';
+  }
+
+  private parseQueryResultToFields(): void {
+    if (!this.queryResults || this.queryResults.length === 0 || !this.queryResults[0].success) {
+      this.chartFields = [];
+      this.selectedChartFields = [];
+      return;
+    }
+
+    const result = this.queryResults[0];
+    const columns = result.columns || [];
+    const rows = result.rows || [];
+
+    this.chartFields = columns.map((colName, index) => {
+      const columnValues = rows.map(row => row[index] || '');
+      return {
+        name: colName,
+        type: this.inferFieldType(columnValues),
+        columnIndex: index,
+        selected: false,
+      };
+    });
+    this.selectedChartFields = [];
+  }
+
+  private isDateField(field: ChartField): boolean {
+    if (!this.queryResults || this.queryResults.length === 0) return false;
+    const rows = this.queryResults[0].rows || [];
+    const sample = rows.slice(0, 10).map(r => r[field.columnIndex] || '');
+    const datePatterns = [
+      /^\d{4}-\d{2}-\d{2}/, 
+      /^\d{4}\/\d{2}\/\d{2}/,
+      /^\d{2}-\d{2}-\d{4}/,
+      /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/
+    ];
+    const matchCount = sample.filter(v => datePatterns.some(p => p.test(v))).length;
+    return matchCount >= sample.length * 0.8;
+  }
+
+  toggleFieldSelection(field: ChartField, event?: Event | boolean): void {
+    if (event instanceof Event) {
+      event.stopPropagation();
+    }
+    field.selected = !field.selected;
+    
+    if (field.selected) {
+      this.selectedChartFields.push(field);
+    } else {
+      this.selectedChartFields = this.selectedChartFields.filter(f => f.columnIndex !== field.columnIndex);
+    }
+    
+    this.cdr.markForCheck();
+  }
+
+  private autoGenerateChart(): void {
+    if (this.selectedChartFields.length === 0) return;
+    this.chartGenerateSubject$.next();
+  }
+
+  private doAutoGenerateChart(): void {
+    if (this.selectedChartFields.length === 0) return;
+    
+    const fieldKey = this.selectedChartFields.map(f => f.columnIndex).sort().join('-');
+    const existingChart = this.chartConfigs.find(c => {
+      const configKey = [c.xFieldIndex, ...(c.yFieldIndices || [])].filter(i => i !== undefined).sort().join('-');
+      return configKey === fieldKey;
+    });
+    
+    if (existingChart) return;
+
+    const textFields = this.selectedChartFields.filter(f => f.type === 'text' && !this.isDateField(f));
+    const numericFields = this.selectedChartFields.filter(f => f.type === 'numeric');
+    const dateFields = this.selectedChartFields.filter(f => this.isDateField(f));
+    
+    let chartType: ChartType = 'bar';
+    let mode: ChartMode = 'single';
+    let xField = this.selectedChartFields[0];
+    let yFields = this.selectedChartFields.slice(1);
+
+    if (this.selectedChartFields.length === 1) {
+      mode = 'single';
+      if (dateFields.length === 1) {
+        chartType = 'bar';
+      } else {
+        chartType = textFields.length === 1 ? 'pie' : 'bar';
+      }
+    } else if (dateFields.length === 1 && numericFields.length >= 1) {
+      mode = 'xy';
+      chartType = 'line';
+      xField = dateFields[0];
+      yFields = numericFields;
+    } else if (textFields.length === 1 && numericFields.length >= 1) {
+      mode = 'xy';
+      chartType = 'bar';
+      xField = textFields[0];
+      yFields = numericFields;
+    } else if (textFields.length === 0 && dateFields.length === 0 && numericFields.length === 2) {
+      mode = 'xy';
+      chartType = 'scatter' as ChartType;
+    } else if (numericFields.length > 2) {
+      mode = 'multi';
+      chartType = 'bar';
+    } else {
+      mode = 'multi';
+      chartType = 'pie';
+    }
+
+    const fieldNames = this.selectedChartFields.map(f => f.name).join(' × ');
+    
+    const config: ChartConfig = {
+      id: `chart-${Date.now()}`,
+      title: fieldNames,
+      fieldName: fieldNames,
+      fieldType: xField.type,
+      chartType: chartType,
+      aggregation: 'SUM',
+      columnIndex: xField.columnIndex,
+      mode: mode,
+      xFieldIndex: xField.columnIndex,
+      yFieldIndices: yFields.map(f => f.columnIndex),
+    };
+
+    this.chartConfigs.push(config);
+    this.generateChartOption(config);
+  }
+
+  clearFieldSelection(): void {
+    this.chartFields.forEach(f => f.selected = false);
+    this.selectedChartFields = [];
+    this.showChartTypeMenu = false;
+    this.cdr.markForCheck();
+  }
+
+  clearAllCharts(): void {
+    this.chartConfigs = [];
+    this.chartOptions.clear();
+    this.cdr.markForCheck();
+  }
+
+  getSelectedFieldsHint(): string {
+    const count = this.selectedChartFields.length;
+    if (count === 0) return '点击字段添加到选择';
+    
+    const textFields = this.selectedChartFields.filter(f => f.type === 'text' && !this.isDateField(f));
+    const numericFields = this.selectedChartFields.filter(f => f.type === 'numeric');
+    const dateFields = this.selectedChartFields.filter(f => this.isDateField(f));
+    
+    if (count === 1) {
+      if (dateFields.length === 1) return '时间字段 → 时间分布图';
+      return textFields.length === 1 ? '文本字段 → 饼图' : '数值字段 → 柱状图';
+    }
+    if (dateFields.length === 1 && numericFields.length >= 1) {
+      return `时间序列 → 折线图`;
+    }
+    if (textFields.length === 1 && numericFields.length >= 1) {
+      return `分类对比 → 柱状图`;
+    }
+    if (textFields.length === 0 && dateFields.length === 0 && numericFields.length === 2) {
+      return '相关性分析 → 散点图';
+    }
+    return `${count} 个字段 → 组合图表`;
+  }
+
+  toggleChartTypeMenu(): void {
+    this.showChartTypeMenu = !this.showChartTypeMenu;
+    this.cdr.markForCheck();
+  }
+
+  generateChartFromSelection(chartType: ChartType): void {
+    if (this.selectedChartFields.length === 0) {
+      this.toastrService.warning('请先选择字段', '提示');
+      return;
+    }
+
+    const fieldNames = this.selectedChartFields.map(f => f.name).join(' + ');
+    const existingChart = this.chartConfigs.find(c => c.title === fieldNames);
+    if (existingChart) {
+      this.toastrService.warning(`图表 "${fieldNames}" 已存在`, '提示');
+      return;
+    }
+
+    const textFields = this.selectedChartFields.filter(f => f.type === 'text' && !this.isDateField(f));
+    const numericFields = this.selectedChartFields.filter(f => f.type === 'numeric');
+    const dateFields = this.selectedChartFields.filter(f => this.isDateField(f));
+    
+    let mode: ChartMode;
+    let inferredChartType = chartType;
+    let xField = this.selectedChartFields[0];
+    let yFields = this.selectedChartFields.slice(1);
+    
+    if (this.selectedChartFields.length === 1) {
+      mode = 'single';
+    } else if (dateFields.length === 1 && numericFields.length >= 1) {
+      mode = 'xy';
+      inferredChartType = 'line';
+      xField = dateFields[0];
+      yFields = numericFields;
+    } else if (textFields.length === 1 && numericFields.length >= 1) {
+      mode = 'xy';
+      xField = textFields[0];
+      yFields = numericFields;
+    } else if (textFields.length === 0 && dateFields.length === 0 && numericFields.length === 2) {
+      mode = 'xy';
+      inferredChartType = 'scatter' as ChartType;
+    } else {
+      mode = 'multi';
+    }
+
+    const config: ChartConfig = {
+      id: `chart-${Date.now()}`,
+      title: fieldNames,
+      fieldName: fieldNames,
+      fieldType: xField.type,
+      chartType: inferredChartType,
+      aggregation: 'SUM',
+      columnIndex: xField.columnIndex,
+      mode: mode,
+      xFieldIndex: xField.columnIndex,
+      yFieldIndices: yFields.map(f => f.columnIndex),
+    };
+
+    this.chartConfigs.push(config);
+    this.generateChartOption(config);
+    this.cdr.markForCheck();
+  }
+
+  smartGenerateChart(): void {
+    if (this.selectedChartFields.length === 0) {
+      this.toastrService.warning('请先选择字段', '提示');
+      return;
+    }
+
+    const textFields = this.selectedChartFields.filter(f => f.type === 'text' && !this.isDateField(f));
+    const numericFields = this.selectedChartFields.filter(f => f.type === 'numeric');
+    const dateFields = this.selectedChartFields.filter(f => this.isDateField(f));
+    
+    let smartChartType: ChartType = 'bar';
+    
+    if (this.selectedChartFields.length === 1) {
+      if (dateFields.length === 1) {
+        smartChartType = 'bar';
+      } else {
+        smartChartType = this.selectedChartFields[0].type === 'text' ? 'pie' : 'bar';
+      }
+    } else if (dateFields.length === 1 && numericFields.length >= 1) {
+      smartChartType = 'line';
+    } else if (textFields.length === 1 && numericFields.length >= 1) {
+      smartChartType = 'bar';
+    } else if (textFields.length === 0 && dateFields.length === 0 && numericFields.length === 2) {
+      smartChartType = 'scatter' as ChartType;
+    } else if (numericFields.length > 2) {
+      smartChartType = 'bar';
+    } else {
+      smartChartType = 'pie';
+    }
+    
+    this.generateChartFromSelection(smartChartType);
+  }
+
+  addChartFromField(field: ChartField): void {
+    this.toggleFieldSelection(field, new Event('click'));
+  }
+
+  private generateChartData(config: ChartConfig): ChartDataPoint[] {
+    if (!this.queryResults || this.queryResults.length === 0) {
+      return [];
+    }
+
+    const rows = this.queryResults[0].rows || [];
+    const groups = new Map<string, number[]>();
+
+    for (const row of rows) {
+      const value = row[config.columnIndex] || 'null';
+      if (!groups.has(value)) {
+        groups.set(value, []);
+      }
+      if (config.fieldType === 'numeric') {
+        const num = parseFloat(row[config.columnIndex]);
+        if (!isNaN(num)) {
+          groups.get(value)!.push(num);
+        }
+      } else {
+        groups.get(value)!.push(1);
+      }
+    }
+
+    const result: ChartDataPoint[] = [];
+    for (const [label, values] of groups) {
+      let aggregatedValue: number;
+      switch (config.aggregation) {
+        case 'COUNT':
+          aggregatedValue = values.length;
+          break;
+        case 'SUM':
+          aggregatedValue = values.reduce((a, b) => a + b, 0);
+          break;
+        case 'AVG':
+          aggregatedValue = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+          break;
+        case 'MAX':
+          aggregatedValue = values.length > 0 ? Math.max(...values) : 0;
+          break;
+        case 'MIN':
+          aggregatedValue = values.length > 0 ? Math.min(...values) : 0;
+          break;
+        default:
+          aggregatedValue = values.length;
+      }
+      result.push({ label, value: aggregatedValue });
+    }
+
+    result.sort((a, b) => b.value - a.value);
+    return result.slice(0, 20);
+  }
+
+  private generateXYChartData(config: ChartConfig): { labels: string[], values: number[] } {
+    if (!this.queryResults || this.queryResults.length === 0 || !config.yFieldIndices || config.yFieldIndices.length === 0) {
+      return { labels: [], values: [] };
+    }
+
+    const rows = this.queryResults[0].rows || [];
+    const xIndex = config.xFieldIndex ?? config.columnIndex;
+    const yIndex = config.yFieldIndices[0];
+
+    const labels: string[] = [];
+    const values: number[] = [];
+
+    for (const row of rows) {
+      const xValue = row[xIndex] || 'null';
+      const yValue = parseFloat(row[yIndex]) || 0;
+      labels.push(xValue);
+      values.push(yValue);
+    }
+
+    const combined = labels.map((label, i) => ({ label, value: values[i] }));
+    combined.sort((a, b) => b.value - a.value);
+    const limited = combined.slice(0, 20);
+
+    return {
+      labels: limited.map(c => c.label),
+      values: limited.map(c => c.value),
+    };
+  }
+
+  private generateMultiFieldChartData(config: ChartConfig): { name: string, value: number }[] {
+    if (!this.queryResults || this.queryResults.length === 0 || !config.yFieldIndices) {
+      return [];
+    }
+
+    const rows = this.queryResults[0].rows || [];
+    const columns = this.queryResults[0].columns || [];
+    const allIndices = [config.xFieldIndex ?? config.columnIndex, ...config.yFieldIndices];
+
+    const result: { name: string, value: number }[] = [];
+
+    for (const idx of allIndices) {
+      let sum = 0;
+      for (const row of rows) {
+        const val = parseFloat(row[idx]) || 0;
+        sum += val;
+      }
+      result.push({
+        name: columns[idx] || `字段${idx}`,
+        value: sum,
+      });
+    }
+
+    return result;
+  }
+
+  private generateChartOption(config: ChartConfig): void {
+    let option: any;
+    const colors = this.CHART_COLORS;
+
+    if (config.chartType === 'scatter' && config.mode === 'xy' && config.yFieldIndices && config.yFieldIndices.length > 0) {
+      const rows = this.queryResults[0]?.rows || [];
+      const columns = this.queryResults[0]?.columns || [];
+      const xIndex = config.xFieldIndex ?? config.columnIndex;
+      const yIndex = config.yFieldIndices[0];
+      const xLabel = columns[xIndex] || 'X';
+      const yLabel = columns[yIndex] || 'Y';
+      
+      const scatterData = rows.slice(0, 100).map(row => [
+        parseFloat(row[xIndex]) || 0,
+        parseFloat(row[yIndex]) || 0
+      ]);
+
+      option = {
+        color: colors,
+        tooltip: {
+          trigger: 'item',
+          formatter: (params: any) => `${xLabel}: ${params.value[0]}<br/>${yLabel}: ${params.value[1]}`
+        },
+        grid: { left: '10%', right: '10%', bottom: '15%', top: '10%' },
+        xAxis: { type: 'value', name: xLabel, nameLocation: 'middle', nameGap: 30 },
+        yAxis: { type: 'value', name: yLabel, nameLocation: 'middle', nameGap: 40 },
+        series: [{
+          type: 'scatter',
+          symbolSize: 12,
+          data: scatterData,
+          itemStyle: {
+            color: colors[0],
+            shadowBlur: 10,
+            shadowColor: 'rgba(84, 112, 198, 0.5)',
+            shadowOffsetY: 5
+          },
+          emphasis: {
+            itemStyle: { shadowBlur: 20, shadowColor: 'rgba(84, 112, 198, 0.8)' }
+          }
+        }]
+      };
+    } else if (config.mode === 'xy' && config.yFieldIndices && config.yFieldIndices.length > 0) {
+      const rows = this.queryResults[0]?.rows || [];
+      const columns = this.queryResults[0]?.columns || [];
+      const xIndex = config.xFieldIndex ?? config.columnIndex;
+      const xLabel = columns[xIndex] || 'X';
+      
+      const groupedData = new Map<string, number[]>();
+      for (const row of rows) {
+        const xValue = row[xIndex] || 'null';
+        if (!groupedData.has(xValue)) {
+          groupedData.set(xValue, new Array(config.yFieldIndices.length).fill(0));
+        }
+        config.yFieldIndices.forEach((yIdx, i) => {
+          groupedData.get(xValue)![i] += parseFloat(row[yIdx]) || 0;
+        });
+      }
+      
+      const sortedEntries = Array.from(groupedData.entries())
+        .sort((a, b) => b[1].reduce((s, v) => s + v, 0) - a[1].reduce((s, v) => s + v, 0))
+        .slice(0, 15);
+      
+      const labels = sortedEntries.map(e => e[0]);
+      const series = config.yFieldIndices.map((yIdx, i) => ({
+        name: columns[yIdx] || `Y${i + 1}`,
+        type: config.chartType === 'pie' ? 'bar' : config.chartType,
+        data: sortedEntries.map(e => e[1][i]),
+        itemStyle: { 
+          color: colors[i % colors.length],
+          borderRadius: config.chartType === 'bar' ? [4, 4, 0, 0] : 0
+        },
+        smooth: config.chartType === 'line',
+        areaStyle: config.chartType === 'line' ? { opacity: 0.1 } : undefined
+      }));
+
+      option = {
+        color: colors,
+        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+        legend: { data: series.map(s => s.name), bottom: 0 },
+        grid: { left: '3%', right: '4%', bottom: '15%', top: '10%', containLabel: true },
+        xAxis: {
+          type: 'category',
+          name: xLabel,
+          data: labels,
+          axisLabel: { rotate: labels.length > 8 ? 45 : 0, interval: 0 }
+        },
+        yAxis: { type: 'value', splitLine: { lineStyle: { type: 'dashed' } } },
+        series: series
+      };
+    } else if (config.mode === 'multi' && config.yFieldIndices && config.yFieldIndices.length > 0) {
+      const data = this.generateMultiFieldChartData(config);
+      option = {
+        color: colors,
+        tooltip: { 
+          trigger: 'item', 
+          formatter: '{b}: {c} ({d}%)',
+          backgroundColor: 'rgba(50, 50, 50, 0.9)',
+          textStyle: { color: '#fff' }
+        },
+        legend: { orient: 'vertical', left: 'left', top: 'center' },
+        series: [{
+          type: 'pie',
+          radius: ['35%', '65%'],
+          center: ['60%', '50%'],
+          data: data.map((d, i) => ({ 
+            name: d.name, 
+            value: d.value,
+            itemStyle: { color: colors[i % colors.length] }
+          })),
+          label: { 
+            show: true, 
+            formatter: '{b}\n{d}%',
+            fontSize: 11
+          },
+          labelLine: { length: 15, length2: 10 },
+          emphasis: {
+            itemStyle: { shadowBlur: 20, shadowOffsetX: 0, shadowColor: 'rgba(0, 0, 0, 0.5)' }
+          }
+        }]
+      };
+    } else {
+      const data = this.generateChartData(config);
+      const labels = data.map(d => d.label);
+      const values = data.map(d => d.value);
+
+      if (config.chartType === 'pie') {
+        option = {
+          color: colors,
+          tooltip: { 
+            trigger: 'item', 
+            formatter: '{b}: {c} ({d}%)',
+            backgroundColor: 'rgba(50, 50, 50, 0.9)',
+            textStyle: { color: '#fff' }
+          },
+          series: [{
+            type: 'pie',
+            radius: ['35%', '65%'],
+            data: data.map((d, i) => ({ 
+              name: d.label, 
+              value: d.value,
+              itemStyle: { color: colors[i % colors.length] }
+            })),
+            label: { 
+              show: true, 
+              formatter: '{b}\n{d}%',
+              fontSize: 11
+            },
+            labelLine: { length: 15, length2: 10 },
+            emphasis: {
+              itemStyle: { shadowBlur: 20, shadowOffsetX: 0, shadowColor: 'rgba(0, 0, 0, 0.5)' }
+            },
+            animationType: 'scale',
+            animationEasing: 'elasticOut'
+          }]
+        };
+      } else {
+        option = {
+          color: colors,
+          tooltip: { 
+            trigger: 'axis', 
+            axisPointer: { type: 'shadow' },
+            backgroundColor: 'rgba(50, 50, 50, 0.9)',
+            textStyle: { color: '#fff' }
+          },
+          grid: { left: '3%', right: '4%', bottom: '15%', top: '8%', containLabel: true },
+          xAxis: {
+            type: 'category',
+            data: labels,
+            axisLabel: { rotate: labels.length > 8 ? 45 : 0, interval: 0 },
+            axisLine: { lineStyle: { color: '#ccc' } }
+          },
+          yAxis: { 
+            type: 'value',
+            splitLine: { lineStyle: { type: 'dashed', color: '#eee' } },
+            axisLine: { show: false }
+          },
+          series: [{
+            type: config.chartType,
+            data: values.map((v, i) => ({
+              value: v,
+              itemStyle: { 
+                color: config.chartType === 'bar' 
+                  ? { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [
+                      { offset: 0, color: colors[0] },
+                      { offset: 1, color: colors[4] }
+                    ]}
+                  : colors[0],
+                borderRadius: config.chartType === 'bar' ? [4, 4, 0, 0] : 0
+              }
+            })),
+            smooth: config.chartType === 'line',
+            areaStyle: config.chartType === 'line' ? { 
+              opacity: 0.3,
+              color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [
+                { offset: 0, color: colors[0] },
+                { offset: 1, color: 'rgba(84, 112, 198, 0.1)' }
+              ]}
+            } : undefined,
+            emphasis: {
+              itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0, 0, 0, 0.3)' }
+            }
+          }]
+        };
+      }
+    }
+
+    this.chartOptions.set(config.id, option);
+  }
+
+  removeChart(config: ChartConfig): void {
+    this.chartConfigs = this.chartConfigs.filter(c => c.id !== config.id);
+    this.chartOptions.delete(config.id);
+    this.cdr.markForCheck();
+  }
+
+  openChartConfig(config: ChartConfig): void {
+    this.editingChart = { ...config };
+    this.showChartConfig = true;
+    this.cdr.markForCheck();
+  }
+
+  saveChartConfig(): void {
+    if (!this.editingChart) return;
+
+    const index = this.chartConfigs.findIndex(c => c.id === this.editingChart!.id);
+    if (index !== -1) {
+      this.chartConfigs[index] = { ...this.editingChart };
+      this.generateChartOption(this.chartConfigs[index]);
+    }
+
+    this.showChartConfig = false;
+    this.editingChart = null;
+    this.cdr.markForCheck();
+  }
+
+  cancelChartConfig(): void {
+    this.showChartConfig = false;
+    this.editingChart = null;
+    this.cdr.markForCheck();
   }
 }

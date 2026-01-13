@@ -1,0 +1,141 @@
+<div class="row">
+  <div class="col-12">
+    <nb-card>
+      <nb-card-header class="d-flex justify-content-between align-items-center">
+        <h4>资源使用分析</h4>
+        <div class="d-flex align-items-center">
+          <nb-select
+            [(selected)]="selectedDays"
+            (selectedChange)="onDaysChange()"
+            class="me-2"
+            size="small"
+          >
+            <nb-option *ngFor="let option of daysOptions" [value]="option.value">
+              {{ option.label }}
+            </nb-option>
+          </nb-select>
+          <button
+            nbButton
+            ghost
+            status="basic"
+            size="small"
+            (click)="goBack()"
+            nbTooltip="返回资源组列表"
+          >
+            <nb-icon icon="arrow-back-outline"></nb-icon>
+            返回
+          </button>
+        </div>
+      </nb-card-header>
+
+      <nb-card-body>
+        <div *ngIf="loading" class="d-flex justify-content-center p-4">
+          <nb-spinner size="large"></nb-spinner>
+        </div>
+
+        <div *ngIf="!loading && analysisData">
+          <nb-alert status="info" class="mb-3">
+            <nb-icon icon="info-outline"></nb-icon>
+            基于过去 {{ selectedDays }} 天的审计日志数据分析，为每个用户提供资源组配置建议。
+            点击用户名可生成对应的 CREATE RESOURCE GROUP SQL 语句。
+          </nb-alert>
+
+          <nb-tabset>
+            <!-- CPU 分析 -->
+            <nb-tab tabTitle="CPU 使用分析">
+              <div class="tab-content">
+                <h5>CPU 使用情况分析</h5>
+                <p class="text-muted">
+                  根据用户的 CPU 使用时间和占比，建议合适的 CPU 权重或独占核数配置。
+                </p>
+
+                <ng2-smart-table
+                  [settings]="cpuSettings"
+                  [source]="cpuSource"
+                >
+                </ng2-smart-table>
+
+                <div *ngIf="cpuSource.count() === 0" class="text-center p-4">
+                  <nb-icon icon="inbox-outline" class="text-muted" style="font-size: 3rem;"></nb-icon>
+                  <p class="text-muted mt-2">没有找到 CPU 使用数据</p>
+                </div>
+              </div>
+            </nb-tab>
+
+            <!-- 内存分析 -->
+            <nb-tab tabTitle="内存使用分析">
+              <div class="tab-content">
+                <h5>内存使用情况分析</h5>
+                <p class="text-muted">
+                  根据用户查询的最大内存使用量，建议合适的内存限制配置。
+                </p>
+
+                <ng2-smart-table
+                  [settings]="memorySettings"
+                  [source]="memorySource"
+                >
+                </ng2-smart-table>
+
+                <div *ngIf="memorySource.count() === 0" class="text-center p-4">
+                  <nb-icon icon="inbox-outline" class="text-muted" style="font-size: 3rem;"></nb-icon>
+                  <p class="text-muted mt-2">没有找到内存使用数据</p>
+                </div>
+              </div>
+            </nb-tab>
+
+            <!-- 并发分析 -->
+            <nb-tab tabTitle="并发使用分析">
+              <div class="tab-content">
+                <h5>并发使用情况分析</h5>
+                <p class="text-muted">
+                  根据用户的查询并发情况，建议合适的并发限制配置。
+                </p>
+
+                <ng2-smart-table
+                  [settings]="concurrencySettings"
+                  [source]="concurrencySource"
+                >
+                </ng2-smart-table>
+
+                <div *ngIf="concurrencySource.count() === 0" class="text-center p-4">
+                  <nb-icon icon="inbox-outline" class="text-muted" style="font-size: 3rem;"></nb-icon>
+                  <p class="text-muted mt-2">没有找到并发使用数据</p>
+                </div>
+              </div>
+            </nb-tab>
+
+            <!-- 配置建议 -->
+            <nb-tab tabTitle="配置建议">
+              <div class="tab-content">
+                <h5>资源组配置建议</h5>
+                <p class="text-muted">
+                  点击下方用户名可生成对应的 CREATE RESOURCE GROUP SQL 语句。
+                </p>
+
+                <div class="row">
+                  <div
+                    *ngFor="let user of analysisData.cpu_analysis"
+                    class="col-md-4 mb-3"
+                  >
+                    <nb-card size="small" class="user-card" (click)="generateResourceGroupSQL(user.user)">
+                      <nb-card-body class="text-center">
+                        <nb-icon icon="person-outline" class="user-icon"></nb-icon>
+                        <h6>{{ user.user }}</h6>
+                        <p class="text-muted small">点击生成 SQL</p>
+                      </nb-card-body>
+                    </nb-card>
+                  </div>
+                </div>
+
+                <div *ngIf="analysisData.cpu_analysis.length === 0" class="text-center p-4">
+                  <nb-icon icon="inbox-outline" class="text-muted" style="font-size: 3rem;"></nb-icon>
+                  <p class="text-muted mt-2">没有找到用户数据</p>
+                </div>
+              </div>
+            </nb-tab>
+          </nb-tabset>
+        </div>
+      </nb-card-body>
+    </nb-card>
+  </div>
+</div>

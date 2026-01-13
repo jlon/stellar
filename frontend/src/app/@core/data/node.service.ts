@@ -485,6 +485,37 @@ export class NodeService {
   diagnoseSQL(clusterId: number, sql: string, database?: string, catalog?: string): Observable<SqlDiagResponse> {
     return this.api.post<SqlDiagResponse>(`/clusters/${clusterId}/sql/diagnose`, { sql, database, catalog });
   }
+
+  listExecutionHistory(limit: number = 50, offset: number = 0): Observable<QueryExecutionHistoryResponse> {
+    return this.api.get<QueryExecutionHistoryResponse>(`/clusters/queries/execution-history`, { limit, offset });
+  }
+
+  deleteExecutionHistory(id: number): Observable<any> {
+    return this.api.delete(`/clusters/queries/execution-history/${id}`);
+  }
+
+  clearExecutionHistory(): Observable<any> {
+    return this.api.delete(`/clusters/queries/execution-history`);
+  }
+}
+
+export interface QueryExecutionHistoryItem {
+  id: number;
+  user_id: number;
+  cluster_id: number;
+  catalog?: string;
+  database_name?: string;
+  sql_statement: string;
+  execution_time_ms?: number;
+  row_count?: number;
+  success: boolean;
+  error_message?: string;
+  created_at: string;
+}
+
+export interface QueryExecutionHistoryResponse {
+  data: QueryExecutionHistoryItem[];
+  total: number;
 }
 
 // SQL Diagnosis Response types
