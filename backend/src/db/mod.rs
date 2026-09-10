@@ -21,50 +21,6 @@ use sqlx::{Database, Pool};
 
 pub use dialect::{LastInsertId, RowsAffected, SqlDialect};
 
-/// 能力 bound 清单：泛型数据库后端上下文的完整能力集合。
-///
-/// sqlx 的多后端抽象存在若干只能按具体后端满足的 bound（`&mut Connection: Executor`、
-/// `Arguments: IntoArguments`、`ColumnIndex`、各值类型的 Encode/Decode/Type）。
-/// 这些 bound 不随 `T: Database` 自动获得，必须显式约束。
-///
-/// 本宏是这些 bound 的**单一事实源**：
-/// - 业务层泛型 impl 块 / 函数：`where app_db_where!(DB)`（impl 块级声明一次，
-///   其全部方法共享，无需逐方法重复）
-///
-/// 注意：where 子句位置不能直接调用宏，因此 `AppDb` trait 定义处维护了一份
-/// 展开后的同内容清单（见下方 where 子句）。**修改本宏时同步修改 trait 定义。**
-///
-/// 新增后端时只需提供 sqlx 的具体能力实现，bound 清单不变。
-#[macro_export]
-macro_rules! app_db_where {
-    ($DB:ident) => {
-        $DB: $crate::db::AppDb,
-        // 连接可作为 Executor（&Pool<DB> / &mut Transaction 执行查询的前提）
-        for<'c> &'c mut <$DB as ::sqlx::Database>::Connection:
-            ::sqlx::Executor<'c, Database = $DB>,
-        // 参数类型可用于 query()/query_with()
-        for<'q> <$DB as ::sqlx::HasArguments<'q>>::Arguments:
-            ::sqlx::IntoArguments<'q, $DB> + Default,
-        // 列索引能力（row.get("col") / row.get(0)）
-        ::std::primitive::usize: ::sqlx::ColumnIndex<<$DB as ::sqlx::Database>::Row>,
-        for<'a> &'a ::std::primitive::str: ::sqlx::ColumnIndex<<$DB as ::sqlx::Database>::Row>,
-        // 业务代码使用的值类型编解码全集
-        for<'q> i64: ::sqlx::Encode<'q, $DB> + ::sqlx::Decode<'q, $DB> + ::sqlx::Type<$DB>,
-        for<'q> i32: ::sqlx::Encode<'q, $DB> + ::sqlx::Decode<'q, $DB> + ::sqlx::Type<$DB>,
-        for<'q> f64: ::sqlx::Encode<'q, $DB> + ::sqlx::Decode<'q, $DB> + ::sqlx::Type<$DB>,
-        for<'q> bool: ::sqlx::Encode<'q, $DB> + ::sqlx::Decode<'q, $DB> + ::sqlx::Type<$DB>,
-        for<'q> ::std::string::String:
-            ::sqlx::Encode<'q, $DB> + ::sqlx::Decode<'q, $DB> + ::sqlx::Type<$DB>,
-        for<'q> &'q ::std::primitive::str: ::sqlx::Encode<'q, $DB> + ::sqlx::Type<$DB>,
-        for<'q> ::chrono::DateTime<::chrono::Utc>:
-            ::sqlx::Encode<'q, $DB> + ::sqlx::Decode<'q, $DB> + ::sqlx::Type<$DB>,
-        for<'q> ::chrono::NaiveDateTime:
-            ::sqlx::Encode<'q, $DB> + ::sqlx::Decode<'q, $DB> + ::sqlx::Type<$DB>,
-        for<'q> ::chrono::NaiveDate:
-            ::sqlx::Encode<'q, $DB> + ::sqlx::Decode<'q, $DB> + ::sqlx::Type<$DB>,
-    };
-}
-
 /// 业务代码统一使用的数据库后端约束。
 ///
 /// 能力打包：
@@ -105,10 +61,12 @@ pub enum DatabaseKind {
 
 impl DatabaseKind {
     /// 从连接串协议识别数据库后端。
+    ///
+    /// `mariadb://` 与 `mysql://` 同归 MySql 后端（与 sqlx 的 URL scheme 集合一致）。
     pub fn from_url(url: &str) -> anyhow::Result<Self> {
         match url.split_once("://") {
             Some(("sqlite", _)) => Ok(Self::Sqlite),
-            Some(("mysql", _)) => Ok(Self::MySql),
+            Some(("mysql", _)) | Some(("mariadb", _)) => Ok(Self::MySql),
             _ => anyhow::bail!("不支持的数据库 URL 协议: {}（支持 sqlite:// 或 mysql://）", url),
         }
     }

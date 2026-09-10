@@ -61,7 +61,12 @@ CREATE TABLE IF NOT EXISTS clusters (
     organization_id BIGINT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    created_by BIGINT
+    created_by BIGINT,
+    -- 等价 SQLite 的 partial unique index（organization_id WHERE is_active = 1）：
+    -- 活跃时置为 organization_id，非活跃为 NULL；UNIQUE 允许多个 NULL，
+    -- 保证每组织至多一个活跃集群。
+    active_org BIGINT GENERATED ALWAYS AS (CASE WHEN is_active = 1 THEN organization_id END) STORED,
+    UNIQUE KEY uk_clusters_active_org (active_org)
 );
 
 CREATE INDEX idx_clusters_name ON clusters(name);
@@ -581,7 +586,7 @@ CREATE INDEX idx_pr_created_at ON permission_requests(created_at DESC);
 -- ========================================
 
 -- Ensure only one active cluster per organization
-CREATE UNIQUE INDEX idx_clusters_org_active ON clusters(organization_id);
+-- partial unique 已由 clusters.active_org 生成列 + UNIQUE KEY 实现
 
 -- ========================================
 -- SECTION 6: TRIGGERS

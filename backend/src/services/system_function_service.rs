@@ -237,7 +237,7 @@ impl<DB: AppDb> SystemFunctionService<DB> {
             sqlx::query(
                 &format!(
                     "INSERT INTO system_function_preferences (cluster_id, function_id, category_order, display_order, is_favorited, updated_at)
-                     VALUES (?, ?, ?, ?, COALESCE((SELECT is_favorited FROM system_function_preferences WHERE cluster_id = ? AND function_id = ?), false), CURRENT_TIMESTAMP)
+                     VALUES (?, ?, ?, ?, COALESCE((SELECT _t.is_favorited FROM (SELECT is_favorited FROM system_function_preferences WHERE cluster_id = ? AND function_id = ?) AS _t), false), CURRENT_TIMESTAMP)
                      {}",
                     DB::upsert_suffix(
                         &["cluster_id", "function_id"],
@@ -286,8 +286,8 @@ impl<DB: AppDb> SystemFunctionService<DB> {
             &format!(
                 "INSERT INTO system_function_preferences (cluster_id, function_id, category_order, display_order, is_favorited, updated_at)
                  VALUES (?, ?, 
-                         COALESCE((SELECT category_order FROM system_function_preferences WHERE cluster_id = ? AND function_id = ?), ?),
-                         COALESCE((SELECT display_order FROM system_function_preferences WHERE cluster_id = ? AND function_id = ?), ?),
+                         COALESCE((SELECT _t.category_order FROM (SELECT category_order FROM system_function_preferences WHERE cluster_id = ? AND function_id = ?) AS _t), ?),
+                         COALESCE((SELECT _t.display_order FROM (SELECT display_order FROM system_function_preferences WHERE cluster_id = ? AND function_id = ?) AS _t), ?),
                          ?, CURRENT_TIMESTAMP)
                  {}",
                 DB::upsert_suffix(
