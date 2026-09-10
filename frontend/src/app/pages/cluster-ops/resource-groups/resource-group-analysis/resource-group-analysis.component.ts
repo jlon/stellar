@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { Router } from '@angular/router';
 import { NbToastrService } from '@nebular/theme';
-import { LocalDataSource } from 'ng2-smart-table';
+import { LocalDataSource } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
@@ -14,6 +14,7 @@ import {
 } from '../models/resource-group.model';
 
 @Component({
+  standalone: false,
   selector: 'ngx-resource-group-analysis',
   templateUrl: './resource-group-analysis.component.html',
   styleUrls: ['./resource-group-analysis.component.scss'],

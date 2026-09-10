@@ -8,11 +8,11 @@
   font-size: 0.8125rem;
   
   &.text-hint {
-    color: #8f9bb3;
+    color: var(--text-hint-color);
   }
   
   &.text-danger {
-    color: #ff3d71;
+    color: var(--color-danger-default);
   }
 }
 
@@ -21,10 +21,10 @@
   align-items: center;
   padding: 0.75rem 1rem;
   margin-bottom: 1.5rem;
-  background-color: #fff4e5;
-  border-left: 3px solid #ffaa00;
+  background-color: var(--color-warning-transparent-100);
+  border-left: 3px solid var(--color-warning-default);
   border-radius: 0.25rem;
-  color: #8f5d00;
+  color: var(--color-warning-default);
   font-size: 0.875rem;
   
   nb-icon {
@@ -39,13 +39,13 @@
   align-items: flex-start;
   padding: 1rem 1.25rem;
   margin-bottom: 1.5rem;
-  background: linear-gradient(135deg, #f7f9fc 0%, #edf1f7 100%);
-  border-left: 3px solid #3366ff;
+  background: var(--background-basic-color-2);
+  border-left: 3px solid var(--color-primary-default);
   border-radius: 0.25rem;
   
   .info-icon {
     font-size: 1.5rem;
-    color: #3366ff;
+    color: var(--color-primary-default);
     margin-right: 1rem;
     flex-shrink: 0;
   }
@@ -56,13 +56,13 @@
     .intro-title {
       font-size: 0.9375rem;
       font-weight: 600;
-      color: #222b45;
+      color: var(--text-basic-color);
       margin: 0 0 0.5rem 0;
     }
     
     .intro-text {
       font-size: 0.875rem;
-      color: #8f9bb3;
+      color: var(--text-hint-color);
       margin: 0;
       line-height: 1.5;
     }
@@ -79,20 +79,20 @@
   
   .empty-icon {
     font-size: 4rem;
-    color: #c5cee0;
+    color: var(--text-disabled-color);
     margin-bottom: 1rem;
   }
   
   .empty-text {
     font-size: 1rem;
     font-weight: 500;
-    color: #8f9bb3;
+    color: var(--text-hint-color);
     margin: 0 0 0.5rem 0;
   }
   
   .empty-hint {
     font-size: 0.875rem;
-    color: #c5cee0;
+    color: var(--text-disabled-color);
     margin: 0;
   }
 }
@@ -102,8 +102,8 @@
   
   nb-card-header {
     padding: 0.75rem 1.25rem;
-    background-color: #f7f9fc;
-    border-bottom: 1px solid #edf1f7;
+    background-color: var(--background-basic-color-2);
+    border-bottom: 1px solid var(--border-basic-color-3);
   }
   
   nb-card-body {
@@ -168,7 +168,7 @@
   
   nb-tabset {
     .tabset {
-      border-bottom: 1px solid #edf1f7;
+      border-bottom: 1px solid var(--border-basic-color-3);
     }
     
     nb-tab {
@@ -188,8 +188,8 @@
   }
   
   nb-card-footer {
-    background-color: #f7f9fc;
-    border-top: 1px solid #edf1f7;
+    background-color: var(--background-basic-color-2);
+    border-top: 1px solid var(--border-basic-color-3);
   }
   
   nb-alert p:last-child {

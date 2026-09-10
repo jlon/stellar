@@ -8,6 +8,10 @@
   gap: 0.5rem;
 }
 
+.form-actions-bar {
+  border-top: 1px solid var(--border-basic-color-3);
+}
+
 .spin {
   animation: spin 1s linear infinite;
 }

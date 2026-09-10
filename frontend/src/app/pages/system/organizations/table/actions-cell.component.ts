@@ -7,6 +7,7 @@ import { AuthService } from '../../../../@core/data/auth.service';
 import { PermissionService } from '../../../../@core/data/permission.service';
 
 @Component({
+  standalone: false,
   selector: 'ngx-organizations-actions-cell',
   template: `
     <div class="actions-container">

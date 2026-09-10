@@ -54,12 +54,12 @@
           <nb-spinner size="large"></nb-spinner>
         </div>
 
-        <ng2-smart-table
+        <angular2-smart-table
           *ngIf="!loading"
           [settings]="settings"
           [source]="source"
         >
-        </ng2-smart-table>
+        </angular2-smart-table>
 
         <div *ngIf="!loading && source.count() === 0" class="text-center p-4">
           <nb-icon icon="inbox-outline" class="text-muted" style="font-size: 3rem;"></nb-icon>

@@ -1,10 +1,10 @@
-import { Component, OnInit, OnDestroy, Input, Output, EventEmitter } from '@angular/core';
+import { Component, OnInit, OnDestroy, Input, Output, EventEmitter, ViewChild, TemplateRef } from '@angular/core';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
-import { LocalDataSource } from 'ng2-smart-table';
+import { LocalDataSource } from 'angular2-smart-table';
 import { PermissionRequestService } from '../../../../@core/data/permission-request.service';
 import { DbUserPermissionDto } from '../../../../@core/data/permission-request.model';
-import { NbToastrService } from '@nebular/theme';
+import { NbDialogService, NbToastrService } from '@nebular/theme';
 
 /**
  * Standard Permission Dashboard Component
@@ -25,6 +25,7 @@ interface PermissionRecord extends DbUserPermissionDto {
 }
 
 @Component({
+  standalone: false,
   selector: 'ngx-permission-dashboard-standard',
   templateUrl: './permission-dashboard-standard.component.html',
   styleUrls: ['./permission-dashboard-standard.component.scss'],
@@ -95,9 +96,8 @@ export class PermissionDashboardStandardComponent implements OnInit, OnDestroy {
     tablePermissions: 0,
   };
 
-  // 选中的权限（用于详情展示）
   selectedPermission: PermissionRecord | null = null;
-  showDetailDialog = false;
+  @ViewChild('detailDialog') detailDialog: TemplateRef<any>;
 
   // 角色权限详情
   rolePermissions: DbUserPermissionDto[] = [];
@@ -108,6 +108,7 @@ export class PermissionDashboardStandardComponent implements OnInit, OnDestroy {
   constructor(
     private permissionService: PermissionRequestService,
     private toastr: NbToastrService,
+    private dialogService: NbDialogService,
   ) {}
 
   ngOnInit(): void {
@@ -235,13 +236,13 @@ export class PermissionDashboardStandardComponent implements OnInit, OnDestroy {
    */
   viewPermissionDetail(permission: PermissionRecord): void {
     this.selectedPermission = permission;
-    this.showDetailDialog = true;
     this.rolePermissions = [];
 
-    // 如果是角色类型，加载角色的具体权限
     if (this.isRolePermission) {
       this.loadRolePermissions(permission.resource_path);
     }
+
+    this.dialogService.open(this.detailDialog);
   }
 
   /**
@@ -269,18 +270,6 @@ export class PermissionDashboardStandardComponent implements OnInit, OnDestroy {
     });
   }
 
-  /**
-   * 关闭详情对话框
-   */
-  closeDetailDialog(): void {
-    this.showDetailDialog = false;
-    this.selectedPermission = null;
-  }
-
-  /**
-   * 申请撤销权限
-   * 跳转到权限申请页面，预填撤销信息
-   */
   requestRevoke(permission: PermissionRecord): void {
     // 发送事件给父组件，切换到权限申请Tab并预填信息
     this.switchToRequest.emit({

@@ -18,8 +18,10 @@ import {
 } from '../../../@core/data/overview.service';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
 import { AuthService } from '../../../@core/data/auth.service';
+import { themeChartChrome, colorWithAlpha } from '../../../@core/utils/theme-color';
 
 @Component({
+  standalone: false,
   selector: 'ngx-cluster-overview',
   templateUrl: './cluster-overview.component.html',
   styleUrls: ['./cluster-overview.component.scss'],
@@ -103,19 +105,8 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
     // Load Nebular theme colors
     this.themeService.getJsTheme()
       .pipe(takeUntil(this.destroy$))
-      .subscribe(theme => {
-        const colors = theme.variables;
-        this.chartColors = {
-          primary: colors.primary,
-          success: colors.success,
-          info: colors.info,
-          warning: colors.warning,
-          danger: colors.danger,
-          cardBg: colors.cardBackgroundColor,
-          textBasic: colors.textBasicColor,
-          textHint: colors.textHintColor,
-          border: colors.borderColor || colors.dividerColor,
-        };
+      .subscribe(() => {
+        this.chartColors = themeChartChrome();
         this.cdr.markForCheck();
       });
 
@@ -601,20 +592,19 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
         axisPointer: {
           type: 'line',
           lineStyle: {
-            color: '#d0d7e3',
+            color: this.chartColors.border,
             width: 1,
             type: 'solid',
           },
         },
-        backgroundColor: 'rgba(255, 255, 255, 0.96)',
-        borderColor: '#e4e9f2',
+        backgroundColor: this.chartColors.cardBg,
+        borderColor: this.chartColors.border,
         borderWidth: 1,
         textStyle: {
-          color: '#2e3a59',
+          color: this.chartColors.textBasic,
           fontSize: 11,
         },
         padding: [8, 12],
-        extraCssText: 'box-shadow: 0 2px 8px rgba(0,0,0,0.08);',
       },
       xAxis: {
         type: 'category',
@@ -622,21 +612,21 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
         show: true,
         axisLabel: {
           show: true,
-          color: '#8f9bb3',
+          color: this.chartColors.textHint,
           fontSize: 11,
           margin: 8,
         },
         axisLine: {
           show: true,
           lineStyle: {
-            color: '#e4e9f2',
+            color: this.chartColors.border,
             width: 1,
           },
         },
         axisTick: {
           show: true,
           lineStyle: {
-            color: '#e4e9f2',
+            color: this.chartColors.border,
           },
         },
       },
@@ -645,27 +635,27 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
         show: true,
         axisLabel: {
           show: true,
-          color: '#8f9bb3',
+          color: this.chartColors.textHint,
           fontSize: 11,
           margin: 8,
         },
         axisLine: {
           show: true,
           lineStyle: {
-            color: '#e4e9f2',
+            color: this.chartColors.border,
             width: 1,
           },
         },
         axisTick: {
           show: true,
           lineStyle: {
-            color: '#e4e9f2',
+            color: this.chartColors.border,
           },
         },
         splitLine: {
           show: true,
           lineStyle: {
-            color: '#e4e9f2',
+            color: this.chartColors.border,
             width: 1,
             type: 'solid',
           },
@@ -918,7 +908,7 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
           itemStyle: {
             color: color,
             borderWidth: 2,
-            borderColor: '#fff',
+            borderColor: this.chartColors.cardBg,
           },
           lineStyle: { width: 3 },
           areaStyle: {
@@ -1343,17 +1333,7 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
    * Used for chart gradient effects with Nebular theme colors
    */
   private hexToRgba(hex: string, alpha: number): string {
-    if (!hex) return `rgba(51, 102, 255, ${alpha})`; // fallback color
-    
-    // Remove # if present
-    hex = hex.replace('#', '');
-    
-    // Parse hex values
-    const r = parseInt(hex.substring(0, 2), 16);
-    const g = parseInt(hex.substring(2, 4), 16);
-    const b = parseInt(hex.substring(4, 6), 16);
-    
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    return colorWithAlpha(hex || this.chartColors.primary, alpha);
   }
 
   /**

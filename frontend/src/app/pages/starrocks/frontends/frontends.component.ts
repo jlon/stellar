@@ -2,13 +2,14 @@ import { Component, OnInit, OnDestroy } from '@angular/core';
 import { interval, Subject } from 'rxjs';
 import { takeUntil, switchMap } from 'rxjs/operators';
 import { NbToastrService } from '@nebular/theme';
-import { LocalDataSource } from 'ng2-smart-table';
+import { LocalDataSource } from 'angular2-smart-table';
 import { NodeService } from '../../../@core/data/node.service';
 import { ClusterService, Cluster } from '../../../@core/data/cluster.service';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
 import { ErrorHandler } from '../../../@core/utils/error-handler';
 
 @Component({
+  standalone: false,
   selector: 'ngx-frontends',
   templateUrl: './frontends.component.html',
   styleUrls: ['./frontends.component.scss'],
@@ -49,6 +50,7 @@ export class FrontendsComponent implements OnInit, OnDestroy {
       Role: { 
         title: '角色', 
         type: 'html', 
+        sanitizer: { bypassHtml: true },
         width: '9%',
         valuePrepareFunction: (value: string) => {
           if (value === 'LEADER') {
@@ -64,6 +66,7 @@ export class FrontendsComponent implements OnInit, OnDestroy {
       Alive: {
         title: '状态',
         type: 'html',
+        sanitizer: { bypassHtml: true },
         width: '7%',
         valuePrepareFunction: (value: string) => {
           const status = value === 'true' ? 'success' : 'danger';

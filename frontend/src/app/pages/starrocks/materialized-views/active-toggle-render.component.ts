@@ -1,7 +1,7 @@
 import { Component, Input, Output, EventEmitter, OnInit } from '@angular/core';
-import { ViewCell } from 'ng2-smart-table';
 
 @Component({
+  standalone: false,
   selector: 'ngx-active-toggle-render',
   template: `
     <div class="d-flex align-items-center">
@@ -36,7 +36,7 @@ import { ViewCell } from 'ng2-smart-table';
     }
   `]
 })
-export class ActiveToggleRenderComponent implements ViewCell, OnInit {
+export class ActiveToggleRenderComponent implements OnInit {
   @Input() value: string | number;
   @Input() rowData: any;
   @Output() toggle: EventEmitter<any> = new EventEmitter();

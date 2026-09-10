@@ -1,6 +1,7 @@
 import { Component } from '@angular/core';
 
 @Component({
+  standalone: false,
   selector: 'ngx-two-columns-layout',
   styleUrls: ['./two-columns.layout.scss'],
   template: `

@@ -333,9 +333,8 @@
         user-select: none;
         
         &:hover {
-          background-color: rgba(0, 0, 0, 0.05);
+          background-color: nb-theme(background-basic-color-3);
           transform: translateY(-1px);
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         }
         
         &:active {
@@ -392,9 +391,8 @@
         user-select: none;
         
         &:hover {
-          background-color: rgba(0, 0, 0, 0.05);
+          background-color: nb-theme(background-basic-color-3);
           transform: translateY(-1px);
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         }
         
         &:active {
@@ -599,15 +597,15 @@
   font-size: 0.875rem;
   
   &.text-success {
-    background-color: rgba(0, 214, 143, 0.1);
+    background-color: nb-theme(color-success-transparent-100);
   }
   
   &.text-warning {
-    background-color: rgba(255, 170, 0, 0.1);
+    background-color: nb-theme(color-warning-transparent-100);
   }
   
   &.text-danger {
-    background-color: rgba(255, 61, 113, 0.1);
+    background-color: nb-theme(color-danger-transparent-100);
   }
 }
 
@@ -616,9 +614,8 @@
   transition: all 0.2s ease;
   
   &:hover {
-    background-color: rgba(0, 0, 0, 0.05);
+    background-color: nb-theme(background-basic-color-3);
     transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   }
   
   &:active {

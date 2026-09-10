@@ -12,13 +12,13 @@
   
   .metric-hint {
     font-size: 0.875rem;
-    color: rgba(143, 150, 170, 0.6);
+    color: var(--text-disabled-color);
     cursor: help;
     transition: color 0.15s ease;
     flex-shrink: 0;
     
     &:hover {
-      color: rgba(143, 150, 170, 0.9);
+      color: var(--text-hint-color);
     }
   }
 }
@@ -31,7 +31,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 0.5rem 1rem !important;
-  border-bottom: 1px solid var(--border-basic-color-3, #e4e9f2);
+  border-bottom: 1px solid var(--border-basic-color-3);
   min-height: auto !important;
   
   .header-title-row {
@@ -43,15 +43,15 @@
     .header-title {
       font-size: 0.9375rem;
       font-weight: 600;
-      color: var(--text-basic-color, #222b45);
+      color: var(--text-basic-color);
       white-space: nowrap;
     }
     
     .header-query-id {
       font-size: 0.75rem;
-      color: var(--text-hint-color, #8f9bb3);
+      color: var(--text-hint-color);
       font-family: var(--font-family-monospace, monospace);
-      background: var(--background-basic-color-2, #f7f9fc);
+      background: var(--background-basic-color-2);
       padding: 0.125rem 0.5rem;
       border-radius: 0.25rem;
       white-space: nowrap;
@@ -77,7 +77,7 @@
 @mixin themed-scrollbar {
   // Firefox
   scrollbar-width: thin;
-  scrollbar-color: rgba(143, 150, 170, 0.45) transparent;
+  scrollbar-color: var(--scrollbar-color) transparent;
 
   // Webkit browsers (Chrome, Safari, Edge)
   &::-webkit-scrollbar {
@@ -90,12 +90,12 @@
   }
 
   &::-webkit-scrollbar-thumb {
-    background: rgba(143, 150, 170, 0.45);
+    background: var(--scrollbar-color);
     border-radius: 3px;
   }
 
   &::-webkit-scrollbar-thumb:hover {
-    background: rgba(143, 150, 170, 0.65);
+    background: var(--color-basic-600);
   }
 }
 
@@ -129,7 +129,8 @@
     margin: 0;
     padding: 1rem;
     padding-top: 2rem;
-    background-color: #f7f9fc;
+    background-color: var(--background-basic-color-2);
+    color: var(--text-basic-color);
     border-radius: 4px;
   }
 }
@@ -154,7 +155,7 @@
   height: 100%;
   width: 100%;
   max-width: 100%;  // Prevent expansion beyond parent
-  background-color: #f5f7fa;
+  background-color: var(--background-basic-color-2);
   position: relative;
   overflow: hidden;
   box-sizing: border-box;
@@ -176,7 +177,7 @@
   flex: 1 1 0;  // Allow shrink and grow, basis 0
   min-width: 0;  // Critical: allow flex item to shrink below content size
   position: relative;
-  background-color: #f5f7fa;
+  background-color: var(--background-basic-color-2);
   overflow: hidden;
   display: flex;
   justify-content: center;
@@ -187,9 +188,9 @@
     top: 16px;
     right: 16px;
     z-index: 100;
-    background: rgba(255, 255, 255, 0.9);
+    background: var(--background-basic-color-1);
     border-radius: 4px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 2px 8px var(--color-basic-transparent-400);
     padding: 4px;
     display: flex;
     gap: 4px;
@@ -203,9 +204,9 @@
     justify-content: center;
     align-items: center;
     // Tech-style gradient background with subtle dot grid
-    background: 
-      radial-gradient(circle at 1px 1px, rgba(0, 0, 0, 0.03) 1px, transparent 0),
-      linear-gradient(180deg, #f8fafd 0%, #eef2f8 100%);
+    background:
+      radial-gradient(circle at 1px 1px, var(--color-basic-transparent-400) 1px, transparent 0),
+      var(--background-basic-color-2);
     background-size: 24px 24px, 100% 100%;
     @include themed-scrollbar;
   }
@@ -231,15 +232,15 @@
 // ============================================
 .dag-node {
   position: absolute;
-  background: #ffffff;
-  border: 1px solid #d8dee7;
+  background: var(--background-basic-color-1);
+  border: 1px solid var(--border-basic-color-4);
   border-radius: 6px;
   cursor: pointer;
   box-sizing: border-box;
   z-index: 10;
   min-width: 200px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.1);
+  box-shadow: 0 4px 12px var(--color-basic-transparent-200);
   // Only transition box-shadow, not all properties - prevents blur
   transition: box-shadow 0.2s ease;
   overflow: hidden;
@@ -271,44 +272,44 @@
   // The inset box-shadow was creating an additional compositing layer that blurred the node
   
   &:hover {
-    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
+    box-shadow: 0 8px 24px var(--color-basic-transparent-400);
     z-index: 20;
     // Ensure hover state maintains crisp rendering
     // opacity stays at 0.999 (no change needed, already creates compositing layer)
   }
   
   &.selected {
-    border: 2px solid #1890ff;
-    box-shadow: 0 8px 20px rgba(24, 144, 255, 0.2),
-                0 0 0 3px rgba(24, 144, 255, 0.1);
+    border: 2px solid var(--color-primary-default);
+    box-shadow: 0 8px 20px var(--color-primary-transparent-300),
+                0 0 0 3px var(--color-primary-transparent-100);
   }
 
   // Node Header - Dynamic colors
   .node-header {
     padding: 8px 14px;
-    border-bottom: 1px solid #ccd2df;
+    border-bottom: 1px solid var(--border-basic-color-4);
     position: relative;
     // SIMPLIFIED: Use solid color instead of gradient for crisp rendering
     // Gradients can blur when parent is scaled
-    background: #f0f2f5;
+    background: var(--background-basic-color-3);
     
     &.header-gray {
       // SIMPLIFIED: Solid color for crisp rendering
-      background: #d4d9e0;
-      border-bottom-color: #b5bccb;
-      .node-title { color: #1f2740; }
+      background: var(--background-basic-color-4);
+      border-bottom-color: var(--border-basic-color-5);
+      .node-title { color: var(--text-basic-color); }
     }
     
     &.header-orange {
       // SIMPLIFIED: Solid color for crisp rendering
-      background: #fa8c16;
-      .node-title { color: #fff; }
+      background: var(--color-warning-default);
+      .node-title { color: var(--text-control-color); }
     }
     
     &.header-red {
       // SIMPLIFIED: Solid color for crisp rendering
-      background: #cf1322;
-      .node-title { color: #fff; }
+      background: var(--color-danger-default);
+      .node-title { color: var(--text-control-color); }
     }
     
     .node-title {
@@ -324,7 +325,7 @@
       width: 0;
       height: 0;
       border-left: 12px solid transparent;
-      border-top: 12px solid #faad14;
+      border-top: 12px solid var(--color-warning-default);
     }
 
     .diagnostic-indicator {
@@ -335,17 +336,17 @@
       line-height: 1;
       // REMOVED filter: drop-shadow - filters cause blur when parent is scaled
       // Use text-shadow instead for crisp rendering
-      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+      text-shadow: 0 1px 2px var(--color-basic-transparent-300);
       z-index: 1;
     }
   }
 
   .node-body {
     padding: 10px 14px;
-    background: #fff;
+    background: var(--background-basic-color-1);
     
     .id-row {
-      color: #9aa0ac;
+      color: var(--text-hint-color);
       font-size: 11px;
       margin-bottom: 6px;
     }
@@ -358,20 +359,20 @@
       
       .time-value {
         font-size: 11px;
-        color: #646b79;
+        color: var(--text-hint-color);
       }
       
       .pct-value {
         font-size: 15px;
         font-weight: 600;
-        color: #222b45;
+        color: var(--text-basic-color);
       }
     }
   }
 
   .node-bottom-progress {
     height: 3px;
-    background: #edf0f5;
+    background: var(--background-basic-color-3);
     border-radius: 0 0 6px 6px;
     overflow: hidden;
     
@@ -393,7 +394,7 @@
         background: linear-gradient(
           90deg,
           transparent 0%,
-          rgba(255, 255, 255, 0.3) 50%,
+          var(--color-basic-control-transparent-400) 50%,
           transparent 100%
         );
         animation: progressShine 2s ease-in-out infinite;
@@ -418,19 +419,19 @@
 
   // Top 1 Node (RED) - Most time consuming with pulse glow effect
   &.is-top-1 {
-    border-color: #cf1322;
+    border-color: var(--color-danger-default);
     animation: pulseGlow 2s ease-in-out infinite;
     
     .node-header.header-red {
       // SIMPLIFIED: Solid color for crisp rendering
-      background: #cf1322;
+      background: var(--color-danger-default);
     }
     
     .node-body {
-      background: #fff1f0;
+      background: var(--color-danger-transparent-100);
       
       .pct-value {
-        color: #cf1322;
+        color: var(--color-danger-default);
         font-size: 16px;
         font-weight: 700;
       }
@@ -439,47 +440,47 @@
     // Top 1 also shows progress bar (red color)
     .node-bottom-progress .progress-bar {
       // SIMPLIFIED: Solid color for crisp rendering
-      background: #cf1322 !important;
+      background: var(--color-danger-default) !important;
     }
   }
   
   // Pulse glow animation for Top 1 node
   @keyframes pulseGlow {
     0%, 100% {
-      box-shadow: 0 6px 14px rgba(207, 19, 34, 0.25),
-                  0 0 0 0 rgba(207, 19, 34, 0.4);
+      box-shadow: 0 6px 14px var(--color-danger-transparent-300),
+                  0 0 0 0 var(--color-danger-transparent-500);
     }
     50% {
-      box-shadow: 0 8px 20px rgba(207, 19, 34, 0.35),
-                  0 0 0 8px rgba(207, 19, 34, 0);
+      box-shadow: 0 8px 20px var(--color-danger-transparent-400),
+                  0 0 0 8px transparent;
     }
   }
 
   &.is-top-node:not(.is-top-1) {
-    border-color: #f7b955;
-    box-shadow: 0 8px 18px rgba(250, 140, 22, 0.2);
+    border-color: var(--color-warning-default);
+    box-shadow: 0 8px 18px var(--color-warning-transparent-300);
     
     .pct-value {
-      color: #fa8c16;
+      color: var(--color-warning-default);
     }
   }
 
   // SIMPLIFIED: Use solid colors instead of gradients for crisp rendering
   &.node-scan .node-body,
   &.node-join .node-body {
-    background: #fffbf5;
+    background: var(--color-warning-transparent-100);
   }
 
   &.node-project .node-body {
-    background: #f7f8fc;
+    background: var(--background-basic-color-2);
   }
 
   &.node-exchange .node-body {
-    background: #f8f8f8;
+    background: var(--background-basic-color-2);
   }
 
   &.node-agg .node-body {
-    background: #fffaf5;
+    background: var(--color-warning-transparent-100);
   }
 }
 
@@ -511,10 +512,10 @@
   
   // Animated flow overlay - data flowing along edges
   .edge-flow {
-    stroke: rgba(255, 255, 255, 0.9);
+    stroke: var(--text-control-color);
     stroke-dasharray: 6, 10;
     animation: dataFlow 1.2s linear infinite;
-    filter: drop-shadow(0 0 2px rgba(24, 144, 255, 0.6));
+    filter: drop-shadow(0 0 2px var(--color-primary-transparent-600));
   }
 }
 
@@ -583,16 +584,16 @@
   position: absolute;
   transform: translate(-50%, -50%);
   font-size: 11px;
-  color: #1f2540;
+  color: var(--text-basic-color);
   font-weight: 500;
   white-space: nowrap;
   pointer-events: none;
-  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  background: var(--background-basic-color-1);
   padding: 4px 14px;
   border-radius: 999px;
-  border: 1px solid rgba(175, 183, 198, 0.6);
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12),
-              0 1px 3px rgba(15, 23, 42, 0.08);
+  border: 1px solid var(--border-basic-color-4);
+  box-shadow: 0 4px 12px var(--color-basic-transparent-300),
+              0 1px 3px var(--color-basic-transparent-200);
   animation: labelFloat 0.5s ease-out backwards;
   animation-delay: 0.3s;
   
@@ -607,7 +608,7 @@
     background: linear-gradient(
       90deg,
       transparent,
-      rgba(255, 255, 255, 0.4),
+      var(--color-basic-control-transparent-500),
       transparent
     );
     animation: shimmer 3s ease-in-out infinite;
@@ -634,11 +635,11 @@
   flex-shrink: 0;
   
   &:hover {
-    background: rgba(24, 144, 255, 0.3);
+    background: var(--color-primary-transparent-400);
   }
   
   &:active {
-    background: rgba(24, 144, 255, 0.5);
+    background: var(--color-primary-transparent-600);
   }
   
   &.collapsed {
@@ -656,8 +657,8 @@
   box-sizing: border-box;
   
   // Layout
-  background: #fff;
-  border-left: 1px solid #e8e8e8;
+  background: var(--background-basic-color-1);
+  border-left: 1px solid var(--border-basic-color-3);
   display: flex;
   flex-direction: column;
   z-index: 20;
@@ -678,7 +679,7 @@
   }
 
   .right-section {
-    border-bottom: 1px solid #f0f0f0;
+    border-bottom: 1px solid var(--border-basic-color-3);
     width: 100%;
     box-sizing: border-box;
     flex-shrink: 0;  // Prevent section from shrinking
@@ -687,14 +688,14 @@
       display: flex;
       align-items: center;
       padding: 12px 16px;
-      background: #fafafa;
-      border-bottom: 1px solid #f0f0f0;
+      background: var(--background-basic-color-2);
+      border-bottom: 1px solid var(--border-basic-color-3);
       box-sizing: border-box;
       
       .title {
         font-weight: 600;
         font-size: 13px;
-        color: #333;
+        color: var(--text-basic-color);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -702,7 +703,7 @@
       
       .link {
         margin-left: 12px;
-        color: #1890ff;
+        color: var(--color-primary-default);
         font-size: 12px;
         cursor: pointer;
         flex-shrink: 0;
@@ -712,7 +713,7 @@
       
       .collapse-toggle {
         margin-left: auto;
-        color: #1890ff;
+        color: var(--color-primary-default);
         font-size: 12px;
         cursor: pointer;
         flex-shrink: 0;
@@ -720,8 +721,8 @@
       
       .warning-badge {
         margin-left: 8px;
-        background: #ff4d4f;
-        color: #fff;
+        background: var(--color-danger-default);
+        color: var(--text-control-color);
         border-radius: 50%;
         width: 18px;
         height: 18px;
@@ -759,9 +760,9 @@
     th {
       text-align: left;
       padding: 6px 8px;
-      color: #8c8c8c;
+      color: var(--text-hint-color);
       font-weight: normal;
-      border-bottom: 1px solid #f0f0f0;
+      border-bottom: 1px solid var(--border-basic-color-3);
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -769,7 +770,7 @@
     
     td {
       padding: 8px;
-      border-bottom: 1px solid #f5f5f5;
+      border-bottom: 1px solid var(--border-basic-color-3);
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -778,12 +779,12 @@
     tr {
       cursor: pointer;
       
-      &:hover { background: #fafafa; }
-      &.selected { background: #e6f7ff; }
+      &:hover { background: var(--background-basic-color-2); }
+      &.selected { background: var(--color-info-transparent-100); }
     }
     
     .node-name {
-      color: #333;
+      color: var(--text-basic-color);
       max-width: 180px;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -792,7 +793,7 @@
     
     .node-time, .node-memory {
       text-align: right;
-      color: #666;
+      color: var(--text-hint-color);
       width: 80px;  // Fixed width for value column
     }
   }
@@ -804,7 +805,7 @@
       
       .label {
         font-size: 12px;
-        color: #333;
+        color: var(--text-basic-color);
         font-weight: 500;
       }
     }
@@ -819,8 +820,8 @@
       .bar-fill {
         height: 100%;
         
-        &.io { background: #13c2c2; }
-        &.processing { background: #1890ff; }
+        &.io { background: var(--color-info-default); }
+        &.processing { background: var(--color-primary-default); }
       }
     }
     
@@ -838,19 +839,19 @@
           border-radius: 50%;
           margin-right: 8px;
           
-          &.io { background: #13c2c2; }
-          &.processing { background: #1890ff; }
+          &.io { background: var(--color-info-default); }
+          &.processing { background: var(--color-primary-default); }
         }
         
         .name {
           font-size: 12px;
-          color: #333;
+          color: var(--text-basic-color);
         }
         
         .value {
           margin-left: auto;
           font-size: 12px;
-          color: #666;
+          color: var(--text-hint-color);
         }
       }
       
@@ -859,7 +860,7 @@
         justify-content: space-between;
         padding: 4px 0 4px 16px;
         font-size: 11px;
-        color: #8c8c8c;
+        color: var(--text-hint-color);
       }
 
       // Sub-list for metrics under a group
@@ -871,23 +872,23 @@
           justify-content: space-between;
           padding: 4px 0;
           font-size: 11px;
-          border-bottom: 1px solid #f5f5f5;
+          border-bottom: 1px solid var(--border-basic-color-3);
           
           .metric-label {
-            color: #8c8c8c;
+            color: var(--text-hint-color);
             display: flex;
             align-items: center;
             gap: 4px;
             
             .metric-hint {
               font-size: 10px;
-              color: #bfbfbf;
+              color: var(--text-disabled-color);
               cursor: help;
             }
           }
           
           span:last-child {
-            color: #595959;
+            color: var(--text-hint-color);
           }
         }
       }
@@ -897,11 +898,11 @@
     .io-stats-group {
       margin-top: 12px;
       padding-top: 12px;
-      border-top: 1px dashed #e8e8e8;
+      border-top: 1px dashed var(--border-basic-color-3);
       
       .metric-header .name {
         font-weight: 600;
-        color: #333;
+        color: var(--text-basic-color);
       }
     }
 
@@ -912,9 +913,9 @@
       gap: 8px;
       padding: 10px 12px;
       margin: 12px 0;
-      background: rgba(255, 170, 0, 0.08);
+      background: var(--color-warning-transparent-100);
       border-radius: 4px;
-      border-left: 3px solid #ffaa00;
+      border-left: 3px solid var(--color-warning-default);
       
       .diag-icon {
         font-size: 14px;
@@ -922,12 +923,12 @@
       
       .diag-text {
         font-size: 12px;
-        color: #595959;
+        color: var(--text-hint-color);
       }
       
       .diag-link {
         margin-left: auto;
-        color: #1890ff;
+        color: var(--color-primary-default);
         font-size: 12px;
         cursor: pointer;
         
@@ -941,7 +942,7 @@
     .other-metrics {
       margin-top: 12px;
       padding-top: 12px;
-      border-top: 1px dashed #e8e8e8;
+      border-top: 1px dashed var(--border-basic-color-3);
     }
     
     .metrics-list-simple {
@@ -957,12 +958,12 @@
         justify-content: space-between;
         padding: 6px 0;
         font-size: 12px;
-        border-bottom: 1px solid #f5f5f5;
+        border-bottom: 1px solid var(--border-basic-color-3);
         box-sizing: border-box;
         min-width: 0;  // Allow flex items to shrink below content size
         
         span:first-child {
-          color: #666;
+          color: var(--text-hint-color);
           flex-shrink: 0;
           max-width: 50%;
           overflow: hidden;
@@ -971,7 +972,7 @@
         }
 
         span:last-child {
-          color: #333;
+          color: var(--text-basic-color);
           text-align: right;
           min-width: 0;  // Allow shrinking
           overflow: hidden;
@@ -997,7 +998,7 @@
         
         .text {
           font-size: 12px;
-          color: #333;
+          color: var(--text-basic-color);
           line-height: 1.5;
         }
       }
@@ -1006,12 +1007,12 @@
       .diagnosis-item-detailed {
         padding: 12px;
         margin-bottom: 8px;
-        background: rgba(143, 150, 170, 0.04);
+        background: var(--color-basic-transparent-100);
         border-radius: 6px;
         border-left: 3px solid transparent;
         
         &:hover {
-          background: rgba(143, 150, 170, 0.08);
+          background: var(--color-basic-transparent-100);
         }
         
         .diag-header {
@@ -1028,30 +1029,30 @@
             text-transform: uppercase;
             
             &.badge-danger {
-              background: rgba(255, 61, 113, 0.15);
-              color: #ff3d71;
+              background: var(--color-danger-transparent-200);
+              color: var(--color-danger-default);
             }
             &.badge-warning {
-              background: rgba(255, 170, 0, 0.15);
-              color: #ffaa00;
+              background: var(--color-warning-transparent-200);
+              color: var(--color-warning-default);
             }
             &.badge-info {
-              background: rgba(0, 149, 255, 0.15);
-              color: #0095ff;
+              background: var(--color-info-transparent-200);
+              color: var(--color-info-default);
             }
           }
           
           .diag-name {
             font-size: 12px;
             font-weight: 600;
-            color: #222b45;
+            color: var(--text-basic-color);
           }
 
           .node-count-badge {
             margin-left: auto;
             font-size: 10px;
-            color: #8f9bb3;
-            background: rgba(143, 155, 179, 0.1);
+            color: var(--text-hint-color);
+            background: var(--color-basic-transparent-200);
             padding: 2px 6px;
             border-radius: 10px;
           }
@@ -1059,7 +1060,7 @@
         
         .diag-message {
           font-size: 12px;
-          color: #333;
+          color: var(--text-basic-color);
           line-height: 1.5;
           margin-bottom: 6px;
         }
@@ -1069,9 +1070,9 @@
           align-items: flex-start;
           gap: 6px;
           font-size: 11px;
-          color: #666;
-          background: rgba(0, 149, 255, 0.05);
-          border-left: 2px solid #0095ff;
+          color: var(--text-hint-color);
+          background: var(--color-info-transparent-100);
+          border-left: 2px solid var(--color-info-default);
           padding: 8px 10px;
           margin-bottom: 8px;
           border-radius: 0 4px 4px 0;
@@ -1122,7 +1123,7 @@
             align-items: flex-start;
             gap: 6px;
             font-size: 11px;
-            color: #555;
+            color: var(--text-hint-color);
             padding: 2px 0;
             
             .icon {
@@ -1132,7 +1133,7 @@
         }
         
         .diag-params {
-          background: rgba(0, 149, 255, 0.05);
+          background: var(--color-info-transparent-100);
           border-radius: 4px;
           padding: 8px;
           
@@ -1156,15 +1157,15 @@
               .param-name {
                 font-size: 12px;
                 font-weight: 600;
-                color: #222b45;
+                color: var(--text-basic-color);
               }
               
               .param-type {
                 font-size: 9px;
                 padding: 1px 4px;
                 border-radius: 2px;
-                background: rgba(143, 150, 170, 0.15);
-                color: #666;
+                background: var(--color-basic-transparent-200);
+                color: var(--text-hint-color);
               }
             }
             
@@ -1172,7 +1173,7 @@
               font-size: 11px;
               margin-bottom: 4px;
               padding-left: 20px;
-              color: #666;
+              color: var(--text-hint-color);
               line-height: 1.4;
             }
             
@@ -1191,7 +1192,7 @@
               }
               
               .impact-text {
-                color: #00d68f;
+                color: var(--color-success-default);
                 line-height: 1.4;
               }
             }
@@ -1206,14 +1207,14 @@
               flex-wrap: wrap;
               
               code {
-                background: rgba(143, 150, 170, 0.1);
+                background: var(--color-basic-transparent-200);
                 padding: 1px 4px;
                 border-radius: 2px;
                 font-family: 'Monaco', 'Menlo', monospace;
               }
               
               .recommended-value {
-                color: #0095ff;
+                color: var(--color-info-default);
                 font-weight: 600;
               }
             }
@@ -1223,11 +1224,11 @@
               margin-bottom: 4px;
               
               code {
-                background: rgba(143, 150, 170, 0.1);
+                background: var(--color-basic-transparent-200);
                 padding: 1px 4px;
                 border-radius: 2px;
                 font-family: 'Monaco', 'Menlo', monospace;
-                color: #0095ff;
+                color: var(--color-info-default);
               }
             }
             
@@ -1238,8 +1239,8 @@
                 display: block;
                 font-size: 11px;
                 padding: 6px 8px;
-                background: #1a1a2e;
-                color: #00d68f;
+                background: var(--background-basic-color-3);
+                color: var(--color-success-default);
                 border-radius: 4px;
                 font-family: 'Monaco', 'Menlo', monospace;
                 cursor: pointer;
@@ -1247,7 +1248,7 @@
                 word-break: break-all;
                 
                 &:hover {
-                  background: #252542;
+                  background: var(--background-basic-color-4);
                 }
               }
             }
@@ -1257,7 +1258,7 @@
     }
     
     .empty-diagnosis {
-      color: #999;
+      color: var(--text-hint-color);
       font-size: 12px;
       text-align: center;
       padding: 20px 0;
@@ -1279,13 +1280,13 @@
       align-items: flex-start;
       gap: 8px;
       padding: 10px 12px;
-      background: linear-gradient(135deg, rgba(255, 170, 0, 0.08) 0%, rgba(255, 170, 0, 0.03) 100%);
+      background: linear-gradient(135deg, var(--color-warning-transparent-100) 0%, var(--color-warning-transparent-100) 100%);
       border-radius: 6px;
-      border-left: 3px solid #ffaa00;
+      border-left: 3px solid var(--color-warning-default);
       margin-bottom: 12px;
       font-size: 12px;
       line-height: 1.5;
-      color: #222b45;
+      color: var(--text-basic-color);
       
       nb-icon {
         font-size: 16px;
@@ -1296,11 +1297,11 @@
     
     .root-cause-list {
       .root-cause-item {
-        background: rgba(143, 150, 170, 0.04);
+        background: var(--color-basic-transparent-100);
         border-radius: 6px;
         padding: 10px 12px;
         margin-bottom: 10px;
-        border-left: 3px solid #598bff;
+        border-left: 3px solid var(--color-primary-default);
         transition: all 0.15s ease;
         
         &:last-child {
@@ -1308,12 +1309,12 @@
         }
         
         &.high-impact {
-          border-left-color: #ff3d71;
-          background: rgba(255, 61, 113, 0.04);
+          border-left-color: var(--color-danger-default);
+          background: var(--color-danger-transparent-100);
         }
         
         &:hover {
-          background: rgba(143, 150, 170, 0.08);
+          background: var(--color-basic-transparent-100);
         }
         
         .rc-header {
@@ -1326,8 +1327,8 @@
             font-size: 10px;
             font-weight: 600;
             padding: 2px 6px;
-            background: rgba(89, 139, 255, 0.15);
-            color: #598bff;
+            background: var(--color-primary-transparent-200);
+            color: var(--color-primary-default);
             border-radius: 3px;
           }
           
@@ -1338,18 +1339,18 @@
             border-radius: 3px;
             
             &.high {
-              background: rgba(255, 61, 113, 0.15);
-              color: #ff3d71;
+              background: var(--color-danger-transparent-200);
+              color: var(--color-danger-default);
             }
             
             &.medium {
-              background: rgba(255, 170, 0, 0.15);
-              color: #ffaa00;
+              background: var(--color-warning-transparent-200);
+              color: var(--color-warning-default);
             }
             
             &.low {
-              background: rgba(0, 214, 143, 0.15);
-              color: #00d68f;
+              background: var(--color-success-transparent-200);
+              color: var(--color-success-default);
             }
           }
         }
@@ -1357,7 +1358,7 @@
         .rc-description {
           font-size: 12px;
           font-weight: 500;
-          color: #222b45;
+          color: var(--text-basic-color);
           margin-bottom: 6px;
           line-height: 1.4;
         }
@@ -1371,8 +1372,8 @@
           .rule-badge {
             font-size: 9px;
             padding: 1px 5px;
-            background: rgba(143, 150, 170, 0.15);
-            color: #666;
+            background: var(--color-basic-transparent-200);
+            color: var(--text-hint-color);
             border-radius: 2px;
             font-family: monospace;
           }
@@ -1412,14 +1413,14 @@
         .rc-suggestions {
           margin-top: 8px;
           padding-top: 6px;
-          border-top: 1px dashed rgba(143, 150, 170, 0.2);
+          border-top: 1px dashed var(--color-basic-transparent-300);
           
           .suggestion-item {
             display: flex;
             align-items: flex-start;
             gap: 6px;
             font-size: 11px;
-            color: #555;
+            color: var(--text-hint-color);
             padding: 2px 0;
             
             .icon {
@@ -1433,7 +1434,7 @@
     .causal-chains {
       margin-top: 16px;
       padding-top: 14px;
-      border-top: 1px solid rgba(143, 150, 170, 0.15);
+      border-top: 1px solid var(--color-basic-transparent-200);
       
       .chain-header {
         display: flex;
@@ -1441,17 +1442,17 @@
         gap: 8px;
         font-size: 14px;
         font-weight: 600;
-        color: #222b45;
+        color: var(--text-basic-color);
         margin-bottom: 12px;
         
         nb-icon {
           font-size: 16px;
-          color: #0095ff;
+          color: var(--color-info-default);
         }
         
         .chain-count {
           font-weight: 400;
-          color: #8f96aa;
+          color: var(--text-hint-color);
           font-size: 12px;
         }
       }
@@ -1469,9 +1470,9 @@
         gap: 4px;
         font-size: 13px;
         padding: 12px 14px;
-        background: linear-gradient(135deg, rgba(0, 149, 255, 0.06) 0%, rgba(143, 150, 170, 0.04) 100%);
+        background: linear-gradient(135deg, var(--color-info-transparent-100) 0%, var(--color-basic-transparent-100) 100%);
         border-radius: 8px;
-        border-left: 4px solid #0095ff;
+        border-left: 4px solid var(--color-info-default);
         
         .chain-node {
           display: inline-flex;
@@ -1479,8 +1480,8 @@
           gap: 4px;
           padding: 5px 10px;
           border-radius: 14px;
-          color: #222b45;
-          background: rgba(143, 150, 170, 0.12);
+          color: var(--text-basic-color);
+          background: var(--color-basic-transparent-200);
           font-size: 13px;
           font-weight: 500;
           white-space: nowrap;
@@ -1490,22 +1491,22 @@
           }
           
           &.root-cause {
-            background: rgba(255, 61, 113, 0.15);
-            color: #ff3d71;
+            background: var(--color-danger-transparent-200);
+            color: var(--color-danger-default);
             font-weight: 600;
             
             .node-icon {
-              color: #ff3d71;
+              color: var(--color-danger-default);
             }
           }
           
           &.symptom {
-            background: rgba(0, 149, 255, 0.15);
-            color: #0095ff;
+            background: var(--color-info-transparent-200);
+            color: var(--color-info-default);
             font-weight: 500;
             
             .node-icon {
-              color: #0095ff;
+              color: var(--color-info-default);
             }
           }
         }
@@ -1513,7 +1514,7 @@
         .chain-arrow {
           display: inline-flex;
           align-items: center;
-          color: #8f96aa;
+          color: var(--text-hint-color);
           margin: 0 4px;
           font-size: 14px;
           
@@ -1528,21 +1529,21 @@
           padding-top: 8px;
           font-size: 13px;
           line-height: 1.5;
-          color: #606a80;
-          border-top: 1px dashed rgba(143, 150, 170, 0.2);
+          color: var(--text-hint-color);
+          border-top: 1px dashed var(--color-basic-transparent-300);
         }
       }
     }
     
-    // LLM Badge - Nebular info color (#0095ff)
+    // LLM Badge - Nebular info color (var(--color-info-default))
     .llm-badge {
       display: inline-flex;
       align-items: center;
       gap: 4px;
       font-size: 10px;
       padding: 2px 6px;
-      background: #0095ff;
-      color: white;
+      background: var(--color-info-default);
+      color: var(--text-control-color);
       border-radius: 4px;
       font-weight: 500;
       margin-left: 4px;
@@ -1567,8 +1568,8 @@
       gap: 4px;
       font-size: 10px;
       padding: 2px 8px;
-      background: linear-gradient(135deg, #598bff 0%, #0095ff 100%);
-      color: white;
+      background: var(--color-info-default);
+      color: var(--text-control-color);
       border-radius: 4px;
       font-weight: 500;
       margin-left: 4px;
@@ -1589,8 +1590,8 @@
       gap: 4px;
       font-size: 10px;
       padding: 2px 8px;
-      background: #ff3d71;
-      color: white;
+      background: var(--color-danger-default);
+      color: var(--text-control-color);
       border-radius: 4px;
       font-weight: 500;
       margin-left: 4px;
@@ -1621,8 +1622,8 @@
     // LLM-source root cause item
     .root-cause-item {
       &.llm-source {
-        border-left-color: #0095ff;
-        background: rgba(0, 149, 255, 0.04);
+        border-left-color: var(--color-info-default);
+        background: var(--color-info-transparent-100);
       }
       
       &.implicit {
@@ -1636,8 +1637,8 @@
       .implicit-badge {
         font-size: 9px;
         padding: 1px 4px;
-        background: rgba(255, 170, 0, 0.15);
-        color: #ffaa00;
+        background: var(--color-warning-transparent-200);
+        color: var(--color-warning-default);
         border-radius: 2px;
         font-weight: 500;
       }
@@ -1647,9 +1648,9 @@
     .hidden-issues {
       margin-bottom: 12px;
       padding: 10px 12px;
-      background: rgba(0, 149, 255, 0.06);
+      background: var(--color-info-transparent-100);
       border-radius: 4px;
-      border-left: 3px dashed #0095ff;
+      border-left: 3px dashed var(--color-info-default);
       
       .hidden-issue-header {
         display: flex;
@@ -1657,7 +1658,7 @@
         gap: 6px;
         font-size: 11px;
         font-weight: 600;
-        color: #0095ff;
+        color: var(--color-info-default);
         margin-bottom: 8px;
         
         nb-icon {
@@ -1667,7 +1668,7 @@
       
       .hidden-issue-item {
         padding: 8px 0;
-        border-bottom: 1px dashed rgba(143, 150, 170, 0.15);
+        border-bottom: 1px dashed var(--color-basic-transparent-200);
         
         &:last-child {
           border-bottom: none;
@@ -1676,14 +1677,14 @@
         
         .issue-desc {
           font-size: 13px;  // Increased from 11px
-          color: #222b45;
+          color: var(--text-basic-color);
           font-weight: 500;
           margin-bottom: 6px;
         }
         
         .issue-suggestion {
           font-size: 12px;  // Increased from 10px
-          color: #666;
+          color: var(--text-hint-color);
         }
       }
     }
@@ -1692,7 +1693,7 @@
     .llm-recommendations {
       margin-top: 12px;
       padding-top: 10px;
-      border-top: 1px solid rgba(143, 150, 170, 0.1);
+      border-top: 1px solid var(--color-basic-transparent-200);
       
       .rec-header {
         display: flex;
@@ -1700,7 +1701,7 @@
         gap: 6px;
         font-size: 11px;
         font-weight: 600;
-        color: #222b45;
+        color: var(--text-basic-color);
         margin-bottom: 10px;
         
         nb-icon {
@@ -1709,7 +1710,7 @@
         
         .rec-count {
           font-weight: 400;
-          color: #8f96aa;
+          color: var(--text-hint-color);
           font-size: 10px;
         }
       }
@@ -1724,13 +1725,13 @@
         display: flex;
         gap: 10px;
         padding: 10px 12px;
-        background: rgba(143, 150, 170, 0.04);
+        background: var(--color-basic-transparent-100);
         border-radius: 4px;
-        border-left: 3px solid #598bff;
+        border-left: 3px solid var(--color-primary-default);
         
         &.llm-rec {
-          border-left-color: #00d68f;
-          background: rgba(0, 214, 143, 0.04);
+          border-left-color: var(--color-success-default);
+          background: var(--color-success-transparent-100);
         }
         
         .rec-priority {
@@ -1742,8 +1743,8 @@
             justify-content: center;
             width: 22px;
             height: 22px;
-            background: rgba(89, 139, 255, 0.15);
-            color: #598bff;
+            background: var(--color-primary-transparent-200);
+            color: var(--color-primary-default);
             font-size: 11px;
             font-weight: 600;
             border-radius: 50%;
@@ -1751,8 +1752,8 @@
         }
         
         &.llm-rec .rec-priority .priority-num {
-          background: rgba(0, 214, 143, 0.15);
-          color: #00d68f;
+          background: var(--color-success-transparent-200);
+          color: var(--color-success-default);
         }
         
         .rec-content {
@@ -1762,7 +1763,7 @@
           .rec-action {
             font-size: 13px;  // Increased from 12px
             font-weight: 500;
-            color: #222b45;
+            color: var(--text-basic-color);
             margin-bottom: 6px;
             line-height: 1.5;
           }
@@ -1772,7 +1773,7 @@
             align-items: center;
             gap: 4px;
             font-size: 12px;  // Increased from 10px
-            color: #00d68f;
+            color: var(--color-success-default);
             margin-bottom: 8px;
             
             nb-icon {
@@ -1786,7 +1787,7 @@
             pre {
               margin: 0;
               padding: 10px 12px;
-              background: rgba(143, 150, 170, 0.08);
+              background: var(--color-basic-transparent-100);
               border-radius: 4px;
               overflow-x: auto;
               
@@ -1794,13 +1795,13 @@
                 font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
                 font-size: 12px;  // Increased from 10px
                 line-height: 1.6;
-                color: #222b45;
+                color: var(--text-basic-color);
                 white-space: pre-wrap;
                 word-break: break-word;
                 cursor: pointer;
                 
                 &:hover {
-                  background: rgba(0, 149, 255, 0.05);
+                  background: var(--color-info-transparent-100);
                 }
               }
             }
@@ -1817,15 +1818,15 @@
     gap: 8px;
     margin-bottom: 16px;
     padding-bottom: 12px;
-    border-bottom: 1px dashed rgba(143, 150, 170, 0.2);
+    border-bottom: 1px dashed var(--color-basic-transparent-300);
     
     .rec-item {
       display: flex;
       gap: 10px;
       padding: 12px 14px;
-      background: rgba(0, 214, 143, 0.04);
+      background: var(--color-success-transparent-100);
       border-radius: 6px;
-      border-left: 3px solid #00d68f;
+      border-left: 3px solid var(--color-success-default);
       
       .rec-priority {
         flex-shrink: 0;
@@ -1836,8 +1837,8 @@
           justify-content: center;
           width: 24px;
           height: 24px;
-          background: rgba(0, 214, 143, 0.15);
-          color: #00d68f;
+          background: var(--color-success-transparent-200);
+          color: var(--color-success-default);
           font-size: 12px;
           font-weight: 600;
           border-radius: 50%;
@@ -1851,7 +1852,7 @@
         .rec-action {
           font-size: 13px;
           font-weight: 500;
-          color: #222b45;
+          color: var(--text-basic-color);
           margin-bottom: 6px;
           line-height: 1.5;
         }
@@ -1861,7 +1862,7 @@
           align-items: center;
           gap: 4px;
           font-size: 12px;
-          color: #00d68f;
+          color: var(--color-success-default);
           margin-bottom: 8px;
           
           nb-icon {
@@ -1875,22 +1876,22 @@
           pre {
             margin: 0;
             padding: 10px 12px;
-            background: rgba(34, 43, 69, 0.04);
+            background: var(--color-basic-transparent-100);
             border-radius: 4px;
             overflow-x: auto;
-            border: 1px solid rgba(143, 150, 170, 0.1);
+            border: 1px solid var(--color-basic-transparent-200);
             
             code {
               font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
               font-size: 12px;
               line-height: 1.6;
-              color: #222b45;
+              color: var(--text-basic-color);
               white-space: pre-wrap;
               word-break: break-word;
               cursor: pointer;
               
               &:hover {
-                background: rgba(0, 149, 255, 0.05);
+                background: var(--color-info-transparent-100);
               }
             }
           }
@@ -1920,7 +1921,7 @@
         .tabset {
           padding: 0.25rem 0;
           gap: 0.125rem;
-          border-bottom: 1px solid rgba(143, 150, 170, 0.1);
+          border-bottom: 1px solid var(--color-basic-transparent-200);
           
           .tab {
             .tab-link {
@@ -1930,7 +1931,7 @@
               font-weight: 500;
               text-transform: uppercase;
               letter-spacing: 0.025em;
-              color: rgba(34, 43, 69, 0.55);
+              color: var(--text-hint-color);
               background: transparent;
               transition: all 0.15s ease;
               
@@ -1940,14 +1941,14 @@
               }
               
               &:hover:not(.active) {
-                background: rgba(143, 150, 170, 0.06);
-                color: rgba(34, 43, 69, 0.75);
+                background: var(--color-basic-transparent-100);
+                color: var(--text-basic-color);
               }
             }
             
             &.active .tab-link {
-              background: rgba(143, 150, 170, 0.1);
-              color: #222b45;
+              background: var(--color-basic-transparent-200);
+              color: var(--text-basic-color);
               font-weight: 600;
               
               &::before {
@@ -1981,11 +1982,11 @@
         align-items: flex-start;
         padding: 6px 0;
         font-size: 12px;
-        border-bottom: 1px solid #f5f5f5;
+        border-bottom: 1px solid var(--border-basic-color-3);
         gap: 16px;
         
         .metric-label {
-          color: #666;
+          color: var(--text-hint-color);
           flex-shrink: 0;
           display: flex;
           align-items: center;
@@ -1993,13 +1994,13 @@
           
           .metric-hint {
             font-size: 12px;
-            color: #8f9bb3;
+            color: var(--text-hint-color);
             cursor: help;
           }
         }
         
         span:last-child {
-          color: #333;
+          color: var(--text-basic-color);
           font-family: 'Monaco', 'Menlo', monospace;
           font-size: 11px;
           text-align: right;
@@ -2011,8 +2012,8 @@
     }
     
     .badge-danger {
-      background: #ff4d4f;
-      color: #fff;
+      background: var(--color-danger-default);
+      color: var(--text-control-color);
       padding: 2px 6px;
       border-radius: 3px;
       font-size: 10px;
@@ -2023,9 +2024,9 @@
       .node-diag-item {
         padding: 10px;
         margin-bottom: 8px;
-        background: rgba(143, 150, 170, 0.04);
+        background: var(--color-basic-transparent-100);
         border-radius: 6px;
-        border-left: 3px solid #faad14;
+        border-left: 3px solid var(--color-warning-default);
 
         .node-diag-header {
           display: flex;
@@ -2040,29 +2041,29 @@
             font-weight: 600;
 
             &.badge-danger {
-              background: rgba(255, 77, 79, 0.15);
-              color: #ff4d4f;
+              background: var(--color-danger-transparent-200);
+              color: var(--color-danger-default);
             }
             &.badge-warning {
-              background: rgba(250, 173, 20, 0.15);
-              color: #d48806;
+              background: var(--color-warning-transparent-200);
+              color: var(--color-warning-default);
             }
             &.badge-info {
-              background: rgba(0, 149, 255, 0.15);
-              color: #0095ff;
+              background: var(--color-info-transparent-200);
+              color: var(--color-info-default);
             }
           }
 
           .diag-name {
             font-size: 11px;
             font-weight: 600;
-            color: #222b45;
+            color: var(--text-basic-color);
           }
         }
 
         .node-diag-message {
           font-size: 11px;
-          color: #333;
+          color: var(--text-basic-color);
           line-height: 1.5;
           margin-bottom: 6px;
         }
@@ -2072,9 +2073,9 @@
           align-items: flex-start;
           gap: 6px;
           font-size: 10px;
-          color: #666;
-          background: rgba(0, 149, 255, 0.05);
-          border-left: 2px solid #0095ff;
+          color: var(--text-hint-color);
+          background: var(--color-info-transparent-100);
+          border-left: 2px solid var(--color-info-default);
           padding: 6px 8px;
           margin-bottom: 6px;
           border-radius: 0 4px 4px 0;
@@ -2092,7 +2093,7 @@
             align-items: flex-start;
             gap: 4px;
             font-size: 10px;
-            color: #555;
+            color: var(--text-hint-color);
             padding: 2px 0;
 
             .icon {
@@ -2132,32 +2133,32 @@
       .title {
         font-weight: 600;
         font-size: 14px;
-        color: #222b45;
+        color: var(--text-basic-color);
       }
       
       .node-id {
         font-size: 11px;
-        color: #8f9bb3;
+        color: var(--text-hint-color);
       }
     }
     
     .close-btn {
       cursor: pointer;
-      color: #8f9bb3;
+      color: var(--text-hint-color);
       font-size: 14px;
       padding: 4px 8px;
       border-radius: 4px;
       
       &:hover {
-        background: rgba(143, 155, 179, 0.1);
-        color: #222b45;
+        background: var(--color-basic-transparent-200);
+        color: var(--text-basic-color);
       }
     }
   }
   
   .node-progress-section {
     padding: 12px 0;
-    border-bottom: 1px solid #f0f0f0;
+    border-bottom: 1px solid var(--border-basic-color-3);
     margin-bottom: 8px;
     
     .exec-time-bar {
@@ -2165,14 +2166,14 @@
       height: 6px;
       border-radius: 3px;
       overflow: hidden;
-      background: #f0f0f0;
+      background: var(--background-basic-color-3);
       margin-bottom: 8px;
       
       .bar-fill {
         height: 100%;
         
-        &.io { background: #13c2c2; }
-        &.processing { background: #1890ff; }
+        &.io { background: var(--color-info-default); }
+        &.processing { background: var(--color-primary-default); }
       }
     }
     
@@ -2190,18 +2191,18 @@
           height: 8px;
           border-radius: 50%;
           
-          &.io { background: #13c2c2; }
-          &.processing { background: #1890ff; }
+          &.io { background: var(--color-info-default); }
+          &.processing { background: var(--color-primary-default); }
         }
         
         .legend-label {
           font-size: 11px;
-          color: #8c8c8c;
+          color: var(--text-hint-color);
         }
         
         .legend-value {
           font-size: 11px;
-          color: #333;
+          color: var(--text-basic-color);
           font-weight: 500;
         }
       }
@@ -2211,7 +2212,7 @@
   .node-detail-tabs {
     ::ng-deep {
       .tabset {
-        border-bottom: 1px solid #edf1f7;
+        border-bottom: 1px solid var(--border-basic-color-3);
         
         .tab-link {
           font-size: 12px;
@@ -2228,11 +2229,11 @@
   .metric-category-header {
     font-size: 11px;
     font-weight: 600;
-    color: #8f9bb3;
+    color: var(--text-hint-color);
     text-transform: uppercase;
     padding: 8px 0 4px;
     margin-top: 8px;
-    border-top: 1px dashed #edf1f7;
+    border-top: 1px dashed var(--border-basic-color-3);
     
     &:first-child {
       margin-top: 0;
@@ -2245,7 +2246,7 @@
     .operator-section {
       margin-bottom: 16px;
       padding-bottom: 12px;
-      border-bottom: 1px solid #edf1f7;
+      border-bottom: 1px solid var(--border-basic-color-3);
       
       &:last-child {
         border-bottom: none;
@@ -2255,9 +2256,9 @@
       .operator-header {
         font-size: 12px;
         font-weight: 600;
-        color: #222b45;
+        color: var(--text-basic-color);
         padding: 8px 0;
-        background: rgba(143, 155, 179, 0.08);
+        background: var(--color-basic-transparent-100);
         padding-left: 8px;
         margin: 0 -8px 8px;
         border-radius: 4px;
@@ -2269,7 +2270,7 @@
         .metrics-group-header {
           font-size: 11px;
           font-weight: 600;
-          color: #8f9bb3;
+          color: var(--text-hint-color);
           padding: 4px 0;
         }
       }
@@ -2288,9 +2289,9 @@
       .pipeline-section-header {
         font-size: 12px;
         font-weight: 600;
-        color: #222b45;
+        color: var(--text-basic-color);
         padding: 8px 0;
-        background: rgba(143, 155, 179, 0.08);
+        background: var(--color-basic-transparent-100);
         padding-left: 8px;
         margin: 0 -8px 8px;
         border-radius: 4px;
@@ -2307,7 +2308,7 @@
     .metric-section {
       margin-bottom: 16px;
       padding-bottom: 12px;
-      border-bottom: 1px solid #f0f0f0;
+      border-bottom: 1px solid var(--border-basic-color-3);
       
       &:last-child {
         border-bottom: none;
@@ -2317,15 +2318,15 @@
       .section-title {
         font-size: 13px;
         font-weight: 600;
-        color: #222b45;
+        color: var(--text-basic-color);
         margin-bottom: 10px;
         display: flex;
         align-items: center;
         gap: 8px;
         
         .count-badge {
-          background: #faad14;
-          color: #fff;
+          background: var(--color-warning-default);
+          color: var(--text-control-color);
           font-size: 10px;
           padding: 2px 6px;
           border-radius: 10px;
@@ -2341,13 +2342,13 @@
           height: 8px;
           border-radius: 4px;
           overflow: hidden;
-          background: #f0f0f0;
+          background: var(--background-basic-color-3);
           
           .bar-fill {
             height: 100%;
             
-            &.cpu { background: #52c41a; }
-            &.secondary { background: #faad14; }
+            &.cpu { background: var(--color-success-default); }
+            &.secondary { background: var(--color-warning-default); }
           }
         }
       }
@@ -2366,25 +2367,25 @@
             border-radius: 50%;
             flex-shrink: 0;
             
-            &.cpu { background: #52c41a; }
-            &.secondary { background: #faad14; }
+            &.cpu { background: var(--color-success-default); }
+            &.secondary { background: var(--color-warning-default); }
           }
           
           .legend-label {
-            color: #666;
+            color: var(--text-hint-color);
             min-width: 80px;
             flex-shrink: 0;
           }
           
           .legend-value {
-            color: #1890ff;
+            color: var(--color-primary-default);
             font-family: 'Monaco', 'Menlo', monospace;
             flex: 1;
             text-align: left;
           }
           
           .legend-percent {
-            color: #333;
+            color: var(--text-basic-color);
             font-weight: 500;
           }
         }
@@ -2399,44 +2400,44 @@
         font-size: 12px;
         
         .metric-label {
-          color: #666;
+          color: var(--text-hint-color);
           display: flex;
           align-items: center;
           gap: 4px;
           
           .metric-hint {
             font-size: 12px;
-            color: #8f9bb3;
+            color: var(--text-hint-color);
             cursor: help;
           }
         }
         
         .metric-value {
-          color: #333;
+          color: var(--text-basic-color);
           font-family: 'Monaco', 'Menlo', monospace;
           font-size: 11px;
           text-align: right;
           word-break: break-all;
           
           &.index-value {
-            color: #1890ff;
+            color: var(--color-primary-default);
           }
           
           &.time-value {
-            color: #faad14;
+            color: var(--color-warning-default);
           }
         }
         
         &.over-consuming {
           .metric-label {
-            color: #333;
+            color: var(--text-basic-color);
           }
           
           &.indented {
             padding-left: 16px;
             
             .metric-label {
-              color: #666;
+              color: var(--text-hint-color);
             }
           }
         }
@@ -2449,9 +2450,9 @@
         .diag-item-inline {
           padding: 10px;
           margin-bottom: 8px;
-          background: rgba(250, 173, 20, 0.08);
+          background: var(--color-warning-transparent-100);
           border-radius: 6px;
-          border-left: 3px solid #faad14;
+          border-left: 3px solid var(--color-warning-default);
           
           &:last-child {
             margin-bottom: 0;
@@ -2469,21 +2470,21 @@
               border-radius: 3px;
               font-weight: 600;
               
-              &.badge-danger { background: #ff4d4f; color: #fff; }
-              &.badge-warning { background: #faad14; color: #fff; }
-              &.badge-info { background: #1890ff; color: #fff; }
+              &.badge-danger { background: var(--color-danger-default); color: var(--text-control-color); }
+              &.badge-warning { background: var(--color-warning-default); color: var(--text-control-color); }
+              &.badge-info { background: var(--color-primary-default); color: var(--text-control-color); }
             }
             
             .diag-name-inline {
               font-size: 12px;
               font-weight: 500;
-              color: #222b45;
+              color: var(--text-basic-color);
             }
           }
           
           .diag-message-inline {
             font-size: 11px;
-            color: #666;
+            color: var(--text-hint-color);
             line-height: 1.5;
           }
           
@@ -2492,7 +2493,7 @@
             
             .suggestion-item {
               font-size: 11px;
-              color: #52c41a;
+              color: var(--color-success-default);
               padding: 2px 0;
             }
           }
@@ -2502,70 +2503,3 @@
   }
 }
 
-// ============================================================================
-// Dark Theme Support
-// ============================================================================
-:host-context(.nb-theme-dark),
-:host-context(.nb-theme-cosmic) {
-  .root-cause-section {
-    .causal-chains {
-      border-top-color: rgba(255, 255, 255, 0.1);
-      
-      .chain-header {
-        color: #ffffff;
-        
-        .chain-count {
-          color: #a4abb6;
-        }
-      }
-      
-      .chain-item {
-        background: linear-gradient(135deg, rgba(0, 149, 255, 0.1) 0%, rgba(255, 255, 255, 0.03) 100%);
-        border-left-color: #0095ff;
-        
-        .chain-node {
-          color: #e4e9f2;
-          background: rgba(255, 255, 255, 0.1);
-          
-          &.root-cause {
-            background: rgba(255, 61, 113, 0.2);
-            color: #ff6b8a;
-          }
-          
-          &.symptom {
-            background: rgba(0, 149, 255, 0.2);
-            color: #42aaff;
-          }
-        }
-        
-        .chain-arrow {
-          color: #a4abb6;
-        }
-        
-        .chain-explanation {
-          color: #a4abb6;
-          border-top-color: rgba(255, 255, 255, 0.1);
-        }
-      }
-    }
-    
-    // Also fix other text elements for dark theme
-    .diagnosis-list {
-      .issue-desc,
-      .issue-suggestion {
-        color: #c5cee0;
-      }
-    }
-    
-    .llm-recommendations-merged {
-      .rec-action,
-      .rec-improvement {
-        color: #e4e9f2;
-      }
-      
-      .rec-sql pre code {
-        color: #c5cee0;
-      }
-    }
-  }
-}

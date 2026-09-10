@@ -4,6 +4,7 @@ import { PermissionService } from '../data/permission.service';
 import { AuthService } from '../data/auth.service';
 
 @Directive({
+  standalone: false,
   selector: '[ngxHasPermission]',
 })
 export class HasPermissionDirective implements OnInit, OnDestroy {

@@ -4,10 +4,12 @@ import { NbMediaBreakpointsService, NbMenuService, NbSidebarService, NbThemeServ
 
 import { LayoutService } from '../../../@core/utils';
 import { AuthService } from '../../../@core/data/auth.service';
+import { persistTheme } from '../../styles/theme-preference';
 import { map, takeUntil, filter } from 'rxjs/operators';
 import { Subject } from 'rxjs';
 
 @Component({
+  standalone: false,
   selector: 'ngx-header',
   styleUrls: ['./header.component.scss'],
   templateUrl: './header.component.html',
@@ -37,7 +39,7 @@ export class HeaderComponent implements OnInit, OnDestroy {
     },
   ];
 
-  currentTheme = 'default';
+  currentTheme = 'cosmic';
 
   userMenu = [
     { title: '用户设置', icon: 'settings-outline', data: { id: 'settings' } },
@@ -119,6 +121,7 @@ export class HeaderComponent implements OnInit, OnDestroy {
   }
 
   changeTheme(themeName: string) {
+    persistTheme(themeName);
     this.themeService.changeTheme(themeName);
   }
 

@@ -7,6 +7,7 @@ import { Component, OnInit } from '@angular/core';
 import { SeoService } from './@core/utils/seo.service';
 
 @Component({
+  standalone: false,
   selector: 'ngx-app',
   template: '<router-outlet></router-outlet>',
 })

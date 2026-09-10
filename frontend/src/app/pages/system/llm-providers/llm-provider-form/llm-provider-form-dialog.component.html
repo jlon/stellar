@@ -1,12 +1,5 @@
 <nb-card class="llm-provider-dialog">
-  <nb-card-header>
-    <div class="dialog-header">
-        <h5>{{ mode === 'create' ? '添加 LLM 提供商' : '编辑 LLM 提供商' }}</h5>
-      <button nbButton ghost status="basic" size="small" (click)="cancel()">
-        <nb-icon icon="close-outline"></nb-icon>
-      </button>
-    </div>
-  </nb-card-header>
+  <nb-card-header>{{ mode === 'create' ? '添加 LLM 提供商' : '编辑 LLM 提供商' }}</nb-card-header>
 
   <nb-card-body>
     <form [formGroup]="form" novalidate>
@@ -107,6 +100,7 @@
   </nb-card-body>
 
   <nb-card-footer>
-    <button nbButton status="primary" size="small" (click)="submit()" [disabled]="form.invalid">保存</button>
+    <button class="cancel" nbButton status="danger" (click)="cancel()">取消</button>
+    <button nbButton status="success" (click)="submit()" [disabled]="form.invalid">保存</button>
   </nb-card-footer>
 </nb-card>

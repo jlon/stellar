@@ -17,6 +17,7 @@ export interface OrganizationFormDialogResult {
 }
 
 @Component({
+  standalone: false,
   selector: 'ngx-organization-form-dialog',
   templateUrl: './organization-form-dialog.component.html',
   styleUrls: ['./organization-form-dialog.component.scss'],

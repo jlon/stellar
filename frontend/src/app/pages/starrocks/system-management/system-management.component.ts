@@ -3,7 +3,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { CdkDragDrop, moveItemInArray, transferArrayItem } from '@angular/cdk/drag-drop';
 
 import { NbDialogService, NbToastrService, NbDialogRef } from '@nebular/theme';
-import { LocalDataSource } from 'ng2-smart-table';
+import { LocalDataSource } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { NodeService } from '../../../@core/data/node.service';
@@ -45,6 +45,7 @@ interface NavigationHistoryItem {
 }
 
 @Component({
+  standalone: false,
   selector: 'ngx-system-management',
   templateUrl: './system-management.component.html',
   styleUrls: ['./system-management.component.scss']
@@ -648,7 +649,7 @@ export class SystemManagementComponent implements OnInit, OnDestroy {
           title: key,
           type: 'custom',
           renderComponent: NestedLinkRenderComponent,
-          onComponentInitFunction: (instance: any) => {
+          componentInitFunction: (instance: any) => {
             instance.save.subscribe((row: any) => {
               this.navigateToChild(row, key);
             });

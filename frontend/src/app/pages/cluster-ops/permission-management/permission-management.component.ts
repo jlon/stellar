@@ -7,6 +7,7 @@ import { AuthService } from '../../../@core/data/auth.service';
 import { PermissionRequestComponent } from './request/permission-request.component';
 
 @Component({
+  standalone: false,
   selector: 'ngx-permission-management',
   templateUrl: './permission-management.component.html',
   styleUrls: ['./permission-management.component.scss'],
