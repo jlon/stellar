@@ -6,11 +6,9 @@ import { RouterModule } from '@angular/router';
 import {
   NbAlertModule,
   NbButtonModule,
-  NbCardModule,
   NbCheckboxModule,
   NbIconModule,
   NbInputModule,
-  NbLayoutModule,
 } from '@nebular/theme';
 
 import { LoginComponent } from './login/login.component';
@@ -27,11 +25,9 @@ import { RegisterComponent } from './register/register.component';
     RouterModule,
     NbAlertModule,
     NbButtonModule,
-    NbCardModule,
     NbCheckboxModule,
     NbIconModule,
     NbInputModule,
-    NbLayoutModule,
   ]
 })
 export class AuthModule { }
