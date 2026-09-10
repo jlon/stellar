@@ -1,6 +1,6 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { NbDialogService, NbToastrService } from '@nebular/theme';
-import { LocalDataSource } from 'ng2-smart-table';
+import { LocalDataSource } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
@@ -22,6 +22,7 @@ import {
 import { AuthService } from '../../../@core/data/auth.service';
 
 @Component({
+  standalone: false,
   selector: 'ngx-llm-providers',
   templateUrl: './llm-providers.component.html',
   styleUrls: ['./llm-providers.component.scss'],
@@ -301,7 +302,7 @@ export class LLMProvidersComponent implements OnInit, OnDestroy {
           title: '状态',
           type: 'custom',
           width: '15%',
-          filter: false,
+          isFilterable: false,
           renderComponent: LLMProviderStatusCellComponent,
         },
         priority: {
@@ -313,10 +314,10 @@ export class LLMProvidersComponent implements OnInit, OnDestroy {
           title: '操作',
           type: 'custom',
           width: '17%',
-          filter: false,
-          sort: false,
+          isFilterable: false,
+          isSortable: false,
           renderComponent: LLMProvidersActionsCellComponent,
-          onComponentInitFunction: (instance: LLMProvidersActionsCellComponent) => {
+          componentInitFunction: (instance: LLMProvidersActionsCellComponent) => {
             instance.canUpdate = this.canUpdate;
             instance.canDelete = this.canDelete;
             instance.testingId = this.testingId;

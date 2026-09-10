@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy } from '@angular/core';
 import { interval, Subject } from 'rxjs';
 import { takeUntil, switchMap } from 'rxjs/operators';
 import { NbToastrService } from '@nebular/theme';
-import { LocalDataSource } from 'ng2-smart-table';
+import { LocalDataSource } from 'angular2-smart-table';
 import { NodeService, Backend } from '../../../@core/data/node.service';
 import { ClusterService, Cluster } from '../../../@core/data/cluster.service';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
@@ -11,6 +11,7 @@ import { ConfirmDialogService } from '../../../@core/services/confirm-dialog.ser
 import { MetricThresholds, renderMetricBadge } from '../../../@core/utils/metric-badge';
 
 @Component({
+  standalone: false,
   selector: 'ngx-backends',
   templateUrl: './backends.component.html',
   styleUrls: ['./backends.component.scss'],
@@ -78,6 +79,7 @@ export class BackendsComponent implements OnInit, OnDestroy {
       Alive: {
         title: '状态',
         type: 'html',
+        sanitizer: { bypassHtml: true },
         width: '8%',
         valuePrepareFunction: (value: string) => {
           const status = value === 'true' ? 'success' : 'danger';
@@ -108,6 +110,7 @@ export class BackendsComponent implements OnInit, OnDestroy {
       UsedPct: {
         title: '磁盘使用率',
         type: 'html',
+        sanitizer: { bypassHtml: true },
         width: '10%',
         valuePrepareFunction: (value: string) => renderMetricBadge(value, this.diskThresholds),
       },
@@ -119,6 +122,7 @@ export class BackendsComponent implements OnInit, OnDestroy {
       CpuUsedPct: {
         title: 'CPU 使用率',
         type: 'html',
+        sanitizer: { bypassHtml: true },
         width: '10%',
         valuePrepareFunction: (value: string) => renderMetricBadge(value, this.cpuThresholds),
       },
@@ -130,6 +134,7 @@ export class BackendsComponent implements OnInit, OnDestroy {
       MemUsedPct: {
         title: '内存使用率',
         type: 'html',
+        sanitizer: { bypassHtml: true },
         width: '10%',
         valuePrepareFunction: (value: string) => renderMetricBadge(value, this.memoryThresholds),
       },

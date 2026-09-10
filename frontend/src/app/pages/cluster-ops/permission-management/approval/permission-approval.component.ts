@@ -9,7 +9,7 @@ import {
 import { FormBuilder, FormGroup } from '@angular/forms';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
-import { LocalDataSource } from 'ng2-smart-table';
+import { LocalDataSource } from 'angular2-smart-table';
 import { NbDialogService, NbToastrService } from '@nebular/theme';
 import { PermissionRequestService } from '../../../../@core/data/permission-request.service';
 import { PermissionRequestResponse } from '../../../../@core/data/permission-request.model';
@@ -17,6 +17,7 @@ import { PermissionApprovalDetailDialogComponent } from './permission-approval-d
 import { ConfirmationDialogComponent } from '../shared/confirmation-dialog.component';
 
 @Component({
+  standalone: false,
   selector: 'ngx-permission-approval',
   templateUrl: './permission-approval.component.html',
   styleUrls: ['./permission-approval.component.scss'],
@@ -60,6 +61,7 @@ export class PermissionApprovalComponent implements OnInit, OnDestroy {
       request_type: {
         title: '类型',
         type: 'html',
+        sanitizer: { bypassHtml: true },
         width: '90px',
         valuePrepareFunction: (value: string) => {
           const labels: { [key: string]: string } = {

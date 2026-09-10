@@ -20,6 +20,7 @@ import { ClusterContextService } from '../../../@core/data/cluster-context.servi
 import { AuthService } from '../../../@core/data/auth.service';
 
 @Component({
+  standalone: false,
   selector: 'ngx-cluster-overview',
   templateUrl: './cluster-overview.component.html',
   styleUrls: ['./cluster-overview.component.scss'],

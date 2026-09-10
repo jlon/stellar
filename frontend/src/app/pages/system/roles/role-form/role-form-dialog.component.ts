@@ -42,6 +42,7 @@ interface PermissionTreeNode {
 }
 
 @Component({
+  standalone: false,
   selector: 'ngx-role-form-dialog',
   templateUrl: './role-form-dialog.component.html',
   styleUrls: ['./role-form-dialog.component.scss'],

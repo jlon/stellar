@@ -1,6 +1,7 @@
 import { Component, ElementRef, EventEmitter, Output, ViewChild } from '@angular/core';
 
 @Component({
+  standalone: false,
   selector: 'ngx-search-input',
   styleUrls: ['./search-input.component.scss'],
   template: `

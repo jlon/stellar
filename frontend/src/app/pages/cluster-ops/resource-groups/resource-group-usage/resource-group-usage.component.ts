@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { Router } from '@angular/router';
 import { NbToastrService } from '@nebular/theme';
-import { LocalDataSource } from 'ng2-smart-table';
+import { LocalDataSource } from 'angular2-smart-table';
 import { Subject, interval } from 'rxjs';
 import { takeUntil, startWith, switchMap } from 'rxjs/operators';
 
@@ -9,6 +9,7 @@ import { ResourceGroupService } from '../resource-group.service';
 import { ResourceGroupUsage } from '../models/resource-group.model';
 
 @Component({
+  standalone: false,
   selector: 'ngx-resource-group-usage',
   templateUrl: './resource-group-usage.component.html',
   styleUrls: ['./resource-group-usage.component.scss'],

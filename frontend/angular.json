@@ -20,12 +20,7 @@
             "assets": [
               "src/assets",
               "src/favicon.ico",
-              "src/favicon.png",
-              {
-                "glob": "**/*",
-                "input": "node_modules/leaflet/dist/images",
-                "output": "/assets/img/markers"
-              }
+              "src/favicon.png"
             ],
             "styles": [
               "node_modules/bootstrap/dist/css/bootstrap.css",
@@ -36,7 +31,6 @@
               "node_modules/socicon/css/socicon.css",
               "node_modules/nebular-icons/scss/nebular-icons.scss",
               "node_modules/pace-js/templates/pace-theme-flash.tmpl.css",
-              "node_modules/leaflet/dist/leaflet.css",
               "src/app/@theme/styles/styles.scss"
             ],
             "scripts": [
@@ -45,22 +39,14 @@
               "node_modules/tinymce/themes/modern/theme.min.js",
               "node_modules/tinymce/plugins/link/plugin.min.js",
               "node_modules/tinymce/plugins/paste/plugin.min.js",
-              "node_modules/tinymce/plugins/table/plugin.min.js",
-              "node_modules/echarts/dist/echarts.min.js",
-              "node_modules/echarts/dist/extension/bmap.min.js",
-              "node_modules/chart.js/dist/Chart.min.js"
+              "node_modules/tinymce/plugins/table/plugin.min.js"
             ],
             "allowedCommonJsDependencies": [
-              "angular2-chartjs",
               "echarts",
               "lodash",
-              "zrender/lib/svg/svg",
-              "zrender/lib/vml/vml",
-              "validator/lib/isURL",
-              "casbin",
-              "mysql-common",
+              "lodash-es",
+              "zrender",
               "eva-icons",
-              "nearley",
               "dagre",
               "html2canvas"
             ],
@@ -99,18 +85,18 @@
         "serve": {
           "builder": "@angular-devkit/build-angular:dev-server",
           "options": {
-            "browserTarget": "stellar:build"
+            "buildTarget": "stellar:build"
           },
           "configurations": {
             "production": {
-              "browserTarget": "stellar:build:production"
+              "buildTarget": "stellar:build:production"
             }
           }
         },
         "extract-i18n": {
           "builder": "@angular-devkit/build-angular:extract-i18n",
           "options": {
-            "browserTarget": "stellar:build"
+            "buildTarget": "stellar:build"
           }
         },
         "test": {
@@ -121,15 +107,7 @@
             "polyfills": "src/polyfills.ts",
             "tsConfig": "src/tsconfig.spec.json",
             "scripts": [
-              "node_modules/pace-js/pace.min.js",
-              "node_modules/tinymce/tinymce.min.js",
-              "node_modules/tinymce/themes/modern/theme.min.js",
-              "node_modules/tinymce/plugins/link/plugin.min.js",
-              "node_modules/tinymce/plugins/paste/plugin.min.js",
-              "node_modules/tinymce/plugins/table/plugin.min.js",
-              "node_modules/echarts/dist/echarts.min.js",
-              "node_modules/echarts/dist/extension/bmap.min.js",
-              "node_modules/chart.js/dist/Chart.min.js"
+              "node_modules/pace-js/pace.min.js"
             ],
             "styles": [
               "node_modules/bootstrap/dist/css/bootstrap.css",
@@ -144,12 +122,7 @@
             "assets": [
               "src/assets",
               "src/favicon.ico",
-              "src/favicon.png",
-              {
-                "glob": "**/*",
-                "input": "node_modules/leaflet/dist/images",
-                "output": "/assets/img/markers"
-              }
+              "src/favicon.png"
             ]
           }
         },
@@ -163,29 +136,20 @@
           }
         }
       }
-    },
-    "stellar-e2e": {
-      "root": "e2e",
-      "sourceRoot": "",
-      "projectType": "application",
-      "architect": {
-        "e2e": {
-          "builder": "@angular-devkit/build-angular:protractor",
-          "options": {
-            "protractorConfig": "./protractor.conf.js",
-            "devServerTarget": "stellar:serve"
-          }
-        }
-      }
     }
   },
   "schematics": {
     "@schematics/angular:component": {
       "prefix": "ngx",
-      "style": "scss"
+      "style": "scss",
+      "standalone": false
     },
     "@schematics/angular:directive": {
-      "prefix": "ngx"
+      "prefix": "ngx",
+      "standalone": false
+    },
+    "@schematics/angular:pipe": {
+      "standalone": false
     },
     "@angular-eslint/schematics:application": {
       "setParserOptionsProject": true

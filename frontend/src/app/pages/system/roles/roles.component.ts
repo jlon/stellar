@@ -1,6 +1,6 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { NbDialogService, NbToastrService } from '@nebular/theme';
-import { LocalDataSource } from 'ng2-smart-table';
+import { LocalDataSource } from 'angular2-smart-table';
 import { Observable, Subject, forkJoin, of } from 'rxjs';
 import { finalize, map, switchMap, takeUntil, tap } from 'rxjs/operators';
 
@@ -13,6 +13,7 @@ import {
 } from '../../../@core/data/role.service';
 import { PermissionService } from '../../../@core/data/permission.service';
 import { ErrorHandler } from '../../../@core/utils/error-handler';
+import { withTableRow } from '../../../@core/utils/smart-table';
 import { ConfirmDialogService } from '../../../@core/services/confirm-dialog.service';
 import { RolesActionsCellComponent, RoleActionPermissions } from './table/actions-cell.component';
 import {
@@ -23,6 +24,7 @@ import { Organization, OrganizationService } from '../../../@core/data/organizat
 import { AuthService } from '../../../@core/data/auth.service';
 
 @Component({
+  standalone: false,
   selector: 'ngx-roles',
   templateUrl: './roles.component.html',
   styleUrls: ['./roles.component.scss'],
@@ -233,7 +235,7 @@ export class RolesComponent implements OnInit, OnDestroy {
     }
 
     this.settings = this.buildTableSettings();
-    this.settings.columns.actions.onComponentInitFunction = (
+    this.settings.columns.actions.componentInitFunction = (
       component: RolesActionsCellComponent,
     ) => {
       component.edit
@@ -339,8 +341,9 @@ export class RolesComponent implements OnInit, OnDestroy {
         is_system: {
           title: '系统角色',
           type: 'html',
-          filter: false,
-          sort: false,
+          sanitizer: { bypassHtml: true },
+          isFilterable: false,
+          isSortable: false,
           valuePrepareFunction: (cell: boolean) => {
             return cell
               ? '<span class="badge badge-info">是</span>'
@@ -356,12 +359,12 @@ export class RolesComponent implements OnInit, OnDestroy {
           title: '操作',
           type: 'custom',
           renderComponent: RolesActionsCellComponent,
-          filter: false,
-          sort: false,
-          valuePrepareFunction: (cell: unknown, row: RoleSummary): RoleActionPermissions => ({
+          isFilterable: false,
+          isSortable: false,
+          valuePrepareFunction: withTableRow((cell: unknown, row: RoleSummary): RoleActionPermissions => ({
             canEdit: this.canUpdateRole && !row.is_system,
             canDelete: this.canDeleteRole && !row.is_system,
-          }),
+          })),
         },
       },
     };

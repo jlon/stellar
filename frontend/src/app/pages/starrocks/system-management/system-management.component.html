@@ -157,9 +157,9 @@
           
           <nb-card-body>
             <!-- 数据表格 -->
-            <ng2-smart-table *ngIf="!loading && functionData.length > 0"
+            <angular2-smart-table *ngIf="!loading && functionData.length > 0"
               [settings]="tableSettings" [source]="functionDataSource">
-            </ng2-smart-table>
+            </angular2-smart-table>
 
             <div *ngIf="!loading && functionData.length === 0" class="text-center py-5">
               <nb-icon icon="info-outline" status="info" class="mb-2" style="font-size: 3rem; opacity: 0.3;"></nb-icon>

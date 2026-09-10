@@ -9,6 +9,7 @@ import { ErrorHandler } from '../../../../@core/utils/error-handler';
 import { TabReuseService } from '../../../../@core/services/tab-reuse.service';
 
 @Component({
+  standalone: false,
   selector: 'ngx-cluster-form',
   templateUrl: './cluster-form.component.html',
   styleUrls: ['./cluster-form.component.scss'],

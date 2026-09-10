@@ -10,6 +10,7 @@ import { MenuFilterService } from '../@core/services/menu-filter.service';
 import { PermissionService } from '../@core/data/permission.service';
 
 @Component({
+  standalone: false,
   selector: 'ngx-pages',
   styleUrls: ['pages.component.scss'],
   template: `

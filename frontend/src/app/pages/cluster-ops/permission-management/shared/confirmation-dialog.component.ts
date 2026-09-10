@@ -7,6 +7,7 @@ import { NbDialogRef } from '@nebular/theme';
  * Used for approval/rejection confirmations with comment input
  */
 @Component({
+  standalone: false,
   selector: 'ngx-confirmation-dialog',
   template: `
     <nb-card class="confirmation-dialog">

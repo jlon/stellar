@@ -214,11 +214,11 @@
                                 <div *ngIf="queryResults[0].error" class="error-message mb-3">
                                   <nb-alert status="danger" [title]="'执行失败'">{{ queryResults[0].error }}</nb-alert>
                                 </div>
-                                <ng2-smart-table 
+                                <angular2-smart-table 
                                   *ngIf="resultSettings[0] && queryResults[0].success" 
                                   [settings]="resultSettings[0]" 
                                   [source]="resultSources[0]">
-                                </ng2-smart-table>
+                                </angular2-smart-table>
                                 <div *ngIf="queryResults[0].success && rowCount === 0" class="no-data-message">
                                   <nb-icon icon="inbox-outline"></nb-icon>
                                   <p>查询未返回任何数据</p>
@@ -238,11 +238,11 @@
                                         <div *ngIf="result.error" class="error-message mb-3">
                                           <nb-alert status="danger" [title]="'执行失败'">{{ result.error }}</nb-alert>
                                         </div>
-                                        <ng2-smart-table 
+                                        <angular2-smart-table 
                                           *ngIf="resultSettings[i] && result.success" 
                                           [settings]="resultSettings[i]" 
                                           [source]="resultSources[i]">
-                                        </ng2-smart-table>
+                                        </angular2-smart-table>
                                         <div *ngIf="result.success" class="result-stats-footer">
                                           <span class="stats-text">
                                             <nb-icon icon="list-outline" class="stats-icon"></nb-icon>
@@ -543,13 +543,13 @@
             </div>
             
             <div *ngIf="loading" class="text-center mt-3"><nb-spinner status="primary" [message]="''"></nb-spinner></div>
-            <ng2-smart-table 
+            <angular2-smart-table 
               *ngIf="!loading" 
               [settings]="runningSettings" 
               [source]="runningSource"
               (delete)="onQueryDeleteConfirm($event)"
               (edit)="onQueryEdit($event)">
-            </ng2-smart-table>
+            </angular2-smart-table>
           </nb-tab>
           </nb-tabset>
           </div>
@@ -785,11 +785,11 @@
       </div>
 
       <!-- Regular table display for other tabs -->
-      <ng2-smart-table
+      <angular2-smart-table
         *ngIf="!infoDialogError && !(infoDialogType === 'bucketAnalysis' && bucketAnalysisCurrentTab === 'adjust')"
         [settings]="infoDialogSettings"
         [source]="infoDialogSource">
-      </ng2-smart-table>
+      </angular2-smart-table>
     </nb-card-body>
     <nb-card-footer>
       <div class="d-flex align-items-center">

@@ -21,6 +21,7 @@ interface ClusterCard {
 }
 
 @Component({
+  standalone: false,
   selector: 'ngx-dashboard',
   templateUrl: './dashboard.component.html',
   styleUrls: ['./dashboard.component.scss'],

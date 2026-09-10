@@ -14,6 +14,7 @@ import {
 } from '../models/resource-group.model';
 
 @Component({
+  standalone: false,
   selector: 'ngx-resource-group-form',
   templateUrl: './resource-group-form.component.html',
   styleUrls: ['./resource-group-form.component.scss'],

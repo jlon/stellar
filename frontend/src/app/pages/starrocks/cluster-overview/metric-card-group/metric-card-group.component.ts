@@ -2,6 +2,7 @@ import { Component, Input, OnInit } from '@angular/core';
 import { trigger, transition, style, animate } from '@angular/animations';
 
 @Component({
+  standalone: false,
   selector: 'ngx-metric-card-group',
   templateUrl: './metric-card-group.component.html',
   styleUrls: ['./metric-card-group.component.scss'],

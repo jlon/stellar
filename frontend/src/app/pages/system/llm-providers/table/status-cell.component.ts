@@ -2,6 +2,7 @@ import { Component, Input } from '@angular/core';
 import { LLMProvider } from '../../../../@core/data/llm-provider.service';
 
 @Component({
+  standalone: false,
   selector: 'ngx-llm-provider-status-cell',
   template: `
     <div class="d-flex flex-wrap align-items-center">

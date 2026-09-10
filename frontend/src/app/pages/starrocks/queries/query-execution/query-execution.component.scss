@@ -1179,9 +1179,9 @@
       }
     }
     
-    // Style for ng2-smart-table to ensure it fits
-    ::ng-deep ng2-smart-table {
-      .ng2-smart-table {
+    // Style for angular2-smart-table to ensure it fits
+    ::ng-deep angular2-smart-table {
+      .angular2-smart-table {
         table-layout: auto;
         
         th, td {
@@ -1210,7 +1210,7 @@
         }
         
         // Allow horizontal scroll for wide tables
-        .ng2-smart-table-container {
+        .angular2-smart-table-container {
           overflow-x: auto;
         }
       }

@@ -4,6 +4,7 @@ import { NbDialogRef } from '@nebular/theme';
 import { CreateFunctionRequest } from '../../../../@core/data/system-function';
 
 @Component({
+  standalone: false,
   selector: 'ngx-add-function-dialog',
   template: `
     <nb-card>

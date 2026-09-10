@@ -1,6 +1,6 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { NbDialogService, NbToastrService } from '@nebular/theme';
-import { LocalDataSource } from 'ng2-smart-table';
+import { LocalDataSource } from 'angular2-smart-table';
 import { forkJoin, of, Subject } from 'rxjs';
 import { finalize, map, switchMap, takeUntil } from 'rxjs/operators';
 
@@ -24,6 +24,7 @@ import {
 import { ConfirmDialogService } from '../../../@core/services/confirm-dialog.service';
 
 @Component({
+  standalone: false,
   selector: 'ngx-users',
   templateUrl: './users.component.html',
   styleUrls: ['./users.component.scss'],
@@ -266,7 +267,7 @@ export class UsersComponent implements OnInit, OnDestroy {
 
     this.settings = this.buildTableSettings();
 
-    this.settings.columns.actions.onComponentInitFunction = (
+    this.settings.columns.actions.componentInitFunction = (
       component: UsersActionsCellComponent,
     ) => {
       component.editUser.subscribe((row: UserWithRoles) => this.openEditUser(row));
@@ -328,6 +329,7 @@ export class UsersComponent implements OnInit, OnDestroy {
         is_org_admin: {
           title: '管理员',
           type: 'html',
+          sanitizer: { bypassHtml: true },
           width: '8%',
           valuePrepareFunction: (isAdmin: boolean) => {
             return isAdmin
@@ -340,8 +342,8 @@ export class UsersComponent implements OnInit, OnDestroy {
           type: 'custom',
           width: '18%',
           renderComponent: UsersRoleBadgeCellComponent,
-          filter: false,
-          sort: false,
+          isFilterable: false,
+          isSortable: false,
         },
         created_at: {
           title: '创建时间',
@@ -354,8 +356,8 @@ export class UsersComponent implements OnInit, OnDestroy {
           type: 'custom',
           width: '10%',
           renderComponent: UsersActionsCellComponent,
-          filter: false,
-          sort: false,
+          isFilterable: false,
+          isSortable: false,
           valuePrepareFunction: () => ({
             canEdit: this.canUpdateUser,
             canDelete: this.canDeleteUser,

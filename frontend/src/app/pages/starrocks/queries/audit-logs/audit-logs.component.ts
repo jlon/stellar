@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy, TemplateRef, ViewChild } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { NbToastrService, NbDialogService } from '@nebular/theme';
-import { LocalDataSource } from 'ng2-smart-table';
+import { LocalDataSource } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { NodeService, QueryHistoryItem } from '../../../../@core/data/node.service';
@@ -13,6 +13,7 @@ import { renderLongText } from '../../../../@core/utils/text-truncate';
 import { AuthService } from '../../../../@core/data/auth.service';
 
 @Component({
+  standalone: false,
   selector: 'ngx-audit-logs',
   templateUrl: './audit-logs.component.html',
   styleUrls: ['./audit-logs.component.scss'],
@@ -84,12 +85,14 @@ export class AuditLogsComponent implements OnInit, OnDestroy {
       total_ms: {
         title: '耗时(ms)',
         type: 'html',
+        sanitizer: { bypassHtml: true },
         width: '8%',
         valuePrepareFunction: (value: string | number) => renderMetricBadge(value, this.durationThresholds),
       },
       sql_statement: { 
         title: 'SQL', 
         type: 'html',
+        sanitizer: { bypassHtml: true },
         valuePrepareFunction: (value: any) => renderLongText(value, 100),
       },
     },

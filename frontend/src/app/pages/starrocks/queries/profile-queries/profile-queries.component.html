@@ -34,12 +34,12 @@
       <nb-card-body>
         <div class="profile-container">
           <div *ngIf="loading" class="text-center mt-3"><nb-spinner status="primary"></nb-spinner></div>
-          <ng2-smart-table 
+          <angular2-smart-table 
             *ngIf="!loading" 
             [settings]="profileSettings" 
             [source]="profileSource"
             (edit)="onProfileEdit($event)">
-          </ng2-smart-table>
+          </angular2-smart-table>
         </div>
       </nb-card-body>
     </nb-card>
