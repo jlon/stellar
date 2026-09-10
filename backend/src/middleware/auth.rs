@@ -1,3 +1,4 @@
+use crate::db::query as db_query;
 use axum::{
     extract::{Request, State},
     http::header,
@@ -83,7 +84,7 @@ pub async fn auth_middleware<DB: AppDb>(
         uri
     );
 
-    let (is_super_admin, organization_id): (bool, Option<i64>) = sqlx::query_as(
+    let (is_super_admin, organization_id): (bool, Option<i64>) = db_query::query_as(
         r#"
         SELECT
             COALESCE(EXISTS (
@@ -164,7 +165,7 @@ pub async fn auth_middleware<DB: AppDb>(
 // Helper to fetch organization from user_organizations when users.organization_id is NULL
 #[app_db]
 async fn fetch_org_from_user_organizations<DB: AppDb>(db: &Pool<DB>, user_id: i64) -> Option<i64> {
-    sqlx::query_scalar::<_, i64>(
+    db_query::query_scalar::<_, i64>(
         r#"SELECT organization_id FROM user_organizations WHERE user_id = ?"#,
     )
     .bind(user_id)

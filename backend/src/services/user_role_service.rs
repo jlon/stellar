@@ -1,4 +1,5 @@
 use crate::db::AppDb;
+use crate::db::query as db_query;
 use crate::models::{AssignUserRoleRequest, Role, RoleResponse};
 use crate::services::casbin_service::CasbinService;
 use crate::utils::{ApiError, ApiResult};
@@ -20,7 +21,7 @@ impl<DB: AppDb> UserRoleService<DB> {
 
     /// Get user's roles
     pub async fn get_user_roles(&self, user_id: i64) -> ApiResult<Vec<RoleResponse>> {
-        let roles: Vec<Role> = sqlx::query_as(
+        let roles: Vec<Role> = db_query::query_as(
             r#"
             SELECT r.*
             FROM roles r
@@ -42,14 +43,14 @@ impl<DB: AppDb> UserRoleService<DB> {
         user_id: i64,
         req: AssignUserRoleRequest,
     ) -> ApiResult<()> {
-        let role: Role = sqlx::query_as("SELECT * FROM roles WHERE id = ?")
+        let role: Role = db_query::query_as("SELECT * FROM roles WHERE id = ?")
             .bind(req.role_id)
             .fetch_optional(&self.pool)
             .await?
             .ok_or_else(|| ApiError::not_found("Role not found"))?;
 
         let existing: Option<(i64,)> =
-            sqlx::query_as("SELECT id FROM user_roles WHERE user_id = ? AND role_id = ?")
+            db_query::query_as("SELECT id FROM user_roles WHERE user_id = ? AND role_id = ?")
                 .bind(user_id)
                 .bind(req.role_id)
                 .fetch_optional(&self.pool)
@@ -59,7 +60,7 @@ impl<DB: AppDb> UserRoleService<DB> {
             return Err(ApiError::validation_error("User already has this role"));
         }
 
-        sqlx::query("INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)")
+        db_query::query("INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)")
             .bind(user_id)
             .bind(req.role_id)
             .execute(&self.pool)
@@ -77,7 +78,7 @@ impl<DB: AppDb> UserRoleService<DB> {
     /// Remove role from user
     pub async fn remove_role_from_user(&self, user_id: i64, role_id: i64) -> ApiResult<()> {
         let existing: Option<(i64,)> =
-            sqlx::query_as("SELECT id FROM user_roles WHERE user_id = ? AND role_id = ?")
+            db_query::query_as("SELECT id FROM user_roles WHERE user_id = ? AND role_id = ?")
                 .bind(user_id)
                 .bind(role_id)
                 .fetch_optional(&self.pool)
@@ -87,7 +88,7 @@ impl<DB: AppDb> UserRoleService<DB> {
             return Err(ApiError::not_found("User role assignment not found"));
         }
 
-        sqlx::query("DELETE FROM user_roles WHERE user_id = ? AND role_id = ?")
+        db_query::query("DELETE FROM user_roles WHERE user_id = ? AND role_id = ?")
             .bind(user_id)
             .bind(role_id)
             .execute(&self.pool)

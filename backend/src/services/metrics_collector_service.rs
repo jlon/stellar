@@ -1,3 +1,4 @@
+use crate::db::query as db_query;
 // Metrics Collector Service
 // Purpose: Periodically collect metrics from StarRocks clusters and store them in SQLite
 // Design Ref: ARCHITECTURE_ANALYSIS_AND_INTEGRATION.md
@@ -127,11 +128,12 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
         let today = Utc::now().date_naive();
         let yesterday = today - chrono::Duration::days(1);
 
-        let count: (i64,) =
-            sqlx::query_as("SELECT COUNT(*) as count FROM daily_snapshots WHERE snapshot_date = ?")
-                .bind(yesterday)
-                .fetch_one(&self.db)
-                .await?;
+        let count: (i64,) = db_query::query_as(
+            "SELECT COUNT(*) as count FROM daily_snapshots WHERE snapshot_date = ?",
+        )
+        .bind(yesterday)
+        .fetch_one(&self.db)
+        .await?;
 
         if count.0 == 0 {
             tracing::info!("Running daily aggregation for date: {}", yesterday);
@@ -428,7 +430,7 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
 
     /// Save metrics snapshot to database
     async fn save_snapshot(&self, snapshot: &MetricsSnapshot) -> ApiResult<()> {
-        sqlx::query(
+        db_query::query(
             r#"
             INSERT INTO metrics_snapshots (
                 cluster_id, collected_at,
@@ -513,7 +515,7 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
     async fn cleanup_old_metrics(&self) -> Result<(), sqlx::Error> {
         let cutoff_date = Utc::now() - chrono::Duration::days(self.retention_days);
 
-        let result = sqlx::query("DELETE FROM metrics_snapshots WHERE collected_at < ?")
+        let result = db_query::query("DELETE FROM metrics_snapshots WHERE collected_at < ?")
             .bind(cutoff_date)
             .execute(&self.db)
             .await?;
@@ -534,7 +536,7 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
         #[derive(sqlx::FromRow)]
         struct SnapshotRow {
             cluster_id: i64,
-            collected_at: chrono::NaiveDateTime,
+            collected_at: chrono::DateTime<Utc>,
             qps: f64,
             rps: f64,
             query_latency_p50: f64,
@@ -576,7 +578,7 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
             io_write_rate: f64,
         }
 
-        let row: Option<SnapshotRow> = sqlx::query_as(
+        let row: Option<SnapshotRow> = db_query::query_as(
             r#"
             SELECT * FROM metrics_snapshots
             WHERE cluster_id = ?
@@ -591,7 +593,7 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
         if let Some(r) = row {
             Ok(Some(MetricsSnapshot {
                 cluster_id: r.cluster_id,
-                collected_at: r.collected_at.and_utc(),
+                collected_at: r.collected_at,
                 qps: r.qps,
                 rps: r.rps,
                 query_latency_p50: r.query_latency_p50,
@@ -699,7 +701,7 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
             yesterday_end
         );
 
-        let snapshots = sqlx::query_as::<_, MetricsAggregation>(
+        let snapshots = db_query::query_as::<_, MetricsAggregation>(
             r#"
             SELECT
                 AVG(qps) as avg_qps,
@@ -785,7 +787,7 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
             ),
         );
 
-        sqlx::query(&upsert_sql)
+        db_query::query(&upsert_sql)
             .bind(cluster_id)
             .bind(yesterday)
             .bind(avg_qps)
@@ -990,7 +992,7 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
     async fn cleanup_old_daily_snapshots(&self) -> Result<(), sqlx::Error> {
         let cutoff_date = Utc::now().date_naive() - chrono::Duration::days(90);
 
-        let result = sqlx::query("DELETE FROM daily_snapshots WHERE snapshot_date < ?")
+        let result = db_query::query("DELETE FROM daily_snapshots WHERE snapshot_date < ?")
             .bind(cutoff_date)
             .execute(&self.db)
             .await?;

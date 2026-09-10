@@ -1,4 +1,5 @@
 use crate::db::AppDb;
+use crate::db::query as db_query;
 use crate::models::{Permission, PermissionResponse, PermissionTree};
 use crate::services::casbin_service::CasbinService;
 use crate::utils::ApiResult;
@@ -21,7 +22,7 @@ impl<DB: AppDb> PermissionService<DB> {
     /// Get all permissions
     pub async fn list_permissions(&self) -> ApiResult<Vec<PermissionResponse>> {
         let permissions: Vec<Permission> =
-            sqlx::query_as("SELECT * FROM permissions ORDER BY type, code")
+            db_query::query_as("SELECT * FROM permissions ORDER BY type, code")
                 .fetch_all(&self.pool)
                 .await?;
 
@@ -31,7 +32,7 @@ impl<DB: AppDb> PermissionService<DB> {
     /// Get menu permissions only
     pub async fn list_menu_permissions(&self) -> ApiResult<Vec<PermissionResponse>> {
         let permissions: Vec<Permission> =
-            sqlx::query_as("SELECT * FROM permissions WHERE type = 'menu' ORDER BY code")
+            db_query::query_as("SELECT * FROM permissions WHERE type = 'menu' ORDER BY code")
                 .fetch_all(&self.pool)
                 .await?;
 
@@ -41,7 +42,7 @@ impl<DB: AppDb> PermissionService<DB> {
     /// Get API permissions only
     pub async fn list_api_permissions(&self) -> ApiResult<Vec<PermissionResponse>> {
         let permissions: Vec<Permission> =
-            sqlx::query_as("SELECT * FROM permissions WHERE type = 'api' ORDER BY code")
+            db_query::query_as("SELECT * FROM permissions WHERE type = 'api' ORDER BY code")
                 .fetch_all(&self.pool)
                 .await?;
 
@@ -51,7 +52,7 @@ impl<DB: AppDb> PermissionService<DB> {
     /// Get permissions as tree structure
     pub async fn get_permission_tree(&self) -> ApiResult<Vec<PermissionTree>> {
         let permissions: Vec<Permission> =
-            sqlx::query_as("SELECT * FROM permissions ORDER BY type, code")
+            db_query::query_as("SELECT * FROM permissions ORDER BY type, code")
                 .fetch_all(&self.pool)
                 .await?;
 
@@ -100,7 +101,7 @@ impl<DB: AppDb> PermissionService<DB> {
 
     /// Get user's all permissions (flat list)
     pub async fn get_user_permissions(&self, user_id: i64) -> ApiResult<Vec<PermissionResponse>> {
-        let permissions: Vec<Permission> = sqlx::query_as(
+        let permissions: Vec<Permission> = db_query::query_as(
             r#"
             SELECT DISTINCT p.*
             FROM permissions p

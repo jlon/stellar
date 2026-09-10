@@ -1,3 +1,4 @@
+use crate::db::query as db_query;
 // Data Statistics Service
 // Purpose: Collect and cache expensive data statistics (database/table counts, top tables, etc.)
 // Design Ref: CLUSTER_OVERVIEW_PLAN.md
@@ -10,7 +11,7 @@ use crate::services::{
     AuditLogService, ClusterService, MySQLClient, MySQLPoolManager, TopTableByAccess,
 };
 use crate::utils::ApiResult;
-use chrono::{NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::Pool;
 use std::sync::Arc;
@@ -168,7 +169,7 @@ impl<DB: AppDb> DataStatisticsService<DB> {
         #[derive(sqlx::FromRow)]
         struct DataStatisticsRow {
             cluster_id: i64,
-            updated_at: NaiveDateTime,
+            updated_at: DateTime<Utc>,
             database_count: i64,
             table_count: i64,
             total_data_size: i64,
@@ -188,7 +189,7 @@ impl<DB: AppDb> DataStatisticsService<DB> {
             unique_users: Option<String>,
         }
 
-        let row: Option<DataStatisticsRow> = sqlx::query_as(
+        let row: Option<DataStatisticsRow> = db_query::query_as(
             r#"
             SELECT * FROM data_statistics
             WHERE cluster_id = ?
@@ -219,7 +220,7 @@ impl<DB: AppDb> DataStatisticsService<DB> {
 
             Ok(Some(DataStatistics {
                 cluster_id: r.cluster_id,
-                updated_at: r.updated_at.and_utc(),
+                updated_at: r.updated_at,
                 database_count: r.database_count as i32,
                 table_count: r.table_count as i32,
                 total_data_size: r.total_data_size,
@@ -389,7 +390,7 @@ impl<DB: AppDb> DataStatisticsService<DB> {
             ),
         );
 
-        sqlx::query(&upsert_sql)
+        db_query::query(&upsert_sql)
             .bind(stats.cluster_id)
             .bind(stats.updated_at)
             .bind(stats.database_count)

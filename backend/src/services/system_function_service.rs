@@ -1,5 +1,6 @@
 use crate::db::AppDb;
-use crate::db::dialect::{LastInsertId, RowsAffected};
+use crate::db::dialect::RowsAffected;
+use crate::db::query as db_query;
 use serde_json::Value;
 use sqlx::Pool;
 use std::collections::HashMap;
@@ -33,7 +34,7 @@ impl<DB: AppDb> SystemFunctionService<DB> {
     pub async fn get_functions(&self, cluster_id: i64) -> ApiResult<Vec<SystemFunction>> {
         tracing::debug!("Getting system functions for cluster_id: {}", cluster_id);
 
-        let all_functions = sqlx::query_as::<_, SystemFunction>(
+        let all_functions = db_query::query_as::<_, SystemFunction>(
             "SELECT * FROM system_functions WHERE cluster_id IS NULL OR cluster_id = ?",
         )
         .bind(cluster_id)
@@ -42,7 +43,7 @@ impl<DB: AppDb> SystemFunctionService<DB> {
 
         tracing::debug!("Found {} function definitions", all_functions.len());
 
-        let preferences = sqlx::query_as::<_, SystemFunctionPreference>(
+        let preferences = db_query::query_as::<_, SystemFunctionPreference>(
             "SELECT * FROM system_function_preferences WHERE cluster_id = ?",
         )
         .bind(cluster_id)
@@ -118,7 +119,7 @@ impl<DB: AppDb> SystemFunctionService<DB> {
 
         self.validate_sql_safety(&sql_query)?;
 
-        let count: i64 = sqlx::query_scalar(
+        let count: i64 = db_query::query_scalar(
             "SELECT COUNT(*) FROM system_functions WHERE cluster_id = ? AND category_name = ?",
         )
         .bind(cluster_id)
@@ -132,7 +133,7 @@ impl<DB: AppDb> SystemFunctionService<DB> {
             ));
         }
 
-        let max_order: Option<i32> = sqlx::query_scalar(
+        let max_order: Option<i32> = db_query::query_scalar(
             "SELECT MAX(display_order) FROM system_functions WHERE cluster_id = ? AND category_name = ?"
         )
         .bind(cluster_id)
@@ -142,7 +143,7 @@ impl<DB: AppDb> SystemFunctionService<DB> {
 
         let display_order = max_order.unwrap_or(0) + 1;
 
-        let max_category_order: Option<i32> = sqlx::query_scalar(
+        let max_category_order: Option<i32> = db_query::query_scalar(
             "SELECT MAX(category_order) FROM system_functions WHERE cluster_id = ?",
         )
         .bind(cluster_id)
@@ -151,7 +152,7 @@ impl<DB: AppDb> SystemFunctionService<DB> {
 
         let category_order = max_category_order.unwrap_or(0) + 1;
 
-        let function_id = sqlx::query(
+        let function_id = db_query::query(
             "INSERT INTO system_functions (
                 cluster_id, category_name, function_name, description, sql_query,
                 display_order, category_order, is_favorited, created_by
@@ -165,12 +166,11 @@ impl<DB: AppDb> SystemFunctionService<DB> {
         .bind(display_order)
         .bind(category_order)
         .bind(user_id)
-        .execute(&*self.db)
-        .await?
-        .last_insert_id();
+        .insert_id(&*self.db)
+        .await?;
 
         let function =
-            sqlx::query_as::<_, SystemFunction>("SELECT * FROM system_functions WHERE id = ?")
+            db_query::query_as::<_, SystemFunction>("SELECT * FROM system_functions WHERE id = ?")
                 .bind(function_id)
                 .fetch_one(&*self.db)
                 .await?;
@@ -183,7 +183,7 @@ impl<DB: AppDb> SystemFunctionService<DB> {
         cluster_id: i64,
         function_id: i64,
     ) -> ApiResult<Vec<HashMap<String, Value>>> {
-        let function = sqlx::query_as::<_, SystemFunction>(
+        let function = db_query::query_as::<_, SystemFunction>(
             "SELECT * FROM system_functions WHERE id = ? AND cluster_id = ?",
         )
         .bind(function_id)
@@ -192,7 +192,7 @@ impl<DB: AppDb> SystemFunctionService<DB> {
         .await?
         .ok_or_else(|| ApiError::not_found("Function not found or deleted"))?;
 
-        sqlx::query("UPDATE system_functions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+        db_query::query("UPDATE system_functions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?")
             .bind(function_id)
             .execute(&*self.db)
             .await?;
@@ -220,7 +220,7 @@ impl<DB: AppDb> SystemFunctionService<DB> {
     }
 
     pub async fn update_system_function_access_time(&self, function_name: &str) -> ApiResult<()> {
-        sqlx::query(
+        db_query::query(
             "UPDATE system_functions SET updated_at = CURRENT_TIMESTAMP WHERE function_name = ? AND cluster_id IS NULL"
         )
         .bind(function_name)
@@ -234,7 +234,7 @@ impl<DB: AppDb> SystemFunctionService<DB> {
         let mut tx = self.db.begin().await?;
 
         for order in req.functions {
-            sqlx::query(
+            db_query::query(
                 &format!(
                     "INSERT INTO system_function_preferences (cluster_id, function_id, category_order, display_order, is_favorited, updated_at)
                      VALUES (?, ?, ?, ?, COALESCE((SELECT _t.is_favorited FROM (SELECT is_favorited FROM system_function_preferences WHERE cluster_id = ? AND function_id = ?) AS _t), false), CURRENT_TIMESTAMP)
@@ -265,7 +265,7 @@ impl<DB: AppDb> SystemFunctionService<DB> {
         cluster_id: i64,
         function_id: i64,
     ) -> ApiResult<SystemFunction> {
-        let current_favorited: Option<bool> = sqlx::query_scalar(
+        let current_favorited: Option<bool> = db_query::query_scalar(
             "SELECT is_favorited FROM system_function_preferences WHERE cluster_id = ? AND function_id = ?"
         )
         .bind(cluster_id)
@@ -275,14 +275,14 @@ impl<DB: AppDb> SystemFunctionService<DB> {
 
         let new_favorited = !current_favorited.unwrap_or(false);
 
-        let (default_category_order, default_display_order): (i32, i32) = sqlx::query_as(
+        let (default_category_order, default_display_order): (i32, i32) = db_query::query_as(
             "SELECT category_order, display_order FROM system_functions WHERE id = ?",
         )
         .bind(function_id)
         .fetch_one(&*self.db)
         .await?;
 
-        sqlx::query(
+        db_query::query(
             &format!(
                 "INSERT INTO system_function_preferences (cluster_id, function_id, category_order, display_order, is_favorited, updated_at)
                  VALUES (?, ?, 
@@ -342,7 +342,7 @@ impl<DB: AppDb> SystemFunctionService<DB> {
 
         self.validate_sql_safety(&sql_query)?;
 
-        sqlx::query(
+        db_query::query(
             "UPDATE system_functions SET 
              category_name = ?, function_name = ?, description = ?, sql_query = ?, updated_at = CURRENT_TIMESTAMP
              WHERE id = ? AND cluster_id = ?"
@@ -364,11 +364,12 @@ impl<DB: AppDb> SystemFunctionService<DB> {
     }
 
     pub async fn delete_function(&self, cluster_id: i64, function_id: i64) -> ApiResult<()> {
-        let result = sqlx::query("DELETE FROM system_functions WHERE id = ? AND cluster_id = ?")
-            .bind(function_id)
-            .bind(cluster_id)
-            .execute(&*self.db)
-            .await?;
+        let result =
+            db_query::query("DELETE FROM system_functions WHERE id = ? AND cluster_id = ?")
+                .bind(function_id)
+                .bind(cluster_id)
+                .execute(&*self.db)
+                .await?;
 
         if result.rows_affected() == 0 {
             return Err(ApiError::not_found("Function not found or deleted"));
@@ -420,14 +421,14 @@ impl<DB: AppDb> SystemFunctionService<DB> {
             return Err(ApiError::invalid_data("不能删除系统默认分类"));
         }
 
-        sqlx::query(
+        db_query::query(
             "DELETE FROM system_functions WHERE category_name = ? AND cluster_id IS NOT NULL",
         )
         .bind(category_name)
         .execute(&*self.db)
         .await?;
 
-        sqlx::query(
+        db_query::query(
             "DELETE FROM system_function_preferences WHERE function_id IN (
                 SELECT id FROM system_functions WHERE category_name = ? AND cluster_id IS NOT NULL
             )",

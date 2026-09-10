@@ -12,7 +12,7 @@ use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
-use sqlx::{Database, Executor, IntoArguments, MySql, Sqlite, database::HasArguments};
+use sqlx::{Database, Executor, IntoArguments, MySql, Postgres, Sqlite, database::HasArguments};
 use stellar::config::Config;
 use stellar::db::{self, AppDb};
 use stellar::embedded::WebAssets;
@@ -317,6 +317,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match kind {
         stellar::db::DatabaseKind::Sqlite => run::<Sqlite>(config).await?,
         stellar::db::DatabaseKind::MySql => run::<MySql>(config).await?,
+        stellar::db::DatabaseKind::Postgres => run::<Postgres>(config).await?,
     }
 
     Ok(())
@@ -327,7 +328,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[allow(clippy::too_many_lines)]
 async fn run<DB: AppDb>(config: Config) -> Result<(), Box<dyn std::error::Error>>
 where
-    for<'c> &'c mut <DB as Database>::Connection: Executor<'c, Database = DB>,
+    for<'q> <DB as AppDb>::Query<'q>: Send,
+    for<'c> &'c mut <DB as Database>::Connection: Executor<'c, Database = DB> + Send,
     for<'q> <DB as HasArguments<'q>>::Arguments: IntoArguments<'q, DB> + Default,
     usize: sqlx::ColumnIndex<<DB as Database>::Row>,
     for<'a> &'a str: sqlx::ColumnIndex<<DB as Database>::Row>,

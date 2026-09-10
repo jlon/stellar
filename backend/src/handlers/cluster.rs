@@ -1,3 +1,4 @@
+use crate::db::query as db_query;
 use axum::{
     Json,
     extract::{Path, State},
@@ -50,7 +51,7 @@ pub async fn create_cluster(
 
     // Check if user is org admin or super admin for admin_user fields
     let is_org_admin = if let Some(org_id) = org_ctx.organization_id {
-        let exists: Option<(i64,)> = sqlx::query_as(
+        let exists: Option<(i64,)> = db_query::query_as(
             "SELECT 1 FROM user_roles ur 
              JOIN roles r ON ur.role_id = r.id 
              WHERE ur.user_id = ? AND r.code LIKE 'org_admin_%' AND r.organization_id = ?
@@ -259,7 +260,7 @@ pub async fn update_cluster(
 
     // Check if user is org admin or super admin for admin_user fields
     let is_org_admin = if let Some(org_id) = org_ctx.organization_id {
-        let exists: Option<(i64,)> = sqlx::query_as(
+        let exists: Option<(i64,)> = db_query::query_as(
             "SELECT 1 FROM user_roles ur 
              JOIN roles r ON ur.role_id = r.id 
              WHERE ur.user_id = ? AND r.code LIKE 'org_admin_%' AND r.organization_id = ?

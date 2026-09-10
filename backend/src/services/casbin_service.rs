@@ -1,4 +1,5 @@
 use crate::db::AppDb;
+use crate::db::query as db_query;
 use crate::models::cluster::ClusterType;
 use crate::utils::{ApiError, ApiResult};
 use casbin::prelude::*;
@@ -157,7 +158,7 @@ m = g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act
         // 锁外执行所有 DB 查询与策略构建；写锁内只做纯内存替换，
         // 避免锁持有期间所有并发请求的权限检查（enforce 读锁）被 IO 阻塞。
         // （已知权衡：两次快速连续的 reload 可能以乱序提交内存快照，见调用方串行化。）
-        let role_permissions: Vec<(i64, Option<i64>, String, String)> = sqlx::query_as(
+        let role_permissions: Vec<(i64, Option<i64>, String, String)> = db_query::query_as(
             r#"
             SELECT rp.role_id, r.organization_id, p.code, COALESCE(p.action, '') as action
             FROM role_permissions rp
@@ -172,13 +173,14 @@ m = g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act
             ApiError::internal_error(format!("Failed to load policies: {}", e))
         })?;
 
-        let user_roles: Vec<(i64, i64)> = sqlx::query_as("SELECT user_id, role_id FROM user_roles")
-            .fetch_all(pool)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to load user roles: {:?}", e);
-                ApiError::internal_error(format!("Failed to load user roles: {}", e))
-            })?;
+        let user_roles: Vec<(i64, i64)> =
+            db_query::query_as("SELECT user_id, role_id FROM user_roles")
+                .fetch_all(pool)
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to load user roles: {:?}", e);
+                    ApiError::internal_error(format!("Failed to load user roles: {}", e))
+                })?;
 
         let mut policies: Vec<Vec<String>> = Vec::new();
         for (role_id, org_id, code, action) in role_permissions {

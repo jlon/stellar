@@ -1,5 +1,6 @@
 use crate::db::AppDb;
-use crate::db::dialect::{LastInsertId, RowsAffected};
+use crate::db::dialect::RowsAffected;
+use crate::db::query as db_query;
 use crate::models::{
     CreateOrganizationRequest, Organization, OrganizationResponse, UpdateOrganizationRequest,
 };
@@ -27,7 +28,7 @@ impl<DB: AppDb> OrganizationService<DB> {
         let mut tx = self.pool.begin().await?;
 
         let existing: Option<(i64,)> =
-            sqlx::query_as("SELECT id FROM organizations WHERE code = ?")
+            db_query::query_as("SELECT id FROM organizations WHERE code = ?")
                 .bind(&req.code)
                 .fetch_optional(&mut *tx)
                 .await?;
@@ -35,16 +36,15 @@ impl<DB: AppDb> OrganizationService<DB> {
             return Err(ApiError::validation_error("Organization code already exists"));
         }
 
-        let result = sqlx::query(
+        let org_id = db_query::query(
             "INSERT INTO organizations (code, name, description, is_system) VALUES (?, ?, ?, ?)",
         )
         .bind(&req.code)
         .bind(&req.name)
         .bind(&req.description)
         .bind(false)
-        .execute(&mut *tx)
+        .insert_id(&mut *tx)
         .await?;
-        let org_id = result.last_insert_id();
 
         let role_id = self
             .create_org_admin_role(&mut tx, org_id, &req.code, &req.name)
@@ -71,7 +71,7 @@ impl<DB: AppDb> OrganizationService<DB> {
 
         tx.commit().await?;
 
-        let org: Organization = sqlx::query_as("SELECT * FROM organizations WHERE id = ?")
+        let org: Organization = db_query::query_as("SELECT * FROM organizations WHERE id = ?")
             .bind(org_id)
             .fetch_one(&self.pool)
             .await?;
@@ -84,11 +84,11 @@ impl<DB: AppDb> OrganizationService<DB> {
         is_super_admin: bool,
     ) -> ApiResult<Vec<OrganizationResponse>> {
         let orgs: Vec<Organization> = if is_super_admin {
-            sqlx::query_as("SELECT * FROM organizations ORDER BY created_at DESC")
+            db_query::query_as("SELECT * FROM organizations ORDER BY created_at DESC")
                 .fetch_all(&self.pool)
                 .await?
         } else if let Some(org) = org_id {
-            sqlx::query_as("SELECT * FROM organizations WHERE id = ? ORDER BY created_at DESC")
+            db_query::query_as("SELECT * FROM organizations WHERE id = ? ORDER BY created_at DESC")
                 .bind(org)
                 .fetch_all(&self.pool)
                 .await?
@@ -105,10 +105,11 @@ impl<DB: AppDb> OrganizationService<DB> {
         requestor_org: Option<i64>,
         is_super_admin: bool,
     ) -> ApiResult<OrganizationResponse> {
-        let org: Option<Organization> = sqlx::query_as("SELECT * FROM organizations WHERE id = ?")
-            .bind(id)
-            .fetch_optional(&self.pool)
-            .await?;
+        let org: Option<Organization> =
+            db_query::query_as("SELECT * FROM organizations WHERE id = ?")
+                .bind(id)
+                .fetch_optional(&self.pool)
+                .await?;
 
         let org = org.ok_or_else(|| ApiError::not_found("Organization not found"))?;
 
@@ -122,7 +123,7 @@ impl<DB: AppDb> OrganizationService<DB> {
     }
 
     async fn get_org_admin_user_id(&self, org_id: i64) -> ApiResult<Option<i64>> {
-        let admin_user_id: Option<(i64,)> = sqlx::query_as(
+        let admin_user_id: Option<(i64,)> = db_query::query_as(
             "SELECT ur.user_id 
              FROM user_roles ur
              JOIN roles r ON ur.role_id = r.id
@@ -165,7 +166,7 @@ impl<DB: AppDb> OrganizationService<DB> {
             updates.push("updated_at = CURRENT_TIMESTAMP");
             let sql = format!("UPDATE organizations SET {} WHERE id = ?", updates.join(", "));
 
-            let mut query = sqlx::query(&sql);
+            let mut query = db_query::query(&sql);
             for p in params {
                 query = query.bind(p);
             }
@@ -201,7 +202,7 @@ impl<DB: AppDb> OrganizationService<DB> {
 
         self.ensure_organization_empty(org.id).await?;
 
-        let result = sqlx::query("DELETE FROM organizations WHERE id = ?")
+        let result = db_query::query("DELETE FROM organizations WHERE id = ?")
             .bind(id)
             .execute(&self.pool)
             .await?;
@@ -214,11 +215,12 @@ impl<DB: AppDb> OrganizationService<DB> {
     }
 
     pub async fn get_user_organization(&self, user_id: i64) -> ApiResult<Option<i64>> {
-        let org_id: Option<i64> =
-            sqlx::query_scalar("SELECT organization_id FROM user_organizations WHERE user_id = ?")
-                .bind(user_id)
-                .fetch_optional(&self.pool)
-                .await?;
+        let org_id: Option<i64> = db_query::query_scalar(
+            "SELECT organization_id FROM user_organizations WHERE user_id = ?",
+        )
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await?;
         Ok(org_id)
     }
 
@@ -244,7 +246,7 @@ impl<DB: AppDb> OrganizationService<DB> {
         org_code: &str,
         org_name: &str,
     ) -> ApiResult<i64> {
-        let role_result = sqlx::query(
+        let role_id = db_query::query(
             "INSERT INTO roles (code, name, description, is_system, organization_id) VALUES (?, ?, ?, ?, ?)",
         )
         .bind(format!("org_admin_{}", org_code))
@@ -252,11 +254,10 @@ impl<DB: AppDb> OrganizationService<DB> {
         .bind(format!("Admin for organization {}", org_name))
         .bind(false)
         .bind(org_id)
-        .execute(&mut **tx)
+        .insert_id(&mut **tx)
         .await?;
-        let role_id = role_result.last_insert_id();
 
-        let perms = sqlx::query_as::<_, (i64,)>(
+        let perms = db_query::query_as::<_, (i64,)>(
             "SELECT id FROM permissions 
              WHERE code NOT IN ('menu:system:organizations')
                AND code NOT LIKE 'api:organizations:%'",
@@ -266,7 +267,7 @@ impl<DB: AppDb> OrganizationService<DB> {
 
         let perm_count = perms.len();
         for (pid,) in perms {
-            sqlx::query("INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)")
+            db_query::query("INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)")
                 .bind(role_id)
                 .bind(pid)
                 .execute(&mut **tx)
@@ -290,16 +291,15 @@ impl<DB: AppDb> OrganizationService<DB> {
         email: Option<String>,
         org_id: i64,
     ) -> ApiResult<i64> {
-        let user_result = sqlx::query(
+        let user_id = db_query::query(
             "INSERT INTO users (username, password_hash, email, organization_id) VALUES (?, ?, ?, ?)",
         )
         .bind(username)
         .bind(password_hash)
         .bind(email)
         .bind(org_id)
-        .execute(&mut **tx)
+        .insert_id(&mut **tx)
         .await?;
-        let user_id = user_result.last_insert_id();
 
         self.upsert_user_organization(tx, user_id, org_id).await?;
         Ok(user_id)
@@ -311,7 +311,7 @@ impl<DB: AppDb> OrganizationService<DB> {
         user_id: i64,
         org_id: i64,
     ) -> ApiResult<()> {
-        let exists = sqlx::query_scalar::<_, Option<i64>>("SELECT id FROM users WHERE id = ?")
+        let exists = db_query::query_scalar::<_, Option<i64>>("SELECT id FROM users WHERE id = ?")
             .bind(user_id)
             .fetch_one(&mut **tx)
             .await?;
@@ -319,7 +319,7 @@ impl<DB: AppDb> OrganizationService<DB> {
             return Err(ApiError::not_found("Admin user not found"));
         }
 
-        sqlx::query("UPDATE users SET organization_id = ? WHERE id = ?")
+        db_query::query("UPDATE users SET organization_id = ? WHERE id = ?")
             .bind(org_id)
             .bind(user_id)
             .execute(&mut **tx)
@@ -334,7 +334,7 @@ impl<DB: AppDb> OrganizationService<DB> {
         user_id: i64,
         org_id: i64,
     ) -> ApiResult<()> {
-        sqlx::query(&format!(
+        db_query::query(&format!(
             r#"
             INSERT INTO user_organizations (user_id, organization_id)
             VALUES (?, ?)
@@ -355,11 +355,12 @@ impl<DB: AppDb> OrganizationService<DB> {
         org_id: i64,
         user_id: i64,
     ) -> ApiResult<()> {
-        let user_org: Option<i64> =
-            sqlx::query_scalar("SELECT organization_id FROM user_organizations WHERE user_id = ?")
-                .bind(user_id)
-                .fetch_optional(&mut **tx)
-                .await?;
+        let user_org: Option<i64> = db_query::query_scalar(
+            "SELECT organization_id FROM user_organizations WHERE user_id = ?",
+        )
+        .bind(user_id)
+        .fetch_optional(&mut **tx)
+        .await?;
 
         match user_org {
             Some(existing_org) if existing_org == org_id => {},
@@ -375,7 +376,7 @@ impl<DB: AppDb> OrganizationService<DB> {
             },
         }
 
-        let role_id: Option<i64> = sqlx::query_scalar(
+        let role_id: Option<i64> = db_query::query_scalar(
             "SELECT id FROM roles WHERE organization_id = ? AND code LIKE 'org_admin_%' LIMIT 1",
         )
         .bind(org_id)
@@ -386,14 +387,15 @@ impl<DB: AppDb> OrganizationService<DB> {
             ApiError::internal_error("Organization admin role is missing for this organization")
         })?;
 
-        sqlx::query("DELETE FROM user_roles WHERE role_id = ?")
+        db_query::query("DELETE FROM user_roles WHERE role_id = ?")
             .bind(role_id)
             .execute(&mut **tx)
             .await?;
 
-        sqlx::query(&format!(
-            "{} INTO user_roles (user_id, role_id) VALUES (?, ?)",
-            DB::insert_ignore()
+        db_query::query(&format!(
+            "{} INTO user_roles (user_id, role_id) VALUES (?, ?) {}",
+            DB::insert_ignore_prefix(),
+            DB::insert_ignore_suffix(),
         ))
         .bind(user_id)
         .bind(role_id)
@@ -409,9 +411,10 @@ impl<DB: AppDb> OrganizationService<DB> {
         user_id: i64,
         role_id: i64,
     ) -> ApiResult<()> {
-        sqlx::query(&format!(
-            "{} INTO user_roles (user_id, role_id) VALUES (?, ?)",
-            DB::insert_ignore()
+        db_query::query(&format!(
+            "{} INTO user_roles (user_id, role_id) VALUES (?, ?) {}",
+            DB::insert_ignore_prefix(),
+            DB::insert_ignore_suffix(),
         ))
         .bind(user_id)
         .bind(role_id)
@@ -421,11 +424,12 @@ impl<DB: AppDb> OrganizationService<DB> {
     }
 
     async fn ensure_organization_empty(&self, org_id: i64) -> ApiResult<()> {
-        let user_count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM user_organizations WHERE organization_id = ?")
-                .bind(org_id)
-                .fetch_one(&self.pool)
-                .await?;
+        let user_count: i64 = db_query::query_scalar(
+            "SELECT COUNT(*) FROM user_organizations WHERE organization_id = ?",
+        )
+        .bind(org_id)
+        .fetch_one(&self.pool)
+        .await?;
         if user_count > 0 {
             return Err(ApiError::validation_error(
                 "Organization still has users, please migrate them before deletion",
@@ -433,7 +437,7 @@ impl<DB: AppDb> OrganizationService<DB> {
         }
 
         let cluster_count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM clusters WHERE organization_id = ?")
+            db_query::query_scalar("SELECT COUNT(*) FROM clusters WHERE organization_id = ?")
                 .bind(org_id)
                 .fetch_one(&self.pool)
                 .await?;
@@ -444,7 +448,7 @@ impl<DB: AppDb> OrganizationService<DB> {
         }
 
         let role_count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM roles WHERE organization_id = ?")
+            db_query::query_scalar("SELECT COUNT(*) FROM roles WHERE organization_id = ?")
                 .bind(org_id)
                 .fetch_one(&self.pool)
                 .await?;

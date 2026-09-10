@@ -5,13 +5,15 @@
 //!   由 [`AppDb`] 一个 trait 收口，新增后端（如 PostgreSQL）只需新增一个 impl。
 //! - **低耦合**：业务代码（services/handlers）只依赖 `DB: AppDb` 泛型约束与
 //!   `sqlx::Pool<DB>`，不直接感知具体后端类型；同一份 SQL 字符串代码可在
-//!   SQLite / MySQL 上编译运行（两者占位符同为 `?`）。
+//!   SQLite / MySQL / PostgreSQL 上编译运行（PostgreSQL 占位符由 `AppQuery` 转换）。
 //!
-//! 运行时选择：由连接串协议决定（`sqlite://` / `mysql://`），见 [`DatabaseKind`]。
+//! 运行时选择：由连接串协议决定（`sqlite://` / `mysql://` / `postgres://`），见 [`DatabaseKind`]。
 
 pub mod dialect;
+pub mod query;
 
 mod mysql;
+mod postgres;
 mod sqlite;
 
 use std::future::Future;
@@ -19,21 +21,22 @@ use std::path::Path;
 
 use sqlx::{Database, Pool};
 
-pub use dialect::{LastInsertId, RowsAffected, SqlDialect};
+pub use dialect::{RowsAffected, SqlDialect};
+pub use query::{query, query_as, query_scalar};
 
 /// 业务代码统一使用的数据库后端约束。
 ///
 /// 能力打包：
 /// - `SqlDialect`: 方言 SQL 片段生成（upsert / ignore / replace）
-/// - `QueryResult: LastInsertId`: 读取自增主键
 /// - `Connection: Migrate`: 支持 sqlx 迁移
 /// - `AppDb::connect`: 创建并初始化连接池
+/// - `AppDb::Query`: 生成后端原生参数占位符的动态查询
 /// - `AppDb::migrations_dir`: 该后端的迁移脚本目录
 ///
 /// where 子句把 sqlx 的各类能力 bound（Executor/IntoArguments/编解码/列索引）
 /// 集中声明一次，业务代码只需一个 `DB: AppDb`；两个后端的具体实现均满足。
 pub trait AppDb:
-    Database<Connection: sqlx::migrate::Migrate, QueryResult: LastInsertId + RowsAffected>
+    Database<Connection: sqlx::migrate::Migrate, QueryResult: RowsAffected>
     + SqlDialect
     + Send
     + Sync
@@ -43,10 +46,16 @@ pub trait AppDb:
     // 能力 bound（Executor/IntoArguments/ColumnIndex/值类型编解码）不在此处声明：
     // Rust 的 bound 不跨签名隐式传播，声明在 trait 定义处反而会让 `T: AppDb`
     // 成为不可用的 bound。能力集合由 app_impl! 宏与 #[app_db] 宏在使用点展开，
-    // 两者同源（宏内部清单）。
+    // 三者同源（宏内部清单）。
 
     /// 建立连接池并完成方言相关初始化（SQLite 建库文件 + PRAGMA 调优；MySQL 直连）。
     fn connect(url: &str) -> impl Future<Output = sqlx::Result<Pool<Self>>> + Send;
+
+    /// 当前后端的动态查询实现。
+    type Query<'q>: query::AppQuery<'q, Self> + Send + 'q;
+
+    /// 由原始 SQL 创建该后端的动态查询。
+    fn make_query<'q>(sql: &'q str) -> Self::Query<'q>;
 
     /// 该后端对应的迁移脚本目录（migrations/<后端>/）。
     fn migrations_dir() -> &'static str;
@@ -57,17 +66,23 @@ pub trait AppDb:
 pub enum DatabaseKind {
     Sqlite,
     MySql,
+    Postgres,
 }
 
 impl DatabaseKind {
     /// 从连接串协议识别数据库后端。
     ///
-    /// `mariadb://` 与 `mysql://` 同归 MySql 后端（与 sqlx 的 URL scheme 集合一致）。
+    /// `mariadb://` 与 `mysql://` 同归 MySql 后端；`postgresql://` 是 PostgreSQL
+    /// URL 的常见别名。
     pub fn from_url(url: &str) -> anyhow::Result<Self> {
         match url.split_once("://") {
             Some(("sqlite", _)) => Ok(Self::Sqlite),
             Some(("mysql", _)) | Some(("mariadb", _)) => Ok(Self::MySql),
-            _ => anyhow::bail!("不支持的数据库 URL 协议: {}（支持 sqlite:// 或 mysql://）", url),
+            Some(("postgres", _)) | Some(("postgresql", _)) => Ok(Self::Postgres),
+            _ => anyhow::bail!(
+                "不支持的数据库 URL 协议: {}（支持 sqlite://、mysql:// 或 postgres://）",
+                url
+            ),
         }
     }
 }
@@ -143,7 +158,7 @@ fn find_migrations_dir(default_path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sqlx::{mysql::MySql, sqlite::Sqlite};
+    use sqlx::{mysql::MySql, postgres::Postgres, sqlite::Sqlite};
 
     #[test]
     fn from_url_detects_kind_by_scheme() {
@@ -155,11 +170,14 @@ mod tests {
             DatabaseKind::from_url("mysql://user:pass@localhost:3306/stellar").unwrap(),
             DatabaseKind::MySql
         );
+        assert_eq!(
+            DatabaseKind::from_url("postgresql://user:pass@localhost:5432/stellar").unwrap(),
+            DatabaseKind::Postgres
+        );
     }
 
     #[test]
     fn from_url_rejects_unknown_scheme() {
-        assert!(DatabaseKind::from_url("postgres://localhost/db").is_err());
         assert!(DatabaseKind::from_url("garbage").is_err());
     }
 
@@ -167,5 +185,6 @@ mod tests {
     fn migrations_dir_follows_backend() {
         assert_eq!(<Sqlite as AppDb>::migrations_dir(), "migrations/sqlite");
         assert_eq!(<MySql as AppDb>::migrations_dir(), "migrations/mysql");
+        assert_eq!(<Postgres as AppDb>::migrations_dir(), "migrations/postgres");
     }
 }
