@@ -103,6 +103,8 @@ pub async fn auth_middleware(
         OrgContext { user_id, username: claims.username.clone(), organization_id, is_super_admin };
     req.extensions_mut().insert(org_ctx.clone());
 
+    ensure_not_read_only_adoption_mutation(&state.db, &org_ctx, &method, &uri).await?;
+
     if let Some((resource, action)) = permission_extractor::extract_permission(&method, &uri) {
         let resource_scope = if org_ctx.is_super_admin || org_ctx.organization_id.is_none() {
             crate::services::casbin_service::CasbinService::format_resource_key(None, &resource)
@@ -147,6 +149,55 @@ pub async fn auth_middleware(
     Ok(next.run(req).await)
 }
 
+async fn ensure_not_read_only_adoption_mutation(
+    db: &SqlitePool,
+    org_ctx: &OrgContext,
+    method: &str,
+    path: &str,
+) -> Result<(), ApiError> {
+    if !mutates_cluster(path, method) {
+        return Ok(());
+    }
+
+    let cluster_id = path
+        .strip_prefix("/api/clusters/")
+        .and_then(|suffix| suffix.split('/').next())
+        .and_then(|segment| segment.parse::<i64>().ok());
+    let adopted: Option<i64> = if let Some(cluster_id) = cluster_id {
+        sqlx::query_scalar(
+            "SELECT cluster_id FROM sr_managed_clusters WHERE cluster_id = ? AND status = 'adopted_read_only' AND (? IS NULL OR organization_id = ?) LIMIT 1",
+        )
+        .bind(cluster_id)
+        .bind((!org_ctx.is_super_admin).then_some(org_ctx.organization_id).flatten())
+        .bind((!org_ctx.is_super_admin).then_some(org_ctx.organization_id).flatten())
+        .fetch_optional(db)
+        .await?
+    } else {
+        sqlx::query_scalar(
+            "SELECT m.cluster_id FROM sr_managed_clusters m JOIN clusters c ON c.id = m.cluster_id WHERE m.status = 'adopted_read_only' AND c.is_active = 1 AND (? IS NULL OR m.organization_id = ?) LIMIT 1",
+        )
+        .bind((!org_ctx.is_super_admin).then_some(org_ctx.organization_id).flatten())
+        .bind((!org_ctx.is_super_admin).then_some(org_ctx.organization_id).flatten())
+        .fetch_optional(db)
+        .await?
+    };
+    if adopted.is_some() {
+        return Err(ApiError::forbidden(
+            "read-only adopted clusters cannot be changed through Stellar",
+        ));
+    }
+    Ok(())
+}
+
+fn mutates_cluster(path: &str, method: &str) -> bool {
+    if !matches!(method, "POST" | "PUT" | "PATCH" | "DELETE") || !path.starts_with("/api/clusters")
+    {
+        return false;
+    }
+    !matches!(path, "/api/clusters" | "/api/clusters/health/test")
+        && !path.ends_with("/sql/diagnose")
+}
+
 // Helper to fetch organization from user_organizations when users.organization_id is NULL
 async fn fetch_org_from_user_organizations(db: &SqlitePool, user_id: i64) -> Option<i64> {
     sqlx::query_scalar::<_, i64>(
@@ -157,4 +208,18 @@ async fn fetch_org_from_user_organizations(db: &SqlitePool, user_id: i64) -> Opt
     .await
     .ok()
     .flatten()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::mutates_cluster;
+
+    #[test]
+    fn only_marks_existing_cluster_mutations() {
+        assert!(!mutates_cluster("/api/clusters", "POST"));
+        assert!(!mutates_cluster("/api/clusters/health/test", "POST"));
+        assert!(!mutates_cluster("/api/clusters/7/sql/diagnose", "POST"));
+        assert!(mutates_cluster("/api/clusters/7", "PUT"));
+        assert!(mutates_cluster("/api/clusters/queries/execute", "POST"));
+    }
 }

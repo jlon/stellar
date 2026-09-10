@@ -1,11 +1,20 @@
 use std::sync::Arc;
 
-use axum::{Extension, Json, extract::State, http::StatusCode};
+use axum::{
+    Extension, Json,
+    extract::{Path, State},
+    http::StatusCode,
+};
 
 use crate::{
     AppState,
     middleware::OrgContext,
-    models::{CreatePhysicalHostRequest, CreateSrPackageRequest, PhysicalHost, SrPackage},
+    models::{
+        AdoptClusterRequest, CreateDeploymentRequest, CreatePhysicalHostRequest,
+        CreateSrDatabaseCredentialRequest, CreateSrPackageRequest, CreateSshCredentialRequest,
+        PhysicalHost, SrDatabaseCredential, SrManagedCluster, SrManagedClusterDetail,
+        SrOperationTask, SrOperationTaskDetail, SrPackage, SshCredential,
+    },
     utils::{ApiError, ApiResult},
 };
 
@@ -22,14 +31,193 @@ pub async fn list_hosts(
     State(state): State<Arc<AppState>>,
     Extension(org_ctx): Extension<OrgContext>,
 ) -> ApiResult<Json<Vec<PhysicalHost>>> {
-    let organization_id = (!org_ctx.is_super_admin)
-        .then_some(org_ctx.organization_id)
-        .flatten();
     let hosts = state
         .physical_host_service
-        .list_hosts(organization_id)
+        .list_hosts(scoped_organization_id(&org_ctx)?)
         .await?;
     Ok(Json(hosts))
+}
+
+pub async fn list_ssh_credentials(
+    State(state): State<Arc<AppState>>,
+    Extension(org_ctx): Extension<OrgContext>,
+) -> ApiResult<Json<Vec<SshCredential>>> {
+    Ok(Json(
+        state
+            .credential_service
+            .list_ssh(scoped_organization_id(&org_ctx)?)
+            .await?,
+    ))
+}
+
+pub async fn create_ssh_credential(
+    State(state): State<Arc<AppState>>,
+    Extension(org_ctx): Extension<OrgContext>,
+    Json(request): Json<CreateSshCredentialRequest>,
+) -> ApiResult<(StatusCode, Json<SshCredential>)> {
+    let organization_id = resolve_organization_id(&org_ctx, request.organization_id)?;
+    ensure_organization_admin(&state, &org_ctx, organization_id).await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(
+            state
+                .credential_service
+                .create_ssh(request, organization_id)
+                .await?,
+        ),
+    ))
+}
+
+pub async fn delete_ssh_credential(
+    State(state): State<Arc<AppState>>,
+    Extension(org_ctx): Extension<OrgContext>,
+    Path(id): Path<i64>,
+) -> ApiResult<StatusCode> {
+    state
+        .credential_service
+        .delete_ssh(id, scoped_organization_id(&org_ctx)?)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn list_database_credentials(
+    State(state): State<Arc<AppState>>,
+    Extension(org_ctx): Extension<OrgContext>,
+) -> ApiResult<Json<Vec<SrDatabaseCredential>>> {
+    Ok(Json(
+        state
+            .credential_service
+            .list_database(scoped_organization_id(&org_ctx)?)
+            .await?,
+    ))
+}
+
+pub async fn create_database_credential(
+    State(state): State<Arc<AppState>>,
+    Extension(org_ctx): Extension<OrgContext>,
+    Json(request): Json<CreateSrDatabaseCredentialRequest>,
+) -> ApiResult<(StatusCode, Json<SrDatabaseCredential>)> {
+    let organization_id = resolve_organization_id(&org_ctx, request.organization_id)?;
+    ensure_organization_admin(&state, &org_ctx, organization_id).await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(
+            state
+                .credential_service
+                .create_database(request, organization_id)
+                .await?,
+        ),
+    ))
+}
+
+pub async fn delete_database_credential(
+    State(state): State<Arc<AppState>>,
+    Extension(org_ctx): Extension<OrgContext>,
+    Path(id): Path<i64>,
+) -> ApiResult<StatusCode> {
+    state
+        .credential_service
+        .delete_database(id, scoped_organization_id(&org_ctx)?)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn create_deployment(
+    State(state): State<Arc<AppState>>,
+    Extension(org_ctx): Extension<OrgContext>,
+    Json(request): Json<CreateDeploymentRequest>,
+) -> ApiResult<(StatusCode, Json<SrOperationTask>)> {
+    let organization_id = resolve_organization_id(&org_ctx, request.organization_id)?;
+    ensure_organization_admin(&state, &org_ctx, organization_id).await?;
+    let task = state
+        .sr_deployment_service
+        .submit(request, organization_id, org_ctx.user_id)
+        .await?;
+    Ok((StatusCode::ACCEPTED, Json(task)))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/sr-ops/adoptions",
+    request_body = AdoptClusterRequest,
+    responses((status = 202, description = "Read-only adoption task submitted", body = SrOperationTask)),
+    security(("bearer_auth" = [])),
+    tag = "Physical Deployment"
+)]
+pub async fn create_adoption(
+    State(state): State<Arc<AppState>>,
+    Extension(org_ctx): Extension<OrgContext>,
+    Json(request): Json<AdoptClusterRequest>,
+) -> ApiResult<(StatusCode, Json<SrOperationTask>)> {
+    let organization_id = resolve_organization_id(&org_ctx, request.organization_id)?;
+    ensure_organization_admin(&state, &org_ctx, organization_id).await?;
+    let task = state
+        .sr_deployment_service
+        .submit_adoption(request, organization_id, org_ctx.user_id)
+        .await?;
+    Ok((StatusCode::ACCEPTED, Json(task)))
+}
+
+pub async fn list_tasks(
+    State(state): State<Arc<AppState>>,
+    Extension(org_ctx): Extension<OrgContext>,
+) -> ApiResult<Json<Vec<SrOperationTask>>> {
+    Ok(Json(
+        state
+            .sr_deployment_service
+            .list_tasks(scoped_organization_id(&org_ctx)?)
+            .await?,
+    ))
+}
+
+pub async fn get_task(
+    State(state): State<Arc<AppState>>,
+    Extension(org_ctx): Extension<OrgContext>,
+    Path(id): Path<i64>,
+) -> ApiResult<Json<SrOperationTaskDetail>> {
+    Ok(Json(
+        state
+            .sr_deployment_service
+            .get_task_for_org(id, scoped_organization_id(&org_ctx)?)
+            .await?,
+    ))
+}
+
+pub async fn cancel_task(
+    State(state): State<Arc<AppState>>,
+    Extension(org_ctx): Extension<OrgContext>,
+    Path(id): Path<i64>,
+) -> ApiResult<StatusCode> {
+    state
+        .sr_deployment_service
+        .cancel(id, scoped_organization_id(&org_ctx)?)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn list_managed_clusters(
+    State(state): State<Arc<AppState>>,
+    Extension(org_ctx): Extension<OrgContext>,
+) -> ApiResult<Json<Vec<SrManagedCluster>>> {
+    Ok(Json(
+        state
+            .sr_deployment_service
+            .list_clusters(scoped_organization_id(&org_ctx)?)
+            .await?,
+    ))
+}
+
+pub async fn get_managed_cluster(
+    State(state): State<Arc<AppState>>,
+    Extension(org_ctx): Extension<OrgContext>,
+    Path(id): Path<i64>,
+) -> ApiResult<Json<SrManagedClusterDetail>> {
+    Ok(Json(
+        state
+            .sr_deployment_service
+            .get_cluster_for_org(id, scoped_organization_id(&org_ctx)?)
+            .await?,
+    ))
 }
 
 #[utoipa::path(
@@ -80,10 +268,10 @@ pub async fn list_packages(
     State(state): State<Arc<AppState>>,
     Extension(org_ctx): Extension<OrgContext>,
 ) -> ApiResult<Json<Vec<SrPackage>>> {
-    let organization_id = (!org_ctx.is_super_admin)
-        .then_some(org_ctx.organization_id)
-        .flatten();
-    let packages = state.package_service.list_packages(organization_id).await?;
+    let packages = state
+        .package_service
+        .list_packages(scoped_organization_id(&org_ctx)?)
+        .await?;
     Ok(Json(packages))
 }
 
@@ -145,6 +333,16 @@ fn resolve_organization_id(
     }
 
     Ok(organization_id)
+}
+
+fn scoped_organization_id(org_ctx: &OrgContext) -> ApiResult<Option<i64>> {
+    if org_ctx.is_super_admin {
+        return Ok(None);
+    }
+
+    org_ctx.organization_id.map(Some).ok_or_else(|| {
+        ApiError::forbidden("A current organization is required for physical deployment operations")
+    })
 }
 
 async fn ensure_organization_admin(

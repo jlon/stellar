@@ -56,7 +56,9 @@ pub use permission_request_service::PermissionRequestService;
 pub use query_execution_history_service::QueryExecutionHistoryService;
 pub use resource_group_service::ResourceGroupService;
 pub use role_service::RoleService;
-pub use sr_physical::{PackageService, PhysicalHostService};
+pub use sr_physical::{
+    CredentialService, PackageService, PhysicalHostService, SrDeploymentService,
+};
 pub use starrocks_client::StarRocksClient;
 pub use system_function_service::SystemFunctionService;
 pub use user_role_service::UserRoleService;

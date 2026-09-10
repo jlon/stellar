@@ -27,10 +27,11 @@ pub mod utils;
 pub use config::Config;
 pub use services::llm::{LLMError, LLMProviderInfo, LLMService, LLMServiceImpl};
 pub use services::{
-    AuthService, CasbinService, ClusterService, DataStatisticsService, DbAuthQueryService,
-    MetricsCollectorService, MySQLPoolManager, OrganizationService, OverviewService,
-    PackageService, PermissionRequestService, PermissionService, PhysicalHostService, RoleService,
-    SystemFunctionService, UserRoleService, UserService,
+    AuthService, CasbinService, ClusterService, CredentialService, DataStatisticsService,
+    DbAuthQueryService, MetricsCollectorService, MySQLPoolManager, OrganizationService,
+    OverviewService, PackageService, PermissionRequestService, PermissionService,
+    PhysicalHostService, RoleService, SrDeploymentService, SystemFunctionService, UserRoleService,
+    UserService,
 };
 pub use utils::JwtUtil;
 
@@ -67,4 +68,6 @@ pub struct AppState {
     pub permission_request_service: Arc<PermissionRequestService>,
     pub physical_host_service: Arc<PhysicalHostService>,
     pub package_service: Arc<PackageService>,
+    pub credential_service: Arc<CredentialService>,
+    pub sr_deployment_service: Arc<SrDeploymentService>,
 }

@@ -1,0 +1,14 @@
+<nb-card>
+  <nb-card-header>只读接管</nb-card-header>
+  <nb-card-body>
+    <nb-alert status="info">接管只读取 FE/BE 观测信息并注册既有集群，不会 SSH 登录、启动、停止或修改集群配置。</nb-alert>
+    <form [formGroup]="adoptionForm" (ngSubmit)="submit()">
+      <input nbInput formControlName="name" placeholder="Stellar 中的集群名称" />
+      <input nbInput formControlName="fe_host" placeholder="现有 FE 地址" />
+      <input nbInput type="number" formControlName="fe_http_port" placeholder="HTTP 端口" />
+      <input nbInput type="number" formControlName="fe_query_port" placeholder="MySQL 查询端口" />
+      <nb-select formControlName="operator_credential_id" placeholder="选择已有数据库凭据"><nb-option *ngFor="let credential of credentials" [value]="credential.id">{{ credential.name }} / {{ credential.username }}</nb-option></nb-select>
+      <button nbButton status="primary" type="submit" [disabled]="submitting">{{ submitting ? '正在提交' : '开始只读接管' }}</button>
+    </form>
+  </nb-card-body>
+</nb-card>

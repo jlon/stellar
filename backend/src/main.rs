@@ -16,9 +16,10 @@ use stellar::db;
 use stellar::embedded::WebAssets;
 use stellar::models;
 use stellar::services::{
-    AuthService, CasbinService, ClusterService, DataStatisticsService, DbAuthQueryService,
-    LLMServiceImpl, MetricsCollectorService, MySQLPoolManager, OrganizationService, OverviewService,
-    PackageService, PermissionRequestService, PermissionService, PhysicalHostService, RoleService,
+    AuthService, CasbinService, ClusterService, CredentialService, DataStatisticsService,
+    DbAuthQueryService, LLMServiceImpl, MetricsCollectorService, MySQLPoolManager,
+    OrganizationService, OverviewService, PackageService, PermissionRequestService,
+    PermissionService, PhysicalHostService, RoleService, SrDeploymentService,
     SystemFunctionService, UserRoleService, UserService,
 };
 use stellar::utils::{JwtUtil, ScheduledExecutor};
@@ -100,6 +101,7 @@ use stellar::{AppState, handlers, middleware, services};
         handlers::sr_physical::create_host,
         handlers::sr_physical::list_packages,
         handlers::sr_physical::create_package,
+        handlers::sr_physical::create_adoption,
 
         handlers::role::list_roles,
         handlers::role::get_role,
@@ -165,6 +167,7 @@ use stellar::{AppState, handlers, middleware, services};
             models::CreatePhysicalHostRequest,
             models::SrPackage,
             models::CreateSrPackageRequest,
+            models::AdoptClusterRequest,
             models::HealthStatus,
             models::HealthCheck,
             models::Backend,
@@ -328,8 +331,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let auth_service = Arc::new(AuthService::new(pool.clone(), Arc::clone(&jwt_util)));
 
-    let cluster_service =
-        Arc::new(ClusterService::new(pool.clone(), Arc::clone(&mysql_pool_manager)));
+    let cluster_service = Arc::new(
+        ClusterService::new(pool.clone(), Arc::clone(&mysql_pool_manager))
+            .with_password_encryption_key(&config.sr_physical.encryption_key),
+    );
 
     let organization_service = Arc::new(OrganizationService::new(pool.clone()));
 
@@ -405,7 +410,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("PermissionRequestService initialized");
 
     let physical_host_service = Arc::new(PhysicalHostService::new(pool.clone()));
-    let package_service = Arc::new(PackageService::new(pool.clone()));
+    let package_service = Arc::new(PackageService::new(
+        pool.clone(),
+        config.sr_physical.supported_versions.clone(),
+    ));
+    let credential_service = Arc::new(CredentialService::new(
+        pool.clone(),
+        &config.sr_physical.encryption_key,
+    ));
+    let physical_cache_dir = std::env::var("APP_SR_PHYSICAL_CACHE_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::path::PathBuf::from("data/sr-physical"));
+    let sr_deployment_service = Arc::new(SrDeploymentService::new(
+        pool.clone(),
+        Arc::clone(&cluster_service),
+        Arc::clone(&credential_service),
+        physical_cache_dir,
+        config.sr_physical.package_allowed_hosts.clone(),
+        config.sr_physical.supported_versions.clone(),
+    ));
+    sr_deployment_service.recover_interrupted_tasks().await?;
 
     let app_state = AppState {
         db: pool.clone(),
@@ -429,6 +453,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         permission_request_service: Arc::clone(&permission_request_service),
         physical_host_service: Arc::clone(&physical_host_service),
         package_service: Arc::clone(&package_service),
+        credential_service: Arc::clone(&credential_service),
+        sr_deployment_service: Arc::clone(&sr_deployment_service),
     };
 
     if config.metrics.enabled {
@@ -683,6 +709,49 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/api/sr-ops/packages",
             get(handlers::sr_physical::list_packages)
                 .post(handlers::sr_physical::create_package),
+        )
+        .route(
+            "/api/sr-ops/credentials",
+            get(handlers::sr_physical::list_ssh_credentials)
+                .post(handlers::sr_physical::create_ssh_credential),
+        )
+        .route(
+            "/api/sr-ops/credentials/:id",
+            delete(handlers::sr_physical::delete_ssh_credential),
+        )
+        .route(
+            "/api/sr-ops/database-credentials",
+            get(handlers::sr_physical::list_database_credentials)
+                .post(handlers::sr_physical::create_database_credential),
+        )
+        .route(
+            "/api/sr-ops/database-credentials/:id",
+            delete(handlers::sr_physical::delete_database_credential),
+        )
+        .route(
+            "/api/sr-ops/deployments",
+            post(handlers::sr_physical::create_deployment),
+        )
+        .route(
+            "/api/sr-ops/adoptions",
+            post(handlers::sr_physical::create_adoption),
+        )
+        .route("/api/sr-ops/tasks", get(handlers::sr_physical::list_tasks))
+        .route(
+            "/api/sr-ops/tasks/:id",
+            get(handlers::sr_physical::get_task),
+        )
+        .route(
+            "/api/sr-ops/tasks/:id/cancel",
+            post(handlers::sr_physical::cancel_task),
+        )
+        .route(
+            "/api/sr-ops/clusters",
+            get(handlers::sr_physical::list_managed_clusters),
+        )
+        .route(
+            "/api/sr-ops/clusters/:id",
+            get(handlers::sr_physical::get_managed_cluster),
         )
         .route("/api/clusters/resource-groups", get(handlers::resource_group::list_resource_groups).post(handlers::resource_group::create_resource_group))
         .route("/api/clusters/resource-groups/usage", get(handlers::resource_group::get_resource_group_usage))

@@ -1,0 +1,36 @@
+<section class="deployment-console">
+  <ng-container *ngIf="mode === 'deploy'; else statusView">
+    <nb-card>
+      <nb-card-header>新建物理机部署</nb-card-header>
+      <nb-card-body *ngIf="!loading; else spinner">
+        <nb-alert *ngIf="error" status="danger">{{ error }}</nb-alert>
+        <form [formGroup]="deployForm" (ngSubmit)="submitDeployment()" class="deployment-form">
+          <label>集群名称<input nbInput formControlName="name" placeholder="starrocks-prod" /></label>
+          <label>安装目录<input nbInput formControlName="install_dir" /></label>
+          <label>安装包<nb-select formControlName="package_id" placeholder="选择已登记的安装包"><nb-option *ngFor="let package of packages" [value]="package.id">{{ package.version }}</nb-option></nb-select></label>
+          <label>SSH 凭据<nb-select formControlName="ssh_credential_id" placeholder="选择 SSH 私钥"><nb-option *ngFor="let credential of sshCredentials" [value]="credential.id">{{ credential.name }} / {{ credential.username }}</nb-option></nb-select></label>
+          <label>运维账号<nb-select formControlName="operator_credential_id" placeholder="选择 StarRocks 账号"><nb-option *ngFor="let credential of databaseCredentials" [value]="credential.id">{{ credential.name }} / {{ credential.username }}</nb-option></nb-select></label>
+          <label>Leader FE 主机<nb-select formControlName="leader_host_id" placeholder="选择物理机"><nb-option *ngFor="let host of hosts" [value]="host.id">{{ hostLabel(host) }}</nb-option></nb-select></label>
+          <label>Leader FE 通告 IP<input nbInput formControlName="leader_advertise_host" placeholder="10.0.0.11" /></label>
+          <label>BE 主机<nb-select formControlName="backend_host_id" placeholder="选择物理机"><nb-option *ngFor="let host of hosts" [value]="host.id">{{ hostLabel(host) }}</nb-option></nb-select></label>
+          <label>BE 通告 IP<input nbInput formControlName="backend_advertise_host" placeholder="10.0.0.21" /></label>
+          <nb-checkbox formControlName="confirm_non_ha">确认以单 FE、单 BE 非高可用拓扑部署</nb-checkbox>
+          <button nbButton status="primary" type="submit" [disabled]="submitting">{{ submitting ? '正在提交' : '提交部署' }}</button>
+        </form>
+      </nb-card-body>
+    </nb-card>
+  </ng-container>
+
+  <ng-template #statusView>
+    <div class="metrics" *ngIf="mode === 'overview'">
+      <nb-card><nb-card-body><strong>{{ clusters.length }}</strong><span>受管集群</span></nb-card-body></nb-card>
+      <nb-card><nb-card-body><strong>{{ tasks.length }}</strong><span>部署任务</span></nb-card-body></nb-card>
+      <nb-card><nb-card-body><strong>{{ runningTaskCount }}</strong><span>执行中</span></nb-card-body></nb-card>
+    </div>
+    <nb-card *ngIf="mode === 'clusters' || mode === 'overview'"><nb-card-header>受管集群</nb-card-header><nb-card-body><div class="table-row" *ngFor="let cluster of clusters"><strong>{{ cluster.name }}</strong><span>{{ cluster.sr_version }}</span><span [class]="'status status--' + cluster.status">{{ cluster.status }}</span></div><p *ngIf="!clusters.length">暂无受管集群。</p></nb-card-body></nb-card>
+    <nb-card *ngIf="mode === 'tasks' || mode === 'overview'"><nb-card-header>部署任务</nb-card-header><nb-card-body *ngIf="!loading; else spinner"><button class="table-row task" *ngFor="let task of tasks" (click)="selectTask(task)"><strong>#{{ task.id }}</strong><span>{{ task.current_step || 'waiting' }}</span><span [class]="'status status--' + task.status">{{ task.status }}</span><time>{{ task.created_at | date:'short' }}</time></button><p *ngIf="!tasks.length">暂无部署任务。</p></nb-card-body></nb-card>
+    <nb-card *ngIf="selectedTask"><nb-card-header>任务 #{{ selectedTask.id }} 事件</nb-card-header><nb-card-body><nb-list><nb-list-item *ngFor="let event of selectedTask.events"><span [class]="'status status--' + event.status">{{ event.status }}</span><strong>{{ event.step }}</strong><span>{{ event.message }}</span><time>{{ event.created_at | date:'short' }}</time></nb-list-item></nb-list></nb-card-body></nb-card>
+  </ng-template>
+
+  <ng-template #spinner><div class="spinner"><nb-spinner></nb-spinner></div></ng-template>
+</section>

@@ -70,6 +70,26 @@ P1 进入受控启停、滚动重启和 scale-out；P2 才进入 shared-data、�
 - 单 BE 时在 `fe.conf` 设置 `default_replication_num=1`；高可用拓扑由独立规则校验 FE 数量、BE 数量和故障域，而不是仅检查主机数量。
 - 已选择的 StarRocks 版本必须落在产品维护的“已验证版本矩阵”内。版本不在矩阵内时，P0 拒绝执行部署。
 
+### 3.4 控制面安全配置
+
+部署功能启用前，控制面必须配置以下环境变量；不配置时凭据创建和部署提交会被拒绝：
+
+```bash
+# 独立于 JWT 的 16 字符以上高熵密钥；变更前必须完成凭据轮换。
+APP_SR_PHYSICAL_ENCRYPTION_KEY='replace-with-a-random-secret'
+
+# 仅允许从明确审批的制品站点下载；逗号分隔主机名，不接受重定向。
+APP_SR_PHYSICAL_PACKAGE_ALLOWED_HOSTS='packages.example.com,artifacts.example.net'
+
+# 仅允许已验证的版本，逗号分隔。
+APP_SR_PHYSICAL_SUPPORTED_VERSIONS='3.3.9,3.4.4'
+
+# 可选，默认 data/sr-physical；目录仅允许 Stellar 运行账号读写。
+APP_SR_PHYSICAL_CACHE_DIR='/var/lib/stellar/sr-physical'
+```
+
+包地址使用 HTTPS，且 host 必须精确匹配允许列表。控制面不从任意用户提供的 URL 下载制品。
+
 ## 4. 总体架构
 
 ```text

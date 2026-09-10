@@ -13,6 +13,7 @@ pub struct Config {
     pub static_config: StaticConfig,
     pub metrics: MetricsCollectorConfig,
     pub audit: AuditLogConfig,
+    pub sr_physical: SrPhysicalConfig,
 }
 
 /// Audit log configuration for StarRocks audit table
@@ -73,6 +74,17 @@ pub struct LoggingConfig {
 pub struct StaticConfig {
     pub enabled: bool,
     pub web_root: String,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct SrPhysicalConfig {
+    /// Independent master key for SSH and database deployment credentials.
+    pub encryption_key: String,
+    /// Explicit external package hosts permitted for control-plane downloads.
+    pub package_allowed_hosts: Vec<String>,
+    /// Explicitly validated StarRocks versions permitted for physical deployment.
+    pub supported_versions: Vec<String>,
 }
 
 // New: metrics collector configuration section (loaded from conf/config.toml)
@@ -269,6 +281,30 @@ impl Config {
         if let Ok(table) = std::env::var("APP_AUDIT_TABLE") {
             self.audit.table = table;
             tracing::info!("Override audit.table from env: {}", self.audit.table);
+        }
+
+        if let Ok(key) = std::env::var("APP_SR_PHYSICAL_ENCRYPTION_KEY") {
+            self.sr_physical.encryption_key = key;
+            tracing::info!("Override sr_physical.encryption_key from env");
+        }
+
+        if let Ok(hosts) = std::env::var("APP_SR_PHYSICAL_PACKAGE_ALLOWED_HOSTS") {
+            self.sr_physical.package_allowed_hosts = hosts
+                .split(',')
+                .map(str::trim)
+                .filter(|host| !host.is_empty())
+                .map(str::to_owned)
+                .collect();
+            tracing::info!("Override sr_physical.package_allowed_hosts from env");
+        }
+        if let Ok(versions) = std::env::var("APP_SR_PHYSICAL_SUPPORTED_VERSIONS") {
+            self.sr_physical.supported_versions = versions
+                .split(',')
+                .map(str::trim)
+                .filter(|version| !version.is_empty())
+                .map(str::to_owned)
+                .collect();
+            tracing::info!("Override sr_physical.supported_versions from env");
         }
     }
 

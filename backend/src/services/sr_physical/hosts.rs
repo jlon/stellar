@@ -115,7 +115,7 @@ mod tests {
     use sqlx::sqlite::SqlitePoolOptions;
 
     use super::PhysicalHostService;
-    use crate::models::CreatePhysicalHostRequest;
+    use crate::models::{CreatePhysicalHostRequest, sr_physical::host_key_fingerprint};
 
     async fn test_service() -> PhysicalHostService {
         let pool = SqlitePoolOptions::new()
@@ -138,7 +138,8 @@ mod tests {
             ssh_target: "10.10.0.11".to_string(),
             ssh_port: 22,
             host_key: format!("ssh-ed25519 {}", "A".repeat(40)),
-            host_key_fingerprint: format!("SHA256:{}", "B".repeat(43)),
+            host_key_fingerprint: host_key_fingerprint(&format!("ssh-ed25519 {}", "A".repeat(40)))
+                .unwrap(),
         }
     }
 

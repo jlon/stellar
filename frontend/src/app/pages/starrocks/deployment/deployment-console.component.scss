@@ -1,0 +1,16 @@
+.deployment-console { display: grid; gap: 1rem; }
+.deployment-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; align-items: end; }
+.deployment-form label { display: grid; gap: .4rem; font-weight: 600; }
+.deployment-form nb-select, .deployment-form input { width: 100%; }
+.deployment-form nb-checkbox, .deployment-form button { grid-column: 1 / -1; width: fit-content; }
+.metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.metrics nb-card-body { display: grid; gap: .25rem; }
+.metrics strong { font-size: 1.6rem; }
+.metrics span, time { color: var(--text-hint-color); }
+.table-row { display: grid; grid-template-columns: 1.2fr 1fr .8fr 1fr; gap: 1rem; width: 100%; padding: .75rem 0; border: 0; border-bottom: 1px solid var(--separator); background: transparent; text-align: left; }
+.task { cursor: pointer; }
+.status { text-transform: uppercase; font-size: .75rem; font-weight: 700; }
+.status--running { color: var(--color-primary-500); }.status--succeeded { color: var(--color-success-500); }.status--failed { color: var(--color-danger-500); }.status--pending { color: var(--color-warning-500); }
+.spinner { min-height: 8rem; display: grid; place-items: center; }
+nb-list-item { display: grid; grid-template-columns: 6rem 7rem 1fr auto; gap: .75rem; }
+@media (max-width: 768px) { .deployment-form, .metrics { grid-template-columns: 1fr; }.table-row { grid-template-columns: 1fr 1fr; }.table-row time { display: none; } nb-list-item { grid-template-columns: 1fr; } }

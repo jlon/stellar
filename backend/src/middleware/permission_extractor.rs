@@ -57,12 +57,18 @@ fn extract_sr_ops_action(segments: &[&str], method: &str) -> String {
         },
         (Some(&"credentials"), 2, "GET") => "credentials:list".to_string(),
         (Some(&"credentials"), 2, "POST") => "credentials:manage".to_string(),
+        (Some(&"credentials"), 3, "DELETE") => "credentials:delete".to_string(),
+        (Some(&"database-credentials"), 2, "GET") => "db-credentials:list".to_string(),
+        (Some(&"database-credentials"), 2, "POST") => "db-credentials:manage".to_string(),
+        (Some(&"database-credentials"), 3, "DELETE") => "db-credentials:delete".to_string(),
         (Some(&"packages"), 2, "GET") => "packages:list".to_string(),
         (Some(&"packages"), 2, "POST") => "packages:manage".to_string(),
         (Some(&"clusters"), 2, "GET") => "clusters:list".to_string(),
+        (Some(&"clusters"), 3, "GET") => "clusters:get".to_string(),
         (Some(&"deployments"), 2, "POST") => "deployments:create".to_string(),
         (Some(&"adoptions"), 2, "POST") => "adoptions:create".to_string(),
         (Some(&"tasks"), 3, "GET") => "tasks:get".to_string(),
+        (Some(&"tasks"), 2, "GET") => "tasks:list".to_string(),
         (Some(&"tasks"), 4, "POST") if segments.get(3) == Some(&"cancel") => {
             "tasks:cancel".to_string()
         },

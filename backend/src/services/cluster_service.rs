@@ -1,8 +1,10 @@
 use crate::models::{
     Cluster, ClusterHealth, CreateClusterRequest, HealthCheck, HealthStatus, UpdateClusterRequest,
 };
+use crate::services::sr_physical::{DeploymentCipher, EncryptedSecret};
 use crate::services::{MySQLPoolManager, create_adapter};
 use crate::utils::{ApiError, ApiResult};
+use base64::{Engine, engine::general_purpose::STANDARD};
 use chrono::Utc;
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -11,6 +13,7 @@ use std::sync::Arc;
 pub struct ClusterService {
     pool: SqlitePool,
     mysql_pool_manager: Arc<MySQLPoolManager>,
+    password_cipher: Option<DeploymentCipher>,
 }
 
 /// Convert raw error messages into user-friendly messages for health checks
@@ -45,17 +48,38 @@ fn simplify_health_check_error(error: &str) -> String {
         .unwrap_or_else(|| "连接失败: 请检查集群配置".to_string())
 }
 
+fn cluster_password_aad(organization_id: i64, kind: &str) -> String {
+    format!("stellar:cluster:{organization_id}:{kind}")
+}
+
 impl ClusterService {
     pub fn new(pool: SqlitePool, mysql_pool_manager: Arc<MySQLPoolManager>) -> Self {
-        Self { pool, mysql_pool_manager }
+        Self { pool, mysql_pool_manager, password_cipher: None }
+    }
+
+    pub fn with_password_encryption_key(mut self, encryption_key: &str) -> Self {
+        self.password_cipher = DeploymentCipher::from_key_material(encryption_key).ok();
+        self
     }
 
     pub async fn create_cluster(
+        &self,
+        req: CreateClusterRequest,
+        user_id: i64,
+        requestor_org: Option<i64>,
+        is_super_admin: bool,
+    ) -> ApiResult<Cluster> {
+        self.create_cluster_with_activation(req, user_id, requestor_org, is_super_admin, true)
+            .await
+    }
+
+    pub async fn create_cluster_with_activation(
         &self,
         mut req: CreateClusterRequest,
         user_id: i64,
         requestor_org: Option<i64>,
         is_super_admin: bool,
+        activate: bool,
     ) -> ApiResult<Cluster> {
         req.name = req.name.trim().to_string();
         req.fe_host = req.fe_host.trim().to_string();
@@ -87,6 +111,12 @@ impl ClusterService {
         let target_org_id = self
             .resolve_target_org(req.organization_id, requestor_org, is_super_admin)
             .await?;
+        req.password = self.encrypt_password(&req.password, target_org_id, "password")?;
+        req.admin_password = req
+            .admin_password
+            .as_deref()
+            .map(|password| self.encrypt_password(password, target_org_id, "admin_password"))
+            .transpose()?;
 
         let tags_json = req
             .tags
@@ -117,7 +147,7 @@ impl ClusterService {
         .bind(req.connection_timeout)
         .bind(&tags_json)
         .bind(&req.catalog)
-        .bind(if is_first_cluster { 1 } else { 0 })
+        .bind(if is_first_cluster && activate { 1 } else { 0 })
         .bind(user_id)
         .bind(target_org_id)
         .bind(req.deployment_mode.to_string())
@@ -129,7 +159,7 @@ impl ClusterService {
 
         let cluster_id = result.last_insert_rowid();
 
-        if !is_first_cluster {
+        if activate && !is_first_cluster {
             let active_count: (i64,) = sqlx::query_as(
                 "SELECT COUNT(*) FROM clusters WHERE is_active = 1 AND organization_id = ?",
             )
@@ -164,7 +194,7 @@ impl ClusterService {
             cluster.is_active
         );
 
-        Ok(cluster)
+        self.decrypt_cluster(cluster)
     }
 
     pub async fn list_clusters(&self) -> ApiResult<Vec<Cluster>> {
@@ -173,7 +203,10 @@ impl ClusterService {
                 .fetch_all(&self.pool)
                 .await?;
 
-        Ok(clusters)
+        clusters
+            .into_iter()
+            .map(|cluster| self.decrypt_cluster(cluster))
+            .collect()
     }
 
     pub async fn get_cluster(&self, cluster_id: i64) -> ApiResult<Cluster> {
@@ -182,7 +215,9 @@ impl ClusterService {
             .fetch_optional(&self.pool)
             .await?;
 
-        cluster.ok_or_else(|| ApiError::cluster_not_found(cluster_id))
+        cluster
+            .ok_or_else(|| ApiError::cluster_not_found(cluster_id))
+            .and_then(|cluster| self.decrypt_cluster(cluster))
     }
 
     pub async fn get_active_cluster(&self) -> ApiResult<Cluster> {
@@ -191,9 +226,10 @@ impl ClusterService {
                 .fetch_optional(&self.pool)
                 .await?;
 
-        cluster.ok_or_else(|| {
+        let cluster = cluster.ok_or_else(|| {
             ApiError::not_found("No active cluster found. Please activate a cluster first.")
-        })
+        })?;
+        self.decrypt_cluster(cluster)
     }
 
     pub async fn get_active_cluster_by_org(&self, org_id: Option<i64>) -> ApiResult<Cluster> {
@@ -208,11 +244,12 @@ impl ClusterService {
             None
         };
 
-        cluster.ok_or_else(|| {
+        let cluster = cluster.ok_or_else(|| {
             ApiError::not_found(
                 "No active cluster found for your organization. Please activate a cluster first.",
             )
-        })
+        })?;
+        self.decrypt_cluster(cluster)
     }
 
     pub async fn set_active_cluster(&self, cluster_id: i64) -> ApiResult<Cluster> {
@@ -251,8 +288,14 @@ impl ClusterService {
         cluster_id: i64,
         req: UpdateClusterRequest,
     ) -> ApiResult<Cluster> {
-        let _cluster = self.get_cluster(cluster_id).await?;
+        let cluster = self.get_cluster(cluster_id).await?;
 
+        let credential_organization_id = req
+            .organization_id
+            .or(cluster.organization_id)
+            .unwrap_or_default();
+        let organization_changed =
+            req.organization_id.is_some() && req.organization_id != cluster.organization_id;
         let mut updates = Vec::new();
         let mut params: Vec<String> = Vec::new();
 
@@ -282,7 +325,14 @@ impl ClusterService {
         }
         if let Some(password) = &req.password {
             updates.push("password_encrypted = ?");
-            params.push(password.clone());
+            params.push(self.encrypt_password(password, credential_organization_id, "password")?);
+        } else if organization_changed && self.password_cipher.is_some() {
+            updates.push("password_encrypted = ?");
+            params.push(self.encrypt_password(
+                &cluster.password_encrypted,
+                credential_organization_id,
+                "password",
+            )?);
         }
         if let Some(ssl) = req.enable_ssl {
             updates.push("enable_ssl = ?");
@@ -320,7 +370,21 @@ impl ClusterService {
         // If None, keep existing value
         if let Some(admin_password) = &req.admin_password {
             updates.push("admin_password_encrypted = ?");
-            params.push(admin_password.clone());
+            params.push(self.encrypt_password(
+                admin_password,
+                credential_organization_id,
+                "admin_password",
+            )?);
+        } else if organization_changed
+            && self.password_cipher.is_some()
+            && let Some(admin_password) = cluster.admin_password_encrypted.as_deref()
+        {
+            updates.push("admin_password_encrypted = ?");
+            params.push(self.encrypt_password(
+                admin_password,
+                credential_organization_id,
+                "admin_password",
+            )?);
         }
 
         if updates.is_empty() {
@@ -391,6 +455,63 @@ impl ClusterService {
         }
 
         Ok(())
+    }
+
+    fn encrypt_password(
+        &self,
+        password: &str,
+        organization_id: i64,
+        kind: &str,
+    ) -> ApiResult<String> {
+        let Some(cipher) = &self.password_cipher else {
+            return Ok(password.to_owned());
+        };
+        let encrypted = cipher.encrypt(password, &cluster_password_aad(organization_id, kind))?;
+        Ok(format!(
+            "srenc1:{}:{}:{}",
+            encrypted.key_version,
+            STANDARD.encode(encrypted.nonce),
+            STANDARD.encode(encrypted.ciphertext)
+        ))
+    }
+
+    fn decrypt_cluster(&self, mut cluster: Cluster) -> ApiResult<Cluster> {
+        let organization_id = cluster.organization_id.unwrap_or_default();
+        cluster.password_encrypted =
+            self.decrypt_password(&cluster.password_encrypted, organization_id, "password")?;
+        if let Some(admin_password) = cluster.admin_password_encrypted.as_deref() {
+            cluster.admin_password_encrypted =
+                Some(self.decrypt_password(admin_password, organization_id, "admin_password")?);
+        }
+        Ok(cluster)
+    }
+
+    fn decrypt_password(&self, value: &str, organization_id: i64, kind: &str) -> ApiResult<String> {
+        let Some(encoded) = value.strip_prefix("srenc1:") else {
+            return Ok(value.to_owned());
+        };
+        let mut parts = encoded.split(':');
+        let key_version = parts.next().and_then(|value| value.parse::<i64>().ok());
+        let nonce = parts.next().and_then(|value| STANDARD.decode(value).ok());
+        let ciphertext = parts.next().and_then(|value| STANDARD.decode(value).ok());
+        if parts.next().is_some()
+            || key_version.is_none()
+            || nonce.is_none()
+            || ciphertext.is_none()
+        {
+            return Err(ApiError::internal_error("stored cluster credential is malformed"));
+        }
+        let cipher = self.password_cipher.as_ref().ok_or_else(|| {
+            ApiError::forbidden("APP_SR_PHYSICAL_ENCRYPTION_KEY is required to use this cluster")
+        })?;
+        cipher.decrypt(
+            &EncryptedSecret {
+                key_version: key_version.unwrap(),
+                nonce: nonce.unwrap(),
+                ciphertext: ciphertext.unwrap(),
+            },
+            &cluster_password_aad(organization_id, kind),
+        )
     }
 
     async fn resolve_target_org(
@@ -657,5 +778,105 @@ impl ClusterService {
         }
 
         Ok(ClusterHealth { status: overall_status, checks, last_check_time: Utc::now() })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    use super::ClusterService;
+    use crate::{models::UpdateClusterRequest, services::MySQLPoolManager};
+
+    #[tokio::test]
+    async fn encrypts_cluster_passwords_when_the_deployment_key_is_configured() {
+        let pool = SqlitePoolOptions::new()
+            .connect_lazy("sqlite::memory:")
+            .expect("lazy pool should be created");
+        let service = ClusterService::new(pool, Arc::new(MySQLPoolManager::new()))
+            .with_password_encryption_key("cluster-password-encryption-test-key");
+
+        let stored = service
+            .encrypt_password("secret", 7, "password")
+            .expect("encryption should succeed");
+
+        assert!(stored.starts_with("srenc1:"));
+        assert_ne!(stored, "secret");
+        assert_eq!(service.decrypt_password(&stored, 7, "password").unwrap(), "secret");
+    }
+
+    #[tokio::test]
+    async fn reencrypts_passwords_when_a_cluster_changes_organization() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::migrate!().run(&pool).await.unwrap();
+        let service = ClusterService::new(pool.clone(), Arc::new(MySQLPoolManager::new()))
+            .with_password_encryption_key("cluster-password-encryption-test-key");
+        let old_password = service.encrypt_password("secret", 1, "password").unwrap();
+        let cluster_id = sqlx::query(
+            "INSERT INTO clusters (name, fe_host, username, password_encrypted, organization_id) VALUES ('cluster', '127.0.0.1', 'operator', ?, 1)",
+        )
+        .bind(&old_password)
+        .execute(&pool)
+        .await
+        .unwrap()
+        .last_insert_rowid();
+        sqlx::query(
+            "INSERT INTO organizations (code, name, description, is_system) VALUES ('test_org', 'Test Organization', '', 0)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let organization_id: i64 =
+            sqlx::query_scalar("SELECT id FROM organizations WHERE code = 'test_org'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+
+        service
+            .update_cluster(
+                cluster_id,
+                UpdateClusterRequest {
+                    name: None,
+                    description: None,
+                    fe_host: None,
+                    fe_http_port: None,
+                    fe_query_port: None,
+                    username: None,
+                    password: None,
+                    enable_ssl: None,
+                    connection_timeout: None,
+                    tags: None,
+                    catalog: None,
+                    organization_id: Some(organization_id),
+                    deployment_mode: None,
+                    cluster_type: None,
+                    admin_user: None,
+                    admin_password: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        let stored: String =
+            sqlx::query_scalar("SELECT password_encrypted FROM clusters WHERE id = ?")
+                .bind(cluster_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_ne!(stored, old_password);
+        assert_eq!(
+            service
+                .get_cluster(cluster_id)
+                .await
+                .unwrap()
+                .password_encrypted,
+            "secret"
+        );
     }
 }

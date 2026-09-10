@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use sqlx::SqlitePool;
 
 use crate::{
@@ -8,11 +10,12 @@ use crate::{
 #[derive(Clone)]
 pub struct PackageService {
     pool: SqlitePool,
+    supported_versions: HashSet<String>,
 }
 
 impl PackageService {
-    pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+    pub fn new(pool: SqlitePool, supported_versions: Vec<String>) -> Self {
+        Self { pool, supported_versions: supported_versions.into_iter().collect() }
     }
 
     pub async fn list_packages(&self, organization_id: Option<i64>) -> ApiResult<Vec<SrPackage>> {
@@ -29,7 +32,7 @@ impl PackageService {
                 .bind(organization_id)
                 .fetch_all(&self.pool)
                 .await?
-            }
+            },
             None => {
                 sqlx::query_as(
                     r#"
@@ -40,7 +43,7 @@ impl PackageService {
                 )
                 .fetch_all(&self.pool)
                 .await?
-            }
+            },
         };
 
         Ok(packages)
@@ -52,6 +55,12 @@ impl PackageService {
         organization_id: i64,
     ) -> ApiResult<SrPackage> {
         let request = request.normalize()?;
+        if self.supported_versions.is_empty() || !self.supported_versions.contains(&request.version)
+        {
+            return Err(ApiError::validation_error(
+                "package version is not in APP_SR_PHYSICAL_SUPPORTED_VERSIONS",
+            ));
+        }
 
         let organization_exists: Option<i64> =
             sqlx::query_scalar("SELECT id FROM organizations WHERE id = ?")
@@ -122,7 +131,7 @@ mod tests {
             .await
             .expect("migrations should run");
 
-        PackageService::new(pool)
+        PackageService::new(pool, vec!["3.3.9".to_string()])
     }
 
     fn request() -> CreateSrPackageRequest {
@@ -149,7 +158,14 @@ mod tests {
             .expect("package should be created");
 
         assert_eq!(package.status, "pending");
-        assert_eq!(service.list_packages(Some(organization_id)).await.unwrap().len(), 1);
+        assert_eq!(
+            service
+                .list_packages(Some(organization_id))
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
     }
 
     #[tokio::test]
@@ -166,6 +182,34 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(service.create_package(request(), organization_id).await.is_err());
+        assert!(
+            service
+                .create_package(request(), organization_id)
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_an_unverified_package_version() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::migrate!().run(&pool).await.unwrap();
+        let service = PackageService::new(pool.clone(), vec!["3.3.8".to_string()]);
+        let organization_id: i64 =
+            sqlx::query_scalar("SELECT id FROM organizations WHERE code = 'default_org'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+
+        assert!(
+            service
+                .create_package(request(), organization_id)
+                .await
+                .is_err()
+        );
     }
 }
