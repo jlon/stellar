@@ -29,8 +29,8 @@ pub use services::llm::{LLMError, LLMProviderInfo, LLMService, LLMServiceImpl};
 pub use services::{
     AuthService, CasbinService, ClusterService, DataStatisticsService, DbAuthQueryService,
     MetricsCollectorService, MySQLPoolManager, OrganizationService, OverviewService,
-    PermissionRequestService, PermissionService, RoleService, SystemFunctionService, UserRoleService,
-    UserService,
+    PackageService, PermissionRequestService, PermissionService, PhysicalHostService, RoleService,
+    SystemFunctionService, UserRoleService, UserService,
 };
 pub use utils::JwtUtil;
 
@@ -65,4 +65,6 @@ pub struct AppState {
 
     pub db_auth_query_service: Arc<DbAuthQueryService>,
     pub permission_request_service: Arc<PermissionRequestService>,
+    pub physical_host_service: Arc<PhysicalHostService>,
+    pub package_service: Arc<PackageService>,
 }

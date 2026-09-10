@@ -32,6 +32,45 @@ export const MENU_ITEMS: NbMenuItem[] = [
     ],
   } as NbMenuItem & { data?: { permission: string } },
   {
+    title: '部署管理',
+    icon: 'cloud-upload-outline',
+    data: { permission: 'menu:deployment' },
+    children: [
+      {
+        title: '部署总览',
+        link: '/pages/starrocks/deployment/overview',
+      },
+      {
+        title: '主机管理',
+        link: '/pages/starrocks/deployment/hosts',
+      },
+      {
+        title: 'SSH 凭据',
+        link: '/pages/starrocks/deployment/credentials',
+      },
+      {
+        title: '安装包',
+        link: '/pages/starrocks/deployment/packages',
+      },
+      {
+        title: '托管集群',
+        link: '/pages/starrocks/deployment/clusters',
+      },
+      {
+        title: '新建部署',
+        link: '/pages/starrocks/deployment/deploy',
+      },
+      {
+        title: '集群接管',
+        link: '/pages/starrocks/deployment/adopt',
+      },
+      {
+        title: '部署任务',
+        link: '/pages/starrocks/deployment/tasks',
+      },
+    ],
+  } as NbMenuItem & { data?: { permission: string } },
+  {
     title: '查询管理',
     icon: 'search-outline',
     data: { permission: 'menu:queries' },

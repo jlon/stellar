@@ -85,7 +85,8 @@
         "serve": {
           "builder": "@angular-devkit/build-angular:dev-server",
           "options": {
-            "buildTarget": "stellar:build"
+            "buildTarget": "stellar:build",
+            "proxyConfig": "proxy.conf.json"
           },
           "configurations": {
             "production": {

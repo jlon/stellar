@@ -29,6 +29,10 @@ const routes: Routes = [
     data: { reuse: true },
   },
   {
+    path: 'deployment',
+    loadChildren: () => import('./deployment/deployment.module').then((m) => m.DeploymentModule),
+  },
+  {
     path: 'clusters',
     children: [
       {

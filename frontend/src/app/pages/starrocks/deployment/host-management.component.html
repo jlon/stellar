@@ -1,0 +1,123 @@
+<nb-card class="host-management">
+  <nb-card-header class="host-management__header">
+    <div>
+      <h1>主机管理</h1>
+      <p>登记部署目标，并在可信的带外渠道确认 SSH 主机密钥。</p>
+    </div>
+    <button nbButton status="primary" size="small" (click)="openCreateForm()" [disabled]="!canManageHosts">
+      <nb-icon icon="plus-outline"></nb-icon>
+      登记主机
+    </button>
+  </nb-card-header>
+
+  <nb-card-body>
+    <nb-alert *ngIf="!canListHosts" status="warning">
+      您没有查看部署主机的权限，请联系组织管理员获取授权。
+    </nb-alert>
+
+    <section *ngIf="showCreateForm" class="host-registration" aria-label="登记主机">
+      <div class="host-registration__title">
+        <div>
+          <h2>登记物理主机</h2>
+          <p>只保存公钥和指纹；SSH 私钥将在后续“SSH 凭据”模块中独立管理。</p>
+        </div>
+        <button nbButton ghost size="small" type="button" (click)="closeCreateForm()" [disabled]="submitting">
+          <nb-icon icon="close-outline"></nb-icon>
+          关闭
+        </button>
+      </div>
+
+      <nb-alert status="info" class="host-registration__notice">
+        请通过主机管理员、控制台或其他可信带外渠道核对指纹。不要以本页输入值替代身份确认。
+      </nb-alert>
+
+      <form [formGroup]="hostForm" (ngSubmit)="submitHost()" novalidate>
+        <div class="host-registration__grid">
+          <div class="form-group" *ngIf="isSuperAdmin">
+            <label class="label" for="host-organization">所属组织 *</label>
+            <nb-select id="host-organization" fullWidth formControlName="organization_id" placeholder="请选择组织"
+              [status]="hostForm.controls.organization_id.invalid && hostForm.controls.organization_id.touched ? 'danger' : 'basic'">
+              <nb-option *ngFor="let organization of organizations" [value]="organization.id">
+                {{ organization.name }} <span class="text-hint">({{ organization.code }})</span>
+              </nb-option>
+            </nb-select>
+          </div>
+
+          <div class="form-group">
+            <label class="label" for="host-name">主机名称 *</label>
+            <input nbInput fullWidth id="host-name" formControlName="hostname" placeholder="例如 be-01" />
+          </div>
+
+          <div class="form-group host-registration__target">
+            <label class="label" for="host-target">SSH 地址 *</label>
+            <input nbInput fullWidth id="host-target" formControlName="ssh_target" placeholder="IP 或 FQDN，例如 10.0.0.11" />
+          </div>
+
+          <div class="form-group host-registration__port">
+            <label class="label" for="host-port">SSH 端口 *</label>
+            <input nbInput fullWidth id="host-port" type="number" formControlName="ssh_port" />
+          </div>
+
+          <div class="form-group host-registration__wide">
+            <label class="label" for="host-key">SSH 主机公钥 *</label>
+            <textarea nbInput fullWidth id="host-key" rows="3" formControlName="host_key"
+              placeholder="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI..." spellcheck="false"></textarea>
+            <small class="text-hint">支持 ssh-ed25519、ssh-rsa 和 ECDSA；仅输入“算法 + Base64 公钥”，不要附加注释。</small>
+          </div>
+
+          <div class="form-group host-registration__wide">
+            <label class="label" for="host-fingerprint">已确认的 SHA-256 指纹 *</label>
+            <input nbInput fullWidth id="host-fingerprint" formControlName="host_key_fingerprint"
+              placeholder="SHA256:AbCd..." spellcheck="false" />
+          </div>
+        </div>
+
+        <nb-checkbox formControlName="host_key_confirmed">
+          我已通过可信的带外渠道核对 SSH 主机密钥指纹。
+        </nb-checkbox>
+
+        <div class="host-registration__actions">
+          <button nbButton outline status="basic" type="button" (click)="closeCreateForm()" [disabled]="submitting">取消</button>
+          <button nbButton status="primary" type="submit" [disabled]="submitting">
+            <nb-spinner *ngIf="submitting" status="control" size="tiny"></nb-spinner>
+            <span *ngIf="!submitting">确认登记</span>
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <div *ngIf="loading" class="host-management__loading">
+      <nb-spinner status="primary"></nb-spinner>
+    </div>
+
+    <div *ngIf="!loading && canListHosts" class="host-table-wrap">
+      <table class="host-table">
+        <thead>
+          <tr>
+            <th>主机</th>
+            <th *ngIf="isSuperAdmin">所属组织</th>
+            <th>SSH 地址</th>
+            <th>已确认指纹</th>
+            <th>状态</th>
+            <th>登记时间</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let host of hosts">
+            <td><strong>{{ host.hostname }}</strong></td>
+            <td *ngIf="isSuperAdmin">{{ organizationName(host.organization_id) }}</td>
+            <td><code>{{ host.ssh_target }}:{{ host.ssh_port }}</code></td>
+            <td><code class="host-table__fingerprint">{{ host.host_key_fingerprint }}</code></td>
+            <td><span [class]="statusClass(host.status)">{{ statusLabel(host.status) }}</span></td>
+            <td>{{ host.created_at | date: 'yyyy-MM-dd HH:mm' }}</td>
+          </tr>
+          <tr *ngIf="hosts.length === 0">
+            <td [attr.colspan]="isSuperAdmin ? 6 : 5" class="host-table__empty">
+              暂无登记主机。请先确认主机密钥，再登记第一台部署目标。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </nb-card-body>
+</nb-card>

@@ -16,6 +16,7 @@ pub mod resource_group;
 pub mod role;
 pub mod sessions;
 pub mod sql_diag;
+pub mod sr_physical;
 pub mod system;
 pub mod system_function;
 pub mod system_management;

@@ -1,0 +1,23 @@
+<nb-card class="deployment-placeholder">
+  <nb-card-header>
+    <div class="deployment-placeholder__heading">
+      <span class="deployment-placeholder__icon" aria-hidden="true">
+        <nb-icon [icon]="page.icon" status="primary"></nb-icon>
+      </span>
+      <div>
+        <h1>{{ page.title }}</h1>
+        <p>{{ page.description }}</p>
+      </div>
+    </div>
+  </nb-card-header>
+
+  <nb-card-body>
+    <div class="deployment-placeholder__notice">
+      <nb-icon icon="clock-outline" status="info"></nb-icon>
+      <div>
+        <strong>模块骨架已就绪</strong>
+        <p>当前阶段先完成导航与路由；接口、表单和任务编排将在后续迭代接入。</p>
+      </div>
+    </div>
+  </nb-card-body>
+</nb-card>

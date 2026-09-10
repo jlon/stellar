@@ -18,8 +18,8 @@ use stellar::models;
 use stellar::services::{
     AuthService, CasbinService, ClusterService, DataStatisticsService, DbAuthQueryService,
     LLMServiceImpl, MetricsCollectorService, MySQLPoolManager, OrganizationService, OverviewService,
-    PermissionRequestService, PermissionService, RoleService, SystemFunctionService,
-    UserRoleService, UserService,
+    PackageService, PermissionRequestService, PermissionService, PhysicalHostService, RoleService,
+    SystemFunctionService, UserRoleService, UserService,
 };
 use stellar::utils::{JwtUtil, ScheduledExecutor};
 use stellar::{AppState, handlers, middleware, services};
@@ -96,6 +96,11 @@ use stellar::{AppState, handlers, middleware, services};
         handlers::overview::get_extended_cluster_overview,
         handlers::cluster::test_cluster_connection,
 
+        handlers::sr_physical::list_hosts,
+        handlers::sr_physical::create_host,
+        handlers::sr_physical::list_packages,
+        handlers::sr_physical::create_package,
+
         handlers::role::list_roles,
         handlers::role::get_role,
         handlers::role::create_role,
@@ -156,6 +161,10 @@ use stellar::{AppState, handlers, middleware, services};
             models::CreateClusterRequest,
             models::UpdateClusterRequest,
             models::ClusterHealth,
+            models::PhysicalHost,
+            models::CreatePhysicalHostRequest,
+            models::SrPackage,
+            models::CreateSrPackageRequest,
             models::HealthStatus,
             models::HealthCheck,
             models::Backend,
@@ -257,6 +266,7 @@ use stellar::{AppState, handlers, middleware, services};
         (name = "Permission Requests", description = "Permission request workflow"),
         (name = "Database Authentication", description = "Database account and role management"),
         (name = "Resource Groups", description = "Resource group management"),
+        (name = "Physical Deployment", description = "StarRocks physical deployment management"),
     ),
     modifiers(&SecurityAddon)
 )]
@@ -394,6 +404,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ));
     tracing::info!("PermissionRequestService initialized");
 
+    let physical_host_service = Arc::new(PhysicalHostService::new(pool.clone()));
+    let package_service = Arc::new(PackageService::new(pool.clone()));
+
     let app_state = AppState {
         db: pool.clone(),
         mysql_pool_manager: Arc::clone(&mysql_pool_manager),
@@ -414,6 +427,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         llm_service: Arc::clone(&llm_service),
         db_auth_query_service: Arc::clone(&db_auth_query_service),
         permission_request_service: Arc::clone(&permission_request_service),
+        physical_host_service: Arc::clone(&physical_host_service),
+        package_service: Arc::clone(&package_service),
     };
 
     if config.metrics.enabled {
@@ -660,6 +675,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/clusters/db-auth/my-permissions", get(handlers::permission_request::list_my_db_permissions))
         .route("/api/clusters/db-auth/role-permissions/:role_name", get(handlers::permission_request::list_role_permissions))
         .route("/api/db-auth/preview-sql", post(handlers::permission_request::preview_sql))
+        .route(
+            "/api/sr-ops/hosts",
+            get(handlers::sr_physical::list_hosts).post(handlers::sr_physical::create_host),
+        )
+        .route(
+            "/api/sr-ops/packages",
+            get(handlers::sr_physical::list_packages)
+                .post(handlers::sr_physical::create_package),
+        )
         .route("/api/clusters/resource-groups", get(handlers::resource_group::list_resource_groups).post(handlers::resource_group::create_resource_group))
         .route("/api/clusters/resource-groups/usage", get(handlers::resource_group::get_resource_group_usage))
         .route("/api/clusters/resource-groups/analysis", get(handlers::resource_group::analyze_resource_usage))

@@ -27,6 +27,10 @@ pub fn extract_permission(method: &str, uri: &str) -> Option<(String, String)> {
         return None;
     }
 
+    if segments.first() == Some(&"sr-ops") {
+        return Some(("sr-ops".to_string(), extract_sr_ops_action(&segments, method)));
+    }
+
     let resource = match *(segments.first()?) {
         "roles" => "roles",
         "permissions" => "permissions",
@@ -39,6 +43,31 @@ pub fn extract_permission(method: &str, uri: &str) -> Option<(String, String)> {
         .or_else(|| extract_action_default(resource, &segments, method))?;
 
     Some((resource.to_string(), action))
+}
+
+/// All physical deployment routes share one Casbin resource. Unknown actions are
+/// deliberately denied by default, so a future `/api/sr-ops/*` route cannot skip
+/// authorization merely because its extractor mapping was forgotten.
+fn extract_sr_ops_action(segments: &[&str], method: &str) -> String {
+    match (segments.get(1), segments.len(), method) {
+        (Some(&"hosts"), 2, "GET") => "hosts:list".to_string(),
+        (Some(&"hosts"), 2, "POST") => "hosts:manage".to_string(),
+        (Some(&"hosts"), 4, "POST") if segments.get(3) == Some(&"check") => {
+            "hosts:check".to_string()
+        },
+        (Some(&"credentials"), 2, "GET") => "credentials:list".to_string(),
+        (Some(&"credentials"), 2, "POST") => "credentials:manage".to_string(),
+        (Some(&"packages"), 2, "GET") => "packages:list".to_string(),
+        (Some(&"packages"), 2, "POST") => "packages:manage".to_string(),
+        (Some(&"clusters"), 2, "GET") => "clusters:list".to_string(),
+        (Some(&"deployments"), 2, "POST") => "deployments:create".to_string(),
+        (Some(&"adoptions"), 2, "POST") => "adoptions:create".to_string(),
+        (Some(&"tasks"), 3, "GET") => "tasks:get".to_string(),
+        (Some(&"tasks"), 4, "POST") if segments.get(3) == Some(&"cancel") => {
+            "tasks:cancel".to_string()
+        },
+        _ => "unknown".to_string(),
+    }
 }
 
 /// Extract action with special route handlers
@@ -334,5 +363,34 @@ fn extract_action_default(resource: &str, segments: &[&str], method: &str) -> Op
             "POST" => Some("create".to_string()),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_permission;
+
+    #[test]
+    fn extracts_physical_deployment_actions() {
+        assert_eq!(
+            extract_permission("GET", "/api/sr-ops/hosts"),
+            Some(("sr-ops".to_string(), "hosts:list".to_string()))
+        );
+        assert_eq!(
+            extract_permission("POST", "/api/sr-ops/hosts"),
+            Some(("sr-ops".to_string(), "hosts:manage".to_string()))
+        );
+        assert_eq!(
+            extract_permission("POST", "/api/sr-ops/packages"),
+            Some(("sr-ops".to_string(), "packages:manage".to_string()))
+        );
+    }
+
+    #[test]
+    fn denies_unmapped_physical_deployment_actions() {
+        assert_eq!(
+            extract_permission("DELETE", "/api/sr-ops/hosts/1"),
+            Some(("sr-ops".to_string(), "unknown".to_string()))
+        );
     }
 }

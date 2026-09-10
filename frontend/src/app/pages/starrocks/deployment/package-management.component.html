@@ -1,0 +1,104 @@
+<nb-card class="package-management">
+  <nb-card-header class="package-management__header">
+    <div>
+      <h1>安装包</h1>
+      <p>登记经 SHA-256 固定的 StarRocks 发布包，下载和缓存由后续受控任务处理。</p>
+    </div>
+    <button nbButton status="primary" size="small" (click)="openCreateForm()" [disabled]="!canManagePackages">
+      <nb-icon icon="plus-outline"></nb-icon>
+      登记安装包
+    </button>
+  </nb-card-header>
+
+  <nb-card-body>
+    <nb-alert *ngIf="!canListPackages" status="warning">
+      您没有查看受控安装包的权限，请联系组织管理员获取授权。
+    </nb-alert>
+
+    <section *ngIf="showCreateForm" class="package-registration" aria-label="登记安装包">
+      <div class="package-registration__title">
+        <div>
+          <h2>登记受控安装包</h2>
+          <p>仅接受 HTTPS 元数据和不可变 SHA-256；本阶段不会从任意 URL 发起下载。</p>
+        </div>
+        <button nbButton ghost size="small" type="button" (click)="closeCreateForm()" [disabled]="submitting">
+          <nb-icon icon="close-outline"></nb-icon>
+          关闭
+        </button>
+      </div>
+
+      <form [formGroup]="packageForm" (ngSubmit)="submitPackage()" novalidate>
+        <div class="package-registration__grid">
+          <div class="form-group" *ngIf="isSuperAdmin">
+            <label class="label" for="package-organization">所属组织 *</label>
+            <nb-select id="package-organization" fullWidth formControlName="organization_id" placeholder="请选择组织"
+              [status]="packageForm.controls.organization_id.invalid && packageForm.controls.organization_id.touched ? 'danger' : 'basic'">
+              <nb-option *ngFor="let organization of organizations" [value]="organization.id">
+                {{ organization.name }} <span class="text-hint">({{ organization.code }})</span>
+              </nb-option>
+            </nb-select>
+          </div>
+
+          <div class="form-group">
+            <label class="label" for="package-version">StarRocks 版本 *</label>
+            <input nbInput fullWidth id="package-version" formControlName="version" placeholder="例如 3.3.9" />
+          </div>
+
+          <div class="form-group package-registration__wide">
+            <label class="label" for="package-url">HTTPS 下载地址 *</label>
+            <input nbInput fullWidth id="package-url" type="url" formControlName="package_url"
+              placeholder="https://packages.example.com/starrocks-3.3.9.tar.gz" spellcheck="false" />
+          </div>
+
+          <div class="form-group package-registration__wide">
+            <label class="label" for="package-sha256">SHA-256 *</label>
+            <input nbInput fullWidth id="package-sha256" formControlName="sha256" maxlength="64"
+              placeholder="64 位十六进制摘要" spellcheck="false" />
+          </div>
+        </div>
+
+        <div class="package-registration__actions">
+          <button nbButton outline status="basic" type="button" (click)="closeCreateForm()" [disabled]="submitting">取消</button>
+          <button nbButton status="primary" type="submit" [disabled]="submitting">
+            <nb-spinner *ngIf="submitting" status="control" size="tiny"></nb-spinner>
+            <span *ngIf="!submitting">确认登记</span>
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <div *ngIf="loading" class="package-management__loading">
+      <nb-spinner status="primary"></nb-spinner>
+    </div>
+
+    <div *ngIf="!loading && canListPackages" class="package-table-wrap">
+      <table class="package-table">
+        <thead>
+          <tr>
+            <th>版本</th>
+            <th *ngIf="isSuperAdmin">所属组织</th>
+            <th>下载地址</th>
+            <th>SHA-256</th>
+            <th>状态</th>
+            <th>登记时间</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let package of packages">
+            <td><strong>{{ package.version }}</strong></td>
+            <td *ngIf="isSuperAdmin">{{ organizationName(package.organization_id) }}</td>
+            <td><a [href]="package.package_url" target="_blank" rel="noopener noreferrer">{{ package.package_url }}</a></td>
+            <td><code class="package-table__digest">{{ package.sha256 }}</code></td>
+            <td><span [class]="statusClass(package.status)">{{ statusLabel(package.status) }}</span></td>
+            <td>{{ package.created_at | date: 'yyyy-MM-dd HH:mm' }}</td>
+          </tr>
+          <tr *ngIf="packages.length === 0">
+            <td [attr.colspan]="isSuperAdmin ? 6 : 5" class="package-table__empty">
+              暂无登记安装包。请登记具有可验证 SHA-256 的受控发布包。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </nb-card-body>
+</nb-card>
