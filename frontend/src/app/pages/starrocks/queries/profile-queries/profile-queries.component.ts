@@ -1060,11 +1060,11 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
       }
 
       // Determine stroke color based on target node type
-      let strokeColor = '#bfbfbf';
+      let strokeColor = this.themeColor('--border-basic-color-4', '#c5cee0');
       if (targetNode) {
         const name = targetNode.operator_name?.toUpperCase() || '';
         if (name.includes('SCAN') || name.includes('JOIN')) {
-          strokeColor = '#fa8c16';
+          strokeColor = this.themeColor('--color-warning-default', '#ffaa00');
         }
       }
 
@@ -2048,7 +2048,7 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
     import('html2canvas').then(html2canvasModule => {
       const html2canvas = html2canvasModule.default;
       html2canvas(graphContent, {
-        backgroundColor: '#ffffff',
+        backgroundColor: this.themeColor('--background-basic-color-1', '#ffffff'),
         scale: 2, // Higher resolution
         logging: false,
         useCORS: true,
@@ -2259,9 +2259,14 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
   // Others: Gray
   getProgressColor(node: any): string {
     const rank = this.getNodeRank(node);
-    if (rank === 1) return '#cf1322';  // Red for Top 1
-    if (rank > 0 || this.isScanNode(node) || this.isJoinNode(node)) return '#fa8c16';  // Orange
-    return '#d9d9d9';  // Gray
+    if (rank === 1) return this.themeColor('--color-danger-default', '#ff3d71');
+    if (rank > 0 || this.isScanNode(node) || this.isJoinNode(node)) return this.themeColor('--color-warning-default', '#ffaa00');
+    return this.themeColor('--border-basic-color-4', '#c5cee0');
+  }
+
+  private themeColor(cssVar: string, fallback: string): string {
+    const themeRoot = (document.querySelector('nb-layout') || document.body) as HTMLElement;
+    return getComputedStyle(themeRoot).getPropertyValue(cssVar).trim() || fallback;
   }
 
   // Toggle functions for right panel sections
