@@ -152,9 +152,9 @@ Define and manage user roles with customizable permission sets.
 
 ## Configuration
 
-### Database Backend (SQLite / MySQL)
+### Database Backend (SQLite / MySQL / PostgreSQL)
 
-Stellar stores its own metadata in SQLite (zero-configuration) or MySQL. The backend is selected **at runtime** by the URL scheme — no rebuild needed.
+Stellar stores its own metadata in SQLite (zero-configuration), MySQL/MariaDB, or PostgreSQL. The backend is selected **at runtime** by the URL scheme — no rebuild needed.
 
 **Switch to MySQL** (3 steps):
 
@@ -173,14 +173,31 @@ url = "mysql://user:pass@localhost:3306/stellar?charset=utf8mb4"
 
 Environment variable override also works: `APP_DATABASE_URL="mysql://..."`
 
+**Switch to PostgreSQL** (3 steps):
+
+```bash
+# 1. Create the database (tables are created automatically by startup migrations)
+createdb -h localhost -U postgres stellar
+
+# 2. Point the URL to it in conf/config.toml
+[database]
+url = "postgres://user:pass@localhost:5432/stellar"
+
+# 3. Start the service. On first connect, startup runs backend/migrations/postgres/*.sql.
+#    PostgreSQL database names must be created first; a missing database produces a clear error.
+```
+
+`postgresql://...` is accepted as an alias. The same environment override applies: `APP_DATABASE_URL="postgres://..."`.
+
 **Schema changes (migrations)**:
 
-- Startup automatically applies every migration file in `backend/migrations/{sqlite,mysql}/`
+- Startup automatically applies every migration file in `backend/migrations/{sqlite,mysql,postgres}/`
   that has not been applied yet; the applied set is tracked in the `_sqlmigrations` table.
 - To change the schema, add a NEW numbered file (e.g. `backend/migrations/mysql/20260915000000_add_foo.sql`
-  and the SQLite counterpart), containing only the change (e.g. `ALTER TABLE ...`).
+  and the SQLite/MySQL/PostgreSQL counterparts), containing only the change (e.g. `ALTER TABLE ...`).
   Never edit an already-applied file — sqlx rejects it by checksum.
-- Both dialect directories must be kept in sync (MySQL uses `AUTO_INCREMENT`, SQLite uses `AUTOINCREMENT`,
+- All dialect directories must be kept in sync (MySQL uses `AUTO_INCREMENT`, SQLite uses `AUTOINCREMENT`,
+  and PostgreSQL uses `BIGSERIAL`/`RETURNING`,
   and so on — see `docs/MYSQL_SUPPORT_DESIGN.md` for the dialect checklist).
 
 ### StarRocks User Permissions (Important)
@@ -211,8 +228,9 @@ port = 8080
 # SQLite (default, zero-configuration)
 url = "sqlite://data/stellar.db"
 # MySQL (alternative): url = "mysql://user:pass@localhost:3306/stellar?charset=utf8mb4"
-# The backend is selected at runtime by the URL scheme (sqlite:// / mysql://).
-# Migrations live in backend/migrations/{sqlite,mysql}/ and run automatically.
+# PostgreSQL (alternative): url = "postgres://user:pass@localhost:5432/stellar"
+# The backend is selected at runtime by the URL scheme (sqlite:// / mysql:// / postgres://).
+# Migrations live in backend/migrations/{sqlite,mysql,postgres}/ and run automatically.
 
 [auth]
 jwt_secret = "your-secret-key-change-in-production"
@@ -452,8 +470,9 @@ port = 8080
 # SQLite (default, zero-configuration)
 url = "sqlite://data/stellar.db"
 # MySQL (alternative): url = "mysql://user:pass@localhost:3306/stellar?charset=utf8mb4"
-# The backend is selected at runtime by the URL scheme (sqlite:// / mysql://).
-# Migrations live in backend/migrations/{sqlite,mysql}/ and run automatically.
+# PostgreSQL (alternative): url = "postgres://user:pass@localhost:5432/stellar"
+# The backend is selected at runtime by the URL scheme (sqlite:// / mysql:// / postgres://).
+# Migrations live in backend/migrations/{sqlite,mysql,postgres}/ and run automatically.
 
 [auth]
 jwt_secret = "your-secret-key-change-in-production"
