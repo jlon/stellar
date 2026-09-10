@@ -323,13 +323,13 @@ import { PermissionRequestResponse } from '../../../../@core/data/permission-req
       border-radius: 0.375rem;
 
       &.completed {
-        background: rgba(0, 214, 143, 0.1);
-        nb-icon { color: #00d68f; }
+        background: var(--color-success-transparent-100);
+        nb-icon { color: var(--color-success-default); }
       }
 
       &.failed {
-        background: rgba(255, 61, 113, 0.1);
-        nb-icon { color: #ff3d71; }
+        background: var(--color-danger-transparent-100);
+        nb-icon { color: var(--color-danger-default); }
       }
 
       nb-icon {

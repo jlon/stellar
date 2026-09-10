@@ -12,6 +12,7 @@ import { ErrorHandler } from '../../../../@core/utils/error-handler';
 import { MetricThresholds, renderMetricBadge, parseStarRocksDuration } from '../../../../@core/utils/metric-badge';
 import { renderLongText } from '../../../../@core/utils/text-truncate';
 import { AuthService } from '../../../../@core/data/auth.service';
+import { themeColor } from '../../../../@core/utils/theme-color';
 import * as dagre from 'dagre';
 
 @Component({
@@ -1060,11 +1061,11 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
       }
 
       // Determine stroke color based on target node type
-      let strokeColor = this.themeColor('--border-basic-color-4', '#c5cee0');
+      let strokeColor = themeColor('--border-basic-color-4', '#c5cee0');
       if (targetNode) {
         const name = targetNode.operator_name?.toUpperCase() || '';
         if (name.includes('SCAN') || name.includes('JOIN')) {
-          strokeColor = this.themeColor('--color-warning-default', '#ffaa00');
+          strokeColor = themeColor('--color-warning-default', '#ffaa00');
         }
       }
 
@@ -2048,7 +2049,7 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
     import('html2canvas').then(html2canvasModule => {
       const html2canvas = html2canvasModule.default;
       html2canvas(graphContent, {
-        backgroundColor: this.themeColor('--background-basic-color-1', '#ffffff'),
+        backgroundColor: themeColor('--background-basic-color-1', '#ffffff'),
         scale: 2, // Higher resolution
         logging: false,
         useCORS: true,
@@ -2259,14 +2260,9 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
   // Others: Gray
   getProgressColor(node: any): string {
     const rank = this.getNodeRank(node);
-    if (rank === 1) return this.themeColor('--color-danger-default', '#ff3d71');
-    if (rank > 0 || this.isScanNode(node) || this.isJoinNode(node)) return this.themeColor('--color-warning-default', '#ffaa00');
-    return this.themeColor('--border-basic-color-4', '#c5cee0');
-  }
-
-  private themeColor(cssVar: string, fallback: string): string {
-    const themeRoot = (document.querySelector('nb-layout') || document.body) as HTMLElement;
-    return getComputedStyle(themeRoot).getPropertyValue(cssVar).trim() || fallback;
+    if (rank === 1) return themeColor('--color-danger-default', '#ff3d71');
+    if (rank > 0 || this.isScanNode(node) || this.isJoinNode(node)) return themeColor('--color-warning-default', '#ffaa00');
+    return themeColor('--border-basic-color-4', '#c5cee0');
   }
 
   // Toggle functions for right panel sections

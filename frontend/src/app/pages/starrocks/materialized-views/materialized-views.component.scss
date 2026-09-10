@@ -109,56 +109,23 @@
   border-radius: 0.25rem;
   font-size: 0.75rem;
   font-weight: 600;
-
-  &.badge-success {
-    background-color: #00d68f;
-    color: #ffffff;
-  }
-
-  &.badge-info {
-    background-color: #0095ff;
-    color: #ffffff;
-  }
-
-  &.badge-warning {
-    background-color: #ffaa00;
-    color: #ffffff;
-  }
-
-  &.badge-danger {
-    background-color: #ff3d71;
-    color: #ffffff;
-  }
-
-  &.badge-primary {
-    background-color: #8f7ee6;
-    color: #ffffff;
-  }
-
-  &.badge-basic {
-    background-color: #edf1f7;
-    color: #2e3a59;
-  }
 }
 
 ::ng-deep {
-  .nb-theme-default {
-    angular2-smart-table {
-      table {
-        tr {
-          td,
-          th {
-            vertical-align: middle;
-          }
+  angular2-smart-table {
+    table {
+      tr {
+        td,
+        th {
+          vertical-align: middle;
         }
       }
+    }
 
-      // Action buttons in table
-      .btn-xs {
-        padding: 0.25rem 0.5rem;
-        font-size: 0.75rem;
-        line-height: 1.2;
-      }
+    .btn-xs {
+      padding: 0.25rem 0.5rem;
+      font-size: 0.75rem;
+      line-height: 1.2;
     }
   }
 

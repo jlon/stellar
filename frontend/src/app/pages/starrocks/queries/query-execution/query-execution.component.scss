@@ -241,27 +241,13 @@
     list-style: none;
 
     &.selected > .tree-node-row {
-      background-color: nb-theme(color-primary-100);
-      border: 1px solid nb-theme(color-primary-200);
-      color: nb-theme(color-primary-700);
-      box-shadow: 0 3px 14px rgba(255, 186, 102, 0.25);
-      animation: subtleGlow 2s ease-in-out infinite;
+      background-color: nb-theme(color-primary-transparent-200);
+      border: 1px solid nb-theme(color-primary-default);
+      color: nb-theme(text-basic-color);
 
       nb-icon {
         color: inherit;
       }
-    }
-  }
-
-  @keyframes subtleGlow {
-    0% {
-      box-shadow: 0 3px 14px rgba(255, 186, 102, 0.18);
-    }
-    50% {
-      box-shadow: 0 6px 18px rgba(255, 200, 120, 0.4);
-    }
-    100% {
-      box-shadow: 0 3px 14px rgba(255, 186, 102, 0.18);
     }
   }
 
@@ -330,7 +316,7 @@
 
     &.type-catalog {
       .node-icon nb-icon {
-        color: #f3c76b;
+        color: nb-theme(color-warning-default);
       }
 
       .node-text {
@@ -341,17 +327,17 @@
 
     &.type-database {
       .node-icon nb-icon {
-        color: #5a8dee;
+        color: nb-theme(color-info-default);
       }
 
       .node-text {
-        color: #3f5f9f;
+        color: nb-theme(text-basic-color);
       }
     }
 
     &.type-table {
       .node-icon nb-icon {
-        color: #2ecc71;
+        color: nb-theme(color-success-default);
       }
 
       .node-text {
@@ -374,13 +360,13 @@
       color: nb-theme(text-hint-color);
 
       &.node-badge-view {
-        background: nb-theme(color-info-100);
-        color: nb-theme(color-info-600);
+        background: nb-theme(color-info-transparent-200);
+        color: nb-theme(color-info-default);
       }
 
       &.node-badge-mv {
-        background: nb-theme(color-warning-100);
-        color: nb-theme(color-warning-600);
+        background: nb-theme(color-warning-transparent-200);
+        color: nb-theme(color-warning-default);
       }
     }
   }
@@ -518,10 +504,6 @@
         font-size: 20px;
         flex: 1;
         min-height: 0;
-
-        :host-context(.dark-theme) & {
-          border-color: nb-theme(border-basic-color-3);
-        }
 
       ::ng-deep .cm-editor {
         font-size: 20px;
@@ -935,13 +917,12 @@
   width: min(70vw, 960px);
   border-radius: 0.9rem;
   overflow: hidden;
-  border: 1px solid rgba(120, 125, 140, 0.25);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+  border: 1px solid nb-theme(border-basic-color-4);
 
   nb-card-header {
     padding: 1rem 1.25rem;
-    background: linear-gradient(135deg, rgba(59, 66, 82, 0.12), rgba(59, 66, 82, 0.04));
-    border-bottom: 1px solid rgba(120, 125, 140, 0.2);
+    background: nb-theme(background-basic-color-2);
+    border-bottom: 1px solid nb-theme(border-basic-color-3);
   }
 
   nb-card-body {
@@ -1004,17 +985,16 @@
   max-height: 65vh;
   overflow: auto;
   border-radius: 0.6rem;
-  background: linear-gradient(145deg, rgba(34, 40, 49, 0.92), rgba(46, 52, 64, 0.88));
-  border: 1px solid rgba(120, 125, 140, 0.35);
+  background: nb-theme(background-basic-color-3);
+  border: 1px solid nb-theme(border-basic-color-4);
   padding: 1.1rem 1.15rem;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
 }
 
 .schema-text {
   font-family: 'Fira Code', 'Menlo', 'Consolas', 'Courier New', monospace;
   font-size: 0.87rem;
   line-height: 1.52;
-  color: rgba(233, 235, 245, 0.95);
+  color: nb-theme(text-basic-color);
   margin: 0;
   white-space: pre;
   word-break: normal;
@@ -1029,12 +1009,12 @@
 }
 
 .schema-scroll::-webkit-scrollbar-thumb {
-  background: rgba(143, 150, 170, 0.45);
+  background: nb-theme(scrollbar-color);
   border-radius: 4px;
 }
 
 .schema-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(143, 150, 170, 0.65);
+  background: nb-theme(text-disabled-color);
 }
 
 .empty-schema {
@@ -1087,11 +1067,11 @@
   &:hover,
   &:focus {
     outline: none;
-    background-color: nb-theme(color-primary-100);
-    color: nb-theme(color-primary-600);
+    background-color: nb-theme(color-primary-transparent-200);
+    color: nb-theme(color-primary-default);
 
     nb-icon {
-      color: nb-theme(color-primary-600);
+      color: nb-theme(color-primary-default);
     }
   }
 }
@@ -1439,8 +1419,8 @@ pre {
     padding: 0.5rem 1rem;
     background: nb-theme(background-basic-color-1);
     border-radius: nb-theme(border-radius);
-    border: 1px solid nb-theme(color-success-200);
-    color: nb-theme(color-success-600);
+    border: 1px solid nb-theme(color-success-default);
+    color: nb-theme(color-success-default);
     font-size: 0.875rem;
   }
 }
@@ -1720,13 +1700,13 @@ pre {
     }
     
     &.success {
-      background: rgba(nb-theme(color-success-500), 0.1);
-      color: nb-theme(color-success-600);
+      background: nb-theme(color-success-transparent-100);
+      color: nb-theme(color-success-default);
     }
     
     &.error {
-      background: rgba(nb-theme(color-danger-500), 0.1);
-      color: nb-theme(color-danger-600);
+      background: nb-theme(color-danger-transparent-100);
+      color: nb-theme(color-danger-default);
     }
   }
 }
@@ -1845,8 +1825,8 @@ pre {
       width: 18px;
       height: 18px;
       border-radius: 50%;
-      background: nb-theme(color-primary-500);
-      color: #fff;
+      background: nb-theme(color-primary-default);
+      color: nb-theme(text-control-color);
       font-size: 0.7rem;
       font-weight: 600;
       display: flex;
@@ -1865,7 +1845,7 @@ pre {
     
     &.selected {
       background: nb-theme(color-primary-transparent-100);
-      border: 1px solid nb-theme(color-primary-300);
+      border: 1px solid nb-theme(color-primary-default);
     }
   }
   
@@ -2043,14 +2023,14 @@ pre {
       font-size: 0.65rem;
       padding: 0.15rem 0.4rem;
       border-radius: 3px;
-      background: nb-theme(color-info-100);
-      color: nb-theme(color-info-600);
+      background: nb-theme(color-info-transparent-200);
+      color: nb-theme(color-info-default);
       font-weight: 500;
       flex-shrink: 0;
       
       &.multi {
-        background: nb-theme(color-success-100);
-        color: nb-theme(color-success-600);
+        background: nb-theme(color-success-transparent-200);
+        color: nb-theme(color-success-default);
       }
     }
     
@@ -2135,4 +2115,12 @@ pre {
     padding: 1rem;
     border-top: 1px solid nb-theme(border-basic-color-3);
   }
+}
+
+.partition-selector {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid nb-theme(border-basic-color-3);
+  padding: 10px;
+  border-radius: nb-theme(border-radius);
 }
