@@ -835,7 +835,7 @@
 
       <div class="form-group mt-3" *ngIf="compactionTriggerMode === 'partition'">
         <label class="label">选择分区（可多选）</label>
-        <div class="partition-selector" style="max-height: 300px; overflow-y: auto; border: 1px solid #e4e9f2; padding: 10px; border-radius: 4px;">
+        <div class="partition-selector">
           <nb-checkbox
             *ngFor="let partition of (availablePartitions || [])"
             [checked]="compactionSelectedPartitions.includes(partition)"

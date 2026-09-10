@@ -23,7 +23,7 @@
     }
     
     &.status-warning {
-      background-color: rgba(var(--color-warning-500-rgb), 0.1);
+      background-color: var(--color-warning-transparent-100);
       color: var(--color-warning-500);
     }
     

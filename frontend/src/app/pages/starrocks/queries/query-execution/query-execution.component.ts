@@ -24,6 +24,7 @@ import { renderMetricBadge, MetricThresholds } from '../../../../@core/utils/met
 import { renderLongText } from '../../../../@core/utils/text-truncate';
 import { ConfirmDialogService } from '../../../../@core/services/confirm-dialog.service';
 import { AuthService } from '../../../../@core/data/auth.service';
+import { themeColor, themeColorAlpha, themeChartChrome } from '../../../../@core/utils/theme-color';
 
 // Chart 相关类型定义
 type FieldType = 'numeric' | 'text';
@@ -721,29 +722,12 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
   private buildEditorTheme(): Extension {
     const isDark = this.currentTheme === 'dark' || this.currentTheme === 'cosmic';
-    const palette = isDark
-      ? {
-          background: '#202632',
-          gutter: '#1a2130',
-          gutterBorder: 'transparent',
-          lineNumber: '#8392c1',
-          keyword: '#8bb2ff',
-          string: '#4fd19d',
-        }
-      : {
-          background: '#FCFEFF',
-          gutter: '#EFF2FB',
-          gutterBorder: '#E6EAF5',
-          lineNumber: '#8C9BC5',
-          keyword: '#3366FF',
-          string: '#2BAE66',
-        };
-
+    const keyword = themeColor('--color-primary-default', '#3366ff');
     return EditorView.theme(
       {
         '&': {
           height: `${this.editorHeight}px`,
-          backgroundColor: palette.background,
+          backgroundColor: themeColor('--background-basic-color-1', '#ffffff'),
         },
         '.cm-content': {
           padding: '8px 12px',
@@ -754,15 +738,15 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
           fontSize: '14px',
         },
         '.cm-gutters': {
-          backgroundColor: palette.gutter,
-          borderRight: palette.gutterBorder,
-          color: palette.lineNumber,
+          backgroundColor: themeColor('--background-basic-color-2', '#f7f9fc'),
+          borderRight: `1px solid ${themeColor('--border-basic-color-3', '#e4e9f2')}`,
+          color: themeColor('--text-hint-color', '#8f9bb3'),
         },
         '.cm-selectionBackground, .cm-selectionLayer .cm-selectionBackground': {
-          backgroundColor: isDark ? 'rgba(104, 125, 191, 0.35)' : 'rgba(51, 102, 255, 0.16)',
+          backgroundColor: themeColorAlpha('--color-primary-default', isDark ? 0.35 : 0.16, '#3366ff'),
         },
         '.cm-matchingBracket': {
-          outline: `1px solid ${palette.keyword}`,
+          outline: `1px solid ${keyword}`,
         },
       },
       { dark: isDark },
@@ -6145,6 +6129,18 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   private generateChartOption(config: ChartConfig): void {
     let option: any;
     const colors = this.CHART_COLORS;
+    const chrome = themeChartChrome();
+    const tooltipTheme = {
+      backgroundColor: chrome.cardBg,
+      borderColor: chrome.border,
+      textStyle: { color: chrome.textBasic },
+    };
+    const axisTheme = {
+      axisLine: { lineStyle: { color: chrome.border } },
+      axisLabel: { color: chrome.textHint },
+      splitLine: { lineStyle: { type: 'dashed', color: chrome.border } },
+    };
+    const legendTheme = { textStyle: { color: chrome.textBasic } };
 
     if (config.chartType === 'scatter' && config.mode === 'xy' && config.yFieldIndices && config.yFieldIndices.length > 0) {
       const rows = this.queryResults[0]?.rows || [];
@@ -6163,11 +6159,12 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         color: colors,
         tooltip: {
           trigger: 'item',
-          formatter: (params: any) => `${xLabel}: ${params.value[0]}<br/>${yLabel}: ${params.value[1]}`
+          formatter: (params: any) => `${xLabel}: ${params.value[0]}<br/>${yLabel}: ${params.value[1]}`,
+          ...tooltipTheme,
         },
         grid: { left: '10%', right: '10%', bottom: '15%', top: '10%' },
-        xAxis: { type: 'value', name: xLabel, nameLocation: 'middle', nameGap: 30 },
-        yAxis: { type: 'value', name: yLabel, nameLocation: 'middle', nameGap: 40 },
+        xAxis: { type: 'value', name: xLabel, nameLocation: 'middle', nameGap: 30, ...axisTheme },
+        yAxis: { type: 'value', name: yLabel, nameLocation: 'middle', nameGap: 40, ...axisTheme },
         series: [{
           type: 'scatter',
           symbolSize: 12,
@@ -6219,16 +6216,17 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
       option = {
         color: colors,
-        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-        legend: { data: series.map(s => s.name), bottom: 0 },
+        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, ...tooltipTheme },
+        legend: { data: series.map(s => s.name), bottom: 0, ...legendTheme },
         grid: { left: '3%', right: '4%', bottom: '15%', top: '10%', containLabel: true },
         xAxis: {
           type: 'category',
           name: xLabel,
           data: labels,
-          axisLabel: { rotate: labels.length > 8 ? 45 : 0, interval: 0 }
+          axisLabel: { rotate: labels.length > 8 ? 45 : 0, interval: 0, color: chrome.textHint },
+          axisLine: axisTheme.axisLine,
         },
-        yAxis: { type: 'value', splitLine: { lineStyle: { type: 'dashed' } } },
+        yAxis: { type: 'value', ...axisTheme },
         series: series
       };
     } else if (config.mode === 'multi' && config.yFieldIndices && config.yFieldIndices.length > 0) {
@@ -6238,10 +6236,9 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         tooltip: { 
           trigger: 'item', 
           formatter: '{b}: {c} ({d}%)',
-          backgroundColor: 'rgba(50, 50, 50, 0.9)',
-          textStyle: { color: '#fff' }
+          ...tooltipTheme,
         },
-        legend: { orient: 'vertical', left: 'left', top: 'center' },
+        legend: { orient: 'vertical', left: 'left', top: 'center', ...legendTheme },
         series: [{
           type: 'pie',
           radius: ['35%', '65%'],
@@ -6254,7 +6251,8 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
           label: { 
             show: true, 
             formatter: '{b}\n{d}%',
-            fontSize: 11
+            fontSize: 11,
+            color: chrome.textBasic,
           },
           labelLine: { length: 15, length2: 10 },
           emphasis: {
@@ -6273,13 +6271,12 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
           tooltip: { 
             trigger: 'item', 
             formatter: '{b}: {c} ({d}%)',
-            backgroundColor: 'rgba(50, 50, 50, 0.9)',
-            textStyle: { color: '#fff' }
-          },
-          series: [{
-            type: 'pie',
-            radius: ['35%', '65%'],
-            data: data.map((d, i) => ({ 
+          ...tooltipTheme,
+        },
+        series: [{
+          type: 'pie',
+          radius: ['35%', '65%'],
+          data: data.map((d, i) => ({
               name: d.label, 
               value: d.value,
               itemStyle: { color: colors[i % colors.length] }
@@ -6287,7 +6284,8 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
             label: { 
               show: true, 
               formatter: '{b}\n{d}%',
-              fontSize: 11
+              fontSize: 11,
+              color: chrome.textBasic,
             },
             labelLine: { length: 15, length2: 10 },
             emphasis: {
@@ -6303,19 +6301,18 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
           tooltip: { 
             trigger: 'axis', 
             axisPointer: { type: 'shadow' },
-            backgroundColor: 'rgba(50, 50, 50, 0.9)',
-            textStyle: { color: '#fff' }
+            ...tooltipTheme,
           },
           grid: { left: '3%', right: '4%', bottom: '15%', top: '8%', containLabel: true },
           xAxis: {
             type: 'category',
             data: labels,
-            axisLabel: { rotate: labels.length > 8 ? 45 : 0, interval: 0 },
-            axisLine: { lineStyle: { color: '#ccc' } }
+            axisLabel: { rotate: labels.length > 8 ? 45 : 0, interval: 0, color: chrome.textHint },
+            axisLine: axisTheme.axisLine,
           },
           yAxis: { 
             type: 'value',
-            splitLine: { lineStyle: { type: 'dashed', color: '#eee' } },
+            ...axisTheme,
             axisLine: { show: false }
           },
           series: [{

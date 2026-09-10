@@ -61,14 +61,7 @@
 
 // 分组分隔线
 .metric-card-group + .metric-card-group {
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  border-top: 1px solid nb-theme(divider-color);
   margin-top: -1px;
-}
-
-// 暗色主题适配
-:host-context(.nb-theme-dark) {
-  .metric-card-group + .metric-card-group {
-    border-top-color: rgba(255, 255, 255, 0.08);
-  }
 }
 
