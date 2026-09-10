@@ -11,8 +11,10 @@
 #![allow(clippy::manual_pattern_char_comparison)]
 #![allow(clippy::if_same_then_else)]
 
-use sqlx::SqlitePool;
+use sqlx::Pool;
 use std::sync::Arc;
+
+use crate::db::AppDb;
 
 pub mod config;
 pub mod db;
@@ -29,8 +31,8 @@ pub use services::llm::{LLMError, LLMProviderInfo, LLMService, LLMServiceImpl};
 pub use services::{
     AuthService, CasbinService, ClusterService, DataStatisticsService, DbAuthQueryService,
     MetricsCollectorService, MySQLPoolManager, OrganizationService, OverviewService,
-    PermissionRequestService, PermissionService, RoleService, SystemFunctionService, UserRoleService,
-    UserService,
+    PermissionRequestService, PermissionService, RoleService, SystemFunctionService,
+    UserRoleService, UserService,
 };
 pub use utils::JwtUtil;
 
@@ -40,29 +42,29 @@ pub use utils::JwtUtil;
 /// No need for Service Container pattern with dyn Any.
 /// All services are wrapped in Arc for cheap cloning and thread safety.
 #[derive(Clone)]
-pub struct AppState {
-    pub db: SqlitePool,
+pub struct AppState<DB: AppDb> {
+    pub db: Pool<DB>,
 
     pub mysql_pool_manager: Arc<MySQLPoolManager>,
     pub jwt_util: Arc<JwtUtil>,
     pub audit_config: config::AuditLogConfig,
 
-    pub auth_service: Arc<AuthService>,
-    pub cluster_service: Arc<ClusterService>,
-    pub organization_service: Arc<OrganizationService>,
-    pub system_function_service: Arc<SystemFunctionService>,
-    pub metrics_collector_service: Arc<MetricsCollectorService>,
-    pub data_statistics_service: Arc<DataStatisticsService>,
-    pub overview_service: Arc<OverviewService>,
+    pub auth_service: Arc<AuthService<DB>>,
+    pub cluster_service: Arc<ClusterService<DB>>,
+    pub organization_service: Arc<OrganizationService<DB>>,
+    pub system_function_service: Arc<SystemFunctionService<DB>>,
+    pub metrics_collector_service: Arc<MetricsCollectorService<DB>>,
+    pub data_statistics_service: Arc<DataStatisticsService<DB>>,
+    pub overview_service: Arc<OverviewService<DB>>,
 
     pub casbin_service: Arc<CasbinService>,
-    pub permission_service: Arc<PermissionService>,
-    pub role_service: Arc<RoleService>,
-    pub user_role_service: Arc<UserRoleService>,
-    pub user_service: Arc<UserService>,
+    pub permission_service: Arc<PermissionService<DB>>,
+    pub role_service: Arc<RoleService<DB>>,
+    pub user_role_service: Arc<UserRoleService<DB>>,
+    pub user_service: Arc<UserService<DB>>,
 
-    pub llm_service: Arc<LLMServiceImpl>,
+    pub llm_service: Arc<LLMServiceImpl<DB>>,
 
-    pub db_auth_query_service: Arc<DbAuthQueryService>,
-    pub permission_request_service: Arc<PermissionRequestService>,
+    pub db_auth_query_service: Arc<DbAuthQueryService<DB>>,
+    pub permission_request_service: Arc<PermissionRequestService<DB>>,
 }

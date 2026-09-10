@@ -66,7 +66,7 @@ fn build_base_prompt_header(cluster_type: ClusterType) -> &'static str {
         ClusterType::StarRocks => {
             "你是一位拥有20年以上的 StarRocks OLAP 数据库的高级性能专家。\n\
              你需要分析 Query Profile 数据，识别真正的根因并给出**可直接执行**的优化建议。"
-        }
+        },
         ClusterType::Doris => {
             "你是一位拥有20年以上的 Apache Doris OLAP 数据库的高级性能专家。\n\
              你需要分析 Query Profile 数据，识别真正的根因并给出**可直接执行**的优化建议。\n\n\
@@ -77,7 +77,7 @@ fn build_base_prompt_header(cluster_type: ClusterType) -> &'static str {
              - **Pipeline 执行引擎**: 异步执行，充分利用多核 CPU\n\
              - **智能物化视图**: 自动查询改写，透明加速\n\
              - **多 Catalog 支持**: 统一访问 Hive/Iceberg/Hudi/Paimon 等外部数据源"
-        }
+        },
     }
 }
 
@@ -118,11 +118,7 @@ struct ConnectorHints {
 
 impl ConnectorHints {
     fn new(name: impl Into<String>, cache_cmd: &'static str, hints: &[&'static str]) -> Self {
-        Self {
-            name: name.into(),
-            cache_cmd,
-            hints: hints.to_vec(),
-        }
+        Self { name: name.into(), cache_cmd, hints: hints.to_vec() }
     }
 }
 
@@ -134,35 +130,48 @@ fn get_connector_hints(connector: &str, cluster_type: ClusterType) -> ConnectorH
     };
 
     match connector {
-        "hive" => ConnectorHints::new("Hive", cache_cmd, &[
-            "分区裁剪: 确保 WHERE 条件包含分区列",
-            "小文件合并: 在 Hive/Spark 端执行合并",
-            "⚠️ 外表不支持 ALTER TABLE 修改分桶",
-        ]),
-        "iceberg" => ConnectorHints::new("Iceberg", cache_cmd, &[
-            "利用 Iceberg 的 hidden partitioning",
-            "检查 delete files 是否过多 (V2 格式)",
-            "使用 Time Travel 查询历史数据",
-        ]),
-        "hudi" => ConnectorHints::new("Hudi", cache_cmd, &[
-            "检查 compaction 是否及时",
-            "MOR 表考虑调整读取模式",
-            "使用增量查询优化性能",
-        ]),
-        "paimon" => ConnectorHints::new("Paimon", cache_cmd, &[
-            "利用 Paimon 的主键表特性",
-            "检查 snapshot 数量",
-        ]),
-        "jdbc" => ConnectorHints::new("JDBC", "", &[
-            "谓词下推: 确保 WHERE 条件能下推到源库",
-            "减少 SELECT 列: 只查询必要的列",
-            "考虑数据同步到内表加速",
-        ]),
-        "es" | "elasticsearch" => ConnectorHints::new("Elasticsearch", "", &[
-            "确保查询条件能下推到 ES",
-            "利用 ES 的索引能力",
-            "减少返回字段数",
-        ]),
+        "hive" => ConnectorHints::new(
+            "Hive",
+            cache_cmd,
+            &[
+                "分区裁剪: 确保 WHERE 条件包含分区列",
+                "小文件合并: 在 Hive/Spark 端执行合并",
+                "⚠️ 外表不支持 ALTER TABLE 修改分桶",
+            ],
+        ),
+        "iceberg" => ConnectorHints::new(
+            "Iceberg",
+            cache_cmd,
+            &[
+                "利用 Iceberg 的 hidden partitioning",
+                "检查 delete files 是否过多 (V2 格式)",
+                "使用 Time Travel 查询历史数据",
+            ],
+        ),
+        "hudi" => ConnectorHints::new(
+            "Hudi",
+            cache_cmd,
+            &["检查 compaction 是否及时", "MOR 表考虑调整读取模式", "使用增量查询优化性能"],
+        ),
+        "paimon" => ConnectorHints::new(
+            "Paimon",
+            cache_cmd,
+            &["利用 Paimon 的主键表特性", "检查 snapshot 数量"],
+        ),
+        "jdbc" => ConnectorHints::new(
+            "JDBC",
+            "",
+            &[
+                "谓词下推: 确保 WHERE 条件能下推到源库",
+                "减少 SELECT 列: 只查询必要的列",
+                "考虑数据同步到内表加速",
+            ],
+        ),
+        "es" | "elasticsearch" => ConnectorHints::new(
+            "Elasticsearch",
+            "",
+            &["确保查询条件能下推到 ES", "利用 ES 的索引能力", "减少返回字段数"],
+        ),
         _ => ConnectorHints::new(connector, cache_cmd, &["分区裁剪", "谓词下推"]),
     }
 }
@@ -195,8 +204,14 @@ fn build_table_type_prompt(scan_details: &[ScanDetailForLLM], cluster_type: Clus
         if scan.table_type == "internal" {
             internal_tables.push(scan.table_name.clone());
         } else {
-            let connector = scan.connector_type.clone().unwrap_or_else(|| "unknown".to_string());
-            external_tables.entry(connector).or_default().push(scan.table_name.clone());
+            let connector = scan
+                .connector_type
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string());
+            external_tables
+                .entry(connector)
+                .or_default()
+                .push(scan.table_name.clone());
         }
     }
 
@@ -211,7 +226,11 @@ fn build_table_type_prompt(scan_details: &[ScanDetailForLLM], cluster_type: Clus
             db_name,
             internal_tables.len(),
             internal_tables.join(", "),
-            hints.iter().map(|h| format!("- {}", h)).collect::<Vec<_>>().join("\n")
+            hints
+                .iter()
+                .map(|h| format!("- {}", h))
+                .collect::<Vec<_>>()
+                .join("\n")
         ));
     }
 
@@ -231,13 +250,16 @@ fn build_table_type_prompt(scan_details: &[ScanDetailForLLM], cluster_type: Clus
             tables.len(),
             tables.join(", "),
             hints.name,
-            hint_lines.iter().map(|h| format!("- {}", h)).collect::<Vec<_>>().join("\n")
+            hint_lines
+                .iter()
+                .map(|h| format!("- {}", h))
+                .collect::<Vec<_>>()
+                .join("\n")
         ));
     }
 
     prompt
 }
-
 
 // ============================================================================
 // Issue and Session Variable Prompts
@@ -294,14 +316,22 @@ fn build_session_vars_prompt(session_vars: &HashMap<String, String>) -> String {
     if !enabled_features.is_empty() {
         prompt.push_str(&format!(
             "\n### 🟢 已启用的功能 (禁止再建议开启!)\n{}\n",
-            enabled_features.iter().map(|v| format!("`{}`", v)).collect::<Vec<_>>().join(", ")
+            enabled_features
+                .iter()
+                .map(|v| format!("`{}`", v))
+                .collect::<Vec<_>>()
+                .join(", ")
         ));
     }
 
     if !disabled_features.is_empty() {
         prompt.push_str(&format!(
             "\n### 🔴 已禁用的功能 (可建议开启)\n{}\n",
-            disabled_features.iter().map(|v| format!("`{}`", v)).collect::<Vec<_>>().join(", ")
+            disabled_features
+                .iter()
+                .map(|v| format!("`{}`", v))
+                .collect::<Vec<_>>()
+                .join(", ")
         ));
     }
 
@@ -323,7 +353,6 @@ fn build_session_vars_prompt(session_vars: &HashMap<String, String>) -> String {
 
     prompt
 }
-
 
 // ============================================================================
 // Valid Parameters Prompts
@@ -502,7 +531,6 @@ fn get_valid_params_prompt(cluster_type: ClusterType) -> &'static str {
     }
 }
 
-
 // ============================================================================
 // Output Format and System Prompt Builder
 // ============================================================================
@@ -582,7 +610,6 @@ pub fn build_system_prompt(request: &RootCauseAnalysisRequest) -> String {
 /// Legacy static prompt for backward compatibility (minimal)
 #[allow(dead_code)]
 pub const ROOT_CAUSE_SYSTEM_PROMPT: &str = "You are a StarRocks OLAP database performance expert.";
-
 
 // ============================================================================
 // Request Types
@@ -672,7 +699,6 @@ pub struct QuerySummaryForLLM {
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub session_variables: HashMap<String, String>,
 }
-
 
 // ============================================================================
 // Profile Data Types
@@ -803,7 +829,6 @@ pub struct ExchangeDetailForLLM {
     pub network_time_ms: Option<f64>,
 }
 
-
 // ============================================================================
 // Execution Plan and Diagnostic Types
 // ============================================================================
@@ -898,7 +923,6 @@ pub struct CardinalityErrorForLLM {
     pub error_ratio: f64,
 }
 
-
 // ============================================================================
 // Response Types
 // ============================================================================
@@ -927,7 +951,10 @@ impl LLMAnalysisResponseTrait for RootCauseAnalysisResponse {
         if self.root_causes.is_empty() {
             None
         } else {
-            Some(self.root_causes.iter().map(|r| r.confidence).sum::<f64>() / self.root_causes.len() as f64)
+            Some(
+                self.root_causes.iter().map(|r| r.confidence).sum::<f64>()
+                    / self.root_causes.len() as f64,
+            )
         }
     }
 }
@@ -966,7 +993,6 @@ pub struct LLMHiddenIssue {
     pub issue: String,
     pub suggestion: String,
 }
-
 
 // ============================================================================
 // Builder for RootCauseAnalysisRequest
@@ -1057,14 +1083,18 @@ pub fn determine_table_type(table_name: &str) -> String {
             } else {
                 "external".to_string()
             }
-        }
+        },
         _ => "internal".to_string(), // db.table or just table
     }
 }
 
 /// Determine external table connector type from Profile metrics
 pub fn determine_connector_type(metrics: &HashMap<String, String>) -> String {
-    let keys_str = metrics.keys().map(|k| k.to_lowercase()).collect::<Vec<_>>().join(" ");
+    let keys_str = metrics
+        .keys()
+        .map(|k| k.to_lowercase())
+        .collect::<Vec<_>>()
+        .join(" ");
     let has = |p: &str| keys_str.contains(p);
 
     if has("iceberg") || has("deletefilebuild") {
@@ -1079,7 +1109,10 @@ pub fn determine_connector_type(metrics: &HashMap<String, String>) -> String {
         "jdbc"
     } else if has("elasticsearch") || has("_es_") {
         "es"
-    } else if ["orc", "parquet", "stripe", "rowgroup"].iter().any(|p| has(p)) {
+    } else if ["orc", "parquet", "stripe", "rowgroup"]
+        .iter()
+        .any(|p| has(p))
+    {
         "hive"
     } else {
         "unknown"

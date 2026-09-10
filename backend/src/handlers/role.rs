@@ -3,6 +3,7 @@ use axum::{
     extract::{Path, State},
 };
 use std::sync::Arc;
+use stellar_macros::app_db;
 
 use crate::AppState;
 use crate::middleware::OrgContext;
@@ -10,7 +11,7 @@ use crate::models::{
     CreateRoleRequest, RoleResponse, RoleWithPermissions, UpdateRolePermissionsRequest,
     UpdateRoleRequest,
 };
-use crate::utils::{check_org_override, check_org_reassignment, ApiResult};
+use crate::utils::{ApiResult, check_org_override, check_org_reassignment};
 
 // List all roles
 #[utoipa::path(
@@ -24,8 +25,9 @@ use crate::utils::{check_org_override, check_org_reassignment, ApiResult};
     ),
     tag = "Roles"
 )]
+#[app_db]
 pub async fn list_roles(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<OrgContext>,
 ) -> ApiResult<Json<Vec<RoleResponse>>> {
     tracing::debug!(
@@ -57,8 +59,9 @@ pub async fn list_roles(
     ),
     tag = "Roles"
 )]
+#[app_db]
 pub async fn get_role(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Path(id): Path<i64>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<OrgContext>,
 ) -> ApiResult<Json<RoleResponse>> {
@@ -92,8 +95,9 @@ pub async fn get_role(
     ),
     tag = "Roles"
 )]
+#[app_db]
 pub async fn get_role_with_permissions(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Path(id): Path<i64>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<OrgContext>,
 ) -> ApiResult<Json<RoleWithPermissions>> {
@@ -133,8 +137,9 @@ pub async fn get_role_with_permissions(
     ),
     tag = "Roles"
 )]
+#[app_db]
 pub async fn create_role(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<OrgContext>,
     Json(req): Json<CreateRoleRequest>,
 ) -> ApiResult<Json<RoleResponse>> {
@@ -179,8 +184,9 @@ pub async fn create_role(
     ),
     tag = "Roles"
 )]
+#[app_db]
 pub async fn update_role(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Path(id): Path<i64>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<OrgContext>,
     Json(req): Json<UpdateRoleRequest>,
@@ -229,8 +235,9 @@ pub async fn update_role(
     ),
     tag = "Roles"
 )]
+#[app_db]
 pub async fn delete_role(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Path(id): Path<i64>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<OrgContext>,
 ) -> ApiResult<Json<()>> {
@@ -266,8 +273,9 @@ pub async fn delete_role(
     ),
     tag = "Roles"
 )]
+#[app_db]
 pub async fn update_role_permissions(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Path(id): Path<i64>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<OrgContext>,
     Json(req): Json<UpdateRolePermissionsRequest>,

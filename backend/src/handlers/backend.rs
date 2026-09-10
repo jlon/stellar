@@ -3,6 +3,7 @@ use axum::{
     extract::{Path, State},
 };
 use std::sync::Arc;
+use stellar_macros::app_db;
 
 use crate::AppState;
 use crate::models::Backend;
@@ -22,8 +23,9 @@ use crate::utils::ApiResult;
     ),
     tag = "Backends"
 )]
+#[app_db]
 pub async fn list_backends(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
 ) -> ApiResult<Json<Vec<Backend>>> {
     let cluster = if org_ctx.is_super_admin {
@@ -57,8 +59,9 @@ pub async fn list_backends(
     ),
     tag = "Backends"
 )]
+#[app_db]
 pub async fn delete_backend(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path((host, port)): Path<(String, String)>,
 ) -> ApiResult<Json<serde_json::Value>> {

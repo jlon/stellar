@@ -177,7 +177,11 @@ host = "0.0.0.0"
 port = 8080
 
 [database]
+# SQLite (default, zero-configuration)
 url = "sqlite://data/stellar.db"
+# MySQL (alternative): url = "mysql://user:pass@localhost:3306/stellar?charset=utf8mb4"
+# The backend is selected at runtime by the URL scheme (sqlite:// / mysql://).
+# Migrations live in backend/migrations/{sqlite,mysql}/ and run automatically.
 
 [auth]
 jwt_secret = "your-secret-key-change-in-production"
@@ -414,7 +418,11 @@ host = "0.0.0.0"
 port = 8080
 
 [database]
+# SQLite (default, zero-configuration)
 url = "sqlite://data/stellar.db"
+# MySQL (alternative): url = "mysql://user:pass@localhost:3306/stellar?charset=utf8mb4"
+# The backend is selected at runtime by the URL scheme (sqlite:// / mysql://).
+# Migrations live in backend/migrations/{sqlite,mysql}/ and run automatically.
 
 [auth]
 jwt_secret = "your-secret-key-change-in-production"

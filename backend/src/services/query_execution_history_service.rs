@@ -1,18 +1,22 @@
+use crate::db::AppDb;
+use crate::db::dialect::{LastInsertId, RowsAffected};
+use sqlx::Pool;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use sqlx::SqlitePool;
+use stellar_macros::app_impl;
 
 use crate::models::QueryExecutionHistory;
 use crate::utils::ApiError;
 
 const MAX_HISTORY_PER_USER_CLUSTER: i64 = 100;
 
-pub struct QueryExecutionHistoryService {
-    pool: SqlitePool,
+pub struct QueryExecutionHistoryService<DB: AppDb> {
+    pool: Pool<DB>,
 }
 
-impl QueryExecutionHistoryService {
-    pub fn new(pool: SqlitePool) -> Self {
+#[app_impl]
+impl<DB: AppDb> QueryExecutionHistoryService<DB> {
+    pub fn new(pool: Pool<DB>) -> Self {
         Self { pool }
     }
 
@@ -50,7 +54,9 @@ impl QueryExecutionHistoryService {
         .bind(&sql_hash)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| ApiError::internal_error(format!("Failed to check existing history: {}", e)))?;
+        .map_err(|e| {
+            ApiError::internal_error(format!("Failed to check existing history: {}", e))
+        })?;
 
         if let Some((existing_id,)) = existing {
             sqlx::query(
@@ -93,7 +99,7 @@ impl QueryExecutionHistoryService {
         .await
         .map_err(|e| ApiError::internal_error(format!("Failed to insert history: {}", e)))?;
 
-        let new_id = result.last_insert_rowid();
+        let new_id = result.last_insert_id();
 
         self.cleanup_old_records(user_id, cluster_id).await?;
 
@@ -140,7 +146,19 @@ impl QueryExecutionHistoryService {
         .await
         .map_err(|e| ApiError::internal_error(format!("Failed to count history: {}", e)))?;
 
-        let rows: Vec<(i64, i64, i64, Option<String>, Option<String>, String, Option<i64>, Option<i64>, bool, Option<String>, String)> = sqlx::query_as(
+        let rows: Vec<(
+            i64,
+            i64,
+            i64,
+            Option<String>,
+            Option<String>,
+            String,
+            Option<i64>,
+            Option<i64>,
+            bool,
+            Option<String>,
+            String,
+        )> = sqlx::query_as(
             r#"
             SELECT id, user_id, cluster_id, catalog, database_name, sql_statement, 
                    execution_time_ms, row_count, success, error_message, created_at
@@ -179,27 +197,27 @@ impl QueryExecutionHistoryService {
     }
 
     pub async fn delete_history(&self, user_id: i64, history_id: i64) -> Result<bool, ApiError> {
-        let result = sqlx::query(
-            "DELETE FROM query_execution_history WHERE id = ? AND user_id = ?",
-        )
-        .bind(history_id)
-        .bind(user_id)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| ApiError::internal_error(format!("Failed to delete history: {}", e)))?;
+        let result =
+            sqlx::query("DELETE FROM query_execution_history WHERE id = ? AND user_id = ?")
+                .bind(history_id)
+                .bind(user_id)
+                .execute(&self.pool)
+                .await
+                .map_err(|e| {
+                    ApiError::internal_error(format!("Failed to delete history: {}", e))
+                })?;
 
         Ok(result.rows_affected() > 0)
     }
 
     pub async fn clear_history(&self, user_id: i64, cluster_id: i64) -> Result<i64, ApiError> {
-        let result = sqlx::query(
-            "DELETE FROM query_execution_history WHERE user_id = ? AND cluster_id = ?",
-        )
-        .bind(user_id)
-        .bind(cluster_id)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| ApiError::internal_error(format!("Failed to clear history: {}", e)))?;
+        let result =
+            sqlx::query("DELETE FROM query_execution_history WHERE user_id = ? AND cluster_id = ?")
+                .bind(user_id)
+                .bind(cluster_id)
+                .execute(&self.pool)
+                .await
+                .map_err(|e| ApiError::internal_error(format!("Failed to clear history: {}", e)))?;
 
         Ok(result.rows_affected() as i64)
     }

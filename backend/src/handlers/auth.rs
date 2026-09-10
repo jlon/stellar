@@ -1,5 +1,6 @@
 use axum::{Json, extract::State};
 use std::sync::Arc;
+use stellar_macros::app_db;
 
 use crate::AppState;
 use crate::models::{
@@ -18,8 +19,9 @@ use crate::utils::ApiResult;
     ),
     tag = "Authentication"
 )]
+#[app_db]
 pub async fn register(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Json(req): Json<CreateUserRequest>,
 ) -> ApiResult<Json<UserResponse>> {
     tracing::info!("User registration attempt for username: {}", req.username);
@@ -42,8 +44,9 @@ pub async fn register(
     ),
     tag = "Authentication"
 )]
+#[app_db]
 pub async fn login(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Json(req): Json<LoginRequest>,
 ) -> ApiResult<Json<LoginResponse>> {
     tracing::info!("User login attempt for username: {}", req.username);
@@ -73,8 +76,9 @@ pub async fn login(
     ),
     tag = "Authentication"
 )]
+#[app_db]
 pub async fn get_me(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(user_id): axum::extract::Extension<i64>,
 ) -> ApiResult<Json<UserResponse>> {
     tracing::debug!("Getting user info for user_id: {}", user_id);
@@ -107,8 +111,9 @@ pub async fn get_me(
     ),
     tag = "Authentication"
 )]
+#[app_db]
 pub async fn update_me(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(user_id): axum::extract::Extension<i64>,
     Json(req): Json<UpdateUserRequest>,
 ) -> ApiResult<Json<UserResponse>> {

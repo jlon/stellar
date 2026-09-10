@@ -996,11 +996,11 @@ mod llm_integration_tests {
     /// Build LLM request from profile analysis response - ENHANCED VERSION
     /// Now includes full SQL and raw profile data for deep analysis
     fn build_llm_request_for_test(response: &ProfileAnalysisResponse) -> RootCauseAnalysisRequest {
+        use crate::models::cluster::ClusterType;
         use crate::services::llm::scenarios::root_cause::{
             AggDetailForLLM, ExchangeDetailForLLM, JoinDetailForLLM, OperatorDetailForLLM,
             ProfileDataForLLM, ScanDetailForLLM, TimeDistributionForLLM,
         };
-        use crate::models::cluster::ClusterType;
 
         let summary = response.summary.as_ref();
 
@@ -1746,7 +1746,10 @@ mod prompt_generation_tests {
 
         assert!(prompt.contains("Iceberg 外表"), "Should mention Iceberg tables");
         assert!(prompt.contains("Time Travel"), "Should suggest Iceberg Time Travel");
-        assert!(prompt.contains("enable_scan_datacache"), "Should suggest DataCache for external tables");
+        assert!(
+            prompt.contains("enable_scan_datacache"),
+            "Should suggest DataCache for external tables"
+        );
         assert!(
             prompt.contains("ALTER TABLE external_table SET"),
             "Should warn about external table limitations"

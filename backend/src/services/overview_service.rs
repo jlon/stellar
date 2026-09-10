@@ -2,14 +2,16 @@
 // Purpose: Provide aggregated cluster overview data (real-time + historical)
 // Design Ref: ARCHITECTURE_ANALYSIS_AND_INTEGRATION.md
 
+use crate::db::AppDb;
 use crate::services::{
     ClusterService, DataStatistics, DataStatisticsService, MetricsSnapshot, MySQLClient,
 };
 use crate::utils::{ApiError, ApiResult};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
+use sqlx::Pool;
 use std::sync::Arc;
+use stellar_macros::app_impl;
 use utoipa::ToSchema;
 
 /// Time range for querying historical data
@@ -349,25 +351,26 @@ pub struct ExtendedClusterOverview {
 }
 
 #[derive(Clone)]
-pub struct OverviewService {
-    db: SqlitePool,
-    cluster_service: Arc<ClusterService>,
-    data_statistics_service: Option<Arc<DataStatisticsService>>,
+pub struct OverviewService<DB: AppDb> {
+    db: Pool<DB>,
+    cluster_service: Arc<ClusterService<DB>>,
+    data_statistics_service: Option<Arc<DataStatisticsService<DB>>>,
     mysql_pool_manager: Arc<crate::services::mysql_pool_manager::MySQLPoolManager>,
 }
 
-impl OverviewService {
+#[app_impl]
+impl<DB: AppDb> OverviewService<DB> {
     /// Create a new OverviewService
     pub fn new(
-        db: SqlitePool,
-        cluster_service: Arc<ClusterService>,
+        db: Pool<DB>,
+        cluster_service: Arc<ClusterService<DB>>,
         mysql_pool_manager: Arc<crate::services::mysql_pool_manager::MySQLPoolManager>,
     ) -> Self {
         Self { db, cluster_service, data_statistics_service: None, mysql_pool_manager }
     }
 
     /// Set data statistics service (optional dependency)
-    pub fn with_data_statistics(mut self, service: Arc<DataStatisticsService>) -> Self {
+    pub fn with_data_statistics(mut self, service: Arc<DataStatisticsService<DB>>) -> Self {
         self.data_statistics_service = Some(service);
         self
     }

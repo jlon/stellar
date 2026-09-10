@@ -1,27 +1,31 @@
+use crate::db::AppDb;
+use crate::db::dialect::{LastInsertId, RowsAffected};
 use serde_json::Value;
-use sqlx::SqlitePool;
+use sqlx::Pool;
 use std::collections::HashMap;
 use std::sync::Arc;
+use stellar_macros::app_impl;
 
 use crate::models::{
     CreateFunctionRequest, SystemFunction, SystemFunctionPreference, UpdateFunctionRequest,
     UpdateOrderRequest,
 };
 use crate::services::{ClusterService, MySQLClient, MySQLPoolManager};
-use crate::utils::{vec_to_map, ApiError, ApiResult, StringExt};
+use crate::utils::{ApiError, ApiResult, StringExt, vec_to_map};
 
 #[derive(Clone)]
-pub struct SystemFunctionService {
-    db: Arc<SqlitePool>,
+pub struct SystemFunctionService<DB: AppDb> {
+    db: Arc<Pool<DB>>,
     mysql_pool_manager: Arc<MySQLPoolManager>,
-    cluster_service: Arc<ClusterService>,
+    cluster_service: Arc<ClusterService<DB>>,
 }
 
-impl SystemFunctionService {
+#[app_impl]
+impl<DB: AppDb> SystemFunctionService<DB> {
     pub fn new(
-        db: Arc<SqlitePool>,
+        db: Arc<Pool<DB>>,
         mysql_pool_manager: Arc<MySQLPoolManager>,
-        cluster_service: Arc<ClusterService>,
+        cluster_service: Arc<ClusterService<DB>>,
     ) -> Self {
         Self { db, mysql_pool_manager, cluster_service }
     }
@@ -65,7 +69,7 @@ impl SystemFunctionService {
                 func
             })
             .collect();
-            
+
         // 使用 lambda 表达式排序
         merged_functions.sort_by(|a, b| {
             a.category_order
@@ -107,7 +111,7 @@ impl SystemFunctionService {
             (description.is_empty(), "Function description cannot be empty"),
             (sql_query.is_empty(), "SQL query cannot be empty"),
         ];
-        
+
         if let Some((_, msg)) = validations.iter().find(|(is_empty, _)| *is_empty) {
             return Err(ApiError::validation_error(*msg));
         }
@@ -147,11 +151,11 @@ impl SystemFunctionService {
 
         let category_order = max_category_order.unwrap_or(0) + 1;
 
-        let function_id = sqlx::query_scalar::<_, i64>(
+        let function_id = sqlx::query(
             "INSERT INTO system_functions (
                 cluster_id, category_name, function_name, description, sql_query,
                 display_order, category_order, is_favorited, created_by
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?) RETURNING id",
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)",
         )
         .bind(cluster_id)
         .bind(&category_name)
@@ -161,8 +165,9 @@ impl SystemFunctionService {
         .bind(display_order)
         .bind(category_order)
         .bind(user_id)
-        .fetch_one(&*self.db)
-        .await?;
+        .execute(&*self.db)
+        .await?
+        .last_insert_id();
 
         let function =
             sqlx::query_as::<_, SystemFunction>("SELECT * FROM system_functions WHERE id = ?")
@@ -230,12 +235,16 @@ impl SystemFunctionService {
 
         for order in req.functions {
             sqlx::query(
-                "INSERT INTO system_function_preferences (cluster_id, function_id, category_order, display_order, is_favorited, updated_at)
-                 VALUES (?, ?, ?, ?, COALESCE((SELECT is_favorited FROM system_function_preferences WHERE cluster_id = ? AND function_id = ?), false), CURRENT_TIMESTAMP)
-                 ON CONFLICT(cluster_id, function_id) DO UPDATE SET
-                 category_order = excluded.category_order,
-                 display_order = excluded.display_order,
-                 updated_at = CURRENT_TIMESTAMP"
+                &format!(
+                    "INSERT INTO system_function_preferences (cluster_id, function_id, category_order, display_order, is_favorited, updated_at)
+                     VALUES (?, ?, ?, ?, COALESCE((SELECT is_favorited FROM system_function_preferences WHERE cluster_id = ? AND function_id = ?), false), CURRENT_TIMESTAMP)
+                     {}",
+                    DB::upsert_suffix(
+                        &["cluster_id", "function_id"],
+                        &["category_order", "display_order"],
+                        &["updated_at = CURRENT_TIMESTAMP"],
+                    )
+                )
             )
             .bind(cluster_id)
             .bind(order.id)
@@ -274,14 +283,19 @@ impl SystemFunctionService {
         .await?;
 
         sqlx::query(
-            "INSERT INTO system_function_preferences (cluster_id, function_id, category_order, display_order, is_favorited, updated_at)
-             VALUES (?, ?, 
-                     COALESCE((SELECT category_order FROM system_function_preferences WHERE cluster_id = ? AND function_id = ?), ?),
-                     COALESCE((SELECT display_order FROM system_function_preferences WHERE cluster_id = ? AND function_id = ?), ?),
-                     ?, CURRENT_TIMESTAMP)
-             ON CONFLICT(cluster_id, function_id) DO UPDATE SET
-             is_favorited = excluded.is_favorited,
-             updated_at = CURRENT_TIMESTAMP"
+            &format!(
+                "INSERT INTO system_function_preferences (cluster_id, function_id, category_order, display_order, is_favorited, updated_at)
+                 VALUES (?, ?, 
+                         COALESCE((SELECT category_order FROM system_function_preferences WHERE cluster_id = ? AND function_id = ?), ?),
+                         COALESCE((SELECT display_order FROM system_function_preferences WHERE cluster_id = ? AND function_id = ?), ?),
+                         ?, CURRENT_TIMESTAMP)
+                 {}",
+                DB::upsert_suffix(
+                    &["cluster_id", "function_id"],
+                    &["is_favorited"],
+                    &["updated_at = CURRENT_TIMESTAMP"],
+                )
+            )
         )
         .bind(cluster_id)
         .bind(function_id)
@@ -321,7 +335,7 @@ impl SystemFunctionService {
             (description.is_empty(), "Function description cannot be empty"),
             (sql_query.is_empty(), "SQL query cannot be empty"),
         ];
-        
+
         if let Some((_, msg)) = validations.iter().find(|(is_empty, _)| *is_empty) {
             return Err(ApiError::validation_error(*msg));
         }

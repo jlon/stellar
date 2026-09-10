@@ -15,7 +15,7 @@ pub async fn create_test_db() -> SqlitePool {
         .expect("Failed to create test database");
 
 
-    sqlx::migrate!()
+    sqlx::migrate!("./migrations/sqlite")
         .run(&pool)
         .await
         .expect("Failed to run migrations");

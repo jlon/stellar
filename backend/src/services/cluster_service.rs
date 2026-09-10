@@ -1,15 +1,18 @@
+use crate::db::AppDb;
+use crate::db::dialect::{LastInsertId, RowsAffected};
 use crate::models::{
     Cluster, ClusterHealth, CreateClusterRequest, HealthCheck, HealthStatus, UpdateClusterRequest,
 };
 use crate::services::{MySQLPoolManager, create_adapter};
 use crate::utils::{ApiError, ApiResult};
 use chrono::Utc;
-use sqlx::SqlitePool;
+use sqlx::Pool;
 use std::sync::Arc;
+use stellar_macros::app_impl;
 
 #[derive(Clone)]
-pub struct ClusterService {
-    pool: SqlitePool,
+pub struct ClusterService<DB: AppDb> {
+    pool: Pool<DB>,
     mysql_pool_manager: Arc<MySQLPoolManager>,
 }
 
@@ -22,7 +25,10 @@ fn simplify_health_check_error(error: &str) -> String {
         return "认证失败: 请检查用户名和密码是否正确".to_string();
     }
 
-    if error_lower.contains("connection refused") || error_lower.contains("refused") || error_lower.contains("cannot connect") {
+    if error_lower.contains("connection refused")
+        || error_lower.contains("refused")
+        || error_lower.contains("cannot connect")
+    {
         return "无法连接: 请检查集群地址和端口是否正确".to_string();
     }
 
@@ -35,7 +41,8 @@ fn simplify_health_check_error(error: &str) -> String {
     }
 
     // Default: return a generic message with error code if available
-    error.find("ERROR ")
+    error
+        .find("ERROR ")
         .and_then(|code_start| {
             error[code_start..].find(':').map(|code_end| {
                 let error_code = &error[code_start + 6..code_start + code_end];
@@ -45,8 +52,9 @@ fn simplify_health_check_error(error: &str) -> String {
         .unwrap_or_else(|| "连接失败: 请检查集群配置".to_string())
 }
 
-impl ClusterService {
-    pub fn new(pool: SqlitePool, mysql_pool_manager: Arc<MySQLPoolManager>) -> Self {
+#[app_impl]
+impl<DB: AppDb> ClusterService<DB> {
+    pub fn new(pool: Pool<DB>, mysql_pool_manager: Arc<MySQLPoolManager>) -> Self {
         Self { pool, mysql_pool_manager }
     }
 
@@ -127,7 +135,7 @@ impl ClusterService {
         .execute(&self.pool)
         .await?;
 
-        let cluster_id = result.last_insert_rowid();
+        let cluster_id = result.last_insert_id();
 
         if !is_first_cluster {
             let active_count: (i64,) = sqlx::query_as(
@@ -626,7 +634,10 @@ impl ClusterService {
                                 checks.push(HealthCheck {
                                     name: "Compute Nodes".to_string(),
                                     status: "warning".to_string(),
-                                    message: format!("Failed to check {} nodes: {}", node_type, error_msg),
+                                    message: format!(
+                                        "Failed to check {} nodes: {}",
+                                        node_type, error_msg
+                                    ),
                                 });
                                 if overall_status == HealthStatus::Healthy {
                                     overall_status = HealthStatus::Warning;
