@@ -28,6 +28,7 @@ import { ThemeModule } from '../../@theme/theme.module';
 
 import { StarRocksRoutingModule } from './starrocks-routing.module';
 import { DashboardComponent } from './dashboard/dashboard.component';
+import { StatusCardComponent } from './dashboard/status-card/status-card.component';
 import { ClusterListComponent } from './clusters/cluster-list/cluster-list.component';
 import { ClusterFormComponent } from './clusters/cluster-form/cluster-form.component';
 import { ClusterDetailComponent } from './clusters/cluster-detail/cluster-detail.component';
@@ -52,6 +53,7 @@ import { ActiveToggleRenderComponent } from './materialized-views/active-toggle-
 @NgModule({
   declarations: [
     DashboardComponent,
+    StatusCardComponent,
     ClusterListComponent,
     ClusterFormComponent,
     ClusterDetailComponent,
