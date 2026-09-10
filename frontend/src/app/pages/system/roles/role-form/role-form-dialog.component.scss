@@ -19,81 +19,11 @@
     flex-direction: column;
   }
 
-  // ============================================
-  // Dialog Header
-  // ============================================
-  .dialog-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 1rem;
-    padding-bottom: 0.5rem;
+  .cancel {
+    margin-right: 1rem;
   }
 
-  .dialog-header__info {
-    flex: 1;
-  }
 
-  .dialog-header__title-row {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-
-    h5 {
-      margin: 0;
-      font-weight: 600;
-      font-size: 1.125rem;
-      color: nb-theme(text-basic-color);
-    }
-  }
-
-  .dialog-header__icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 2.25rem;
-    height: 2.25rem;
-    border-radius: 0.5rem;
-    transition: all 0.2s ease;
-
-    nb-icon {
-      font-size: 1.125rem;
-    }
-
-    &.icon--create {
-      background: linear-gradient(
-        135deg,
-        rgba(nb-theme(color-primary-default), 0.15) 0%,
-        rgba(nb-theme(color-primary-default), 0.08) 100%
-      );
-      color: nb-theme(color-primary-default);
-    }
-
-    &.icon--edit {
-      background: linear-gradient(
-        135deg,
-        rgba(nb-theme(color-info-default), 0.15) 0%,
-        rgba(nb-theme(color-info-default), 0.08) 100%
-      );
-      color: nb-theme(color-info-default);
-    }
-  }
-
-  .dialog-subtitle {
-    margin: 0.375rem 0 0 0;
-    padding-left: 3rem;
-    color: nb-theme(text-hint-color);
-    font-size: 0.875rem;
-  }
-
-  .close-btn {
-    flex-shrink: 0;
-    margin: -0.25rem -0.5rem 0 0;
-  }
-
-  // ============================================
-  // Form Container
-  // ============================================
   .role-form {
     padding: 0.5rem 0;
     flex: 1 1 auto;
@@ -405,22 +335,6 @@
       nb-option {
         padding-left: 1rem !important;
       }
-    }
-  }
-
-  // ============================================
-  // Footer Actions
-  // ============================================
-  .footer-actions {
-    display: flex;
-    justify-content: flex-end;
-
-    button {
-      min-width: 6rem;
-
-      nb-icon {
-        margin-right: 0.25rem;
-  }
     }
   }
 

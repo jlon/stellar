@@ -13,20 +13,9 @@ import { PermissionRequestResponse } from '../../../../@core/data/permission-req
   template: `
     <nb-card class="approval-detail-dialog">
       <nb-card-header>
-        <div class="dialog-header">
-          <h5>申请详情</h5>
-          <div class="header-badges">
-            <span class="badge" [ngClass]="'badge-' + getRequestTypeStatus(request.request_type)">
-              {{ getRequestTypeLabel(request.request_type) }}
-            </span>
-            <span class="badge" [ngClass]="'badge-' + getStatusBadge(request.status)">
-              {{ getStatusLabel(request.status) }}
-            </span>
-          </div>
-          <button nbButton ghost status="basic" size="small" (click)="close()">
-            <nb-icon icon="close-outline"></nb-icon>
-          </button>
-        </div>
+        申请详情
+        <nb-badge [text]="getRequestTypeLabel(request.request_type)" [status]="getRequestTypeStatus(request.request_type)"></nb-badge>
+        <nb-badge [text]="getStatusLabel(request.status)" [status]="getStatusBadge(request.status)"></nb-badge>
       </nb-card-header>
 
       <nb-card-body>
@@ -82,10 +71,7 @@ import { PermissionRequestResponse } from '../../../../@core/data/permission-req
             <nb-list-item>
               <div class="list-item-content">
                 <span class="item-label">授予角色</span>
-                <span class="tag tag-info">
-                  <nb-icon icon="award-outline" class="mr-1"></nb-icon>
-                  {{ request.request_details.target_role || '-' }}
-                </span>
+                <nb-badge [text]="request.request_details.target_role || '-'" status="info"></nb-badge>
               </div>
             </nb-list-item>
           </nb-list>
@@ -102,9 +88,7 @@ import { PermissionRequestResponse } from '../../../../@core/data/permission-req
               <div class="list-item-content">
                 <span class="item-label">申请权限</span>
                 <div class="permission-tags">
-                  <span class="tag tag-success" *ngFor="let perm of request.request_details.permissions">
-                    {{ perm }}
-                  </span>
+                  <nb-badge *ngFor="let perm of request.request_details.permissions" [text]="perm" status="success"></nb-badge>
                 </div>
               </div>
             </nb-list-item>
@@ -227,44 +211,6 @@ import { PermissionRequestResponse } from '../../../../@core/data/permission-req
       }
     }
 
-    .dialog-header {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-
-      h5 {
-        margin: 0;
-        font-size: 0.875rem;
-        font-weight: 600;
-        flex-shrink: 0;
-      }
-
-      .header-badges {
-        display: flex;
-        gap: 0.375rem;
-        flex: 1;
-      }
-
-      button {
-        margin-left: auto;
-      }
-    }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      padding: 0.125rem 0.375rem;
-      border-radius: 0.25rem;
-      font-size: 0.6875rem;
-      font-weight: 500;
-
-      &.badge-success { background: #e8f5e9; color: #00d68f; }
-      &.badge-warning { background: #fff8e1; color: #ffaa00; }
-      &.badge-danger { background: #ffebee; color: #ff3d71; }
-      &.badge-info { background: #e0f7fa; color: #0095ff; }
-      &.badge-basic { background: #f5f5f5; color: #8f9bb3; }
-    }
-
     .section {
       margin-bottom: 1rem;
 
@@ -321,22 +267,6 @@ import { PermissionRequestResponse } from '../../../../@core/data/permission-req
       background: var(--background-basic-color-3);
       border-radius: 0.25rem;
       font-family: monospace;
-    }
-
-    // Tag 样式
-    .tag {
-      display: inline-flex;
-      align-items: center;
-      font-size: 0.75rem;
-      font-weight: 500;
-      padding: 0.125rem 0.5rem;
-      border-radius: 0.25rem;
-
-      &.tag-primary { background: #e8f0fe; color: #3366ff; }
-      &.tag-info { background: #e0f7fa; color: #0095ff; }
-      &.tag-success { background: #e8f5e9; color: #00d68f; }
-      &.tag-warning { background: #fff8e1; color: #ffaa00; }
-      &.tag-danger { background: #ffebee; color: #ff3d71; }
     }
 
     .permission-tags {
