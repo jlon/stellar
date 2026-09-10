@@ -10,6 +10,7 @@ export interface SrPackage {
   organization_id: number;
   version: string;
   package_url: string;
+  local_path?: string | null;
   sha256: string;
   status: SrPackageStatus;
   created_at: string;
@@ -18,7 +19,8 @@ export interface SrPackage {
 export interface CreateSrPackageRequest {
   organization_id?: number;
   version: string;
-  package_url: string;
+  package_url?: string;
+  local_path?: string;
   sha256: string;
 }
 

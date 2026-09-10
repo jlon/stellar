@@ -54,7 +54,8 @@ export class PackageManagementComponent {
   readonly packageForm = this.formBuilder.group({
     organization_id: [null as number | null],
     version: ['', [Validators.required, Validators.maxLength(64)]],
-    package_url: ['', [Validators.required, Validators.pattern(HTTPS_URL_PATTERN)]],
+    package_url: ['', [Validators.pattern(HTTPS_URL_PATTERN)]],
+    local_path: ['', [Validators.pattern(/^\/[^.].*$/)]],
     sha256: ['', [Validators.required, Validators.pattern(SHA256_PATTERN)]],
   });
 
@@ -109,10 +110,17 @@ export class PackageManagementComponent {
     }
 
     const value = this.packageForm.getRawValue();
+    const packageUrl = value.package_url?.trim() || '';
+    const localPath = value.local_path?.trim() || '';
+    if (!packageUrl && !localPath) {
+      this.packageForm.controls.package_url.setErrors({ required: true });
+      return;
+    }
     const request: CreateSrPackageRequest = {
       organization_id: value.organization_id ?? undefined,
       version: value.version?.trim() || '',
-      package_url: value.package_url?.trim() || '',
+      package_url: packageUrl || undefined,
+      local_path: localPath || undefined,
       sha256: value.sha256?.trim() || '',
     };
 

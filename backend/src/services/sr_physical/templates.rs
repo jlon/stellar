@@ -70,6 +70,7 @@ pub fn be_config(
     be_port: i64,
     webserver_port: i64,
     brpc_port: i64,
+    starlet_port: i64,
 ) -> String {
     merge_managed_config(
         existing,
@@ -80,6 +81,7 @@ pub fn be_config(
             ("be_port", be_port.to_string()),
             ("be_http_port", webserver_port.to_string()),
             ("brpc_port", brpc_port.to_string()),
+            ("starlet_port", starlet_port.to_string()),
         ],
     )
 }

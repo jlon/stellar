@@ -45,9 +45,15 @@
           </div>
 
           <div class="form-group package-registration__wide">
-            <label class="label" for="package-url">HTTPS 下载地址 *</label>
+            <label class="label" for="package-url">HTTPS 下载地址（与预置路径二选一）</label>
             <input nbInput fullWidth id="package-url" type="url" formControlName="package_url"
               placeholder="https://packages.example.com/starrocks-3.3.9.tar.gz" spellcheck="false" />
+          </div>
+
+          <div class="form-group package-registration__wide">
+            <label class="label" for="package-local-path">控制面预置路径（优先使用，无需下载）</label>
+            <input nbInput fullWidth id="package-local-path" formControlName="local_path"
+              placeholder="/opt/stellar/packages/starrocks-3.3.9.tar.gz" spellcheck="false" />
           </div>
 
           <div class="form-group package-registration__wide">
@@ -87,7 +93,7 @@
           <tr *ngFor="let package of packages">
             <td><strong>{{ package.version }}</strong></td>
             <td *ngIf="isSuperAdmin">{{ organizationName(package.organization_id) }}</td>
-            <td><a [href]="package.package_url" target="_blank" rel="noopener noreferrer">{{ package.package_url }}</a></td>
+            <td><a *ngIf="package.package_url" [href]="package.package_url" target="_blank" rel="noopener noreferrer">{{ package.package_url }}</a><code *ngIf="!package.package_url" class="package-table__digest">{{ package.local_path }}</code></td>
             <td><code class="package-table__digest">{{ package.sha256 }}</code></td>
             <td><span [class]="statusClass(package.status)">{{ statusLabel(package.status) }}</span></td>
             <td>{{ package.created_at | date: 'yyyy-MM-dd HH:mm' }}</td>

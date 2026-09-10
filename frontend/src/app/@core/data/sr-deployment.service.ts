@@ -41,12 +41,61 @@ export interface ManagedCluster {
   sr_version: string;
   status: string;
   cluster_id?: number;
+  install_dir?: string;
   created_at: string;
+}
+
+export interface ManagedClusterNode {
+  id: number;
+  host_id: number;
+  role: 'fe' | 'be';
+  fe_role?: 'leader' | 'follower';
+  advertise_host: string;
+  service_port: number;
+  status: string;
+}
+
+export interface ManagedClusterDetail extends ManagedCluster {
+  nodes: ManagedClusterNode[];
+}
+
+export interface ConfigRevisionSummary {
+  id: number;
+  node_id: number;
+  revision: number;
+  content_sha256: string;
+  task_id?: number;
+  created_at: string;
+}
+
+export interface ConfigRevision extends ConfigRevisionSummary {
+  content: string;
+}
+
+export interface ConfigDiffLine {
+  kind: 'context' | 'added' | 'removed';
+  text: string;
+}
+
+export interface NodeLogsResponse {
+  node_id: number;
+  logs: string;
 }
 
 export interface DeploymentNode {
   host_id: number;
   advertise_host: string;
+  edit_log_port?: number;
+  http_port?: number;
+  query_port?: number;
+  rpc_port?: number;
+  heartbeat_port?: number;
+  be_port?: number;
+  webserver_port?: number;
+  brpc_port?: number;
+  starlet_port?: number;
+  meta_dir?: string;
+  storage_dir?: string;
 }
 
 export interface CreateDeploymentRequest {
@@ -104,5 +153,46 @@ export class SrDeploymentService {
 
   listClusters(): Observable<ManagedCluster[]> {
     return this.api.get<ManagedCluster[]>('/sr-ops/clusters');
+  }
+
+  getCluster(id: number): Observable<ManagedClusterDetail> {
+    return this.api.get<ManagedClusterDetail>(`/sr-ops/clusters/${id}`);
+  }
+
+  importCluster(id: number): Observable<DeploymentTask> {
+    return this.api.post<DeploymentTask>(`/sr-ops/clusters/${id}/import`, {});
+  }
+
+  submitNodeCommand(
+    clusterId: number,
+    nodeId: number,
+    action: 'start' | 'stop' | 'restart',
+  ): Observable<DeploymentTask> {
+    return this.api.post<DeploymentTask>(`/sr-ops/clusters/${clusterId}/nodes/${nodeId}/commands`, { action });
+  }
+
+  readNodeLogs(clusterId: number, nodeId: number, file: string, lines = 200): Observable<NodeLogsResponse> {
+    return this.api.get<NodeLogsResponse>(
+      `/sr-ops/clusters/${clusterId}/nodes/${nodeId}/logs?file=${encodeURIComponent(file)}&lines=${lines}`,
+    );
+  }
+
+  listConfigRevisions(clusterId: number, nodeId: number): Observable<ConfigRevisionSummary[]> {
+    return this.api.get<ConfigRevisionSummary[]>(`/sr-ops/clusters/${clusterId}/configs/${nodeId}`);
+  }
+
+  getConfigRevision(clusterId: number, nodeId: number, revision: number): Observable<ConfigRevision> {
+    return this.api.get<ConfigRevision>(`/sr-ops/clusters/${clusterId}/configs/${nodeId}/revisions/${revision}`);
+  }
+
+  diffConfigRevisions(
+    clusterId: number,
+    nodeId: number,
+    from: number,
+    to: number,
+  ): Observable<ConfigDiffLine[]> {
+    return this.api.get<ConfigDiffLine[]>(
+      `/sr-ops/clusters/${clusterId}/configs/${nodeId}/diff?from=${from}&to=${to}`,
+    );
   }
 }

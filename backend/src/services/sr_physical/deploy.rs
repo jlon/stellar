@@ -21,7 +21,8 @@ use tokio::{
 use crate::{
     models::{
         AdoptClusterRequest, BackendDeploymentNode, ClusterType, CreateClusterRequest,
-        CreateDeploymentRequest, DeploymentMode, FrontendDeploymentNode, SrClusterNode,
+        CreateDeploymentRequest, DeploymentMode, FrontendDeploymentNode, NodeCommandRequest,
+        SrClusterNode, SrConfigDiffLine, SrConfigRevision, SrConfigRevisionSummary,
         SrManagedCluster, SrManagedClusterDetail, SrOperationTask, SrOperationTaskDetail,
     },
     services::{ClusterService, MySQLClient},
@@ -33,12 +34,15 @@ use super::{
     fe_config, shell_quote,
 };
 
-// A fresh FE may take several minutes to initialize BDB and elect itself leader.
-const READY_RETRIES: usize = 200;
+// A fresh FE may take several minutes to initialize BDB and elect itself leader;
+// on hosts with sustained heavy I/O pressure it can take longer.
+const READY_RETRIES: usize = 400;
 const READY_INTERVAL: Duration = Duration::from_secs(3);
 const MIN_FREE_KB: i64 = 20 * 1024 * 1024;
 const SQL_TIMEOUT: Duration = Duration::from_secs(30);
 const TASK_TIMEOUT: Duration = Duration::from_secs(4 * 60 * 60);
+const NODE_PORT_RETRIES: usize = 60;
+const NODE_PORT_INTERVAL: Duration = Duration::from_secs(3);
 
 #[derive(Clone)]
 pub struct SrDeploymentService {
@@ -84,15 +88,17 @@ impl SrDeploymentService {
         user_id: i64,
     ) -> ApiResult<SrOperationTask> {
         let request = request.normalize()?;
-        let package: (String, String, String) = sqlx::query_as(
-            "SELECT version, package_url, sha256 FROM sr_packages WHERE id = ? AND organization_id = ?",
+        let package: (String, String, Option<String>, String) = sqlx::query_as(
+            "SELECT version, package_url, local_path, sha256 FROM sr_packages WHERE id = ? AND organization_id = ?",
         )
         .bind(request.package_id)
         .bind(organization_id)
         .fetch_optional(&self.pool)
         .await?
         .ok_or_else(|| ApiError::validation_error("package does not belong to the organization"))?;
-        self.ensure_package_source(&package.1)?;
+        if package.2.is_none() {
+            self.ensure_package_source(&package.1)?;
+        }
         if self.supported_versions.is_empty() || !self.supported_versions.contains(&package.0) {
             return Err(ApiError::validation_error(
                 "package version is not in APP_SR_PHYSICAL_SUPPORTED_VERSIONS",
@@ -108,6 +114,28 @@ impl SrDeploymentService {
         self.ensure_hosts_ownership(&request, organization_id)
             .await?;
 
+        // Two shared-nothing clusters may share a physical host only when every
+        // install path is isolated.
+        let host_ids: HashSet<i64> = request
+            .frontends
+            .iter()
+            .map(|node| node.host_id)
+            .chain(request.backends.iter().map(|node| node.host_id))
+            .collect();
+        let install_dir_conflict: Option<i64> = sqlx::query_scalar(
+            "SELECT m.id FROM sr_managed_clusters m JOIN sr_cluster_nodes n ON n.managed_cluster_id = m.id WHERE m.install_dir = ? AND n.host_id IN (SELECT value FROM json_each(?)) LIMIT 1",
+        )
+        .bind(&request.install_dir)
+        .bind(serde_json::to_string(&host_ids)?)
+        .fetch_optional(&self.pool)
+        .await?;
+        if install_dir_conflict.is_some() {
+            return Err(ApiError::validation_error(format!(
+                "install_dir {} is already used by a managed cluster on these hosts",
+                request.install_dir
+            )));
+        }
+
         let existing_cluster: Option<i64> = sqlx::query_scalar(
             "SELECT id FROM clusters WHERE name = ? UNION SELECT id FROM sr_managed_clusters WHERE name = ? LIMIT 1",
         )
@@ -119,8 +147,13 @@ impl SrDeploymentService {
             return Err(ApiError::validation_error("cluster name already exists"));
         }
 
-        let payload =
-            DeploymentPayload::from_request(&request, package.0.clone(), package.1, package.2);
+        let payload = DeploymentPayload::from_request(
+            &request,
+            package.0.clone(),
+            package.1,
+            package.2,
+            package.3,
+        );
         let payload_json = serde_json::to_string(&payload)?;
         let mut tx = self.pool.begin().await?;
         let cluster_id = sqlx::query(
@@ -156,7 +189,7 @@ impl SrDeploymentService {
         }
         for backend in &request.backends {
             sqlx::query(
-                "INSERT INTO sr_cluster_nodes (managed_cluster_id, host_id, role, advertise_host, service_port, http_port, brpc_port, webserver_port, storage_dir) VALUES (?, ?, 'be', ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO sr_cluster_nodes (managed_cluster_id, host_id, role, advertise_host, service_port, http_port, brpc_port, webserver_port, starlet_port, storage_dir) VALUES (?, ?, 'be', ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(cluster_id)
             .bind(backend.host_id)
@@ -165,6 +198,7 @@ impl SrDeploymentService {
             .bind(i64::from(backend.be_port))
             .bind(i64::from(backend.brpc_port))
             .bind(i64::from(backend.webserver_port))
+            .bind(i64::from(backend.starlet_port))
             .bind(backend.storage_dir.as_deref())
             .execute(&mut *tx)
             .await?;
@@ -263,6 +297,140 @@ impl SrDeploymentService {
         Ok(task)
     }
 
+    pub async fn submit_node_command(
+        self: &Arc<Self>,
+        managed_cluster_id: i64,
+        node_id: i64,
+        request: NodeCommandRequest,
+        organization_id: i64,
+        user_id: i64,
+    ) -> ApiResult<SrOperationTask> {
+        let request = request.normalize()?;
+        let managed: Option<(String, Option<i64>)> = sqlx::query_as(
+            "SELECT status, ssh_credential_id FROM sr_managed_clusters WHERE id = ? AND organization_id = ?",
+        )
+        .bind(managed_cluster_id)
+        .bind(organization_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some((status, ssh_credential_id)) = managed else {
+            return Err(ApiError::not_found("managed cluster not found"));
+        };
+        if ssh_credential_id.is_none() {
+            return Err(ApiError::validation_error("node commands require an SSH-managed cluster"));
+        }
+        if status != "running" {
+            return Err(ApiError::validation_error(
+                "node commands require a running managed cluster",
+            ));
+        }
+        let node: Option<(i64, String)> = sqlx::query_as(
+            "SELECT id, status FROM sr_cluster_nodes WHERE id = ? AND managed_cluster_id = ?",
+        )
+        .bind(node_id)
+        .bind(managed_cluster_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some((_, node_status)) = node else {
+            return Err(ApiError::validation_error("node does not belong to this managed cluster"));
+        };
+        match request.action.as_str() {
+            "start" if node_status == "running" => {
+                return Err(ApiError::validation_error("node is already running"));
+            },
+            // restart works from either state: it always stops first, which
+            // also recovers nodes left inconsistent by an interrupted task.
+            "stop" | "restart" if !matches!(node_status.as_str(), "running" | "stopped") => {
+                return Err(ApiError::validation_error(
+                    "only a running or stopped node can be stopped or restarted",
+                ));
+            },
+            _ => {},
+        }
+        self.ensure_no_running_task(managed_cluster_id).await?;
+
+        let payload = NodeCommandPayload { node_id, action: request.action };
+        let payload_json = serde_json::to_string(&payload)?;
+        let task_id = sqlx::query(
+            "INSERT INTO sr_operation_tasks (organization_id, managed_cluster_id, task_type, payload_json, created_by) VALUES (?, ?, 'node_command', ?, ?)",
+        )
+        .bind(organization_id)
+        .bind(managed_cluster_id)
+        .bind(payload_json)
+        .bind(user_id)
+        .execute(&self.pool)
+        .await?
+        .last_insert_rowid();
+
+        let task = self
+            .get_task_for_org(task_id, Some(organization_id))
+            .await?
+            .task;
+        let service = Arc::clone(self);
+        tokio::spawn(async move {
+            if let Err(error) = service.run_task(task_id).await {
+                tracing::error!(task_id, error = %error, "Node command task failed");
+            }
+        });
+        Ok(task)
+    }
+
+    pub async fn submit_import(
+        self: &Arc<Self>,
+        managed_cluster_id: i64,
+        organization_id: i64,
+        user_id: i64,
+    ) -> ApiResult<SrOperationTask> {
+        let managed: Option<(String, String, Option<i64>)> = sqlx::query_as(
+            "SELECT status, name, cluster_id FROM sr_managed_clusters WHERE id = ? AND organization_id = ?",
+        )
+        .bind(managed_cluster_id)
+        .bind(organization_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some((status, name, cluster_id)) = managed else {
+            return Err(ApiError::not_found("managed cluster not found"));
+        };
+        if cluster_id.is_some() {
+            return Err(ApiError::validation_error("managed cluster is already imported"));
+        }
+        if status != "running" {
+            return Err(ApiError::validation_error(
+                "only a successfully deployed managed cluster can be imported",
+            ));
+        }
+        let existing: Option<i64> = sqlx::query_scalar("SELECT id FROM clusters WHERE name = ?")
+            .bind(&name)
+            .fetch_optional(&self.pool)
+            .await?;
+        if existing.is_some() {
+            return Err(ApiError::validation_error("cluster name already exists"));
+        }
+        self.ensure_no_running_task(managed_cluster_id).await?;
+
+        let task_id = sqlx::query(
+            "INSERT INTO sr_operation_tasks (organization_id, managed_cluster_id, task_type, payload_json, created_by) VALUES (?, ?, 'import_cluster', '{}', ?)",
+        )
+        .bind(organization_id)
+        .bind(managed_cluster_id)
+        .bind(user_id)
+        .execute(&self.pool)
+        .await?
+        .last_insert_rowid();
+
+        let task = self
+            .get_task_for_org(task_id, Some(organization_id))
+            .await?
+            .task;
+        let service = Arc::clone(self);
+        tokio::spawn(async move {
+            if let Err(error) = service.run_task(task_id).await {
+                tracing::error!(task_id, error = %error, "Cluster import task failed");
+            }
+        });
+        Ok(task)
+    }
+
     pub async fn list_tasks(
         &self,
         organization_id: Option<i64>,
@@ -354,7 +522,7 @@ impl SrDeploymentService {
             None => sqlx::query_as("SELECT id, organization_id, name, deployment_mode, sr_version, cluster_id, install_dir, status, created_by, created_at, updated_at FROM sr_managed_clusters WHERE id = ?")
                 .bind(id).fetch_optional(&self.pool).await?,
         }.ok_or_else(|| ApiError::not_found("managed cluster not found"))?;
-        let nodes = sqlx::query_as("SELECT id, managed_cluster_id, host_id, role, fe_role, advertise_host, service_port, http_port, query_port, rpc_port, brpc_port, webserver_port, meta_dir, storage_dir, status, created_at, updated_at FROM sr_cluster_nodes WHERE managed_cluster_id = ? ORDER BY id")
+        let nodes = sqlx::query_as("SELECT id, managed_cluster_id, host_id, role, fe_role, advertise_host, service_port, http_port, query_port, rpc_port, brpc_port, webserver_port, starlet_port, meta_dir, storage_dir, status, created_at, updated_at FROM sr_cluster_nodes WHERE managed_cluster_id = ? ORDER BY id")
             .bind(id).fetch_all(&self.pool).await?;
         let observed_nodes = sqlx::query_as("SELECT id, managed_cluster_id, node_type, address, raw_json, created_at FROM sr_observed_nodes WHERE managed_cluster_id = ? ORDER BY id")
             .bind(id).fetch_all(&self.pool).await?;
@@ -374,60 +542,28 @@ impl SrDeploymentService {
         Ok(())
     }
 
-    async fn run_task(&self, task_id: i64) -> ApiResult<()> {
-        if sqlx::query("UPDATE sr_operation_tasks SET status = 'running', current_step = 'validate', started_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'")
-            .bind(task_id).execute(&self.pool).await?.rows_affected() == 0 {
-            return Ok(());
-        }
-        sqlx::query("UPDATE sr_managed_clusters SET status = 'deploying', updated_at = CURRENT_TIMESTAMP WHERE id = (SELECT managed_cluster_id FROM sr_operation_tasks WHERE id = ?)")
-            .bind(task_id)
-            .execute(&self.pool)
-            .await?;
-
-        let task_type: String =
-            sqlx::query_scalar("SELECT task_type FROM sr_operation_tasks WHERE id = ?")
-                .bind(task_id)
-                .fetch_one(&self.pool)
-                .await?;
-        let result = tokio::time::timeout(TASK_TIMEOUT, async {
-            match task_type.as_str() {
-                "deploy" => self.run_deploy(task_id).await,
-                "adopt_read_only" => self.run_adoption(task_id).await,
-                _ => Err(ApiError::internal_error("unsupported physical operation task type")),
-            }
-        })
-        .await
-        .unwrap_or_else(|_| Err(ApiError::cluster_connection_failed("physical task timed out")));
-        fs::remove_dir_all(self.work_dir.join(task_id.to_string()))
-            .await
-            .ok();
-        match result {
-            Ok(()) => Ok(()),
-            Err(error) => {
-                self.record(task_id, "failed", "failed", &error.to_string(), None)
-                    .await
-                    .ok();
-                sqlx::query("UPDATE sr_operation_tasks SET status = 'failed', error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?")
-                    .bind(error.to_string()).bind(task_id).execute(&self.pool).await?;
-                sqlx::query("UPDATE sr_managed_clusters SET status = 'failed', updated_at = CURRENT_TIMESTAMP WHERE id = (SELECT managed_cluster_id FROM sr_operation_tasks WHERE id = ?)")
-                    .bind(task_id).execute(&self.pool).await?;
-                Err(error)
-            },
-        }
-    }
-
     async fn run_deploy(&self, task_id: i64) -> ApiResult<()> {
         let task: (i64, i64, String, i64) = sqlx::query_as("SELECT organization_id, managed_cluster_id, payload_json, created_by FROM sr_operation_tasks WHERE id = ?")
             .bind(task_id).fetch_one(&self.pool).await?;
         let payload: DeploymentPayload = serde_json::from_str(&task.2)?;
-        let runtime = self.load_runtime(task.1, task.0).await?;
+        let runtime = self.load_runtime(task.1, Some(task.0)).await?;
         let (ssh_credential, private_key) = self
             .credential_service
-            .ssh_secret(runtime.ssh_credential_id, task.0)
+            .ssh_secret(
+                runtime.ssh_credential_id.ok_or_else(|| {
+                    ApiError::internal_error("deployed cluster is missing its SSH credential")
+                })?,
+                task.0,
+            )
             .await?;
         let (operator_credential, operator_password) = self
             .credential_service
-            .database_secret(runtime.operator_credential_id, task.0)
+            .database_secret(
+                runtime.operator_credential_id.ok_or_else(|| {
+                    ApiError::internal_error("deployed cluster is missing its operator credential")
+                })?,
+                task.0,
+            )
             .await?;
         let task_dir = self.work_dir.join(task_id.to_string());
         fs::create_dir_all(&task_dir).await.map_err(|error| {
@@ -439,8 +575,8 @@ impl SrDeploymentService {
             let contexts = self.precheck(task_id, &runtime, &ssh_credential.username, &private_key, &task_dir).await?;
             self.record(task_id, "precheck", "succeeded", "Host precheck passed", None).await?;
 
-            self.reserve_hosts(task.1, &runtime.hosts).await?;
-            self.record(task_id, "reserve", "succeeded", "Physical hosts reserved for this managed cluster", None).await?;
+            self.reserve_ports(task.1, &runtime).await?;
+            self.record(task_id, "reserve", "succeeded", "Physical host service ports reserved for this managed cluster", None).await?;
 
             let archive = self.cache_package(task_id, &payload).await?;
             let archive_root = validate_archive(&archive)?;
@@ -449,12 +585,11 @@ impl SrDeploymentService {
             self.distribute_and_install(task_id, &runtime, &contexts, &archive, &archive_root).await?;
             self.record(task_id, "install", "succeeded", "Package installed on all planned hosts", None).await?;
 
-            self.write_configs(&runtime, &contexts).await?;
+            self.write_configs(task_id, task.1, task.3, &runtime, &contexts).await?;
             self.record(task_id, "render_config", "succeeded", "Managed FE and BE configuration written atomically", None).await?;
 
             let leader = runtime.frontends.first().ok_or_else(|| ApiError::internal_error("deployment has no leader FE"))?;
             let leader_context = contexts.get(&leader.host_id).ok_or_else(|| ApiError::internal_error("leader SSH context missing"))?;
-            let leader_http_port = required_port(leader.http_port, "leader HTTP")?;
             let leader_query_port = required_port(leader.query_port, "leader query")?;
             self.executor.run(leader_context, &format!("sh {}/current/fe/bin/start_fe.sh --daemon", shell_quote(&runtime.install_dir))).await?;
             wait_for_sql(&leader.advertise_host, leader_query_port, "SELECT 1").await?;
@@ -526,33 +661,489 @@ impl SrDeploymentService {
             )).await?;
             self.record(task_id, "create_operator", "succeeded", "Operator account created", None).await?;
 
-            let cluster = self.cluster_service.create_cluster_with_activation(
-                CreateClusterRequest {
-                    name: runtime.name.clone(), description: Some(format!("Physical deployment task #{task_id}")),
-                    fe_host: leader.advertise_host.clone(), fe_http_port: leader_http_port as i32,
-                    fe_query_port: leader_query_port as i32, username: operator_credential.username.clone(),
-                    password: operator_password, enable_ssl: false, connection_timeout: 10,
-                    tags: Some(vec!["physical-deploy".to_string()]), catalog: "default_catalog".to_string(),
-                    organization_id: None, deployment_mode: DeploymentMode::SharedNothing,
-                    cluster_type: ClusterType::StarRocks, admin_user: None, admin_password: None,
-                },
-                task.3, Some(task.0), false, false,
-            ).await?;
-            self.record(task_id, "register_cluster", "succeeded", "Cluster registered with Stellar", None).await?;
-
             sqlx::query("UPDATE sr_cluster_nodes SET status = 'running', updated_at = CURRENT_TIMESTAMP WHERE managed_cluster_id = ?")
                 .bind(task.1).execute(&self.pool).await?;
-            sqlx::query("UPDATE sr_managed_clusters SET status = 'running', cluster_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-                .bind(cluster.id).bind(task.1).execute(&self.pool).await?;
-            sqlx::query("UPDATE sr_operation_tasks SET status = 'succeeded', current_step = 'verify', result_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?")
-                .bind(serde_json::json!({"cluster_id": cluster.id, "fe_host": leader.advertise_host, "query_port": leader_query_port}).to_string())
+            // Importing into the existing clusters registry is an explicit, audited
+            // follow-up operation: POST /api/sr-ops/clusters/:id/import.
+            sqlx::query("UPDATE sr_managed_clusters SET status = 'running', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+                .bind(task.1).execute(&self.pool).await?;
+            sqlx::query("UPDATE sr_operation_tasks SET status = 'succeeded', current_step = 'complete', result_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?")
+                .bind(serde_json::json!({"fe_host": leader.advertise_host, "query_port": leader_query_port}).to_string())
                 .bind(task_id).execute(&self.pool).await?;
-            self.record(task_id, "verify", "succeeded", "Deployment completed; existing cluster health checks are now active", None).await?;
+            self.record(task_id, "complete", "succeeded", "Deployment completed; import it into Stellar to enable monitoring", None).await?;
             Ok(())
         }.await;
 
         fs::remove_dir_all(&task_dir).await.ok();
         execution
+    }
+
+    async fn run_task(&self, task_id: i64) -> ApiResult<()> {
+        if sqlx::query("UPDATE sr_operation_tasks SET status = 'running', current_step = 'validate', started_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'")
+            .bind(task_id).execute(&self.pool).await?.rows_affected() == 0 {
+            return Ok(());
+        }
+
+        let task_type: String =
+            sqlx::query_scalar("SELECT task_type FROM sr_operation_tasks WHERE id = ?")
+                .bind(task_id)
+                .fetch_one(&self.pool)
+                .await?;
+        // Only infrastructure tasks take over the managed-cluster status; node
+        // commands and imports must leave the cluster status untouched.
+        if task_type == "deploy" {
+            sqlx::query("UPDATE sr_managed_clusters SET status = 'deploying', updated_at = CURRENT_TIMESTAMP WHERE id = (SELECT managed_cluster_id FROM sr_operation_tasks WHERE id = ?)")
+                .bind(task_id)
+                .execute(&self.pool)
+                .await?;
+        }
+        let result = tokio::time::timeout(TASK_TIMEOUT, async {
+            match task_type.as_str() {
+                "deploy" => self.run_deploy(task_id).await,
+                "adopt_read_only" => self.run_adoption(task_id).await,
+                "node_command" => self.run_node_command(task_id).await,
+                "import_cluster" => self.run_import(task_id).await,
+                _ => Err(ApiError::internal_error("unsupported physical operation task type")),
+            }
+        })
+        .await
+        .unwrap_or_else(|_| Err(ApiError::cluster_connection_failed("physical task timed out")));
+        fs::remove_dir_all(self.work_dir.join(task_id.to_string()))
+            .await
+            .ok();
+        match result {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                self.record(task_id, "failed", "failed", &error.to_string(), None)
+                    .await
+                    .ok();
+                sqlx::query("UPDATE sr_operation_tasks SET status = 'failed', error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?")
+                    .bind(error.to_string()).bind(task_id).execute(&self.pool).await?;
+                if matches!(task_type.as_str(), "deploy" | "adopt_read_only") {
+                    sqlx::query("UPDATE sr_managed_clusters SET status = 'failed', updated_at = CURRENT_TIMESTAMP WHERE id = (SELECT managed_cluster_id FROM sr_operation_tasks WHERE id = ?)")
+                        .bind(task_id).execute(&self.pool).await?;
+                }
+                Err(error)
+            },
+        }
+    }
+
+    async fn run_node_command(&self, task_id: i64) -> ApiResult<()> {
+        let task: (i64, i64, String, i64) = sqlx::query_as("SELECT organization_id, managed_cluster_id, payload_json, created_by FROM sr_operation_tasks WHERE id = ?")
+            .bind(task_id).fetch_one(&self.pool).await?;
+        let payload: NodeCommandPayload = serde_json::from_str(&task.2)?;
+        let runtime = self.load_runtime(task.1, Some(task.0)).await?;
+        let node = runtime
+            .frontends
+            .iter()
+            .chain(&runtime.backends)
+            .find(|node| node.id == payload.node_id)
+            .ok_or_else(|| {
+                ApiError::validation_error("node does not belong to this managed cluster")
+            })?
+            .clone();
+        let ssh_credential_id = runtime.ssh_credential_id.ok_or_else(|| {
+            ApiError::validation_error("node commands require an SSH-managed cluster")
+        })?;
+        let (ssh_credential, private_key) = self
+            .credential_service
+            .ssh_secret(ssh_credential_id, task.0)
+            .await?;
+
+        let task_dir = self.work_dir.join(task_id.to_string());
+        fs::create_dir_all(&task_dir).await.map_err(|error| {
+            ApiError::internal_error(format!("failed to create task work directory: {error}"))
+        })?;
+        let execution = async {
+            let host = runtime
+                .hosts
+                .iter()
+                .find(|host| host.id == node.host_id)
+                .ok_or_else(|| {
+                    ApiError::internal_error("node references an unavailable physical host")
+                })?;
+            let context = SshContext::create(
+                &task_dir,
+                SshTarget {
+                    id: host.id,
+                    target: host.ssh_target.clone(),
+                    port: host.ssh_port,
+                    host_key: host.host_key.clone(),
+                },
+                ssh_credential.username.clone(),
+                &private_key,
+            )
+            .await?;
+            match payload.action.as_str() {
+                "start" => self.start_node(task_id, &runtime.install_dir, &context, &node).await,
+                "stop" => self.stop_node(task_id, &runtime.install_dir, &context, &node).await,
+                "restart" => {
+                    self.stop_node(task_id, &runtime.install_dir, &context, &node).await?;
+                    self.start_node(task_id, &runtime.install_dir, &context, &node).await
+                },
+                _ => Err(ApiError::internal_error("unsupported node command")),
+            }?;
+            sqlx::query("UPDATE sr_operation_tasks SET status = 'succeeded', current_step = 'complete', result_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?")
+                .bind(serde_json::json!({"node_id": node.id, "action": payload.action}).to_string())
+                .bind(task_id)
+                .execute(&self.pool)
+                .await?;
+            self.record(task_id, "complete", "succeeded", "Node command completed", Some(node.id)).await?;
+            Ok(())
+        }
+        .await;
+        fs::remove_dir_all(&task_dir).await.ok();
+        execution
+    }
+
+    async fn start_node(
+        &self,
+        task_id: i64,
+        install_dir: &str,
+        context: &SshContext,
+        node: &SrClusterNode,
+    ) -> ApiResult<()> {
+        let (role_suffix, listen_port) = node_service_endpoint(node)?;
+        self.record(task_id, "start", "running", &format!("Starting {role_suffix}"), Some(node.id))
+            .await?;
+        // StarRocks start scripts must daemonize or the SSH session never
+        // returns; they are bash scripts, so run them with bash not /bin/sh.
+        let script = format!("{install_dir}/current/{role_suffix}/bin/start_{role_suffix}.sh");
+        self.executor
+            .run(context, &format!("bash {} --daemon", shell_quote(&script)))
+            .await?;
+        self.wait_for_remote_port(context, listen_port, true)
+            .await?;
+        sqlx::query("UPDATE sr_cluster_nodes SET status = 'running', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+            .bind(node.id)
+            .execute(&self.pool)
+            .await?;
+        self.record(
+            task_id,
+            "start",
+            "succeeded",
+            &format!("{role_suffix} accepts connections"),
+            Some(node.id),
+        )
+        .await?;
+        Ok(())
+    }
+
+    async fn stop_node(
+        &self,
+        task_id: i64,
+        install_dir: &str,
+        context: &SshContext,
+        node: &SrClusterNode,
+    ) -> ApiResult<()> {
+        let (role_suffix, listen_port) = node_service_endpoint(node)?;
+        self.record(task_id, "stop", "running", &format!("Stopping {role_suffix}"), Some(node.id))
+            .await?;
+        let script = format!("{install_dir}/current/{role_suffix}/bin/stop_{role_suffix}.sh");
+        self.executor
+            .run(context, &format!("bash {}", shell_quote(&script)))
+            .await?;
+        self.wait_for_remote_port(context, listen_port, false)
+            .await?;
+        sqlx::query("UPDATE sr_cluster_nodes SET status = 'stopped', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+            .bind(node.id)
+            .execute(&self.pool)
+            .await?;
+        self.record(task_id, "stop", "succeeded", &format!("{role_suffix} stopped"), Some(node.id))
+            .await?;
+        Ok(())
+    }
+
+    async fn wait_for_remote_port(
+        &self,
+        context: &SshContext,
+        port: i64,
+        require_present: bool,
+    ) -> ApiResult<()> {
+        let probe = format!(
+            "ss -ltnH | awk '{{print $4}}' | grep -Eq '(:|\\]){port}$' && echo up || true",
+        );
+        for _ in 0..NODE_PORT_RETRIES {
+            let output = self.executor.run(context, &probe).await?;
+            if (output.stdout.trim() == "up") == require_present {
+                return Ok(());
+            }
+            sleep(NODE_PORT_INTERVAL).await;
+        }
+        Err(ApiError::cluster_connection_failed(format!(
+            "port {port} on {} did not {} in time",
+            context.target.target,
+            if require_present { "start listening" } else { "stop listening" },
+        )))
+    }
+
+    async fn run_import(&self, task_id: i64) -> ApiResult<()> {
+        let task: (i64, i64, String, i64) = sqlx::query_as("SELECT organization_id, managed_cluster_id, payload_json, created_by FROM sr_operation_tasks WHERE id = ?")
+            .bind(task_id).fetch_one(&self.pool).await?;
+        let runtime = self.load_runtime(task.1, Some(task.0)).await?;
+        let managed: (String, Option<i64>) =
+            sqlx::query_as("SELECT status, cluster_id FROM sr_managed_clusters WHERE id = ?")
+                .bind(task.1)
+                .fetch_one(&self.pool)
+                .await?;
+        if managed.1.is_some() {
+            return Err(ApiError::validation_error("managed cluster is already imported"));
+        }
+        if managed.0 != "running" {
+            return Err(ApiError::validation_error(
+                "only a successfully deployed managed cluster can be imported",
+            ));
+        }
+
+        self.record(
+            task_id,
+            "register_cluster",
+            "running",
+            "Registering cluster with Stellar",
+            None,
+        )
+        .await?;
+        let leader = runtime
+            .frontends
+            .first()
+            .ok_or_else(|| ApiError::internal_error("managed cluster has no leader FE"))?;
+        let operator_credential_id = runtime.operator_credential_id.ok_or_else(|| {
+            ApiError::internal_error("managed cluster is missing its operator credential")
+        })?;
+        let (operator_credential, operator_password) = self
+            .credential_service
+            .database_secret(operator_credential_id, task.0)
+            .await?;
+        let leader_query_port = required_port(leader.query_port, "leader query")?;
+        let leader_http_port = required_port(leader.http_port, "leader HTTP")?;
+        let cluster = self
+            .cluster_service
+            .create_cluster_with_activation(
+                CreateClusterRequest {
+                    name: runtime.name.clone(),
+                    description: Some(format!("Physical deployment task #{task_id}")),
+                    fe_host: leader.advertise_host.clone(),
+                    fe_http_port: leader_http_port as i32,
+                    fe_query_port: leader_query_port as i32,
+                    username: operator_credential.username.clone(),
+                    password: operator_password,
+                    enable_ssl: false,
+                    connection_timeout: 10,
+                    tags: Some(vec!["physical-deploy".to_string()]),
+                    catalog: "default_catalog".to_string(),
+                    organization_id: None,
+                    deployment_mode: DeploymentMode::SharedNothing,
+                    cluster_type: ClusterType::StarRocks,
+                    admin_user: None,
+                    admin_password: None,
+                },
+                task.3,
+                Some(task.0),
+                false,
+                false,
+            )
+            .await?;
+        self.record(
+            task_id,
+            "register_cluster",
+            "succeeded",
+            "Cluster registered with Stellar",
+            None,
+        )
+        .await?;
+
+        sqlx::query("UPDATE sr_managed_clusters SET cluster_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+            .bind(cluster.id).bind(task.1).execute(&self.pool).await?;
+        sqlx::query("UPDATE sr_operation_tasks SET status = 'succeeded', current_step = 'verify', result_json = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?")
+            .bind(serde_json::json!({"cluster_id": cluster.id, "fe_host": leader.advertise_host, "query_port": leader_query_port}).to_string())
+            .bind(task_id)
+            .execute(&self.pool)
+            .await?;
+        self.record(
+            task_id,
+            "verify",
+            "succeeded",
+            "Cluster imported; existing cluster health checks are now active",
+            None,
+        )
+        .await?;
+        Ok(())
+    }
+
+    async fn ensure_no_running_task(&self, managed_cluster_id: i64) -> ApiResult<()> {
+        let running: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sr_operation_tasks WHERE managed_cluster_id = ? AND status IN ('pending', 'running')",
+        )
+        .bind(managed_cluster_id)
+        .fetch_one(&self.pool)
+        .await?;
+        if running > 0 {
+            return Err(ApiError::validation_error(
+                "another operation is already running for this managed cluster",
+            ));
+        }
+        Ok(())
+    }
+
+    pub async fn read_node_logs(
+        &self,
+        managed_cluster_id: i64,
+        organization_id: Option<i64>,
+        node_id: i64,
+        file: &str,
+        lines: i64,
+    ) -> ApiResult<String> {
+        let runtime = self
+            .load_runtime(managed_cluster_id, organization_id)
+            .await?;
+        let node = runtime
+            .frontends
+            .iter()
+            .chain(&runtime.backends)
+            .find(|node| node.id == node_id)
+            .ok_or_else(|| ApiError::not_found("node not found"))?;
+        let ssh_credential_id = runtime
+            .ssh_credential_id
+            .ok_or_else(|| ApiError::validation_error("logs require an SSH-managed cluster"))?;
+        let ssh_organization_id = match organization_id {
+            Some(organization_id) => organization_id,
+            None => {
+                sqlx::query_scalar("SELECT organization_id FROM ssh_credentials WHERE id = ?")
+                    .bind(ssh_credential_id)
+                    .fetch_one(&self.pool)
+                    .await?
+            },
+        };
+        let file = file.trim();
+        let allowed = match node.role.as_str() {
+            "fe" => matches!(file, "fe.log" | "fe.warn"),
+            _ => matches!(file, "be.INFO" | "be.WARN" | "be.out"),
+        };
+        if !allowed {
+            return Err(ApiError::validation_error(
+                "log file must be fe.log, fe.warn, be.INFO, be.WARN, or be.out",
+            ));
+        }
+        let lines = lines.clamp(1, 1_000);
+        let log_dir = match node.role.as_str() {
+            "fe" => "current/fe/log",
+            _ => "current/be/log",
+        };
+        let path = format!("{}/{log_dir}/{}", runtime.install_dir, file);
+
+        let (ssh_credential, private_key) = self
+            .credential_service
+            .ssh_secret(ssh_credential_id, ssh_organization_id)
+            .await?;
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_millis())
+            .unwrap_or(0);
+        let task_dir = self
+            .work_dir
+            .join(format!("node-logs-{managed_cluster_id}-{node_id}-{nonce}"));
+        let execution = async {
+            let host = runtime
+                .hosts
+                .iter()
+                .find(|host| host.id == node.host_id)
+                .ok_or_else(|| {
+                    ApiError::internal_error("node references an unavailable physical host")
+                })?;
+            let context = SshContext::create(
+                &task_dir,
+                SshTarget {
+                    id: host.id,
+                    target: host.ssh_target.clone(),
+                    port: host.ssh_port,
+                    host_key: host.host_key.clone(),
+                },
+                ssh_credential.username.clone(),
+                &private_key,
+            )
+            .await?;
+            Ok(self
+                .executor
+                .run(&context, &format!("tail -n {lines} {}", shell_quote(&path)))
+                .await?
+                .stdout)
+        }
+        .await;
+        fs::remove_dir_all(&task_dir).await.ok();
+        execution
+    }
+
+    pub async fn list_config_revisions(
+        &self,
+        managed_cluster_id: i64,
+        organization_id: Option<i64>,
+        node_id: i64,
+    ) -> ApiResult<Vec<SrConfigRevisionSummary>> {
+        self.ensure_node_scope(managed_cluster_id, organization_id, node_id)
+            .await?;
+        Ok(sqlx::query_as(
+            "SELECT id, node_id, revision, content_sha256, task_id, created_at FROM sr_config_revisions WHERE node_id = ? ORDER BY revision DESC",
+        )
+        .bind(node_id)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
+    pub async fn get_config_revision(
+        &self,
+        managed_cluster_id: i64,
+        organization_id: Option<i64>,
+        node_id: i64,
+        revision: i64,
+    ) -> ApiResult<SrConfigRevision> {
+        self.ensure_node_scope(managed_cluster_id, organization_id, node_id)
+            .await?;
+        sqlx::query_as(
+            "SELECT id, node_id, revision, content, content_sha256, task_id, created_at FROM sr_config_revisions WHERE node_id = ? AND revision = ?",
+        )
+        .bind(node_id)
+        .bind(revision)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| ApiError::not_found("config revision not found"))
+    }
+
+    pub async fn diff_config_revisions(
+        &self,
+        managed_cluster_id: i64,
+        organization_id: Option<i64>,
+        node_id: i64,
+        from_revision: i64,
+        to_revision: i64,
+    ) -> ApiResult<Vec<SrConfigDiffLine>> {
+        let from = self
+            .get_config_revision(managed_cluster_id, organization_id, node_id, from_revision)
+            .await?;
+        let to = self
+            .get_config_revision(managed_cluster_id, organization_id, node_id, to_revision)
+            .await?;
+        Ok(diff_lines(&from.content, &to.content))
+    }
+
+    async fn ensure_node_scope(
+        &self,
+        managed_cluster_id: i64,
+        organization_id: Option<i64>,
+        node_id: i64,
+    ) -> ApiResult<()> {
+        let scoped: Option<i64> = sqlx::query_scalar(
+            "SELECT n.id FROM sr_cluster_nodes n JOIN sr_managed_clusters m ON m.id = n.managed_cluster_id WHERE n.id = ? AND n.managed_cluster_id = ? AND (? IS NULL OR m.organization_id = ?)",
+        )
+        .bind(node_id)
+        .bind(managed_cluster_id)
+        .bind(organization_id)
+        .bind(organization_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        if scoped.is_none() {
+            return Err(ApiError::not_found("node not found"));
+        }
+        Ok(())
     }
 
     async fn run_adoption(&self, task_id: i64) -> ApiResult<()> {
@@ -757,6 +1348,7 @@ impl SrDeploymentService {
                         node.rpc_port,
                         node.brpc_port,
                         node.webserver_port,
+                        node.starlet_port,
                     ]
                 })
                 .collect::<HashSet<_>>();
@@ -808,20 +1400,43 @@ impl SrDeploymentService {
         Ok(contexts)
     }
 
-    async fn reserve_hosts(&self, cluster_id: i64, hosts: &[RuntimeHost]) -> ApiResult<()> {
+    async fn reserve_ports(&self, cluster_id: i64, runtime: &RuntimeCluster) -> ApiResult<()> {
         let mut tx = self.pool.begin().await?;
-        for host in hosts {
-            let inserted = sqlx::query("INSERT INTO sr_host_allocations (host_id, managed_cluster_id) VALUES (?, ?) ON CONFLICT(host_id) DO NOTHING")
-                .bind(host.id)
-                .bind(cluster_id)
-                .execute(&mut *tx)
-                .await?
-                .rows_affected();
-            if inserted == 0 {
-                return Err(ApiError::validation_error(format!(
-                    "host {} is allocated to another managed cluster",
-                    host.hostname
-                )));
+        for node in runtime.frontends.iter().chain(&runtime.backends) {
+            let host = runtime
+                .hosts
+                .iter()
+                .find(|host| host.id == node.host_id)
+                .ok_or_else(|| {
+                    ApiError::internal_error("planned node references an unavailable physical host")
+                })?;
+            let mut ports = HashSet::new();
+            for port in [
+                Some(node.service_port),
+                node.http_port,
+                node.query_port,
+                node.rpc_port,
+                node.brpc_port,
+                node.webserver_port,
+                node.starlet_port,
+            ]
+            .into_iter()
+            .flatten()
+            .filter(|port| ports.insert(*port))
+            {
+                let inserted = sqlx::query("INSERT INTO sr_host_port_allocations (host_id, port, managed_cluster_id) VALUES (?, ?, ?) ON CONFLICT(host_id, port) DO NOTHING")
+                    .bind(host.id)
+                    .bind(port)
+                    .bind(cluster_id)
+                    .execute(&mut *tx)
+                    .await?
+                    .rows_affected();
+                if inserted == 0 {
+                    return Err(ApiError::validation_error(format!(
+                        "port {port} on host {} is reserved by another managed cluster",
+                        host.hostname
+                    )));
+                }
             }
         }
         tx.commit().await?;
@@ -829,7 +1444,6 @@ impl SrDeploymentService {
     }
 
     async fn cache_package(&self, task_id: i64, payload: &DeploymentPayload) -> ApiResult<PathBuf> {
-        self.ensure_package_source(&payload.package_url)?;
         fs::create_dir_all(&self.cache_dir).await.map_err(|error| {
             ApiError::internal_error(format!("failed to create package cache: {error}"))
         })?;
@@ -843,6 +1457,41 @@ impl SrDeploymentService {
                 return Ok(path);
             }
         }
+        // A pre-provisioned control-plane file avoids the controlled download
+        // when it hashes to the registered digest.
+        if let Some(source) = payload.local_path.as_deref() {
+            let source_path = source.to_owned();
+            let preset_digest =
+                tokio::task::spawn_blocking(move || sha256_file(Path::new(&source_path)))
+                    .await
+                    .map_err(|_| {
+                        ApiError::internal_error("pre-provisioned package checksum task failed")
+                    })??;
+            if preset_digest != payload.sha256 {
+                return Err(ApiError::validation_error(
+                    "pre-provisioned package SHA-256 does not match registered digest",
+                ));
+            }
+            if tokio::fs::hard_link(&source, &path).await.is_err() {
+                tokio::fs::copy(&source, &path).await.map_err(|error| {
+                    ApiError::internal_error(format!(
+                        "failed to import pre-provisioned package: {error}"
+                    ))
+                })?;
+            }
+            let size = tokio::fs::metadata(&path)
+                .await
+                .map_err(|error| {
+                    ApiError::internal_error(format!(
+                        "failed to import pre-provisioned package: {error}"
+                    ))
+                })?
+                .len() as i64;
+            self.mark_package_cached(payload.package_id, &path, size)
+                .await?;
+            return Ok(path);
+        }
+        self.ensure_package_source(&payload.package_url)?;
         let temporary = path.with_extension(format!("download.{task_id}"));
         let response = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
@@ -900,10 +1549,21 @@ impl SrDeploymentService {
         fs::rename(&temporary, &path).await.map_err(|error| {
             ApiError::internal_error(format!("failed to finalize package cache: {error}"))
         })?;
-        sqlx::query("UPDATE sr_packages SET cached_path = ?, size_bytes = ?, status = 'cached' WHERE id = ?")
-            .bind(path.to_string_lossy().to_string())
-            .bind(size as i64).bind(payload.package_id).execute(&self.pool).await?;
+        self.mark_package_cached(payload.package_id, &path, size as i64)
+            .await?;
         Ok(path)
+    }
+
+    async fn mark_package_cached(&self, package_id: i64, path: &Path, size: i64) -> ApiResult<()> {
+        sqlx::query(
+            "UPDATE sr_packages SET cached_path = ?, size_bytes = ?, status = 'cached' WHERE id = ?",
+        )
+        .bind(path.to_string_lossy().to_string())
+        .bind(size)
+        .bind(package_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
     }
 
     async fn distribute_and_install(
@@ -962,6 +1622,9 @@ impl SrDeploymentService {
 
     async fn write_configs(
         &self,
+        task_id: i64,
+        cluster_id: i64,
+        created_by: i64,
         runtime: &RuntimeCluster,
         contexts: &HashMap<i64, SshContext>,
     ) -> ApiResult<()> {
@@ -986,6 +1649,8 @@ impl SrDeploymentService {
                 },
             );
             write_remote_file(self.executor.as_ref(), context, &path, &config).await?;
+            self.record_config_revision(task_id, cluster_id, created_by, frontend.id, &config)
+                .await?;
         }
         for backend in &runtime.backends {
             let context = contexts.get(&backend.host_id).unwrap();
@@ -1003,24 +1668,56 @@ impl SrDeploymentService {
                 required_port(backend.http_port, "BE port")?,
                 required_port(backend.webserver_port, "BE webserver")?,
                 required_port(backend.brpc_port, "BE brpc")?,
+                required_port(backend.starlet_port, "BE starlet")?,
             );
             write_remote_file(self.executor.as_ref(), context, &path, &config).await?;
+            self.record_config_revision(task_id, cluster_id, created_by, backend.id, &config)
+                .await?;
         }
+        Ok(())
+    }
+
+    async fn record_config_revision(
+        &self,
+        task_id: i64,
+        cluster_id: i64,
+        created_by: i64,
+        node_id: i64,
+        content: &str,
+    ) -> ApiResult<()> {
+        let revision: i64 = sqlx::query_scalar(
+            "SELECT COALESCE(MAX(revision), 0) + 1 FROM sr_config_revisions WHERE node_id = ?",
+        )
+        .bind(node_id)
+        .fetch_one(&self.pool)
+        .await?;
+        sqlx::query(
+            "INSERT INTO sr_config_revisions (managed_cluster_id, node_id, revision, content, content_sha256, task_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(cluster_id)
+        .bind(node_id)
+        .bind(revision)
+        .bind(content)
+        .bind(format!("{:x}", Sha256::digest(content.as_bytes())))
+        .bind(task_id)
+        .bind(created_by)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
     async fn load_runtime(
         &self,
         managed_cluster_id: i64,
-        organization_id: i64,
+        organization_id: Option<i64>,
     ) -> ApiResult<RuntimeCluster> {
-        let cluster: RuntimeClusterRow = sqlx::query_as("SELECT name, install_dir, ssh_credential_id, operator_credential_id FROM sr_managed_clusters WHERE id = ? AND organization_id = ?")
-            .bind(managed_cluster_id).bind(organization_id).fetch_one(&self.pool).await?;
+        let cluster: RuntimeClusterRow = sqlx::query_as("SELECT name, install_dir, ssh_credential_id, operator_credential_id FROM sr_managed_clusters WHERE id = ? AND (? IS NULL OR organization_id = ?)")
+            .bind(managed_cluster_id).bind(organization_id).bind(organization_id).fetch_one(&self.pool).await?;
         let package: (String,) = sqlx::query_as("SELECT sha256 FROM sr_packages WHERE id = (SELECT package_id FROM sr_managed_clusters WHERE id = ?)")
             .bind(managed_cluster_id).fetch_one(&self.pool).await?;
         let hosts: Vec<RuntimeHost> = sqlx::query_as("SELECT DISTINCT h.id, h.hostname, h.ssh_target, h.ssh_port, h.host_key FROM physical_hosts h JOIN sr_cluster_nodes n ON n.host_id = h.id WHERE n.managed_cluster_id = ? ORDER BY h.id")
             .bind(managed_cluster_id).fetch_all(&self.pool).await?;
-        let nodes: Vec<SrClusterNode> = sqlx::query_as("SELECT id, managed_cluster_id, host_id, role, fe_role, advertise_host, service_port, http_port, query_port, rpc_port, brpc_port, webserver_port, meta_dir, storage_dir, status, created_at, updated_at FROM sr_cluster_nodes WHERE managed_cluster_id = ? ORDER BY id")
+        let nodes: Vec<SrClusterNode> = sqlx::query_as("SELECT id, managed_cluster_id, host_id, role, fe_role, advertise_host, service_port, http_port, query_port, rpc_port, brpc_port, webserver_port, starlet_port, meta_dir, storage_dir, status, created_at, updated_at FROM sr_cluster_nodes WHERE managed_cluster_id = ? ORDER BY id")
             .bind(managed_cluster_id).fetch_all(&self.pool).await?;
         let frontends = nodes
             .iter()
@@ -1142,6 +1839,8 @@ struct DeploymentPayload {
     sr_version: String,
     package_url: String,
     sha256: String,
+    #[serde(default)]
+    local_path: Option<String>,
     frontends: Vec<FrontendDeploymentNode>,
     backends: Vec<BackendDeploymentNode>,
 }
@@ -1150,6 +1849,7 @@ impl DeploymentPayload {
         request: &CreateDeploymentRequest,
         sr_version: String,
         package_url: String,
+        local_path: Option<String>,
         sha256: String,
     ) -> Self {
         Self {
@@ -1157,10 +1857,17 @@ impl DeploymentPayload {
             sr_version,
             package_url,
             sha256,
+            local_path,
             frontends: request.frontends.clone(),
             backends: request.backends.clone(),
         }
     }
+}
+
+#[derive(Serialize, Deserialize)]
+struct NodeCommandPayload {
+    node_id: i64,
+    action: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -1188,8 +1895,8 @@ impl AdoptionPayload {
 struct RuntimeClusterRow {
     name: String,
     install_dir: String,
-    ssh_credential_id: i64,
-    operator_credential_id: i64,
+    ssh_credential_id: Option<i64>,
+    operator_credential_id: Option<i64>,
 }
 #[derive(sqlx::FromRow)]
 struct RuntimeHost {
@@ -1202,8 +1909,8 @@ struct RuntimeHost {
 struct RuntimeCluster {
     name: String,
     install_dir: String,
-    ssh_credential_id: i64,
-    operator_credential_id: i64,
+    ssh_credential_id: Option<i64>,
+    operator_credential_id: Option<i64>,
     sha256: String,
     hosts: Vec<RuntimeHost>,
     frontends: Vec<SrClusterNode>,
@@ -1340,6 +2047,58 @@ fn node_matches(row: &[String], node_host: &str, service_port: i64, require_aliv
     row.iter().any(|value| value == node_host)
         && row.iter().any(|value| value == &service_port.to_string())
         && (!require_alive || row.iter().any(|value| value.eq_ignore_ascii_case("true")))
+}
+
+/// Maps a node row to its start/stop script suffix and the port that must
+/// listen once the process is serving. BE rows store be_port in the http_port
+/// column (service_port holds the heartbeat port).
+fn node_service_endpoint(node: &SrClusterNode) -> ApiResult<(String, i64)> {
+    match node.role.as_str() {
+        "fe" => Ok(("fe".to_string(), required_port(node.query_port, "FE query")?)),
+        _ => Ok(("be".to_string(), required_port(node.http_port, "BE port")?)),
+    }
+}
+
+/// Minimal LCS line diff used to render configuration revision changes.
+fn diff_lines(old_content: &str, new_content: &str) -> Vec<SrConfigDiffLine> {
+    let old = old_content.lines().collect::<Vec<_>>();
+    let new = new_content.lines().collect::<Vec<_>>();
+    let mut lcs = vec![vec![0_usize; new.len() + 1]; old.len() + 1];
+    for i in (0..old.len()).rev() {
+        for j in (0..new.len()).rev() {
+            lcs[i][j] = if old[i] == new[j] {
+                lcs[i + 1][j + 1] + 1
+            } else {
+                lcs[i + 1][j].max(lcs[i][j + 1])
+            };
+        }
+    }
+    let mut lines = Vec::new();
+    let (mut i, mut j) = (0, 0);
+    while i < old.len() && j < new.len() {
+        if old[i] == new[j] {
+            lines.push(SrConfigDiffLine { kind: "context".to_string(), text: old[i].to_owned() });
+            i += 1;
+            j += 1;
+        } else if lcs[i + 1][j] >= lcs[i][j + 1] {
+            lines.push(SrConfigDiffLine { kind: "removed".to_string(), text: old[i].to_owned() });
+            i += 1;
+        } else {
+            lines.push(SrConfigDiffLine { kind: "added".to_string(), text: new[j].to_owned() });
+            j += 1;
+        }
+    }
+    lines.extend(
+        old[i..]
+            .iter()
+            .map(|line| SrConfigDiffLine { kind: "removed".to_string(), text: (*line).to_owned() }),
+    );
+    lines.extend(
+        new[j..]
+            .iter()
+            .map(|line| SrConfigDiffLine { kind: "added".to_string(), text: (*line).to_owned() }),
+    );
+    lines
 }
 
 async fn execute_sql(host: &str, port: i64, sql: &str) -> ApiResult<()> {
@@ -1483,7 +2242,7 @@ fn required_port(port: Option<i64>, name: &str) -> ApiResult<i64> {
 mod tests {
     use sqlx::sqlite::SqlitePoolOptions;
 
-    use super::{node_matches, sql_string_literal};
+    use super::{diff_lines, node_matches, sql_string_literal};
 
     #[test]
     fn escapes_operator_password_sql_literals() {
@@ -1501,6 +2260,28 @@ mod tests {
 
         assert!(node_matches(&row, "10.0.0.1", 9010, true));
         assert!(!node_matches(&row, "10.0.0.1", 9011, false));
+    }
+
+    #[test]
+    fn diffs_config_revisions_with_context_and_changes() {
+        let lines = diff_lines(
+            "http_port = 8030\nquery_port = 9030\n",
+            "http_port = 18030\nquery_port = 9030\nmem_limit = 90%\n",
+        );
+        let rendered = lines
+            .iter()
+            .map(|line| (line.kind.as_str(), line.text.as_str()))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            rendered,
+            vec![
+                ("removed", "http_port = 8030"),
+                ("added", "http_port = 18030"),
+                ("context", "query_port = 9030"),
+                ("added", "mem_limit = 90%"),
+            ]
+        );
     }
 
     #[tokio::test]

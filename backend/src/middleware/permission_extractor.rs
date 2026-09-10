@@ -65,6 +65,32 @@ fn extract_sr_ops_action(segments: &[&str], method: &str) -> String {
         (Some(&"packages"), 2, "POST") => "packages:manage".to_string(),
         (Some(&"clusters"), 2, "GET") => "clusters:list".to_string(),
         (Some(&"clusters"), 3, "GET") => "clusters:get".to_string(),
+        (Some(&"clusters"), 5, "GET") if segments.get(3) == Some(&"configs") => {
+            "configs:read".to_string()
+        },
+        (Some(&"clusters"), 4, "POST") if segments.get(3) == Some(&"import") => {
+            "clusters:manage".to_string()
+        },
+        (Some(&"clusters"), 6, "GET")
+            if segments.get(3) == Some(&"nodes") && segments.get(5) == Some(&"logs") =>
+        {
+            "clusters:logs".to_string()
+        },
+        (Some(&"clusters"), 6, "POST")
+            if segments.get(3) == Some(&"nodes") && segments.get(5) == Some(&"commands") =>
+        {
+            "clusters:manage".to_string()
+        },
+        (Some(&"clusters"), 6, "GET")
+            if segments.get(3) == Some(&"configs") && segments.get(5) == Some(&"diff") =>
+        {
+            "configs:read".to_string()
+        },
+        (Some(&"clusters"), 7, "GET")
+            if segments.get(3) == Some(&"configs") && segments.get(5) == Some(&"revisions") =>
+        {
+            "configs:read".to_string()
+        },
         (Some(&"deployments"), 2, "POST") => "deployments:create".to_string(),
         (Some(&"adoptions"), 2, "POST") => "adoptions:create".to_string(),
         (Some(&"tasks"), 3, "GET") => "tasks:get".to_string(),
@@ -397,6 +423,34 @@ mod tests {
         assert_eq!(
             extract_permission("DELETE", "/api/sr-ops/hosts/1"),
             Some(("sr-ops".to_string(), "unknown".to_string()))
+        );
+    }
+
+    #[test]
+    fn extracts_managed_cluster_operation_actions() {
+        assert_eq!(
+            extract_permission("POST", "/api/sr-ops/clusters/7/import"),
+            Some(("sr-ops".to_string(), "clusters:manage".to_string()))
+        );
+        assert_eq!(
+            extract_permission("POST", "/api/sr-ops/clusters/7/nodes/3/commands"),
+            Some(("sr-ops".to_string(), "clusters:manage".to_string()))
+        );
+        assert_eq!(
+            extract_permission("GET", "/api/sr-ops/clusters/7/nodes/3/logs"),
+            Some(("sr-ops".to_string(), "clusters:logs".to_string()))
+        );
+        assert_eq!(
+            extract_permission("GET", "/api/sr-ops/clusters/7/configs/3"),
+            Some(("sr-ops".to_string(), "configs:read".to_string()))
+        );
+        assert_eq!(
+            extract_permission("GET", "/api/sr-ops/clusters/7/configs/3/revisions/2"),
+            Some(("sr-ops".to_string(), "configs:read".to_string()))
+        );
+        assert_eq!(
+            extract_permission("GET", "/api/sr-ops/clusters/7/configs/3/diff"),
+            Some(("sr-ops".to_string(), "configs:read".to_string()))
         );
     }
 }

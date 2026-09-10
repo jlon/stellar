@@ -39,6 +39,7 @@ pub struct SrPackage {
     pub organization_id: i64,
     pub version: String,
     pub package_url: String,
+    pub local_path: Option<String>,
     pub sha256: String,
     pub status: String,
     pub created_at: DateTime<Utc>,
@@ -48,14 +49,28 @@ pub struct SrPackage {
 pub struct CreateSrPackageRequest {
     pub organization_id: Option<i64>,
     pub version: String,
-    pub package_url: String,
+    /// Controlled HTTPS source used only when no pre-provisioned file exists.
+    pub package_url: Option<String>,
+    /// Pre-provisioned control-plane path; deployment verifies its SHA-256 first.
+    pub local_path: Option<String>,
     pub sha256: String,
 }
 
 impl CreateSrPackageRequest {
     pub fn normalize(mut self) -> ApiResult<Self> {
         self.version = self.version.trim().to_owned();
-        self.package_url = self.package_url.trim().to_owned();
+        self.package_url = self
+            .package_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|url| !url.is_empty())
+            .map(str::to_owned);
+        self.local_path = self
+            .local_path
+            .as_deref()
+            .map(str::trim)
+            .filter(|path| !path.is_empty())
+            .map(str::to_owned);
         self.sha256 = self.sha256.trim().to_ascii_lowercase();
 
         if self.version.is_empty()
@@ -66,8 +81,22 @@ impl CreateSrPackageRequest {
                 "version must contain 1 to 64 printable characters",
             ));
         }
-        if !is_valid_https_url(&self.package_url) {
-            return Err(ApiError::validation_error("package_url must be a valid HTTPS URL"));
+        if let Some(package_url) = &self.package_url {
+            if !is_valid_https_url(package_url) {
+                return Err(ApiError::validation_error("package_url must be a valid HTTPS URL"));
+            }
+        }
+        if let Some(local_path) = &self.local_path {
+            if !is_valid_preset_path(local_path) {
+                return Err(ApiError::validation_error(
+                    "local_path must be an absolute pre-provisioned file path",
+                ));
+            }
+        }
+        if self.package_url.is_none() && self.local_path.is_none() {
+            return Err(ApiError::validation_error(
+                "package requires package_url or a pre-provisioned local_path",
+            ));
         }
         if self.sha256.len() != 64 || !self.sha256.bytes().all(|byte| byte.is_ascii_hexdigit()) {
             return Err(ApiError::validation_error(
@@ -185,6 +214,10 @@ pub(crate) fn host_key_fingerprint(host_key: &str) -> Option<String> {
     let key = STANDARD.decode(encoded_key).ok()?;
     let digest = Sha256::digest(key);
     Some(format!("SHA256:{}", STANDARD.encode(digest).trim_end_matches('=')))
+}
+
+fn is_valid_preset_path(value: &str) -> bool {
+    normalize_absolute_path(value).is_ok()
 }
 
 fn is_valid_https_url(value: &str) -> bool {
@@ -346,6 +379,7 @@ pub struct SrClusterNode {
     pub rpc_port: Option<i64>,
     pub brpc_port: Option<i64>,
     pub webserver_port: Option<i64>,
+    pub starlet_port: Option<i64>,
     pub meta_dir: Option<String>,
     pub storage_dir: Option<String>,
     pub status: String,
@@ -432,6 +466,9 @@ pub struct BackendDeploymentNode {
     pub webserver_port: u16,
     #[serde(default = "default_be_brpc_port")]
     pub brpc_port: u16,
+    /// Implicit starlet grpc port; every co-located BE must use a unique value.
+    #[serde(default = "default_be_starlet_port")]
+    pub starlet_port: u16,
     pub storage_dir: Option<String>,
 }
 
@@ -527,6 +564,7 @@ impl CreateDeploymentRequest {
                 || backend.be_port == 0
                 || backend.webserver_port == 0
                 || backend.brpc_port == 0
+                || backend.starlet_port == 0
             {
                 return Err(ApiError::validation_error("BE node host and ports must be valid"));
             }
@@ -547,12 +585,21 @@ impl CreateDeploymentRequest {
             .frontends
             .iter()
             .map(|node| {
-                (node.host_id, [node.edit_log_port, node.http_port, node.query_port, node.rpc_port])
+                (
+                    node.host_id,
+                    vec![node.edit_log_port, node.http_port, node.query_port, node.rpc_port],
+                )
             })
             .chain(self.backends.iter().map(|node| {
                 (
                     node.host_id,
-                    [node.heartbeat_port, node.be_port, node.webserver_port, node.brpc_port],
+                    vec![
+                        node.heartbeat_port,
+                        node.be_port,
+                        node.webserver_port,
+                        node.brpc_port,
+                        node.starlet_port,
+                    ],
                 )
             }))
         {
@@ -564,8 +611,70 @@ impl CreateDeploymentRequest {
             }
         }
 
+        let mut host_dirs =
+            std::collections::HashMap::<i64, std::collections::HashSet<String>>::new();
+        for (host_id, dir) in self
+            .frontends
+            .iter()
+            .filter_map(|node| node.meta_dir.clone().map(|dir| (node.host_id, dir)))
+            .chain(
+                self.backends
+                    .iter()
+                    .filter_map(|node| node.storage_dir.clone().map(|dir| (node.host_id, dir))),
+            )
+        {
+            if !host_dirs.entry(host_id).or_default().insert(dir) {
+                return Err(ApiError::validation_error(
+                    "FE meta and BE storage directories must be unique on each physical host",
+                ));
+            }
+        }
+
         Ok(self)
     }
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct NodeCommandRequest {
+    pub action: String,
+}
+
+impl NodeCommandRequest {
+    pub fn normalize(self) -> ApiResult<Self> {
+        if matches!(self.action.as_str(), "start" | "stop" | "restart") {
+            Ok(self)
+        } else {
+            Err(ApiError::validation_error("action must be start, stop, or restart"))
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, FromRow, ToSchema)]
+pub struct SrConfigRevisionSummary {
+    pub id: i64,
+    pub node_id: i64,
+    pub revision: i64,
+    pub content_sha256: String,
+    pub task_id: Option<i64>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, FromRow, ToSchema)]
+pub struct SrConfigRevision {
+    pub id: i64,
+    pub node_id: i64,
+    pub revision: i64,
+    pub content: String,
+    pub content_sha256: String,
+    pub task_id: Option<i64>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct SrConfigDiffLine {
+    /// context, added, or removed
+    pub kind: String,
+    pub text: String,
 }
 
 fn is_valid_name(value: &str, max_len: usize) -> bool {
@@ -629,6 +738,9 @@ fn default_be_webserver_port() -> u16 {
 }
 fn default_be_brpc_port() -> u16 {
     8060
+}
+fn default_be_starlet_port() -> u16 {
+    9070
 }
 
 #[cfg(test)]
@@ -737,6 +849,7 @@ mod tests {
                 be_port: 9060,
                 webserver_port: 8030,
                 brpc_port: 8060,
+                starlet_port: 9070,
                 storage_dir: None,
             }],
         };
@@ -757,7 +870,8 @@ mod tests {
         let request = CreateSrPackageRequest {
             organization_id: Some(1),
             version: " 3.3.9 ".to_string(),
-            package_url: " https://packages.example.com/starrocks-3.3.9.tar.gz ".to_string(),
+            package_url: Some(" https://packages.example.com/starrocks-3.3.9.tar.gz ".to_string()),
+            local_path: None,
             sha256: "A".repeat(64),
         }
         .normalize()
@@ -772,7 +886,52 @@ mod tests {
         let request = CreateSrPackageRequest {
             organization_id: Some(1),
             version: "3.3.9".to_string(),
-            package_url: "http://packages.example.com/starrocks.tar.gz".to_string(),
+            package_url: Some("http://packages.example.com/starrocks.tar.gz".to_string()),
+            local_path: None,
+            sha256: "a".repeat(64),
+        };
+
+        assert!(request.normalize().is_err());
+    }
+
+    #[test]
+    fn rejects_a_package_without_any_source() {
+        let request = CreateSrPackageRequest {
+            organization_id: Some(1),
+            version: "3.3.9".to_string(),
+            package_url: None,
+            local_path: None,
+            sha256: "a".repeat(64),
+        };
+
+        assert!(request.normalize().is_err());
+    }
+
+    #[test]
+    fn accepts_a_preset_local_path_package() {
+        let request = CreateSrPackageRequest {
+            organization_id: Some(1),
+            version: "3.3.9".to_string(),
+            package_url: None,
+            local_path: Some("/opt/stellar/packages/starrocks-3.3.9.tar.gz".to_string()),
+            sha256: "a".repeat(64),
+        };
+
+        let request = request.normalize().unwrap();
+        assert_eq!(
+            request.local_path.as_deref(),
+            Some("/opt/stellar/packages/starrocks-3.3.9.tar.gz")
+        );
+        assert_eq!(request.package_url, None);
+    }
+
+    #[test]
+    fn rejects_an_unsafe_preset_local_path() {
+        let request = CreateSrPackageRequest {
+            organization_id: Some(1),
+            version: "3.3.9".to_string(),
+            package_url: None,
+            local_path: Some("../../etc/starrocks.tar.gz".to_string()),
             sha256: "a".repeat(64),
         };
 

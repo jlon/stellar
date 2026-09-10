@@ -12,5 +12,15 @@
 .status { text-transform: uppercase; font-size: .75rem; font-weight: 700; }
 .status--running { color: var(--color-primary-500); }.status--succeeded { color: var(--color-success-500); }.status--failed { color: var(--color-danger-500); }.status--pending { color: var(--color-warning-500); }
 .spinner { min-height: 8rem; display: grid; place-items: center; }
+.cluster-row { display: grid; gap: .25rem; }
+.cluster { cursor: pointer; }
+.cluster-ops { display: grid; gap: .5rem; padding: .5rem 0 1rem 1rem; }
+.node-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.node-row strong { min-width: 16rem; }
+.revision-row { display: flex; align-items: center; gap: .75rem; }
+.log-view, .config-view, .diff-view { max-height: 24rem; overflow: auto; padding: .75rem; background: var(--background-basic-color-2); border-radius: .25rem; font-size: .8rem; line-height: 1.35; }
+.diff-added { color: var(--color-success-500); }
+.diff-removed { color: var(--color-danger-500); }
+.diff-context { color: var(--text-hint-color); }
 nb-list-item { display: grid; grid-template-columns: 6rem 7rem 1fr auto; gap: .75rem; }
 @media (max-width: 768px) { .deployment-form, .metrics { grid-template-columns: 1fr; }.table-row { grid-template-columns: 1fr 1fr; }.table-row time { display: none; } nb-list-item { grid-template-columns: 1fr; } }

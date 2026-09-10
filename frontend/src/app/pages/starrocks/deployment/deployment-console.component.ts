@@ -10,7 +10,8 @@ import {
 import { PhysicalHost, PhysicalHostService } from '../../../@core/data/physical-host.service';
 import { SrPackage, SrPackageService } from '../../../@core/data/sr-package.service';
 import {
-  DeploymentCredential, DeploymentTask, DeploymentTaskDetail, ManagedCluster, SrDeploymentService,
+  ConfigDiffLine, ConfigRevision, ConfigRevisionSummary, DeploymentCredential, DeploymentTask,
+  DeploymentTaskDetail, ManagedCluster, ManagedClusterDetail, ManagedClusterNode, SrDeploymentService,
 } from '../../../@core/data/sr-deployment.service';
 import { ErrorHandler } from '../../../@core/utils/error-handler';
 
@@ -42,6 +43,11 @@ export class DeploymentConsoleComponent implements OnInit, OnDestroy {
   databaseCredentials: DeploymentCredential[] = [];
   tasks: DeploymentTask[] = [];
   clusters: ManagedCluster[] = [];
+  clusterDetail?: ManagedClusterDetail;
+  logs = '';
+  revisions: ConfigRevisionSummary[] = [];
+  revisionContent: ConfigRevision | null = null;
+  diffLines: ConfigDiffLine[] | null = null;
   selectedTask?: DeploymentTaskDetail;
   error = '';
 
@@ -55,6 +61,7 @@ export class DeploymentConsoleComponent implements OnInit, OnDestroy {
     leader_advertise_host: ['', [Validators.required, Validators.pattern(/^\d{1,3}(\.\d{1,3}){3}$/)]],
     backend_host_id: [null as number | null, Validators.required],
     backend_advertise_host: ['', [Validators.required, Validators.pattern(/^\d{1,3}(\.\d{1,3}){3}$/)]],
+    port_base: [null as number | null, Validators.min(1024)],
     confirm_non_ha: [false, Validators.requiredTrue],
   });
 
@@ -76,6 +83,21 @@ export class DeploymentConsoleComponent implements OnInit, OnDestroy {
       return;
     }
     const value = this.deployForm.getRawValue();
+    // Optional port group: FE binds base..base+3, BE binds base+4..base+8
+    // (heartbeat, thrift, http, brpc, starlet). Unset uses server defaults.
+    const portBase = value.port_base || 0;
+    const fePorts = portBase
+      ? { edit_log_port: portBase, http_port: portBase + 1, query_port: portBase + 2, rpc_port: portBase + 3 }
+      : {};
+    const bePorts = portBase
+      ? {
+          heartbeat_port: portBase + 4,
+          be_port: portBase + 5,
+          webserver_port: portBase + 6,
+          brpc_port: portBase + 7,
+          starlet_port: portBase + 8,
+        }
+      : {};
     this.submitting = true;
     this.error = '';
     this.deploymentService.createDeployment({
@@ -83,8 +105,8 @@ export class DeploymentConsoleComponent implements OnInit, OnDestroy {
       ssh_credential_id: value.ssh_credential_id || 0,
       operator_credential_id: value.operator_credential_id || 0,
       install_dir: value.install_dir || '', confirm_non_ha: true,
-      frontends: [{ host_id: value.leader_host_id || 0, advertise_host: value.leader_advertise_host || '' }],
-      backends: [{ host_id: value.backend_host_id || 0, advertise_host: value.backend_advertise_host || '' }],
+      frontends: [{ host_id: value.leader_host_id || 0, advertise_host: value.leader_advertise_host || '', ...fePorts }],
+      backends: [{ host_id: value.backend_host_id || 0, advertise_host: value.backend_advertise_host || '', ...bePorts }],
     }).subscribe({
       next: (task) => {
         this.submitting = false;
@@ -105,6 +127,100 @@ export class DeploymentConsoleComponent implements OnInit, OnDestroy {
 
   hostLabel(host: PhysicalHost): string {
     return `${host.hostname} (${host.ssh_target})`;
+  }
+
+  toggleCluster(cluster: ManagedCluster): void {
+    if (this.clusterDetail?.id === cluster.id) {
+      this.clusterDetail = undefined;
+      return;
+    }
+    this.deploymentService.getCluster(cluster.id).subscribe({
+      next: (detail) => {
+        this.clusterDetail = detail;
+        this.logs = '';
+        this.revisions = [];
+        this.revisionContent = null;
+        this.diffLines = null;
+      },
+      error: (error) => ErrorHandler.handleHttpError(error, this.toastr),
+    });
+  }
+
+  importCluster(cluster: ManagedCluster): void {
+    this.deploymentService.importCluster(cluster.id).subscribe({
+      next: (task) => {
+        this.toastr.success(`导入任务 #${task.id} 已提交。`, '一键导入');
+        this.mode = 'tasks';
+        this.loadTasks();
+      },
+      error: (error) => ErrorHandler.handleHttpError(error, this.toastr),
+    });
+  }
+
+  nodeCommand(node: ManagedClusterNode, action: 'start' | 'stop' | 'restart'): void {
+    if (!this.clusterDetail) {
+      return;
+    }
+    this.deploymentService.submitNodeCommand(this.clusterDetail.id, node.id, action).subscribe({
+      next: (task) => this.toastr.success(`节点命令任务 #${task.id} 已提交。`, '节点运维'),
+      error: (error) => ErrorHandler.handleHttpError(error, this.toastr),
+    });
+  }
+
+  logFiles(node: ManagedClusterNode): string[] {
+    return node.role === 'fe' ? ['fe.log', 'fe.warn'] : ['be.INFO', 'be.WARN', 'be.out'];
+  }
+
+  viewLogs(node: ManagedClusterNode, file: string): void {
+    if (!this.clusterDetail) {
+      return;
+    }
+    this.deploymentService
+      .readNodeLogs(this.clusterDetail.id, node.id, file)
+      .subscribe({
+        next: (response) => { this.logs = response.logs; },
+        error: (error) => ErrorHandler.handleHttpError(error, this.toastr),
+      });
+  }
+
+  viewConfigs(node: ManagedClusterNode): void {
+    if (!this.clusterDetail) {
+      return;
+    }
+    this.revisionContent = null;
+    this.diffLines = null;
+    this.deploymentService
+      .listConfigRevisions(this.clusterDetail.id, node.id)
+      .subscribe({
+        next: (revisions) => { this.revisions = revisions; },
+        error: (error) => ErrorHandler.handleHttpError(error, this.toastr),
+      });
+  }
+
+  viewRevision(nodeId: number, revision: number): void {
+    if (!this.clusterDetail) {
+      return;
+    }
+    this.diffLines = null;
+    this.deploymentService
+      .getConfigRevision(this.clusterDetail.id, nodeId, revision)
+      .subscribe({
+        next: (content) => { this.revisionContent = content; },
+        error: (error) => ErrorHandler.handleHttpError(error, this.toastr),
+      });
+  }
+
+  diffRevisionWithPrevious(nodeId: number, revision: number): void {
+    if (revision <= 1 || !this.clusterDetail) {
+      return;
+    }
+    this.revisionContent = null;
+    this.deploymentService
+      .diffConfigRevisions(this.clusterDetail.id, nodeId, revision - 1, revision)
+      .subscribe({
+        next: (lines) => { this.diffLines = lines; },
+        error: (error) => ErrorHandler.handleHttpError(error, this.toastr),
+      });
   }
 
   get runningTaskCount(): number {

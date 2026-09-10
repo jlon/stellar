@@ -23,7 +23,7 @@ impl PackageService {
             Some(organization_id) => {
                 sqlx::query_as(
                     r#"
-                    SELECT id, organization_id, version, package_url, sha256, status, created_at
+                    SELECT id, organization_id, version, package_url, local_path, sha256, status, created_at
                     FROM sr_packages
                     WHERE organization_id = ?
                     ORDER BY id DESC
@@ -36,7 +36,7 @@ impl PackageService {
             None => {
                 sqlx::query_as(
                     r#"
-                    SELECT id, organization_id, version, package_url, sha256, status, created_at
+                    SELECT id, organization_id, version, package_url, local_path, sha256, status, created_at
                     FROM sr_packages
                     ORDER BY id DESC
                     "#,
@@ -87,20 +87,21 @@ impl PackageService {
 
         let result = sqlx::query(
             r#"
-            INSERT INTO sr_packages (organization_id, version, package_url, sha256)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO sr_packages (organization_id, version, package_url, local_path, sha256)
+            VALUES (?, ?, ?, ?, ?)
             "#,
         )
         .bind(organization_id)
         .bind(&request.version)
-        .bind(&request.package_url)
+        .bind(&request.package_url.as_deref().unwrap_or(""))
+        .bind(&request.local_path)
         .bind(&request.sha256)
         .execute(&self.pool)
         .await?;
 
         let package = sqlx::query_as(
             r#"
-            SELECT id, organization_id, version, package_url, sha256, status, created_at
+            SELECT id, organization_id, version, package_url, local_path, sha256, status, created_at
             FROM sr_packages
             WHERE id = ?
             "#,
@@ -138,7 +139,8 @@ mod tests {
         CreateSrPackageRequest {
             organization_id: Some(1),
             version: "3.3.9".to_string(),
-            package_url: "https://packages.example.com/starrocks-3.3.9.tar.gz".to_string(),
+            package_url: Some("https://packages.example.com/starrocks-3.3.9.tar.gz".to_string()),
+            local_path: None,
             sha256: "a".repeat(64),
         }
     }
@@ -165,6 +167,32 @@ mod tests {
                 .unwrap()
                 .len(),
             1
+        );
+    }
+
+    #[tokio::test]
+    async fn creates_a_package_with_a_preset_local_path() {
+        let service = test_service().await;
+        let organization_id: i64 =
+            sqlx::query_scalar("SELECT id FROM organizations WHERE code = 'default_org'")
+                .fetch_one(&service.pool)
+                .await
+                .expect("default organization should exist");
+
+        let request = CreateSrPackageRequest {
+            package_url: None,
+            local_path: Some("/opt/stellar/packages/starrocks-3.3.9.tar.gz".to_string()),
+            ..request()
+        };
+        let package = service
+            .create_package(request, organization_id)
+            .await
+            .expect("preset package should be created");
+
+        assert_eq!(package.package_url, "");
+        assert_eq!(
+            package.local_path.as_deref(),
+            Some("/opt/stellar/packages/starrocks-3.3.9.tar.gz")
         );
     }
 

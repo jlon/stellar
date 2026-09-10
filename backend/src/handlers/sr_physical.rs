@@ -2,9 +2,10 @@ use std::sync::Arc;
 
 use axum::{
     Extension, Json,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
 };
+use serde::Deserialize;
 
 use crate::{
     AppState,
@@ -12,7 +13,8 @@ use crate::{
     models::{
         AdoptClusterRequest, CreateDeploymentRequest, CreatePhysicalHostRequest,
         CreateSrDatabaseCredentialRequest, CreateSrPackageRequest, CreateSshCredentialRequest,
-        PhysicalHost, SrDatabaseCredential, SrManagedCluster, SrManagedClusterDetail,
+        NodeCommandRequest, PhysicalHost, SrConfigDiffLine, SrConfigRevision,
+        SrConfigRevisionSummary, SrDatabaseCredential, SrManagedCluster, SrManagedClusterDetail,
         SrOperationTask, SrOperationTaskDetail, SrPackage, SshCredential,
     },
     utils::{ApiError, ApiResult},
@@ -218,6 +220,117 @@ pub async fn get_managed_cluster(
             .get_cluster_for_org(id, scoped_organization_id(&org_ctx)?)
             .await?,
     ))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct NodeLogsQuery {
+    pub file: Option<String>,
+    pub lines: Option<i64>,
+}
+
+pub async fn read_node_logs(
+    State(state): State<Arc<AppState>>,
+    Extension(org_ctx): Extension<OrgContext>,
+    Path((managed_cluster_id, node_id)): Path<(i64, i64)>,
+    Query(query): Query<NodeLogsQuery>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let logs = state
+        .sr_deployment_service
+        .read_node_logs(
+            managed_cluster_id,
+            scoped_organization_id(&org_ctx)?,
+            node_id,
+            query.file.as_deref().unwrap_or(""),
+            query.lines.unwrap_or(200),
+        )
+        .await?;
+    Ok(Json(serde_json::json!({ "node_id": node_id, "logs": logs })))
+}
+
+pub async fn list_config_revisions(
+    State(state): State<Arc<AppState>>,
+    Extension(org_ctx): Extension<OrgContext>,
+    Path((managed_cluster_id, node_id)): Path<(i64, i64)>,
+) -> ApiResult<Json<Vec<SrConfigRevisionSummary>>> {
+    Ok(Json(
+        state
+            .sr_deployment_service
+            .list_config_revisions(managed_cluster_id, scoped_organization_id(&org_ctx)?, node_id)
+            .await?,
+    ))
+}
+
+pub async fn get_config_revision(
+    State(state): State<Arc<AppState>>,
+    Extension(org_ctx): Extension<OrgContext>,
+    Path((managed_cluster_id, node_id, revision)): Path<(i64, i64, i64)>,
+) -> ApiResult<Json<SrConfigRevision>> {
+    Ok(Json(
+        state
+            .sr_deployment_service
+            .get_config_revision(
+                managed_cluster_id,
+                scoped_organization_id(&org_ctx)?,
+                node_id,
+                revision,
+            )
+            .await?,
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ConfigDiffQuery {
+    pub from: i64,
+    pub to: i64,
+}
+
+pub async fn diff_config_revisions(
+    State(state): State<Arc<AppState>>,
+    Extension(org_ctx): Extension<OrgContext>,
+    Path((managed_cluster_id, node_id)): Path<(i64, i64)>,
+    Query(query): Query<ConfigDiffQuery>,
+) -> ApiResult<Json<Vec<SrConfigDiffLine>>> {
+    Ok(Json(
+        state
+            .sr_deployment_service
+            .diff_config_revisions(
+                managed_cluster_id,
+                scoped_organization_id(&org_ctx)?,
+                node_id,
+                query.from,
+                query.to,
+            )
+            .await?,
+    ))
+}
+
+pub async fn submit_import(
+    State(state): State<Arc<AppState>>,
+    Extension(org_ctx): Extension<OrgContext>,
+    Path(id): Path<i64>,
+) -> ApiResult<(StatusCode, Json<SrOperationTask>)> {
+    let organization_id = resolve_organization_id(&org_ctx, None)?;
+    ensure_organization_admin(&state, &org_ctx, organization_id).await?;
+    let task = state
+        .sr_deployment_service
+        .submit_import(id, organization_id, org_ctx.user_id)
+        .await?;
+    Ok((StatusCode::ACCEPTED, Json(task)))
+}
+
+pub async fn submit_node_command(
+    State(state): State<Arc<AppState>>,
+    Extension(org_ctx): Extension<OrgContext>,
+    Path((managed_cluster_id, node_id)): Path<(i64, i64)>,
+    Json(request): Json<NodeCommandRequest>,
+) -> ApiResult<(StatusCode, Json<SrOperationTask>)> {
+    let organization_id = resolve_organization_id(&org_ctx, None)?;
+    ensure_organization_admin(&state, &org_ctx, organization_id).await?;
+    let task = state
+        .sr_deployment_service
+        .submit_node_command(managed_cluster_id, node_id, request, organization_id, org_ctx.user_id)
+        .await?;
+    Ok((StatusCode::ACCEPTED, Json(task)))
 }
 
 #[utoipa::path(

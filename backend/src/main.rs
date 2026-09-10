@@ -753,6 +753,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/api/sr-ops/clusters/:id",
             get(handlers::sr_physical::get_managed_cluster),
         )
+        .route(
+            "/api/sr-ops/clusters/:id/import",
+            post(handlers::sr_physical::submit_import),
+        )
+        .route(
+            "/api/sr-ops/clusters/:id/nodes/:node_id/logs",
+            get(handlers::sr_physical::read_node_logs),
+        )
+        .route(
+            "/api/sr-ops/clusters/:id/nodes/:node_id/commands",
+            post(handlers::sr_physical::submit_node_command),
+        )
+        .route(
+            "/api/sr-ops/clusters/:id/configs/:node_id",
+            get(handlers::sr_physical::list_config_revisions),
+        )
+        .route(
+            "/api/sr-ops/clusters/:id/configs/:node_id/revisions/:revision",
+            get(handlers::sr_physical::get_config_revision),
+        )
+        .route(
+            "/api/sr-ops/clusters/:id/configs/:node_id/diff",
+            get(handlers::sr_physical::diff_config_revisions),
+        )
         .route("/api/clusters/resource-groups", get(handlers::resource_group::list_resource_groups).post(handlers::resource_group::create_resource_group))
         .route("/api/clusters/resource-groups/usage", get(handlers::resource_group::get_resource_group_usage))
         .route("/api/clusters/resource-groups/analysis", get(handlers::resource_group::analyze_resource_usage))

@@ -1,5 +1,9 @@
-use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
+use sqlx::{
+    SqlitePool,
+    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+};
 use std::path::Path;
+use std::str::FromStr;
 use std::time::Duration;
 
 pub async fn create_pool(database_url: &str) -> Result<SqlitePool, sqlx::Error> {
@@ -24,11 +28,19 @@ pub async fn create_pool(database_url: &str) -> Result<SqlitePool, sqlx::Error> 
         })?;
     }
 
-    tracing::debug!("Creating database pool with max_connections=10, acquire_timeout=5s");
+    tracing::debug!("Creating database pool with max_connections=10, busy_timeout=60s");
+    // Deployment tasks issue long writes; SQLite's 5s default busy timeout
+    // surfaces as spurious "database is locked" API errors under load.
+    let options = SqliteConnectOptions::from_str(database_url)
+        .map_err(|e| {
+            tracing::error!("Invalid database URL: {}", e);
+            sqlx::Error::Configuration(Box::new(e))
+        })?
+        .busy_timeout(Duration::from_secs(60));
     let pool = SqlitePoolOptions::new()
         .max_connections(10)
         .acquire_timeout(Duration::from_secs(5))
-        .connect(database_url)
+        .connect_with(options)
         .await
         .map_err(|e| {
             tracing::error!("Database connection failed: {}", e);

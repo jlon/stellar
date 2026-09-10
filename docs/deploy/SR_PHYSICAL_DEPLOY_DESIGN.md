@@ -21,8 +21,12 @@
 2. StarRocks **shared-nothing** 新建部署：Leader FE、Follower FE、BE。
 3. 安装包缓存、强制 SHA-256 校验、目标主机二次校验。
 4. 预检、部署任务、事件查询、失败现场说明。
-5. 部署成功后注册现有 `clusters`，并执行现有健康检查。
+5. 部署成功后受管集群进入“待导入”状态；用户在控制台一键导入后注册现有 `clusters`，并执行现有健康检查。
 6. 只读接管：从已有 FE 导入观测到的节点信息，不执行远程生命周期操作。
+7. 同一物理机可部署多套 shared-nothing 集群：服务端口在控制面预占 + 远端 `ss` 双重校验，安装目录/数据目录按集群隔离。
+8. 安装包支持预置路径：登记时提供控制面本地路径，部署优先校验并使用预置文件，否则才走受控 HTTPS 下载分发。
+9. FE/BE 配置文件下发全量版本化（`sr_config_revisions`），提供历史与相邻版本 diff 展示；不开放任意配置写入。
+10. SSH 受管集群提供节点日志查看（白名单文件名 + `tail`）与白名单节点运维命令（start/stop/restart）；接管集群保持只读。
 
 ### 1.3 明确不做
 
@@ -379,8 +383,8 @@ pending -> cancelled
 | 9 | add_followers | 对每个 Follower：先在 Leader 执行 `ALTER SYSTEM ADD FOLLOWER`，再首次使用 `start_fe.sh --helper <leader>:<edit_log_port> --daemon` 启动，最后确认 `SHOW PROC '/frontends'` 的 `Alive=true`。 |
 | 10 | start_and_add_be | 先启动每个 BE，再通过操作期 MySQL 客户端执行 `ALTER SYSTEM ADD BACKEND`，确认 `SHOW PROC '/backends'` 的 `Alive=true`。 |
 | 11 | create_operator | 使用加密的 bootstrap 凭据创建最小权限的持续运维账号。P0 不自动轮换 root 密码；该动作必须按已验证的 StarRocks 版本模板执行。 |
-| 12 | register_cluster | 仅使用第 11 步创建的最小权限 operator 凭据注册既有 `clusters`，绝不保存 bootstrap/root 凭据。使用显式的“是否激活”策略；不得让“组织首个集群自动激活”的现有副作用替代用户选择。 |
-| 13 | verify | 使用已注册 cluster 的常规适配器执行健康检查；成功后更新节点和 managed cluster 为 `running`。 |
+| 12 | register_cluster | 已移除自动注册：部署完成后 managed cluster 进入 `running` 且 `cluster_id IS NULL`（待导入状态），由用户在控制台执行一键导入。 |
+| 13 | complete | 校验 FE/BE `Alive=true` 后，将节点与 managed cluster 置为 `running`；`cluster_id` 保持为空，等待用户一键导入。 |
 
 部署期间 `ADD FOLLOWER`、`ADD BACKEND` 均先检查现存节点，确保重试不会重复添加。实际使用的地址必须是节点登记的 `advertise_host`，而不是 SSH 目标地址的猜测值。
 
@@ -395,9 +399,41 @@ pending -> cancelled
 
 接管记录在完成每个节点的 SSH 主机、host key、安装路径、运行用户、端口和配置核验前，禁止启停、配置、扩缩容和升级。
 
-## 11. 后续生命周期能力
+## 11. 受控运维能力（P0 扩展）
 
-### 11.1 P1：启停、重启与 scale-out
+### 11.1 同机多集群与端口预占
+
+- `sr_host_port_allocations(host_id, port)` 记录每个托管集群占用的服务端口；预占在预检成功后以事务写入，冲突即失败。
+- 远端预检仍用 `ss` 拦截控制面未知的进程占用；两者叠加后，同一物理机可安全承载多套 shared-nothing 集群。
+- 同一主机的 `install_dir`/`fe.meta`/`be.storage` 必须按集群隔离：部署请求在提交时拒绝同主机路径复用。
+
+### 11.2 安装包预置路径
+
+- 登记 `sr_packages` 时可提供 `local_path`（控制面本地绝对路径）与可选的受控 HTTPS `package_url`。
+- 部署顺序：缓存命中 → 校验预置文件 SHA-256 并硬链接入缓存 → 受控 HTTPS 下载；只有前两者都不可用时才下载。
+- 预置文件 SHA-256 不匹配登记摘要时直接失败，不做任何静默修正。
+
+### 11.3 配置版本与差异展示
+
+- 每次配置下发（当前为部署期 render_config）写入 `sr_config_revisions(node_id, revision, content, content_sha256, task_id, created_by)`。
+- 提供 `GET /configs/:node`、`/configs/:node/revisions/:r`、`/configs/:node/diff?from&to`；diff 由服务端 LCS 计算，返回 `added/removed/context` 行。
+- 本期不开放任意配置写入；后续静态配置变更必须走版本化参数白名单（见 P2）。
+
+### 11.4 节点日志与运维命令
+
+- 日志：`GET /api/sr-ops/clusters/:id/nodes/:node/logs?file=fe.log|fe.warn|be.INFO|be.WARN|be.out&lines=1..1000`，经 SSH `tail` 读取；文件名白名单，禁止路径穿越。
+- 命令：`POST /api/sr-ops/clusters/:id/nodes/:node/commands`，仅接受 `start/stop/restart`；FE 用 `start_fe.sh/stop_fe.sh`，BE 用 `start_be.sh/stop_be.sh`，启动后轮询监听端口确认，停止后确认端口释放。
+- 仅 SSH 受管集群（`ssh_credential_id` 非空且状态 `running`）可执行；接管集群与未导入集群被拒绝。每个命令都是独立 `node_command` 任务，可审计、可轮询。
+
+### 11.5 一键导入
+
+- 部署完成后控制台对 `status='running' && cluster_id IS NULL` 的受管集群展示“一键导入”。
+- `POST /api/sr-ops/clusters/:id/import` 创建 `import_cluster` 任务：使用最小权限 operator 凭据注册既有 `clusters`、写回 `cluster_id` 并触发常规健康检查。
+- 名称冲突、非待导入状态或存在其他运行中任务时拒绝，保证操作幂等可重试。
+
+## 12. 后续生命周期能力
+
+### 12.1 P1：启停、重启与 scale-out
 
 前提：任务 lease、主机绑定、版本能力矩阵、服务账号和系统启动策略已经完成。
 
@@ -407,14 +443,14 @@ pending -> cancelled
 - scale-out 复用 P0 的预检、校验、安装和节点注册步骤。
 - 主机重启后的自动拉起必须依赖经审计的 systemd 能力；未配置时 UI 明确显示“主机重启后需人工恢复”。
 
-### 11.2 P2：缩容、配置与升级
+### 12.2 P2：缩容、配置与升级
 
 - **缩容**：BE 先校验副本数、剩余磁盘容量和故障域，再 `DECOMMISSION`，等待完成后才 `DROP BACKEND` 和停止进程。FE 禁止破坏选举/仲裁约束；Leader 必须先完成切主。CN 有独立的无数据迁移流程，不能复用 BE 缩容。
 - **配置变更**：只接受版本化参数白名单。动态参数使用对应的受控 SQL；静态参数通过受控配置文件片段和原子替换，禁止通用 `sed`。执行前读取当前值，执行后验证生效值。
 - **升级**：仅支持版本矩阵中明确允许的路径，且必须先做单节点可用性测试。顺序为 BE/CN → Follower FE → Leader FE。升级前保存现有 balance/tablet clone 相关配置，结束后按原值恢复，不能硬编码“默认恢复值”。分别保留 BE/CN 的 UDF 目录和 FE 的 `spark-dpp`；`bin`、`lib`、`spark-dpp` 的替换使用独立原子命令。连续小版本、降级后二次升级等场景按官方要求处理 image 同步和兼容性配置。
 - **shared-data**：先增加独立的加密存储凭据/存储卷模型、对象存储连通性预检和 CN 生命周期；不得在任务 JSON 中保存 `CREATE STORAGE VOLUME` 的密钥。
 
-## 12. API 与权限
+## 13. API 与权限
 
 所有路由挂在认证中间件后，但授权必须通过扩展后的 `permission_extractor` 产生 Casbin resource/action。
 
@@ -425,6 +461,11 @@ pending -> cancelled
 | GET/POST | `/api/sr-ops/credentials` | `credentials:list` / `credentials:manage` | 仅返回元数据，secret 只写不读。 |
 | GET/POST | `/api/sr-ops/packages` | `packages:list` / `packages:manage` | 包登记与缓存。 |
 | GET | `/api/sr-ops/clusters` | `clusters:list` | 托管集群和节点查询。 |
+| GET | `/api/sr-ops/clusters/:id` | `clusters:get` | 托管集群详情与节点列表。 |
+| POST | `/api/sr-ops/clusters/:id/import` | `clusters:manage` | 部署完成后的一键导入。 |
+| POST | `/api/sr-ops/clusters/:id/nodes/:node/commands` | `clusters:manage` | 白名单节点启停/重启。 |
+| GET | `/api/sr-ops/clusters/:id/nodes/:node/logs` | `clusters:logs` | 白名单节点日志读取。 |
+| GET | `/api/sr-ops/clusters/:id/configs/:node(/revisions/:r|/diff)` | `configs:read` | 配置版本历史与差异。 |
 | POST | `/api/sr-ops/deployments` | `deployments:create` | 使用强类型 `DeployRequest` 创建 deploy 任务；不接受泛型 task payload。 |
 | POST | `/api/sr-ops/adoptions` | `adoptions:create` | 只读接管。 |
 | GET | `/api/sr-ops/tasks/:id` | `tasks:get` | 查询任务与已脱敏事件。 |
