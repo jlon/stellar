@@ -1,5 +1,5 @@
 use crate::db::AppDb;
-use crate::db::dialect::LastInsertId;
+use crate::db::query as db_query;
 use crate::models::{
     CreateRoleRequest, PermissionResponse, Role, RoleResponse, RoleWithPermissions,
     UpdateRolePermissionsRequest, UpdateRoleRequest,
@@ -37,7 +37,7 @@ impl<DB: AppDb> RoleService<DB> {
         let base_query = "SELECT * FROM roles ORDER BY is_system DESC, name";
         let (filtered_query, _) =
             apply_organization_filter(base_query, is_super_admin, organization_id);
-        let roles: Vec<Role> = sqlx::query_as(&filtered_query)
+        let roles: Vec<Role> = db_query::query_as(&filtered_query)
             .fetch_all(&self.pool)
             .await?;
         Ok(roles.into_iter().map(|r| r.into()).collect())
@@ -53,7 +53,7 @@ impl<DB: AppDb> RoleService<DB> {
         let base_query = "SELECT * FROM roles WHERE id = ?";
         let (filtered_query, _) =
             apply_organization_filter(base_query, is_super_admin, requestor_org);
-        let role: Role = sqlx::query_as(&filtered_query)
+        let role: Role = db_query::query_as(&filtered_query)
             .bind(role_id)
             .fetch_optional(&self.pool)
             .await?
@@ -72,7 +72,7 @@ impl<DB: AppDb> RoleService<DB> {
             .get_role(role_id, requestor_org, is_super_admin)
             .await?;
 
-        let permissions: Vec<PermissionResponse> = sqlx::query_as(
+        let permissions: Vec<PermissionResponse> = db_query::query_as(
             r#"
             SELECT p.*
             FROM permissions p
@@ -108,7 +108,7 @@ impl<DB: AppDb> RoleService<DB> {
         let base_query = "SELECT * FROM roles WHERE code = ?";
         let (filtered_query, _) =
             apply_organization_filter(base_query, is_super_admin, organization_id);
-        let existing: Option<Role> = sqlx::query_as(&filtered_query)
+        let existing: Option<Role> = db_query::query_as(&filtered_query)
             .bind(&req.code)
             .fetch_optional(&self.pool)
             .await?;
@@ -119,30 +119,28 @@ impl<DB: AppDb> RoleService<DB> {
             ));
         }
 
-        let result = if is_super_admin && target_org.is_none() {
-            sqlx::query(
-                "INSERT INTO roles (code, name, description, is_system) VALUES (?, ?, ?, 0)",
+        let role_id = if is_super_admin && target_org.is_none() {
+            db_query::query(
+                "INSERT INTO roles (code, name, description, is_system) VALUES (?, ?, ?, FALSE)",
             )
             .bind(&req.code)
             .bind(&req.name)
             .bind(&req.description)
-            .execute(&self.pool)
+            .insert_id(&self.pool)
             .await?
         } else {
-            sqlx::query(
-                "INSERT INTO roles (code, name, description, is_system, organization_id) VALUES (?, ?, ?, 0, ?)",
+            db_query::query(
+                "INSERT INTO roles (code, name, description, is_system, organization_id) VALUES (?, ?, ?, FALSE, ?)",
             )
             .bind(&req.code)
             .bind(&req.name)
             .bind(&req.description)
             .bind(target_org)
-            .execute(&self.pool)
+            .insert_id(&self.pool)
             .await?
         };
 
-        let role_id = result.last_insert_id();
-
-        let role: Role = sqlx::query_as("SELECT * FROM roles WHERE id = ?")
+        let role: Role = db_query::query_as("SELECT * FROM roles WHERE id = ?")
             .bind(role_id)
             .fetch_one(&self.pool)
             .await?;
@@ -168,7 +166,7 @@ impl<DB: AppDb> RoleService<DB> {
         let base_query = "SELECT * FROM roles WHERE id = ?";
         let (filtered_query, _) =
             apply_organization_filter(base_query, is_super_admin, requestor_org);
-        let role: Role = sqlx::query_as(&filtered_query)
+        let role: Role = db_query::query_as(&filtered_query)
             .bind(role_id)
             .fetch_optional(&self.pool)
             .await?
@@ -199,14 +197,14 @@ impl<DB: AppDb> RoleService<DB> {
 
         if let Some(name) = req.name {
             if let Some(description) = req.description {
-                sqlx::query("UPDATE roles SET name = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+                db_query::query("UPDATE roles SET name = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
                     .bind(&name)
                     .bind(&description)
                     .bind(role_id)
                     .execute(&self.pool)
                     .await?;
             } else {
-                sqlx::query(
+                db_query::query(
                     "UPDATE roles SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 )
                 .bind(&name)
@@ -215,7 +213,7 @@ impl<DB: AppDb> RoleService<DB> {
                 .await?;
             }
         } else if let Some(description) = req.description {
-            sqlx::query(
+            db_query::query(
                 "UPDATE roles SET description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             )
             .bind(&description)
@@ -230,7 +228,7 @@ impl<DB: AppDb> RoleService<DB> {
                     "Only super administrators can reassign role organization",
                 ));
             }
-            sqlx::query(
+            db_query::query(
                 "UPDATE roles SET organization_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             )
             .bind(new_org_id)
@@ -252,7 +250,7 @@ impl<DB: AppDb> RoleService<DB> {
         let base_query = "SELECT * FROM roles WHERE id = ?";
         let (filtered_query, _) =
             apply_organization_filter(base_query, is_super_admin, requestor_org);
-        let role: Role = sqlx::query_as(&filtered_query)
+        let role: Role = db_query::query_as(&filtered_query)
             .bind(role_id)
             .fetch_optional(&self.pool)
             .await?
@@ -262,7 +260,7 @@ impl<DB: AppDb> RoleService<DB> {
             return Err(ApiError::validation_error("Cannot delete system role"));
         }
 
-        sqlx::query("DELETE FROM roles WHERE id = ?")
+        db_query::query("DELETE FROM roles WHERE id = ?")
             .bind(role_id)
             .execute(&self.pool)
             .await?;
@@ -292,7 +290,7 @@ impl<DB: AppDb> RoleService<DB> {
             .await?;
 
         let all_permissions: Vec<crate::models::Permission> =
-            sqlx::query_as("SELECT * FROM permissions ORDER BY type, code")
+            db_query::query_as("SELECT * FROM permissions ORDER BY type, code")
                 .fetch_all(&self.pool)
                 .await?;
 
@@ -383,14 +381,14 @@ impl<DB: AppDb> RoleService<DB> {
 
         let mut tx = self.pool.begin().await?;
 
-        sqlx::query("DELETE FROM role_permissions WHERE role_id = ?")
+        db_query::query("DELETE FROM role_permissions WHERE role_id = ?")
             .bind(role_id)
             .execute(&mut *tx)
             .await?;
 
         // 使用 futures 批量插入（如果需要更高性能可以考虑）
         for permission_id in &final_permission_ids {
-            sqlx::query("INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)")
+            db_query::query("INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)")
                 .bind(role_id)
                 .bind(permission_id)
                 .execute(&mut *tx)
@@ -424,7 +422,7 @@ impl<DB: AppDb> RoleService<DB> {
             .get_role(role_id, requestor_org, is_super_admin)
             .await?;
 
-        let permissions: Vec<crate::models::Permission> = sqlx::query_as(
+        let permissions: Vec<crate::models::Permission> = db_query::query_as(
             r#"
             SELECT p.*
             FROM permissions p

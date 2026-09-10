@@ -1,3 +1,4 @@
+use crate::db::query as db_query;
 // Overview Service
 // Purpose: Provide aggregated cluster overview data (real-time + historical)
 // Design Ref: ARCHITECTURE_ANALYSIS_AND_INTEGRATION.md
@@ -7,7 +8,7 @@ use crate::services::{
     ClusterService, DataStatistics, DataStatisticsService, MetricsSnapshot, MySQLClient,
 };
 use crate::utils::{ApiError, ApiResult};
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::Pool;
 use std::sync::Arc;
@@ -558,7 +559,7 @@ impl<DB: AppDb> OverviewService<DB> {
     pub async fn predict_capacity(&self, cluster_id: i64) -> ApiResult<CapacityPrediction> {
         let cutoff = Utc::now() - chrono::Duration::hours(2);
 
-        let snapshots: Vec<(i64, i64, f64, NaiveDateTime)> = sqlx::query_as(
+        let snapshots: Vec<(i64, i64, f64, DateTime<Utc>)> = db_query::query_as(
             r#"
             SELECT 
                 disk_total_bytes,
@@ -587,8 +588,8 @@ impl<DB: AppDb> OverviewService<DB> {
 
         let disk_used_bytes = ((disk_total_bytes as f64) * disk_usage_pct / 100.0) as i64;
 
-        let first_time = snapshots.first().unwrap().3.and_utc().timestamp();
-        let last_time = snapshots.last().unwrap().3.and_utc().timestamp();
+        let first_time = snapshots.first().unwrap().3.timestamp();
+        let last_time = snapshots.last().unwrap().3.timestamp();
         let time_span_days = (last_time - first_time) as f64 / 86400.0;
 
         let mut sum_x = 0.0;
@@ -601,7 +602,7 @@ impl<DB: AppDb> OverviewService<DB> {
         let mut max_y = f64::MIN;
 
         for snapshot in &snapshots {
-            let x = (snapshot.3.and_utc().timestamp() - first_time) as f64 / 86400.0;
+            let x = (snapshot.3.timestamp() - first_time) as f64 / 86400.0;
 
             let y = (snapshot.0 as f64) * snapshot.2 / 100.0;
 
@@ -676,7 +677,7 @@ impl<DB: AppDb> OverviewService<DB> {
         #[derive(sqlx::FromRow)]
         struct SnapshotRow {
             cluster_id: i64,
-            collected_at: NaiveDateTime,
+            collected_at: DateTime<Utc>,
             qps: f64,
             rps: f64,
             query_latency_p50: f64,
@@ -718,7 +719,7 @@ impl<DB: AppDb> OverviewService<DB> {
             io_write_rate: f64,
         }
 
-        let row: Option<SnapshotRow> = sqlx::query_as(
+        let row: Option<SnapshotRow> = db_query::query_as(
             r#"
             SELECT * FROM metrics_snapshots
             WHERE cluster_id = ?
@@ -733,7 +734,7 @@ impl<DB: AppDb> OverviewService<DB> {
         if let Some(r) = row {
             Ok(Some(MetricsSnapshot {
                 cluster_id: r.cluster_id,
-                collected_at: r.collected_at.and_utc(),
+                collected_at: r.collected_at,
                 qps: r.qps,
                 rps: r.rps,
                 query_latency_p50: r.query_latency_p50,
@@ -788,7 +789,7 @@ impl<DB: AppDb> OverviewService<DB> {
         #[derive(sqlx::FromRow)]
         struct SnapshotRow {
             cluster_id: i64,
-            collected_at: NaiveDateTime,
+            collected_at: DateTime<Utc>,
             qps: f64,
             rps: f64,
             query_latency_p50: f64,
@@ -833,7 +834,7 @@ impl<DB: AppDb> OverviewService<DB> {
         let start_time = time_range.start_time();
         let end_time = time_range.end_time();
 
-        let rows: Vec<SnapshotRow> = sqlx::query_as(
+        let rows: Vec<SnapshotRow> = db_query::query_as(
             r#"
             SELECT * FROM metrics_snapshots
             WHERE cluster_id = ? 
@@ -851,7 +852,7 @@ impl<DB: AppDb> OverviewService<DB> {
             .into_iter()
             .map(|r| MetricsSnapshot {
                 cluster_id: r.cluster_id,
-                collected_at: r.collected_at.and_utc(),
+                collected_at: r.collected_at,
                 qps: r.qps,
                 rps: r.rps,
                 query_latency_p50: r.query_latency_p50,

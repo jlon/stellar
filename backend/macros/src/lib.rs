@@ -19,7 +19,8 @@ use quote::quote;
 /// 强枚举（ClusterType/DeploymentMode）的 sqlx::Type derive 只生成 per-backend
 /// impl，泛型 bound 需要显式声明。
 const DB_BOUNDS: &[&str] = &[
-    "for<'c> &'c mut <DB as ::sqlx::Database>::Connection: ::sqlx::Executor<'c, Database = DB>",
+    "for<'q> <DB as crate::db::AppDb>::Query<'q>: ::std::marker::Send",
+    "for<'c> &'c mut <DB as ::sqlx::Database>::Connection: ::sqlx::Executor<'c, Database = DB> + ::std::marker::Send",
     "for<'q> <DB as ::sqlx::database::HasArguments<'q>>::Arguments: \
      ::sqlx::IntoArguments<'q, DB> + ::std::default::Default",
     "::std::primitive::usize: ::sqlx::ColumnIndex<<DB as ::sqlx::Database>::Row>",
@@ -46,16 +47,17 @@ const DB_BOUNDS: &[&str] = &[
     "for<'q> ::std::option::Option<::chrono::DateTime<::chrono::Utc>>: ::sqlx::Encode<'q, DB>",
     "for<'q> ::std::option::Option<::chrono::NaiveDateTime>: ::sqlx::Encode<'q, DB>",
     "for<'q> ::std::option::Option<::chrono::NaiveDate>: ::sqlx::Encode<'q, DB>",
-
-
 ];
 
 fn inject_db_generic(generics: &mut syn::Generics) {
-    let has_db = generics.params.iter().any(|p| {
-        matches!(p, syn::GenericParam::Type(t) if t.ident == "DB")
-    });
+    let has_db = generics
+        .params
+        .iter()
+        .any(|p| matches!(p, syn::GenericParam::Type(t) if t.ident == "DB"));
     if !has_db {
-        generics.params.push(syn::parse_quote!(DB: crate::db::AppDb));
+        generics
+            .params
+            .push(syn::parse_quote!(DB: crate::db::AppDb));
     }
 }
 
@@ -80,8 +82,7 @@ fn append_bounds(generics: &mut syn::Generics) {
 /// ```
 #[proc_macro_attribute]
 pub fn app_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let mut impl_item: syn::ItemImpl = syn::parse(item)
-        .expect("#[app_impl] 只能作用于 impl 块");
+    let mut impl_item: syn::ItemImpl = syn::parse(item).expect("#[app_impl] 只能作用于 impl 块");
 
     append_bounds(&mut impl_item.generics);
 
@@ -98,8 +99,7 @@ pub fn app_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro_attribute]
 pub fn app_db(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let mut fn_item: syn::ItemFn = syn::parse(item)
-        .expect("#[app_db] 只能作用于函数");
+    let mut fn_item: syn::ItemFn = syn::parse(item).expect("#[app_db] 只能作用于函数");
 
     inject_db_generic(&mut fn_item.sig.generics);
     append_bounds(&mut fn_item.sig.generics);

@@ -1,8 +1,8 @@
+use crate::db::query as db_query;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::db::AppDb;
-use crate::db::dialect::LastInsertId;
 use bcrypt::{DEFAULT_COST, hash};
 use chrono::{DateTime, Utc};
 use sqlx::{FromRow, Pool, Transaction};
@@ -61,7 +61,7 @@ impl<DB: AppDb> UserService<DB> {
             organization_name: Option<String>,
         }
 
-        let users_with_org: Vec<UserWithOrgName> = sqlx::query_as(&filtered_query)
+        let users_with_org: Vec<UserWithOrgName> = db_query::query_as(&filtered_query)
             .fetch_all(&self.pool)
             .await?;
 
@@ -121,9 +121,9 @@ impl<DB: AppDb> UserService<DB> {
         let password_hash = hash(&req.password, DEFAULT_COST)
             .map_err(|err| ApiError::internal_error(format!("Failed to hash password: {}", err)))?;
 
-        let result = {
+        let user_id = {
             let conn = tx.as_mut();
-            sqlx::query(
+            db_query::query(
                 "INSERT INTO users (username, password_hash, email, avatar, organization_id) VALUES (?, ?, ?, ?, ?)",
             )
             .bind(&req.username)
@@ -131,11 +131,9 @@ impl<DB: AppDb> UserService<DB> {
             .bind(&req.email)
             .bind(&req.avatar)
             .bind(target_org_id)
-            .execute(conn)
+            .insert_id(conn)
             .await?
         };
-
-        let user_id = result.last_insert_id();
 
         self.upsert_user_organization(&mut tx, user_id, target_org_id)
             .await?;
@@ -175,7 +173,7 @@ impl<DB: AppDb> UserService<DB> {
                 .await?;
             {
                 let conn = tx.as_mut();
-                sqlx::query(
+                db_query::query(
                     "UPDATE users SET username = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 )
                 .bind(username)
@@ -188,7 +186,7 @@ impl<DB: AppDb> UserService<DB> {
         if let Some(email) = &req.email {
             {
                 let conn = tx.as_mut();
-                sqlx::query(
+                db_query::query(
                     "UPDATE users SET email = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 )
                 .bind(email)
@@ -201,7 +199,7 @@ impl<DB: AppDb> UserService<DB> {
         if let Some(avatar) = &req.avatar {
             {
                 let conn = tx.as_mut();
-                sqlx::query(
+                db_query::query(
                     "UPDATE users SET avatar = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 )
                 .bind(avatar)
@@ -218,7 +216,7 @@ impl<DB: AppDb> UserService<DB> {
 
             {
                 let conn = tx.as_mut();
-                sqlx::query(
+                db_query::query(
                     "UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 )
                 .bind(&password_hash)
@@ -242,7 +240,7 @@ impl<DB: AppDb> UserService<DB> {
             self.ensure_organization_exists(new_org_id).await?;
             {
                 let conn = tx.as_mut();
-                sqlx::query(
+                db_query::query(
                     "UPDATE users SET organization_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 )
                 .bind(new_org_id)
@@ -267,7 +265,7 @@ impl<DB: AppDb> UserService<DB> {
         org_id: i64,
     ) -> ApiResult<()> {
         let conn = tx.as_mut();
-        sqlx::query(&format!(
+        db_query::query(&format!(
             r#"
             INSERT INTO user_organizations (user_id, organization_id)
             VALUES (?, ?)
@@ -296,7 +294,7 @@ impl<DB: AppDb> UserService<DB> {
 
         {
             let conn = tx.as_mut();
-            sqlx::query("DELETE FROM user_roles WHERE user_id = ?")
+            db_query::query("DELETE FROM user_roles WHERE user_id = ?")
                 .bind(user_id)
                 .execute(conn)
                 .await?;
@@ -304,7 +302,7 @@ impl<DB: AppDb> UserService<DB> {
 
         {
             let conn = tx.as_mut();
-            sqlx::query("DELETE FROM users WHERE id = ?")
+            db_query::query("DELETE FROM users WHERE id = ?")
                 .bind(user_id)
                 .execute(conn)
                 .await?;
@@ -347,7 +345,7 @@ impl<DB: AppDb> UserService<DB> {
         let base_query = "SELECT * FROM users WHERE id = ?";
         let (filtered_query, _) =
             apply_organization_filter(base_query, is_super_admin, requestor_org);
-        sqlx::query_as(&filtered_query)
+        db_query::query_as(&filtered_query)
             .bind(user_id)
             .fetch_optional(&self.pool)
             .await?
@@ -365,7 +363,7 @@ impl<DB: AppDb> UserService<DB> {
         let (filtered_query, _) =
             apply_organization_filter(base_query, is_super_admin, requestor_org);
         let conn = tx.as_mut();
-        sqlx::query_as(&filtered_query)
+        db_query::query_as(&filtered_query)
             .bind(user_id)
             .fetch_optional(conn)
             .await?
@@ -380,7 +378,7 @@ impl<DB: AppDb> UserService<DB> {
     ) -> ApiResult<()> {
         let existing: Option<(i64,)> = {
             let conn = tx.as_mut();
-            sqlx::query_as("SELECT id FROM users WHERE username = ?")
+            db_query::query_as("SELECT id FROM users WHERE username = ?")
                 .bind(username)
                 .fetch_optional(conn)
                 .await?
@@ -417,7 +415,7 @@ impl<DB: AppDb> UserService<DB> {
         for role_id in &to_remove {
             {
                 let conn = tx.as_mut();
-                sqlx::query("DELETE FROM user_roles WHERE user_id = ? AND role_id = ?")
+                db_query::query("DELETE FROM user_roles WHERE user_id = ? AND role_id = ?")
                     .bind(user_id)
                     .bind(role_id)
                     .execute(conn)
@@ -433,7 +431,7 @@ impl<DB: AppDb> UserService<DB> {
         for role_id in &to_add {
             {
                 let conn = tx.as_mut();
-                sqlx::query("INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)")
+                db_query::query("INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)")
                     .bind(user_id)
                     .bind(role_id)
                     .execute(conn)
@@ -465,7 +463,7 @@ impl<DB: AppDb> UserService<DB> {
                 apply_organization_filter(base_query, is_super_admin, organization_id);
             let exists: Option<(i64,)> = {
                 let conn = tx.as_mut();
-                sqlx::query_as(&filtered_query)
+                db_query::query_as(&filtered_query)
                     .bind(role_id)
                     .fetch_optional(conn)
                     .await?
@@ -489,7 +487,7 @@ impl<DB: AppDb> UserService<DB> {
     ) -> ApiResult<Vec<i64>> {
         let rows: Vec<(i64,)> = {
             let conn = tx.as_mut();
-            sqlx::query_as("SELECT role_id FROM user_roles WHERE user_id = ?")
+            db_query::query_as("SELECT role_id FROM user_roles WHERE user_id = ?")
                 .bind(user_id)
                 .fetch_all(conn)
                 .await?
@@ -499,7 +497,7 @@ impl<DB: AppDb> UserService<DB> {
     }
 
     async fn fetch_user_roles(&self, user_id: i64) -> ApiResult<Vec<RoleResponse>> {
-        let rows: Vec<UserRoleRecord> = sqlx::query_as(
+        let rows: Vec<UserRoleRecord> = db_query::query_as(
             r#"
             SELECT ur.user_id, r.*
             FROM user_roles ur
@@ -516,7 +514,7 @@ impl<DB: AppDb> UserService<DB> {
     }
 
     async fn load_all_user_roles(&self) -> ApiResult<HashMap<i64, Vec<RoleResponse>>> {
-        let rows: Vec<UserRoleRecord> = sqlx::query_as(
+        let rows: Vec<UserRoleRecord> = db_query::query_as(
             r#"
             SELECT ur.user_id, r.*
             FROM user_roles ur
@@ -582,10 +580,11 @@ impl<DB: AppDb> UserService<DB> {
     }
 
     async fn ensure_organization_exists(&self, org_id: i64) -> ApiResult<()> {
-        let exists: Option<(i64,)> = sqlx::query_as("SELECT id FROM organizations WHERE id = ?")
-            .bind(org_id)
-            .fetch_optional(&self.pool)
-            .await?;
+        let exists: Option<(i64,)> =
+            db_query::query_as("SELECT id FROM organizations WHERE id = ?")
+                .bind(org_id)
+                .fetch_optional(&self.pool)
+                .await?;
         if exists.is_none() {
             return Err(ApiError::not_found("Organization not found"));
         }
@@ -594,18 +593,18 @@ impl<DB: AppDb> UserService<DB> {
 
     async fn fetch_default_org_id(&self) -> ApiResult<i64> {
         if let Some(id) =
-            sqlx::query_scalar("SELECT id FROM organizations WHERE code = 'default_org'")
+            db_query::query_scalar("SELECT id FROM organizations WHERE code = 'default_org'")
                 .fetch_optional(&self.pool)
                 .await?
         {
             return Ok(id);
         }
 
-        sqlx::query("INSERT INTO organizations (code, name, description, is_system) VALUES ('default_org', 'Default Organization', 'Auto-created default organization', 1)")
+        db_query::query("INSERT INTO organizations (code, name, description, is_system) VALUES ('default_org', 'Default Organization', 'Auto-created default organization', TRUE)")
             .execute(&self.pool)
             .await?;
 
-        sqlx::query_scalar("SELECT id FROM organizations WHERE code = 'default_org'")
+        db_query::query_scalar("SELECT id FROM organizations WHERE code = 'default_org'")
             .fetch_optional(&self.pool)
             .await?
             .ok_or_else(|| ApiError::not_found("Default organization not found"))

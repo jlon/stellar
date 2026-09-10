@@ -1,13 +1,15 @@
 //! SQL 方言差异抽象。
 //!
 //! 所有"SQLite 与 MySQL 语法不同"的知识都收口在本模块：
-//! - `LastInsertId`: 从执行结果读取自增主键
 //! - `SqlDialect`: 生成方言化的 upsert / ignore / replace SQL 片段
 //!
 //! 均以关联函数形式静态分发（`DB::upsert_suffix(...)`），零运行时开销，
 //! 业务代码只需一个 `DB: AppDb` 约束即可获得全部能力。
 
-use sqlx::{Database, MySql, Sqlite, mysql::MySqlQueryResult, sqlite::SqliteQueryResult};
+use sqlx::{
+    Database, MySql, Postgres, Sqlite, mysql::MySqlQueryResult, postgres::PgQueryResult,
+    sqlite::SqliteQueryResult,
+};
 
 /// 为字符串承载的强枚举生成 sqlx 的泛型 `Type/Decode/Encode` impl。
 ///
@@ -65,25 +67,6 @@ macro_rules! impl_string_backed_db_type {
     };
 }
 
-/// 从 INSERT 执行结果中读取自增主键 id。
-///
-/// SQLite 对应 `last_insert_rowid()`，MySQL 对应 `last_insert_id` 字段。
-pub trait LastInsertId {
-    fn last_insert_id(&self) -> i64;
-}
-
-impl LastInsertId for SqliteQueryResult {
-    fn last_insert_id(&self) -> i64 {
-        self.last_insert_rowid()
-    }
-}
-
-impl LastInsertId for MySqlQueryResult {
-    fn last_insert_id(&self) -> i64 {
-        self.last_insert_id() as i64
-    }
-}
-
 /// 从执行结果读取受影响行数。
 ///
 /// 两种后端都提供 `rows_affected()` 但无共享 trait，泛型上下文需要本抽象。
@@ -98,6 +81,12 @@ impl RowsAffected for SqliteQueryResult {
 }
 
 impl RowsAffected for MySqlQueryResult {
+    fn rows_affected(&self) -> u64 {
+        self.rows_affected()
+    }
+}
+
+impl RowsAffected for PgQueryResult {
     fn rows_affected(&self) -> u64 {
         self.rows_affected()
     }
@@ -120,10 +109,28 @@ pub trait SqlDialect: Database {
     fn adapt_excluded(sql_fragment: &str) -> String;
 
     /// INSERT 忽略冲突语句的关键字前缀（不含 INTO）。
-    fn insert_ignore() -> &'static str;
+    fn insert_ignore_prefix() -> &'static str;
 
-    /// INSERT 替换语义语句的关键字前缀（不含 INTO）。
-    fn insert_replace() -> &'static str;
+    /// INSERT 忽略冲突语句的末尾片段。
+    ///
+    /// SQLite/MySQL 的冲突忽略修饰符在 INSERT 前缀，PostgreSQL 使用
+    /// `ON CONFLICT DO NOTHING` 后缀。
+    fn insert_ignore_suffix() -> &'static str;
+
+    /// 生成按冲突键替换整行的 INSERT 语句。
+    ///
+    /// SQLite 使用 `INSERT OR REPLACE`，MySQL 使用 `REPLACE`，PostgreSQL 用冲突
+    /// 更新且保留原行 id / created_at，避免 REPLACE 的 delete-then-insert 副作用。
+    fn replace_sql(table: &str, columns: &[&str], conflict_keys: &[&str]) -> String;
+
+    /// 生成字符串聚合表达式。
+    fn string_aggregate(expression: &str, separator: &str) -> String;
+}
+
+fn parameter_markers(count: usize) -> String {
+    std::iter::repeat_n("?", count)
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 impl SqlDialect for Sqlite {
@@ -141,12 +148,24 @@ impl SqlDialect for Sqlite {
         sql_fragment.to_string()
     }
 
-    fn insert_ignore() -> &'static str {
+    fn insert_ignore_prefix() -> &'static str {
         "INSERT OR IGNORE"
     }
 
-    fn insert_replace() -> &'static str {
-        "INSERT OR REPLACE"
+    fn insert_ignore_suffix() -> &'static str {
+        ""
+    }
+
+    fn replace_sql(table: &str, columns: &[&str], _conflict_keys: &[&str]) -> String {
+        format!(
+            "INSERT OR REPLACE INTO {table} ({}) VALUES ({})",
+            columns.join(", "),
+            parameter_markers(columns.len()),
+        )
+    }
+
+    fn string_aggregate(expression: &str, separator: &str) -> String {
+        format!("GROUP_CONCAT({expression}, {separator})")
     }
 }
 
@@ -167,12 +186,66 @@ impl SqlDialect for MySql {
         re.replace_all(sql_fragment, "VALUES($1)").into_owned()
     }
 
-    fn insert_ignore() -> &'static str {
+    fn insert_ignore_prefix() -> &'static str {
         "INSERT IGNORE"
     }
 
-    fn insert_replace() -> &'static str {
-        "REPLACE"
+    fn insert_ignore_suffix() -> &'static str {
+        ""
+    }
+
+    fn replace_sql(table: &str, columns: &[&str], _conflict_keys: &[&str]) -> String {
+        format!(
+            "REPLACE INTO {table} ({}) VALUES ({})",
+            columns.join(", "),
+            parameter_markers(columns.len()),
+        )
+    }
+
+    fn string_aggregate(expression: &str, separator: &str) -> String {
+        format!("GROUP_CONCAT({expression} SEPARATOR {separator})")
+    }
+}
+
+impl SqlDialect for Postgres {
+    fn upsert_suffix(conflict_keys: &[&str], set_cols: &[&str], extra_set: &[&str]) -> String {
+        let mut items: Vec<String> = set_cols
+            .iter()
+            .map(|c| format!("{c} = excluded.{c}"))
+            .collect();
+        items.extend(extra_set.iter().map(|s| s.to_string()));
+        format!("ON CONFLICT({}) DO UPDATE SET {}", conflict_keys.join(", "), items.join(", "))
+    }
+
+    fn adapt_excluded(sql_fragment: &str) -> String {
+        sql_fragment.to_string()
+    }
+
+    fn insert_ignore_prefix() -> &'static str {
+        "INSERT"
+    }
+
+    fn insert_ignore_suffix() -> &'static str {
+        "ON CONFLICT DO NOTHING"
+    }
+
+    fn replace_sql(table: &str, columns: &[&str], conflict_keys: &[&str]) -> String {
+        let updates = columns
+            .iter()
+            .filter(|column| !conflict_keys.contains(column))
+            .map(|column| format!("{column} = excluded.{column}"))
+            .collect::<Vec<_>>();
+        format!(
+            "INSERT INTO {table} ({}) VALUES ({}) ON CONFLICT({}) DO UPDATE SET {}",
+            columns.join(", "),
+            parameter_markers(columns.len()),
+            conflict_keys.join(", "),
+            updates.join(", "),
+        )
+    }
+
+    fn string_aggregate(expression: &str, separator: &str) -> String {
+        format!("STRING_AGG({expression}, {separator})")
     }
 }
 
@@ -205,10 +278,54 @@ mod tests {
     }
 
     #[test]
-    fn insert_prefixes_match_dialect() {
-        assert_eq!(<Sqlite as SqlDialect>::insert_ignore(), "INSERT OR IGNORE");
-        assert_eq!(<Sqlite as SqlDialect>::insert_replace(), "INSERT OR REPLACE");
-        assert_eq!(<MySql as SqlDialect>::insert_ignore(), "INSERT IGNORE");
-        assert_eq!(<MySql as SqlDialect>::insert_replace(), "REPLACE");
+    fn postgres_upsert_suffix_uses_excluded_form() {
+        assert_eq!(
+            <Postgres as SqlDialect>::upsert_suffix(&["cluster_id"], &["qps"], &[]),
+            "ON CONFLICT(cluster_id) DO UPDATE SET qps = excluded.qps"
+        );
+    }
+
+    #[test]
+    fn insert_ignore_fragments_match_dialect() {
+        assert_eq!(<Sqlite as SqlDialect>::insert_ignore_prefix(), "INSERT OR IGNORE");
+        assert_eq!(<MySql as SqlDialect>::insert_ignore_prefix(), "INSERT IGNORE");
+        assert_eq!(<Postgres as SqlDialect>::insert_ignore_prefix(), "INSERT");
+        assert_eq!(<Postgres as SqlDialect>::insert_ignore_suffix(), "ON CONFLICT DO NOTHING");
+    }
+
+    #[test]
+    fn replace_sql_follows_dialect() {
+        let columns = &["cache_key", "scenario", "response_json"];
+        let keys = &["cache_key"];
+        assert_eq!(
+            <Sqlite as SqlDialect>::replace_sql("llm_cache", columns, keys),
+            "INSERT OR REPLACE INTO llm_cache (cache_key, scenario, response_json) VALUES (?, ?, ?)"
+        );
+        assert_eq!(
+            <MySql as SqlDialect>::replace_sql("llm_cache", columns, keys),
+            "REPLACE INTO llm_cache (cache_key, scenario, response_json) VALUES (?, ?, ?)"
+        );
+        assert_eq!(
+            <Postgres as SqlDialect>::replace_sql("llm_cache", columns, keys),
+            "INSERT INTO llm_cache (cache_key, scenario, response_json) VALUES (?, ?, ?) \
+             ON CONFLICT(cache_key) DO UPDATE SET scenario = excluded.scenario, \
+             response_json = excluded.response_json"
+        );
+    }
+
+    #[test]
+    fn string_aggregate_follows_dialect() {
+        assert_eq!(
+            <Sqlite as SqlDialect>::string_aggregate("r.code", "','"),
+            "GROUP_CONCAT(r.code, ',')"
+        );
+        assert_eq!(
+            <MySql as SqlDialect>::string_aggregate("r.code", "','"),
+            "GROUP_CONCAT(r.code SEPARATOR ',')"
+        );
+        assert_eq!(
+            <Postgres as SqlDialect>::string_aggregate("r.code", "','"),
+            "STRING_AGG(r.code, ',')"
+        );
     }
 }

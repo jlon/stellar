@@ -12,6 +12,13 @@ use sqlx::{MySql, Pool};
 use super::AppDb;
 
 impl AppDb for MySql {
+    type Query<'q> =
+        sqlx::query::Query<'q, Self, <Self as sqlx::database::HasArguments<'q>>::Arguments>;
+
+    fn make_query<'q>(sql: &'q str) -> Self::Query<'q> {
+        sqlx::query(sql)
+    }
+
     fn migrations_dir() -> &'static str {
         "migrations/mysql"
     }
