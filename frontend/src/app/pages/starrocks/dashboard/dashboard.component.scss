@@ -35,21 +35,8 @@
 }
 
 .cluster-card {
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-  border: 1px solid transparent; // Prepare for border transition
-  box-shadow: 0 0.5rem 1rem 0 rgba(44, 51, 73, 0.05);
-  
-  &:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 1rem 2rem 0 rgba(44, 51, 73, 0.1);
-  }
-
-  // Active State Glow
   &.active-card {
-    border-color: transparent;
-    // Pure ambient glow, no border lines
-    box-shadow: 0 12px 48px -8px rgba(51, 102, 255, 0.25);
-    z-index: 10;
+    border: 1px solid var(--color-primary-default);
   }
   
   nb-card-header {

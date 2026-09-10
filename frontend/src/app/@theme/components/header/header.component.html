@@ -3,24 +3,9 @@
     <a (click)="toggleSidebar()" href="#" class="sidebar-toggle">
       <nb-icon icon="menu-2-outline"></nb-icon>
     </a>
-    <a class="logo modern-logo" href="#" (click)="navigateHome()">
-      <span class="logo-icon">
-        <nb-icon icon="layers-outline"></nb-icon>
-      </span>
-      <span class="logo-text">
-        <span class="logo-main">Stellar</span>
-        <span class="logo-sub">Admin</span>
-      </span>
-    </a>
+    <a class="logo" href="#" (click)="navigateHome()">Stellar</a>
   </div>
-  <!-- 主题切换器放在左边 -->
-  <nb-select 
-    [selected]="currentTheme" 
-    (selectedChange)="changeTheme($event)" 
-    status="basic" 
-    size="small"
-    class="theme-switcher"
-    placeholder="主题">
+  <nb-select [selected]="currentTheme" (selectedChange)="changeTheme($event)" status="primary">
     <nb-option *ngFor="let theme of themes" [value]="theme.value">{{ theme.name }}</nb-option>
   </nb-select>
 </div>
