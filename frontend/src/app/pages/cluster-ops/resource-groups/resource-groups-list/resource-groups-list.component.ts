@@ -1,6 +1,6 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { Router } from '@angular/router';
-import { NbDialogService, NbToastrService } from '@nebular/theme';
+import { NbToastrService } from '@nebular/theme';
 import { LocalDataSource } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
@@ -10,6 +10,7 @@ import { ResourceGroup } from '../models/resource-group.model';
 import { withTableRow } from '../../../../@core/utils/smart-table';
 import { ClusterContextService } from '../../../../@core/data/cluster-context.service';
 import { Cluster } from '../../../../@core/data/cluster.service';
+import { ConfirmDialogService } from '../../../../@core/services/confirm-dialog.service';
 
 @Component({
   standalone: false,
@@ -104,7 +105,7 @@ export class ResourceGroupsListComponent implements OnInit, OnDestroy {
   constructor(
     private resourceGroupService: ResourceGroupService,
     private router: Router,
-    private dialogService: NbDialogService,
+    private confirmDialog: ConfirmDialogService,
     private toastrService: NbToastrService,
     private clusterContext: ClusterContextService,
   ) {}
@@ -164,30 +165,23 @@ export class ResourceGroupsListComponent implements OnInit, OnDestroy {
   }
 
   deleteResourceGroup(group: ResourceGroup): void {
-    this.dialogService
-      .open(require('@angular/core').TemplateRef, {
-        context: {
-          title: '确认删除',
-          message: `确定要删除资源组 "${group.name}" 吗？此操作不可撤销。`,
-        },
-      })
-      .onClose.subscribe((confirmed) => {
-        if (confirmed) {
-          this.resourceGroupService
-            .deleteResourceGroup(group.name)
-            .pipe(takeUntil(this.destroy$))
-            .subscribe({
-              next: () => {
-                this.toastrService.success('资源组删除成功', '成功');
-                this.loadResourceGroups();
-              },
-              error: (error) => {
-                console.error('Failed to delete resource group:', error);
-                this.toastrService.danger('删除资源组失败', '错误');
-              },
-            });
-        }
-      });
+    this.confirmDialog.confirmDelete(group.name, '此操作不可撤销。').subscribe((confirmed) => {
+      if (!confirmed) {
+        return;
+      }
+      this.resourceGroupService
+        .deleteResourceGroup(group.name)
+        .pipe(takeUntil(this.destroy$))
+        .subscribe({
+          next: () => {
+            this.toastrService.success('资源组删除成功', '成功');
+            this.loadResourceGroups();
+          },
+          error: () => {
+            this.toastrService.danger('删除资源组失败', '错误');
+          },
+        });
+    });
   }
 
   viewUsage(): void {

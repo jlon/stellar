@@ -142,9 +142,10 @@ export class PagesComponent implements OnInit {
       if (queryString) {
         try {
           const params = new URLSearchParams(queryString);
-          const sortedParams = Array.from(params.entries())
-            .sort((a, b) => a[0].localeCompare(b[0]));
-          const normalizedParams = new URLSearchParams(sortedParams);
+          const pairs: string[][] = [];
+          params.forEach((value, key) => pairs.push([key, value]));
+          pairs.sort((a, b) => a[0].localeCompare(b[0]));
+          const normalizedParams = new URLSearchParams(pairs);
           return normalizedPath + '?' + normalizedParams.toString();
         } catch (e) {
           return normalizedPath + '?' + queryString;
