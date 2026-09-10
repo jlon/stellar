@@ -20,6 +20,7 @@ export interface UserFormDialogResult {
 }
 
 @Component({
+  standalone: false,
   selector: 'ngx-user-form-dialog',
   templateUrl: './user-form-dialog.component.html',
   styleUrls: ['./user-form-dialog.component.scss'],

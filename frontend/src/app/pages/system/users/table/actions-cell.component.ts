@@ -3,6 +3,7 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { UserWithRoles } from '../../../../@core/data/user.service';
 
 @Component({
+  standalone: false,
   selector: 'ngx-users-actions-cell',
   template: `
     <div class="actions-container">

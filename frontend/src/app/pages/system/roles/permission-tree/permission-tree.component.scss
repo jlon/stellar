@@ -59,8 +59,8 @@ nb-checkbox {
 }
 
 .tree-node__body--selected {
-  background: var(--color-primary-100);
-  border-color: var(--color-primary-400);
+  background: var(--color-primary-transparent-200);
+  border-color: var(--color-primary-default);
 }
 
 .tree-node__title {

@@ -49,11 +49,11 @@
                   根据用户的 CPU 使用时间和占比，建议合适的 CPU 权重或独占核数配置。
                 </p>
 
-                <ng2-smart-table
+                <angular2-smart-table
                   [settings]="cpuSettings"
                   [source]="cpuSource"
                 >
-                </ng2-smart-table>
+                </angular2-smart-table>
 
                 <div *ngIf="cpuSource.count() === 0" class="text-center p-4">
                   <nb-icon icon="inbox-outline" class="text-muted" style="font-size: 3rem;"></nb-icon>
@@ -70,11 +70,11 @@
                   根据用户查询的最大内存使用量，建议合适的内存限制配置。
                 </p>
 
-                <ng2-smart-table
+                <angular2-smart-table
                   [settings]="memorySettings"
                   [source]="memorySource"
                 >
-                </ng2-smart-table>
+                </angular2-smart-table>
 
                 <div *ngIf="memorySource.count() === 0" class="text-center p-4">
                   <nb-icon icon="inbox-outline" class="text-muted" style="font-size: 3rem;"></nb-icon>
@@ -91,11 +91,11 @@
                   根据用户的查询并发情况，建议合适的并发限制配置。
                 </p>
 
-                <ng2-smart-table
+                <angular2-smart-table
                   [settings]="concurrencySettings"
                   [source]="concurrencySource"
                 >
-                </ng2-smart-table>
+                </angular2-smart-table>
 
                 <div *ngIf="concurrencySource.count() === 0" class="text-center p-4">
                   <nb-icon icon="inbox-outline" class="text-muted" style="font-size: 3rem;"></nb-icon>

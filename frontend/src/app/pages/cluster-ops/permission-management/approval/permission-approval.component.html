@@ -21,12 +21,12 @@
       <nb-spinner status="primary"></nb-spinner>
     </div>
 
-    <ng2-smart-table
+    <angular2-smart-table
       *ngIf="!requestsLoading && filteredRequests.length > 0"
       [settings]="tableSettings"
       [source]="approvalSource"
       (edit)="onEditRow($event)">
-    </ng2-smart-table>
+    </angular2-smart-table>
 
     <div *ngIf="!requestsLoading && filteredRequests.length === 0" class="empty-state">
       <nb-icon icon="checkmark-circle-2-outline" class="empty-icon" status="success"></nb-icon>

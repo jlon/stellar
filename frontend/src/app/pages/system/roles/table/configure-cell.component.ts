@@ -7,6 +7,7 @@ interface RoleRow {
 }
 
 @Component({
+  standalone: false,
   selector: 'ngx-roles-configure-cell',
   template: `
     <button

@@ -2,6 +2,7 @@ import { Component, Input } from '@angular/core';
 import { NbDialogRef } from '@nebular/theme';
 
 @Component({
+  standalone: false,
   selector: 'ngx-confirm-dialog',
   template: `
     <nb-card>

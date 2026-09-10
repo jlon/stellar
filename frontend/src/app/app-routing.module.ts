@@ -1,5 +1,6 @@
 import { ExtraOptions, RouterModule, Routes } from '@angular/router';
 import { NgModule } from '@angular/core';
+import { NbAuthComponent } from '@nebular/auth';
 import { LoginComponent } from './auth/login/login.component';
 import { RegisterComponent } from './auth/register/register.component';
 import { AuthGuard } from './@core/guards/auth.guard';
@@ -13,6 +14,7 @@ export const routes: Routes = [
   },
   {
     path: 'auth',
+    component: NbAuthComponent,
     children: [
       {
         path: '',

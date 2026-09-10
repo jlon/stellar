@@ -35,7 +35,7 @@
 }
 
 .text-muted {
-  color: #8f9bb3;
+  color: var(--text-hint-color);
 }
 
 .small {
@@ -71,11 +71,11 @@ nb-card-header h4 {
 .user-icon {
   font-size: 2rem;
   margin-bottom: 0.5rem;
-  color: #40dc7e;
+  color: var(--color-success-default);
 }
 
 :host ::ng-deep {
-  .ng2-smart-table {
+  .angular2-smart-table {
     th, td {
       text-align: center;
       vertical-align: middle;

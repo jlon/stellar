@@ -6,6 +6,7 @@ import { ApiService } from '../../@core/data/api.service';
 import { DiceBearService } from '../../@core/services/dicebear.service';
 
 @Component({
+  standalone: false,
   selector: 'ngx-user-settings',
   templateUrl: './user-settings.component.html',
   styleUrls: ['./user-settings.component.scss']

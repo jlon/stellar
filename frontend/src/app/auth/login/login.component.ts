@@ -4,6 +4,7 @@ import { NbToastrService } from '@nebular/theme';
 import { AuthService } from '../../@core/data/auth.service';
 
 @Component({
+  standalone: false,
   selector: 'ngx-login',
   templateUrl: './login.component.html',
   styleUrls: ['./login.component.scss']

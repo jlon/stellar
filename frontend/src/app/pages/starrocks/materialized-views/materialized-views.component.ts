@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy, TemplateRef, ViewChild } from '@angular/c
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { NbToastrService, NbDialogService } from '@nebular/theme';
-import { LocalDataSource } from 'ng2-smart-table';
+import { LocalDataSource } from 'angular2-smart-table';
 import {
   MaterializedViewService,
   MaterializedView,
@@ -10,10 +10,12 @@ import {
 import { ClusterService, Cluster } from '../../../@core/data/cluster.service';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
 import { ErrorHandler } from '../../../@core/utils/error-handler';
+import { withTableRow } from '../../../@core/utils/smart-table';
 import { ConfirmDialogService } from '../../../@core/services/confirm-dialog.service';
 import { ActiveToggleRenderComponent } from './active-toggle-render.component';
 
 @Component({
+  standalone: false,
   selector: 'ngx-materialized-views',
   templateUrl: './materialized-views.component.html',
   styleUrls: ['./materialized-views.component.scss'],
@@ -154,18 +156,20 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
       mv_type: {
         title: '类型',
         type: 'html',
+        sanitizer: { bypassHtml: true },
         width: '7%',
-        valuePrepareFunction: (value: any, row: MaterializedView) => {
+        valuePrepareFunction: withTableRow((value: any, row: MaterializedView) => {
           if (row.refresh_type === 'ROLLUP') {
             return '<span class="badge badge-primary">同步</span>';
           } else {
             return '<span class="badge badge-info">异步</span>';
           }
-        },
+        }),
       },
       refresh_type: {
         title: '刷新策略',
         type: 'html',
+        sanitizer: { bypassHtml: true },
         width: '9%',
         valuePrepareFunction: (value: string) => {
           return this.getRefreshTypeBadge(value);
@@ -176,7 +180,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
         type: 'custom',
         width: '12%',
         renderComponent: ActiveToggleRenderComponent,
-        onComponentInitFunction: (instance: any) => {
+        componentInitFunction: (instance: any) => {
           instance.toggle.subscribe((rowData: any) => {
             this.toggleActiveState(rowData);
           });
@@ -185,11 +189,12 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
       last_refresh_state: {
         title: '刷新状态',
         type: 'html',
+        sanitizer: { bypassHtml: true },
         width: '9%',
-        valuePrepareFunction: (value: string, row: MaterializedView) => {
+        valuePrepareFunction: withTableRow((value: string, row: MaterializedView) => {
           if (row.refresh_type === 'ROLLUP') return '-';
           return this.getRefreshStateBadge(value);
-        },
+        }),
       },
       last_refresh_finished_time: {
         title: '最后刷新时间',
@@ -215,15 +220,16 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
       error_info: {
         title: '错误信息',
         type: 'html',
+        sanitizer: { bypassHtml: true },
         width: '8%',
-        valuePrepareFunction: (value: any, row: MaterializedView) => {
+        valuePrepareFunction: withTableRow((value: any, row: MaterializedView) => {
           if (row.last_refresh_error_message) {
             return `<span class="text-danger" title="${row.last_refresh_error_message}">
               <i class="nb-alert-circle"></i> 错误
             </span>`;
           }
           return '-';
-        },
+        }),
       },
     },
   };

@@ -1,7 +1,7 @@
 import { Component, Input, Output, EventEmitter, OnInit } from '@angular/core';
-import { ViewCell } from 'ng2-smart-table';
 
 @Component({
+  standalone: false,
   selector: 'ngx-nested-link-render',
   template: `
     <a href="javascript:void(0)" (click)="onClick()" class="text-primary">{{ renderValue }}</a>
@@ -12,7 +12,7 @@ import { ViewCell } from 'ng2-smart-table';
     }
   `]
 })
-export class NestedLinkRenderComponent implements ViewCell, OnInit {
+export class NestedLinkRenderComponent implements OnInit {
   @Input() value: string | number;
   @Input() rowData: any;
   @Output() save: EventEmitter<any> = new EventEmitter();

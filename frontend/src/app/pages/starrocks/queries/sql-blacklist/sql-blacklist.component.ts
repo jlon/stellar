@@ -1,6 +1,6 @@
 import { Component, OnInit, OnDestroy, TemplateRef, ViewChild, ChangeDetectorRef } from '@angular/core';
 import { NbToastrService, NbDialogService, NbDialogRef } from '@nebular/theme';
-import { LocalDataSource } from 'ng2-smart-table';
+import { LocalDataSource } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { NodeService, SqlBlacklistItem } from '../../../../@core/data/node.service';
@@ -10,6 +10,7 @@ import { ErrorHandler } from '../../../../@core/utils/error-handler';
 import { ConfirmDialogService } from '../../../../@core/services/confirm-dialog.service';
 
 @Component({
+  standalone: false,
   selector: 'ngx-sql-blacklist',
   templateUrl: './sql-blacklist.component.html',
   styleUrls: ['./sql-blacklist.component.scss'],

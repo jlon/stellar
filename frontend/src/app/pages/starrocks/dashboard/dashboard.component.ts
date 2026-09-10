@@ -20,7 +20,15 @@ interface ClusterCard {
   showHealthDetails?: boolean;
 }
 
+interface StatusCard {
+  title: string;
+  value: string;
+  type: string;
+  icon: string;
+}
+
 @Component({
+  standalone: false,
   selector: 'ngx-dashboard',
   templateUrl: './dashboard.component.html',
   styleUrls: ['./dashboard.component.scss'],
@@ -336,7 +344,15 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return this.isSharedData(clusterCard) ? 'CN 节点' : 'BE 节点';
   }
 
-  // Calculate health score based on checks (return string for better display)
+  get statusCards(): StatusCard[] {
+    return [
+      { title: '集群', value: `${this.clusters.length}`, type: 'primary', icon: 'layers-outline' },
+      { title: '健康', value: `${this.countByStatus('healthy')}`, type: 'success', icon: 'checkmark-circle-2-outline' },
+      { title: '告警', value: `${this.countByStatus('warning') + this.countByStatus('critical')}`, type: 'warning', icon: 'alert-triangle-outline' },
+      { title: '节点', value: `${this.totalNodeCount()}`, type: 'info', icon: 'hard-drive-outline' },
+    ];
+  }
+
   getHealthScore(clusterCard: ClusterCard): string {
     if (!clusterCard.health?.checks || clusterCard.health.checks.length === 0) {
       return '—';
@@ -452,6 +468,21 @@ export class DashboardComponent implements OnInit, OnDestroy {
           },
         });
       });
+  }
+
+  private countByStatus(status: string): number {
+    return this.clusters.filter(card => card.health?.status === status).length;
+  }
+
+  private totalNodeCount(): number {
+    return this.clusters.reduce((sum, card) => {
+      return sum + this.parseNodeCount(this.getFeCount(card)) + this.parseNodeCount(this.getComputeNodeCount(card));
+    }, 0);
+  }
+
+  private parseNodeCount(value: string): number {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
   }
 
   private handleError(error: any): void {

@@ -5,6 +5,7 @@ import { AuthService } from '../../@core/data/auth.service';
 import { DiceBearService } from '../../@core/services/dicebear.service';
 
 @Component({
+  standalone: false,
   selector: 'ngx-register',
   templateUrl: './register.component.html',
   styleUrls: ['./register.component.scss']

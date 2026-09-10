@@ -7,6 +7,7 @@ import { ClusterService, Cluster } from '../../../@core/data/cluster.service';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
 
 @Component({
+  standalone: false,
   selector: 'ngx-cluster-selector',
   templateUrl: './cluster-selector.component.html',
   styleUrls: ['./cluster-selector.component.scss'],

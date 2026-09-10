@@ -19,6 +19,7 @@ export interface LLMProviderFormDialogResult {
 }
 
 @Component({
+  standalone: false,
   selector: 'ngx-llm-provider-form-dialog',
   templateUrl: './llm-provider-form-dialog.component.html',
   styleUrls: ['./llm-provider-form-dialog.component.scss'],

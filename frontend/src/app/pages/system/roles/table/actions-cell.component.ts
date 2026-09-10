@@ -8,6 +8,7 @@ export interface RoleActionPermissions {
 }
 
 @Component({
+  standalone: false,
   selector: 'ngx-roles-actions-cell',
   template: `
     <div class="actions-container">

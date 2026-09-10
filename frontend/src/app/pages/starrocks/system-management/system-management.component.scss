@@ -180,7 +180,7 @@
   
   &.system-function {
     background: var(--background-basic-color-1);
-    border-left: 2px solid var(--color-success-400);
+    border-left: 2px solid var(--color-success-default);
     
     &:hover {
       border-left-color: var(--color-success-500);
@@ -251,7 +251,7 @@
   
   button.favorited {
     color: var(--color-warning-500) !important;
-    background: var(--color-warning-100) !important;
+    background: var(--color-warning-transparent-200) !important;
   }
 }
 
@@ -312,17 +312,5 @@
   
   .active-cluster-info {
     text-align: left;
-  }
-}
-
-// 暗色主题适配
-:host-context(.dark-theme) {
-  .function-item {
-    background: var(--background-basic-color-1);
-    border-color: var(--border-basic-color-3);
-    
-    &:hover {
-      background: var(--background-basic-color-2);
-    }
   }
 }

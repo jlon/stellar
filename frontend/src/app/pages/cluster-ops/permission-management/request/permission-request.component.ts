@@ -9,7 +9,7 @@ import {
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { Subject, forkJoin } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
-import { LocalDataSource } from 'ng2-smart-table';
+import { LocalDataSource } from 'angular2-smart-table';
 import { PermissionRequestService } from '../../../../@core/data/permission-request.service';
 import { PermissionRequestResponse, SubmitRequestDto, DbAccountDto, DbRoleDto } from '../../../../@core/data/permission-request.model';
 import { NodeService } from '../../../../@core/data/node.service';
@@ -36,6 +36,7 @@ import { NbToastrService } from '@nebular/theme';
  * - Cascade selection: Catalog → Database → Table
  */
 @Component({
+  standalone: false,
   selector: 'ngx-permission-request',
   templateUrl: './permission-request.component.html',
   styleUrls: ['./permission-request.component.scss'],
@@ -156,6 +157,7 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
       request_type: {
         title: '类型',
         type: 'html',
+        sanitizer: { bypassHtml: true },
         width: '100px',
         valuePrepareFunction: (value: string) => {
           const labels: {[key: string]: string} = {
@@ -181,6 +183,7 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
       status: {
         title: '状态',
         type: 'html',
+        sanitizer: { bypassHtml: true },
         width: '90px',
         valuePrepareFunction: (value: string) => {
           const statusMap: {[key: string]: {label: string, badge: string}} = {

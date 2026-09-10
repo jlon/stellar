@@ -21,13 +21,14 @@ import {
   NbTooltipModule,
   NbTagModule,
 } from '@nebular/theme';
-import { Ng2SmartTableModule } from 'ng2-smart-table';
+import { Angular2SmartTableModule } from 'angular2-smart-table';
 import { NgxEchartsModule } from 'ngx-echarts';
 import { DragDropModule } from '@angular/cdk/drag-drop';
 import { ThemeModule } from '../../@theme/theme.module';
 
 import { StarRocksRoutingModule } from './starrocks-routing.module';
 import { DashboardComponent } from './dashboard/dashboard.component';
+import { StatusCardComponent } from './dashboard/status-card/status-card.component';
 import { ClusterListComponent } from './clusters/cluster-list/cluster-list.component';
 import { ClusterFormComponent } from './clusters/cluster-form/cluster-form.component';
 import { ClusterDetailComponent } from './clusters/cluster-detail/cluster-detail.component';
@@ -52,6 +53,7 @@ import { ActiveToggleRenderComponent } from './materialized-views/active-toggle-
 @NgModule({
   declarations: [
     DashboardComponent,
+    StatusCardComponent,
     ClusterListComponent,
     ClusterFormComponent,
     ClusterDetailComponent,
@@ -97,8 +99,10 @@ import { ActiveToggleRenderComponent } from './materialized-views/active-toggle-
     NbToggleModule,
     NbTooltipModule,
     NbTagModule,
-    Ng2SmartTableModule,
-    NgxEchartsModule,
+    Angular2SmartTableModule,
+    NgxEchartsModule.forRoot({
+      echarts: () => import('echarts'),
+    }),
     DragDropModule,
   ],
   schemas: [NO_ERRORS_SCHEMA],
