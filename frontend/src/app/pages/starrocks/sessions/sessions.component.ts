@@ -1,19 +1,21 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 
 import { NbToastrService, NbDialogService } from '@nebular/theme';
-import { LocalDataSource } from 'ng2-smart-table';
+import { LocalDataSource } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
 import { Cluster } from '../../../@core/data/cluster.service';
 import { NodeService, Session } from '../../../@core/data/node.service';
 import { ErrorHandler } from '../../../@core/utils/error-handler';
+import { withTableRow } from '../../../@core/utils/smart-table';
 import { MetricThresholds, renderMetricBadge } from '../../../@core/utils/metric-badge';
 import { renderLongText } from '../../../@core/utils/text-truncate';
 import { ConfirmDialogService } from '../../../@core/services/confirm-dialog.service';
 import { AuthService } from '../../../@core/data/auth.service';
 
 @Component({
+  standalone: false,
   selector: 'ngx-sessions',
   templateUrl: './sessions.component.html',
   styleUrls: ['./sessions.component.scss'],
@@ -87,24 +89,28 @@ export class SessionsComponent implements OnInit, OnDestroy {
       command: {
         title: 'Command',
         type: 'html',
+        sanitizer: { bypassHtml: true },
         width: '10%',
-        valuePrepareFunction: (value: string, row: Session) => this.renderCommandBadge(value, row),
+        valuePrepareFunction: withTableRow((value: string, row: Session) => this.renderCommandBadge(value, row)),
       },
       time: {
         title: 'Time (s)',
         type: 'html',
+        sanitizer: { bypassHtml: true },
         width: '10%',
         valuePrepareFunction: (value: string | number) => renderMetricBadge(value, this.sessionDurationThresholds),
       },
       state: {
         title: 'State',
         type: 'html',
+        sanitizer: { bypassHtml: true },
         width: '10%',
         valuePrepareFunction: (value: string) => this.renderStateBadge(value),
       },
       info: {
         title: 'Info',
         type: 'html',
+        sanitizer: { bypassHtml: true },
         width: '25%',
         valuePrepareFunction: (value: any) => {
           if (!value) return 'N/A';

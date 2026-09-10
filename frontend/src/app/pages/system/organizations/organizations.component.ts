@@ -1,6 +1,6 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { NbDialogService, NbToastrService } from '@nebular/theme';
-import { LocalDataSource } from 'ng2-smart-table';
+import { LocalDataSource } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
@@ -22,6 +22,7 @@ import { AuthService } from '../../../@core/data/auth.service';
 import { UserService } from '../../../@core/data/user.service';
 
 @Component({
+  standalone: false,
   selector: 'ngx-organizations',
   templateUrl: './organizations.component.html',
   styleUrls: ['./organizations.component.scss'],
@@ -259,6 +260,7 @@ export class OrganizationsComponent implements OnInit, OnDestroy {
         is_system: {
           title: '系统组织',
           type: 'html',
+          sanitizer: { bypassHtml: true },
           width: '10%',
           valuePrepareFunction: (cell: boolean) => {
             return cell
@@ -278,10 +280,10 @@ export class OrganizationsComponent implements OnInit, OnDestroy {
           title: '操作',
           type: 'custom',
           width: '10%',
-          filter: false,
-          sort: false,
+          isFilterable: false,
+          isSortable: false,
           renderComponent: OrganizationsActionsCellComponent,
-          onComponentInitFunction: (instance: OrganizationsActionsCellComponent) => {
+          componentInitFunction: (instance: OrganizationsActionsCellComponent) => {
             instance.edit.subscribe((organization) => {
               this.openEditOrganization(organization);
             });

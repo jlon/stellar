@@ -6,6 +6,7 @@ interface Role {
 }
 
 @Component({
+  standalone: false,
   selector: 'ngx-users-role-badge-cell',
   template: `
     <div class="d-flex flex-wrap align-items-center" *ngIf="value?.length; else empty">

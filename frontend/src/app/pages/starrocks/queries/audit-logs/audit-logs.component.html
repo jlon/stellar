@@ -121,12 +121,12 @@
 
         <div *ngIf="loading" class="text-center mt-3"><nb-spinner status="primary"></nb-spinner></div>
         
-        <ng2-smart-table 
+        <angular2-smart-table 
           *ngIf="!loading" 
           [settings]="historySettings" 
           [source]="historySource"
           (edit)="onEditProfile($event)">
-        </ng2-smart-table>
+        </angular2-smart-table>
 
         <!-- Custom pagination -->
         <div *ngIf="!loading && historyTotalCount > 0" class="pagination-container">

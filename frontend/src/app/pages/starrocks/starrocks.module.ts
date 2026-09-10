@@ -21,7 +21,7 @@ import {
   NbTooltipModule,
   NbTagModule,
 } from '@nebular/theme';
-import { Ng2SmartTableModule } from 'ng2-smart-table';
+import { Angular2SmartTableModule } from 'angular2-smart-table';
 import { NgxEchartsModule } from 'ngx-echarts';
 import { DragDropModule } from '@angular/cdk/drag-drop';
 import { ThemeModule } from '../../@theme/theme.module';
@@ -97,8 +97,10 @@ import { ActiveToggleRenderComponent } from './materialized-views/active-toggle-
     NbToggleModule,
     NbTooltipModule,
     NbTagModule,
-    Ng2SmartTableModule,
-    NgxEchartsModule,
+    Angular2SmartTableModule,
+    NgxEchartsModule.forRoot({
+      echarts: () => import('echarts'),
+    }),
     DragDropModule,
   ],
   schemas: [NO_ERRORS_SCHEMA],

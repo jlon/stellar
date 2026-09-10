@@ -8,6 +8,7 @@ import { PermissionRequestResponse } from '../../../../@core/data/permission-req
  * 设计风格与 user-form-dialog 保持一致
  */
 @Component({
+  standalone: false,
   selector: 'ngx-permission-approval-detail-dialog',
   template: `
     <nb-card class="approval-detail-dialog">

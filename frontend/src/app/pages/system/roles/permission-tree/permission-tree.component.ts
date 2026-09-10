@@ -29,6 +29,7 @@ interface PermissionTreeNode {
 }
 
 @Component({
+  standalone: false,
   selector: 'ngx-permission-tree',
   templateUrl: './permission-tree.component.html',
   styleUrls: ['./permission-tree.component.scss'],

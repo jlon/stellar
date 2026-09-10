@@ -2,7 +2,7 @@ import { ChangeDetectorRef, Component, OnInit, OnDestroy, TemplateRef, ViewChild
 import { ActivatedRoute } from '@angular/router';
 import { Location } from '@angular/common'; // Import Location
 import { NbToastrService, NbDialogService } from '@nebular/theme';
-import { LocalDataSource } from 'ng2-smart-table';
+import { LocalDataSource } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { NodeService } from '../../../../@core/data/node.service';
@@ -15,6 +15,7 @@ import { AuthService } from '../../../../@core/data/auth.service';
 import * as dagre from 'dagre';
 
 @Component({
+  standalone: false,
   selector: 'ngx-profile-queries',
   templateUrl: './profile-queries.component.html',
   styleUrls: ['./profile-queries.component.scss'],
@@ -539,6 +540,7 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
       Time: {
         title: '执行时间',
         type: 'html',
+        sanitizer: { bypassHtml: true },
         width: '10%',
         valuePrepareFunction: (value: string | number) => {
           // Parse StarRocks duration string to milliseconds for accurate threshold comparison
@@ -554,6 +556,7 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
       State: {
         title: '状态',
         type: 'html',
+        sanitizer: { bypassHtml: true },
         width: '10%',
         valuePrepareFunction: (value: string) => {
           const status = value === 'Finished' ? 'success' : 'warning';
@@ -563,6 +566,7 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
       Statement: { 
         title: 'SQL语句', 
         type: 'html', 
+        sanitizer: { bypassHtml: true },
         width: '40%',
         valuePrepareFunction: (value: any) => renderLongText(value, 100),
       },

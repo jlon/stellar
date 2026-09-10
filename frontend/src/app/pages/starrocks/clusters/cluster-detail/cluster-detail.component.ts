@@ -6,6 +6,7 @@ import { ConfirmDialogService } from '../../../../@core/services/confirm-dialog.
 import { NodeService, Variable } from '../../../../@core/data/node.service';
 
 @Component({
+  standalone: false,
   selector: 'ngx-cluster-detail',
   templateUrl: './cluster-detail.component.html',
   styleUrls: ['./cluster-detail.component.scss'],

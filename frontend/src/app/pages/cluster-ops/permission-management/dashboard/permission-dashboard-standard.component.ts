@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy, Input, Output, EventEmitter, ViewChild, TemplateRef } from '@angular/core';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
-import { LocalDataSource } from 'ng2-smart-table';
+import { LocalDataSource } from 'angular2-smart-table';
 import { PermissionRequestService } from '../../../../@core/data/permission-request.service';
 import { DbUserPermissionDto } from '../../../../@core/data/permission-request.model';
 import { NbDialogService, NbToastrService } from '@nebular/theme';
@@ -25,6 +25,7 @@ interface PermissionRecord extends DbUserPermissionDto {
 }
 
 @Component({
+  standalone: false,
   selector: 'ngx-permission-dashboard-standard',
   templateUrl: './permission-dashboard-standard.component.html',
   styleUrls: ['./permission-dashboard-standard.component.scss'],

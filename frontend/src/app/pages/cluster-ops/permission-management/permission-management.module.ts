@@ -22,7 +22,7 @@ import {
   NbAccordionModule,
   NbListModule,
 } from '@nebular/theme';
-import { Ng2SmartTableModule } from 'ng2-smart-table';
+import { Angular2SmartTableModule } from 'angular2-smart-table';
 
 import { PermissionManagementComponent } from './permission-management.component';
 import { PermissionManagementRoutingModule } from './permission-management-routing.module';
@@ -77,7 +77,7 @@ import { CascadeSelectorComponent } from './shared/cascade-selector.component';
     NbProgressBarModule,
     NbAccordionModule,
     NbListModule,
-    Ng2SmartTableModule,
+    Angular2SmartTableModule,
   ],
   schemas: [NO_ERRORS_SCHEMA],
 })

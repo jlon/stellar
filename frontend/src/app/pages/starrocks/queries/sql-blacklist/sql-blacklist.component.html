@@ -19,7 +19,7 @@
       <nb-card-body>
         <p class="text-hint mb-3">匹配黑名单正则表达式的 SQL 将被拒绝执行</p>
         <div *ngIf="loading" class="text-center mt-3"><nb-spinner status="primary" [message]="''"></nb-spinner></div>
-        <ng2-smart-table *ngIf="!loading" [settings]="blacklistSettings" [source]="blacklistSource" (delete)="onDeleteConfirm($event)"></ng2-smart-table>
+        <angular2-smart-table *ngIf="!loading" [settings]="blacklistSettings" [source]="blacklistSource" (delete)="onDeleteConfirm($event)"></angular2-smart-table>
       </nb-card-body>
     </nb-card>
   </div>

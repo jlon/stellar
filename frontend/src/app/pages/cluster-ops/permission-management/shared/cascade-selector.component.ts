@@ -13,6 +13,7 @@ import { NbToastrService } from '@nebular/theme';
  * In production, replace with actual API calls.
  */
 @Component({
+  standalone: false,
   selector: 'ngx-cascade-selector',
   template: `
     <div class="cascade-selector-container">

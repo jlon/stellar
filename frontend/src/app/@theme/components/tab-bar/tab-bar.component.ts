@@ -13,6 +13,7 @@ interface TabContextMenuItem {
 }
 
 @Component({
+  standalone: false,
   selector: 'ngx-tab-bar',
   templateUrl: './tab-bar.component.html',
   styleUrls: ['./tab-bar.component.scss'],

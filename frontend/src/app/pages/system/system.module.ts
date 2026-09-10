@@ -23,7 +23,7 @@ import {
   NbRadioModule,
 } from '@nebular/theme';
 
-import { Ng2SmartTableModule } from 'ng2-smart-table';
+import { Angular2SmartTableModule } from 'angular2-smart-table';
 import { ThemeModule } from '../../@theme/theme.module';
 
 import { SystemRoutingModule } from './system-routing.module';
@@ -89,7 +89,7 @@ import { LLMProviderFormDialogComponent } from './llm-providers/llm-provider-for
     NbFormFieldModule,
     NbUserModule,
     NbRadioModule,
-    Ng2SmartTableModule,
+    Angular2SmartTableModule,
   ],
 })
 export class SystemModule {}

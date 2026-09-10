@@ -44,12 +44,12 @@
       <nb-spinner status="primary"></nb-spinner>
     </div>
 
-    <ng2-smart-table
+    <angular2-smart-table
       *ngIf="!loading && filteredPermissions.length > 0"
       [settings]="settings"
       [source]="source"
       (edit)="onEditRow($event)">
-    </ng2-smart-table>
+    </angular2-smart-table>
 
     <div *ngIf="!loading && filteredPermissions.length === 0" class="text-center p-4">
       <p class="text-hint">暂无权限数据</p>

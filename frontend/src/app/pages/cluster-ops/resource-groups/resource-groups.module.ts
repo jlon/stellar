@@ -19,7 +19,7 @@ import {
   NbAlertModule,
   NbProgressBarModule,
 } from '@nebular/theme';
-import { Ng2SmartTableModule } from 'ng2-smart-table';
+import { Angular2SmartTableModule } from 'angular2-smart-table';
 
 import { ResourceGroupsRoutingModule } from './resource-groups-routing.module';
 import { ResourceGroupsListComponent } from './resource-groups-list/resource-groups-list.component';
@@ -55,7 +55,7 @@ import { ResourceGroupAnalysisComponent } from './resource-group-analysis/resour
     NbTooltipModule,
     NbAlertModule,
     NbProgressBarModule,
-    Ng2SmartTableModule,
+    Angular2SmartTableModule,
   ],
 })
 export class ResourceGroupsModule {}
