@@ -7,6 +7,7 @@ use axum::{
 use serde_json::json;
 use std::sync::Arc;
 use std::time::Instant;
+use stellar_macros::app_db;
 
 use crate::AppState;
 use crate::models::{
@@ -14,9 +15,9 @@ use crate::models::{
     QueryExecuteRequest, QueryExecuteResponse, SingleQueryResult, SqlBlacklistItem, TableMetadata,
     TableObjectType,
 };
+use crate::services::QueryExecutionHistoryService;
 use crate::services::create_adapter;
 use crate::services::mysql_client::MySQLClient;
-use crate::services::QueryExecutionHistoryService;
 use crate::utils::{ApiError, ApiResult};
 
 // Get list of catalogs using MySQL client
@@ -32,8 +33,9 @@ use crate::utils::{ApiError, ApiResult};
     ),
     tag = "Queries"
 )]
+#[app_db]
 pub async fn list_catalogs(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
 ) -> ApiResult<Json<Vec<String>>> {
     let cluster = if org_ctx.is_super_admin {
@@ -68,8 +70,9 @@ pub async fn list_catalogs(
     ),
     tag = "Queries"
 )]
+#[app_db]
 pub async fn list_databases(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> ApiResult<Json<Vec<String>>> {
@@ -109,8 +112,9 @@ pub async fn list_databases(
     ),
     tag = "Queries"
 )]
+#[app_db]
 pub async fn list_tables(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> ApiResult<Json<Vec<TableMetadata>>> {
@@ -290,8 +294,9 @@ pub async fn list_tables(
     ),
     tag = "Queries"
 )]
+#[app_db]
 pub async fn list_catalogs_with_databases(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
 ) -> ApiResult<Json<CatalogsWithDatabasesResponse>> {
     let cluster = if org_ctx.is_super_admin {
@@ -360,8 +365,9 @@ pub async fn list_catalogs_with_databases(
     ),
     tag = "Queries"
 )]
+#[app_db]
 pub async fn list_queries(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
 ) -> ApiResult<Json<Vec<Query>>> {
     let cluster = if org_ctx.is_super_admin {
@@ -394,8 +400,9 @@ pub async fn list_queries(
     ),
     tag = "Queries"
 )]
+#[app_db]
 pub async fn kill_query(
-    State(state): State<Arc<crate::AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path(query_id): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
@@ -439,8 +446,9 @@ pub async fn kill_query(
     ),
     tag = "Queries"
 )]
+#[app_db]
 pub async fn execute_sql(
-    State(state): State<Arc<crate::AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Json(request): Json<QueryExecuteRequest>,
 ) -> ApiResult<Json<QueryExecuteResponse>> {
@@ -659,8 +667,9 @@ fn apply_query_limit(sql: &str, limit: i32) -> String {
     security(("bearer_auth" = [])),
     tag = "SQL Blacklist"
 )]
+#[app_db]
 pub async fn list_sql_blacklist(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
 ) -> ApiResult<Json<Vec<SqlBlacklistItem>>> {
     let cluster = if org_ctx.is_super_admin {
@@ -692,8 +701,9 @@ pub async fn list_sql_blacklist(
     security(("bearer_auth" = [])),
     tag = "SQL Blacklist"
 )]
+#[app_db]
 pub async fn add_sql_blacklist(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Json(request): Json<AddSqlBlacklistRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -730,8 +740,9 @@ pub async fn add_sql_blacklist(
     security(("bearer_auth" = [])),
     tag = "SQL Blacklist"
 )]
+#[app_db]
 pub async fn delete_sql_blacklist(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path(id): Path<String>,
 ) -> ApiResult<impl IntoResponse> {

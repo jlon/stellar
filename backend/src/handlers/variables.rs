@@ -1,3 +1,4 @@
+use crate::AppState;
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -7,6 +8,7 @@ use axum::{
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
+use stellar_macros::app_db;
 
 use crate::{
     models::starrocks::{UpdateVariableRequest, Variable},
@@ -48,8 +50,9 @@ fn default_type() -> String {
         ("bearer" = [])
     )
 )]
+#[app_db]
 pub async fn get_variables(
-    State(state): State<Arc<crate::AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Query(params): Query<VariableQueryParams>,
 ) -> ApiResult<impl IntoResponse> {
@@ -102,8 +105,9 @@ pub async fn get_variables(
         ("bearer" = [])
     )
 )]
+#[app_db]
 pub async fn get_configure_info(
-    State(state): State<Arc<crate::AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
 ) -> ApiResult<impl IntoResponse> {
     let cluster = if org_ctx.is_super_admin {
@@ -189,8 +193,9 @@ pub async fn get_configure_info(
         ("bearer" = [])
     )
 )]
+#[app_db]
 pub async fn update_variable(
-    State(state): State<Arc<crate::AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path(variable_name): Path<String>,
     Json(request): Json<UpdateVariableRequest>,

@@ -1,3 +1,4 @@
+use crate::AppState;
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -5,6 +6,7 @@ use axum::{
 };
 use serde::Deserialize;
 use std::sync::Arc;
+use stellar_macros::app_db;
 
 use crate::{
     services::{ClusterAdapter, create_adapter},
@@ -37,8 +39,9 @@ pub struct SystemQueryParams {
         ("bearer" = [])
     )
 )]
+#[app_db]
 pub async fn get_system_functions(
-    State(state): State<Arc<crate::AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Query(params): Query<SystemQueryParams>,
 ) -> ApiResult<impl IntoResponse> {
@@ -75,8 +78,9 @@ pub async fn get_system_functions(
         ("bearer" = [])
     )
 )]
+#[app_db]
 pub async fn get_system_function_detail(
-    State(state): State<Arc<crate::AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path(function_name): Path<String>,
     Query(params): Query<SystemQueryParams>,

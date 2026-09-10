@@ -1,17 +1,21 @@
+use crate::db::AppDb;
+use crate::db::dialect::LastInsertId;
 use crate::models::{CreateUserRequest, LoginRequest, UpdateUserRequest, User, UserResponse};
 use crate::utils::{ApiError, ApiResult, JwtUtil};
 use bcrypt::{DEFAULT_COST, hash, verify};
-use sqlx::SqlitePool;
+use sqlx::Pool;
 use std::sync::Arc;
+use stellar_macros::app_impl;
 
 #[derive(Clone)]
-pub struct AuthService {
-    pool: SqlitePool,
+pub struct AuthService<DB: AppDb> {
+    pool: Pool<DB>,
     jwt_util: Arc<JwtUtil>,
 }
 
-impl AuthService {
-    pub fn new(pool: SqlitePool, jwt_util: Arc<JwtUtil>) -> Self {
+#[app_impl]
+impl<DB: AppDb> AuthService<DB> {
+    pub fn new(pool: Pool<DB>, jwt_util: Arc<JwtUtil>) -> Self {
         Self { pool, jwt_util }
     }
 
@@ -47,7 +51,7 @@ impl AuthService {
         .execute(&self.pool)
         .await?;
 
-        let user_id = result.last_insert_rowid();
+        let user_id = result.last_insert_id();
 
         let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?")
             .bind(user_id)

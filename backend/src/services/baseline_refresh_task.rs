@@ -4,6 +4,7 @@
 //! Supports multi-cluster baselines with per-cluster isolation.
 //! Uses the ScheduledExecutor framework for periodic execution.
 
+use crate::db::AppDb;
 use crate::services::baseline_service::BaselineService;
 use crate::services::cluster_service::ClusterService;
 use crate::services::mysql_pool_manager::MySQLPoolManager;
@@ -15,6 +16,8 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use stellar_macros::app_db;
+use stellar_macros::app_impl;
 use tracing::{info, warn};
 
 // ============================================================================
@@ -29,20 +32,24 @@ use tracing::{info, warn};
 /// 3. For each cluster, fetches audit log data and calculates baselines
 /// 4. Updates per-cluster cache
 /// 5. Falls back to defaults on error for each cluster
-pub struct BaselineRefreshTask {
+pub struct BaselineRefreshTask<DB: AppDb> {
     /// MySQL pool manager for database connections
     pool_manager: Arc<MySQLPoolManager>,
     /// Cluster service for getting clusters
-    cluster_service: Arc<ClusterService>,
+    cluster_service: Arc<ClusterService<DB>>,
     /// Baseline service for calculations
     baseline_service: BaselineService,
     /// Shutdown flag
     shutdown: Arc<AtomicBool>,
 }
 
-impl BaselineRefreshTask {
+#[app_impl]
+impl<DB: AppDb> BaselineRefreshTask<DB> {
     /// Create a new baseline refresh task
-    pub fn new(pool_manager: Arc<MySQLPoolManager>, cluster_service: Arc<ClusterService>) -> Self {
+    pub fn new(
+        pool_manager: Arc<MySQLPoolManager>,
+        cluster_service: Arc<ClusterService<DB>>,
+    ) -> Self {
         BaselineProvider::init();
 
         Self {
@@ -136,7 +143,8 @@ impl BaselineRefreshTask {
     }
 }
 
-impl ScheduledTask for BaselineRefreshTask {
+#[app_impl]
+impl<DB: AppDb> ScheduledTask for BaselineRefreshTask<DB> {
     fn run(&self) -> Pin<Box<dyn Future<Output = Result<(), anyhow::Error>> + Send + '_>> {
         Box::pin(async move { self.execute().await })
     }
@@ -171,9 +179,10 @@ impl ScheduledTask for BaselineRefreshTask {
 /// // Later, to stop:
 /// shutdown_handle.store(true, Ordering::Relaxed);
 /// ```
+#[app_db]
 pub fn start_baseline_refresh_task(
     pool_manager: Arc<MySQLPoolManager>,
-    cluster_service: Arc<ClusterService>,
+    cluster_service: Arc<ClusterService<DB>>,
     interval_secs: u64,
 ) -> Arc<AtomicBool> {
     use crate::utils::scheduled_executor::ScheduledExecutor;

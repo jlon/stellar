@@ -1,17 +1,20 @@
+use crate::db::AppDb;
 use crate::models::{AssignUserRoleRequest, Role, RoleResponse};
 use crate::services::casbin_service::CasbinService;
 use crate::utils::{ApiError, ApiResult};
-use sqlx::SqlitePool;
+use sqlx::Pool;
 use std::sync::Arc;
+use stellar_macros::app_impl;
 
 #[derive(Clone)]
-pub struct UserRoleService {
-    pool: SqlitePool,
+pub struct UserRoleService<DB: AppDb> {
+    pool: Pool<DB>,
     casbin_service: Arc<CasbinService>,
 }
 
-impl UserRoleService {
-    pub fn new(pool: SqlitePool, casbin_service: Arc<CasbinService>) -> Self {
+#[app_impl]
+impl<DB: AppDb> UserRoleService<DB> {
+    pub fn new(pool: Pool<DB>, casbin_service: Arc<CasbinService>) -> Self {
         Self { pool, casbin_service }
     }
 

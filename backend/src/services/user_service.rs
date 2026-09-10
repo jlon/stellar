@@ -1,16 +1,19 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use crate::db::AppDb;
+use crate::db::dialect::LastInsertId;
 use bcrypt::{DEFAULT_COST, hash};
 use chrono::{DateTime, Utc};
-use sqlx::{FromRow, SqlitePool, Transaction, sqlite::Sqlite};
+use sqlx::{FromRow, Pool, Transaction};
+use stellar_macros::app_impl;
 
 use crate::models::{
     AdminCreateUserRequest, AdminUpdateUserRequest, RoleResponse, User, UserWithRolesResponse,
 };
 use crate::services::casbin_service::CasbinService;
 use crate::utils::organization_filter::apply_organization_filter;
-use crate::utils::{diff_sets, ApiError, ApiResult};
+use crate::utils::{ApiError, ApiResult, diff_sets};
 
 #[derive(FromRow)]
 struct UserRoleRecord {
@@ -25,13 +28,14 @@ struct UserRoleRecord {
 }
 
 #[derive(Clone)]
-pub struct UserService {
-    pool: SqlitePool,
+pub struct UserService<DB: AppDb> {
+    pool: Pool<DB>,
     casbin_service: Arc<CasbinService>,
 }
 
-impl UserService {
-    pub fn new(pool: SqlitePool, casbin_service: Arc<CasbinService>) -> Self {
+#[app_impl]
+impl<DB: AppDb> UserService<DB> {
+    pub fn new(pool: Pool<DB>, casbin_service: Arc<CasbinService>) -> Self {
         Self { pool, casbin_service }
     }
 
@@ -131,7 +135,7 @@ impl UserService {
             .await?
         };
 
-        let user_id = result.last_insert_rowid();
+        let user_id = result.last_insert_id();
 
         self.upsert_user_organization(&mut tx, user_id, target_org_id)
             .await?;
@@ -258,18 +262,19 @@ impl UserService {
 
     async fn upsert_user_organization(
         &self,
-        tx: &mut Transaction<'_, Sqlite>,
+        tx: &mut Transaction<'_, DB>,
         user_id: i64,
         org_id: i64,
     ) -> ApiResult<()> {
         let conn = tx.as_mut();
-        sqlx::query(
+        sqlx::query(&format!(
             r#"
             INSERT INTO user_organizations (user_id, organization_id)
             VALUES (?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET organization_id = excluded.organization_id
+            {}
             "#,
-        )
+            DB::upsert_suffix(&["user_id"], &["organization_id"], &[])
+        ))
         .bind(user_id)
         .bind(org_id)
         .execute(conn)
@@ -351,7 +356,7 @@ impl UserService {
 
     async fn fetch_user_in_tx(
         &self,
-        tx: &mut Transaction<'_, Sqlite>,
+        tx: &mut Transaction<'_, DB>,
         user_id: i64,
         requestor_org: Option<i64>,
         is_super_admin: bool,
@@ -369,7 +374,7 @@ impl UserService {
 
     async fn ensure_username_available(
         &self,
-        tx: &mut Transaction<'_, Sqlite>,
+        tx: &mut Transaction<'_, DB>,
         username: &str,
         current_user: Option<i64>,
     ) -> ApiResult<()> {
@@ -392,7 +397,7 @@ impl UserService {
 
     async fn replace_user_roles(
         &self,
-        tx: &mut Transaction<'_, Sqlite>,
+        tx: &mut Transaction<'_, DB>,
         user_id: i64,
         role_ids: &[i64],
         organization_id: Option<i64>,
@@ -403,9 +408,10 @@ impl UserService {
             .await?;
 
         let current_ids = self.collect_user_role_ids(tx, user_id).await?;
-        
+
         // 使用 diff_sets 计算需要添加和删除的角色
-        let (to_add, to_remove) = diff_sets(&current_ids, &unique_ids.into_iter().collect::<Vec<_>>());
+        let (to_add, to_remove) =
+            diff_sets(&current_ids, &unique_ids.into_iter().collect::<Vec<_>>());
 
         // 使用 lambda 表达式处理删除操作
         for role_id in &to_remove {
@@ -444,7 +450,7 @@ impl UserService {
 
     async fn validate_roles(
         &self,
-        tx: &mut Transaction<'_, Sqlite>,
+        tx: &mut Transaction<'_, DB>,
         role_ids: &HashSet<i64>,
         organization_id: Option<i64>,
         is_super_admin: bool,
@@ -478,7 +484,7 @@ impl UserService {
 
     async fn collect_user_role_ids(
         &self,
-        tx: &mut Transaction<'_, Sqlite>,
+        tx: &mut Transaction<'_, DB>,
         user_id: i64,
     ) -> ApiResult<Vec<i64>> {
         let rows: Vec<(i64,)> = {
@@ -530,7 +536,7 @@ impl UserService {
                 acc
             },
         );
-        
+
         Ok(map)
     }
 

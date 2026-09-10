@@ -1,8 +1,10 @@
+use crate::AppState;
 use axum::{
     Json,
     extract::{Path, State},
 };
 use std::sync::Arc;
+use stellar_macros::app_db;
 
 use crate::models::{ProfileDetail, ProfileListItem};
 use crate::services::MySQLClient;
@@ -54,8 +56,9 @@ fn sanitize_query_id(query_id: &str) -> Result<String, ApiError> {
     ),
     tag = "Profiles"
 )]
+#[app_db]
 pub async fn list_profiles(
-    State(state): State<Arc<crate::AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
 ) -> ApiResult<Json<Vec<ProfileListItem>>> {
     let cluster = if org_ctx.is_super_admin {
@@ -92,8 +95,9 @@ pub async fn list_profiles(
     ),
     tag = "Profiles"
 )]
+#[app_db]
 pub async fn get_profile(
-    State(state): State<Arc<crate::AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path(query_id): Path<String>,
 ) -> ApiResult<Json<ProfileDetail>> {
@@ -139,8 +143,9 @@ pub async fn get_profile(
     ),
     tag = "Profiles"
 )]
+#[app_db]
 pub async fn analyze_profile_handler(
-    State(state): State<Arc<crate::AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path(query_id): Path<String>,
 ) -> ApiResult<Json<ProfileAnalysisResponse>> {
@@ -201,12 +206,13 @@ pub struct EnhanceProfileRequest {
     pub force_refresh: bool,
 }
 
+#[app_db]
 /// POST /api/clusters/:cluster_id/profiles/:query_id/enhance
 ///
 /// Enhance profile analysis with LLM - called async by frontend after DAG is rendered.
 /// Receives pre-analyzed data to avoid redundant profile parsing.
 pub async fn enhance_profile_handler(
-    State(state): State<Arc<crate::AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Path((cluster_id, query_id)): Path<(i64, String)>,
     Json(req): Json<EnhanceProfileRequest>,
 ) -> ApiResult<Json<LLMEnhancedAnalysis>> {
@@ -261,8 +267,9 @@ pub async fn enhance_profile_handler(
 ///
 /// Builds a request from the rule engine results and calls LLM for deeper analysis.
 /// Results are merged using ResultMerger to combine rule-based and LLM insights.
+#[app_db]
 async fn enhance_with_llm(
-    llm_service: &std::sync::Arc<crate::services::llm::LLMServiceImpl>,
+    llm_service: &std::sync::Arc<crate::services::llm::LLMServiceImpl<DB>>,
     response: &ProfileAnalysisResponse,
     query_id: &str,
     cluster_id: Option<i64>,

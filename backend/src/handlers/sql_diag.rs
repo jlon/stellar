@@ -4,6 +4,7 @@ use axum::extract::{Json, Path, State};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use stellar_macros::app_db;
 
 use crate::AppState;
 use crate::LLMService;
@@ -61,8 +62,9 @@ impl DiagResp {
     security(("bearer_auth" = [])),
     tag = "SQL Diagnosis"
 )]
+#[app_db]
 pub async fn diagnose(
-    State(s): State<Arc<AppState>>,
+    State(s): State<Arc<AppState<DB>>>,
     Path(cid): Path<i64>,
     Json(req): Json<DiagReq>,
 ) -> ApiResult<Json<DiagResp>> {

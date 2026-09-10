@@ -1,17 +1,21 @@
+use crate::db::AppDb;
+use crate::db::dialect::{LastInsertId, RowsAffected};
 use crate::models::{
     CreateOrganizationRequest, Organization, OrganizationResponse, UpdateOrganizationRequest,
 };
 use crate::utils::{ApiError, ApiResult};
 use bcrypt::{DEFAULT_COST, hash};
-use sqlx::{SqlitePool, Transaction};
+use sqlx::{Pool, Transaction};
+use stellar_macros::app_impl;
 
 #[derive(Clone)]
-pub struct OrganizationService {
-    pool: SqlitePool,
+pub struct OrganizationService<DB: AppDb> {
+    pool: Pool<DB>,
 }
 
-impl OrganizationService {
-    pub fn new(pool: SqlitePool) -> Self {
+#[app_impl]
+impl<DB: AppDb> OrganizationService<DB> {
+    pub fn new(pool: Pool<DB>) -> Self {
         Self { pool }
     }
 
@@ -40,7 +44,7 @@ impl OrganizationService {
         .bind(false)
         .execute(&mut *tx)
         .await?;
-        let org_id = result.last_insert_rowid();
+        let org_id = result.last_insert_id();
 
         let role_id = self
             .create_org_admin_role(&mut tx, org_id, &req.code, &req.name)
@@ -235,7 +239,7 @@ impl OrganizationService {
 
     async fn create_org_admin_role(
         &self,
-        tx: &mut Transaction<'_, sqlx::Sqlite>,
+        tx: &mut Transaction<'_, DB>,
         org_id: i64,
         org_code: &str,
         org_name: &str,
@@ -250,7 +254,7 @@ impl OrganizationService {
         .bind(org_id)
         .execute(&mut **tx)
         .await?;
-        let role_id = role_result.last_insert_rowid();
+        let role_id = role_result.last_insert_id();
 
         let perms = sqlx::query_as::<_, (i64,)>(
             "SELECT id FROM permissions 
@@ -280,7 +284,7 @@ impl OrganizationService {
 
     async fn create_admin_user(
         &self,
-        tx: &mut Transaction<'_, sqlx::Sqlite>,
+        tx: &mut Transaction<'_, DB>,
         username: &str,
         password_hash: &str,
         email: Option<String>,
@@ -295,7 +299,7 @@ impl OrganizationService {
         .bind(org_id)
         .execute(&mut **tx)
         .await?;
-        let user_id = user_result.last_insert_rowid();
+        let user_id = user_result.last_insert_id();
 
         self.upsert_user_organization(tx, user_id, org_id).await?;
         Ok(user_id)
@@ -303,7 +307,7 @@ impl OrganizationService {
 
     async fn assign_existing_admin(
         &self,
-        tx: &mut Transaction<'_, sqlx::Sqlite>,
+        tx: &mut Transaction<'_, DB>,
         user_id: i64,
         org_id: i64,
     ) -> ApiResult<()> {
@@ -326,17 +330,18 @@ impl OrganizationService {
 
     async fn upsert_user_organization(
         &self,
-        tx: &mut Transaction<'_, sqlx::Sqlite>,
+        tx: &mut Transaction<'_, DB>,
         user_id: i64,
         org_id: i64,
     ) -> ApiResult<()> {
-        sqlx::query(
+        sqlx::query(&format!(
             r#"
             INSERT INTO user_organizations (user_id, organization_id)
             VALUES (?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET organization_id = excluded.organization_id
+            {}
             "#,
-        )
+            DB::upsert_suffix(&["user_id"], &["organization_id"], &[])
+        ))
         .bind(user_id)
         .bind(org_id)
         .execute(&mut **tx)
@@ -346,7 +351,7 @@ impl OrganizationService {
 
     async fn assign_org_admin_user(
         &self,
-        tx: &mut Transaction<'_, sqlx::Sqlite>,
+        tx: &mut Transaction<'_, DB>,
         org_id: i64,
         user_id: i64,
     ) -> ApiResult<()> {
@@ -386,26 +391,32 @@ impl OrganizationService {
             .execute(&mut **tx)
             .await?;
 
-        sqlx::query("INSERT OR IGNORE INTO user_roles (user_id, role_id) VALUES (?, ?)")
-            .bind(user_id)
-            .bind(role_id)
-            .execute(&mut **tx)
-            .await?;
+        sqlx::query(&format!(
+            "{} INTO user_roles (user_id, role_id) VALUES (?, ?)",
+            DB::insert_ignore()
+        ))
+        .bind(user_id)
+        .bind(role_id)
+        .execute(&mut **tx)
+        .await?;
 
         Ok(())
     }
 
     async fn assign_role_to_user(
         &self,
-        tx: &mut Transaction<'_, sqlx::Sqlite>,
+        tx: &mut Transaction<'_, DB>,
         user_id: i64,
         role_id: i64,
     ) -> ApiResult<()> {
-        sqlx::query("INSERT OR IGNORE INTO user_roles (user_id, role_id) VALUES (?, ?)")
-            .bind(user_id)
-            .bind(role_id)
-            .execute(&mut **tx)
-            .await?;
+        sqlx::query(&format!(
+            "{} INTO user_roles (user_id, role_id) VALUES (?, ?)",
+            DB::insert_ignore()
+        ))
+        .bind(user_id)
+        .bind(role_id)
+        .execute(&mut **tx)
+        .await?;
         Ok(())
     }
 

@@ -3,6 +3,7 @@ use axum::{
     extract::{Path, State},
 };
 use std::sync::Arc;
+use stellar_macros::app_db;
 
 use crate::AppState;
 use crate::models::{CreateOrganizationRequest, OrganizationResponse, UpdateOrganizationRequest};
@@ -20,8 +21,9 @@ use crate::utils::ApiResult;
     ),
     tag = "Organizations"
 )]
+#[app_db]
 pub async fn list_organizations(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
 ) -> ApiResult<Json<Vec<OrganizationResponse>>> {
     tracing::debug!(
@@ -54,8 +56,9 @@ pub async fn list_organizations(
     ),
     tag = "Organizations"
 )]
+#[app_db]
 pub async fn get_organization(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Path(id): Path<i64>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
 ) -> ApiResult<Json<OrganizationResponse>> {
@@ -80,8 +83,9 @@ pub async fn get_organization(
     ),
     tag = "Organizations"
 )]
+#[app_db]
 pub async fn create_organization(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Json(req): Json<CreateOrganizationRequest>,
 ) -> ApiResult<Json<OrganizationResponse>> {
@@ -122,8 +126,9 @@ pub async fn create_organization(
     ),
     tag = "Organizations"
 )]
+#[app_db]
 pub async fn update_organization(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Path(id): Path<i64>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Json(req): Json<UpdateOrganizationRequest>,
@@ -152,8 +157,9 @@ pub async fn update_organization(
     ),
     tag = "Organizations"
 )]
+#[app_db]
 pub async fn delete_organization(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Path(id): Path<i64>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
 ) -> ApiResult<Json<serde_json::Value>> {

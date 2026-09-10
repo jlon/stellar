@@ -1,7 +1,9 @@
 //! LLM Repository - Database operations for LLM service
 
-use sqlx::sqlite::SqliteArguments;
-use sqlx::{Arguments, SqlitePool};
+use crate::db::AppDb;
+use crate::db::dialect::{LastInsertId, RowsAffected};
+use sqlx::{Arguments, Pool};
+use stellar_macros::app_impl;
 use uuid::Uuid;
 
 use super::UpdateProviderRequest;
@@ -9,19 +11,20 @@ use super::models::*;
 
 /// Repository for LLM database operations
 /// Some methods are reserved for future use (admin UI, cache management, usage stats)
-pub struct LLMRepository {
-    pool: SqlitePool,
+pub struct LLMRepository<DB: AppDb> {
+    pool: Pool<DB>,
 }
 
 #[allow(dead_code)]
-impl LLMRepository {
-    pub fn new(pool: SqlitePool) -> Self {
+#[app_impl]
+impl<DB: AppDb> LLMRepository<DB> {
+    pub fn new(pool: Pool<DB>) -> Self {
         Self { pool }
     }
 
     /// Get reference to pool (for testing)
     #[cfg(test)]
-    pub fn pool(&self) -> &SqlitePool {
+    pub fn pool(&self) -> &Pool<DB> {
         &self.pool
     }
 
@@ -104,7 +107,7 @@ impl LLMRepository {
         .execute(&self.pool)
         .await?;
 
-        let id = result.last_insert_rowid();
+        let id = result.last_insert_id();
 
         sqlx::query_as::<_, LLMProvider>("SELECT * FROM llm_providers WHERE id = ?")
             .bind(id)
@@ -120,7 +123,7 @@ impl LLMRepository {
         req: UpdateProviderRequest,
     ) -> Result<LLMProvider, LLMError> {
         let mut sql = String::from("UPDATE llm_providers SET updated_at = CURRENT_TIMESTAMP");
-        let mut args = SqliteArguments::default();
+        let mut args = <DB as sqlx::database::HasArguments<'_>>::Arguments::default();
 
         if let Some(v) = &req.display_name {
             sql.push_str(", display_name = ?");
@@ -354,7 +357,7 @@ impl LLMRepository {
         .execute(&self.pool)
         .await?;
 
-        Ok(result.last_insert_rowid())
+        Ok(result.last_insert_id())
     }
 
     /// Save analysis result
@@ -415,7 +418,7 @@ impl LLMRepository {
         .execute(&self.pool)
         .await?;
 
-        Ok(result.last_insert_rowid())
+        Ok(result.last_insert_id())
     }
 
     /// Get result by session ID
@@ -466,16 +469,18 @@ impl LLMRepository {
         response_json: &str,
         ttl_hours: i64,
     ) -> Result<(), LLMError> {
-        sqlx::query(
-            r#"INSERT OR REPLACE INTO llm_cache 
+        let expires_at = chrono::Utc::now().naive_utc() + chrono::Duration::hours(ttl_hours);
+        sqlx::query(&format!(
+            r#"{} INTO llm_cache 
                (cache_key, scenario, request_hash, response_json, expires_at)
-               VALUES (?, ?, ?, ?, datetime(CURRENT_TIMESTAMP, '+' || ? || ' hours'))"#,
-        )
+               VALUES (?, ?, ?, ?, ?)"#,
+            DB::insert_replace()
+        ))
         .bind(cache_key)
         .bind(scenario.as_str())
         .bind(request_hash)
         .bind(response_json)
-        .bind(ttl_hours)
+        .bind(expires_at)
         .execute(&self.pool)
         .await?;
 
@@ -503,18 +508,26 @@ impl LLMRepository {
         let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
 
         sqlx::query(
-            r#"INSERT INTO llm_usage_stats 
+            &format!(
+                r#"INSERT INTO llm_usage_stats 
                (date, provider_id, total_requests, successful_requests, failed_requests,
                 total_input_tokens, total_output_tokens, avg_latency_ms, cache_hits)
                VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?)
-               ON CONFLICT(date, provider_id) DO UPDATE SET
-               total_requests = total_requests + 1,
-               successful_requests = successful_requests + excluded.successful_requests,
-               failed_requests = failed_requests + excluded.failed_requests,
-               total_input_tokens = total_input_tokens + excluded.total_input_tokens,
-               total_output_tokens = total_output_tokens + excluded.total_output_tokens,
-               avg_latency_ms = (avg_latency_ms * total_requests + excluded.avg_latency_ms) / (total_requests + 1),
-               cache_hits = cache_hits + excluded.cache_hits"#
+               {}"#,
+                DB::upsert_suffix(
+                    &["date", "provider_id"],
+                    &[],
+                    &[
+                        "total_requests = total_requests + 1",
+                        "successful_requests = successful_requests + excluded.successful_requests",
+                        "failed_requests = failed_requests + excluded.failed_requests",
+                        "total_input_tokens = total_input_tokens + excluded.total_input_tokens",
+                        "total_output_tokens = total_output_tokens + excluded.total_output_tokens",
+                        "avg_latency_ms = (avg_latency_ms * total_requests + excluded.avg_latency_ms) / (total_requests + 1)",
+                        "cache_hits = cache_hits + excluded.cache_hits",
+                    ]
+                )
+            ),
         )
         .bind(&today)
         .bind(provider_id)

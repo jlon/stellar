@@ -7,6 +7,7 @@ use axum::{
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
+use stellar_macros::app_db;
 
 use crate::AppState;
 use crate::models::{
@@ -47,8 +48,9 @@ pub struct CancelRefreshParams {
     security(("bearer_auth" = [])),
     tag = "Materialized Views"
 )]
+#[app_db]
 pub async fn list_materialized_views(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Query(params): Query<ListMVParams>,
 ) -> ApiResult<Json<Vec<MaterializedView>>> {
@@ -83,8 +85,9 @@ pub async fn list_materialized_views(
     security(("bearer_auth" = [])),
     tag = "Materialized Views"
 )]
+#[app_db]
 pub async fn get_materialized_view(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path(mv_name): Path<String>,
 ) -> ApiResult<Json<MaterializedView>> {
@@ -119,8 +122,9 @@ pub async fn get_materialized_view(
     security(("bearer_auth" = [])),
     tag = "Materialized Views"
 )]
+#[app_db]
 pub async fn get_materialized_view_ddl(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path(mv_name): Path<String>,
 ) -> ApiResult<Json<MaterializedViewDDL>> {
@@ -150,8 +154,9 @@ pub async fn get_materialized_view_ddl(
     security(("bearer_auth" = [])),
     tag = "Materialized Views"
 )]
+#[app_db]
 pub async fn create_materialized_view(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Json(request): Json<CreateMaterializedViewRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -185,8 +190,9 @@ pub async fn create_materialized_view(
     security(("bearer_auth" = [])),
     tag = "Materialized Views"
 )]
+#[app_db]
 pub async fn delete_materialized_view(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path(mv_name): Path<String>,
     Query(_params): Query<DeleteMVParams>,
@@ -217,8 +223,9 @@ pub async fn delete_materialized_view(
     security(("bearer_auth" = [])),
     tag = "Materialized Views"
 )]
+#[app_db]
 pub async fn refresh_materialized_view(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path(mv_name): Path<String>,
     Json(request): Json<RefreshMaterializedViewRequest>,
@@ -259,8 +266,9 @@ pub async fn refresh_materialized_view(
     security(("bearer_auth" = [])),
     tag = "Materialized Views"
 )]
+#[app_db]
 pub async fn cancel_refresh_materialized_view(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path(mv_name): Path<String>,
     Query(params): Query<CancelRefreshParams>,
@@ -296,8 +304,9 @@ pub async fn cancel_refresh_materialized_view(
     security(("bearer_auth" = [])),
     tag = "Materialized Views"
 )]
+#[app_db]
 pub async fn alter_materialized_view(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path(mv_name): Path<String>,
     Json(request): Json<AlterMaterializedViewRequest>,

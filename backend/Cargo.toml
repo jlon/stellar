@@ -26,7 +26,8 @@ tower-http = { version = "0.5", features = ["cors", "trace", "fs"] }
 tokio = { version = "1", features = ["full"] }
 
 # Database
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "migrate", "chrono"] }
+# 同时启用 sqlite 与 mysql，运行时按 database.url 协议选择后端（见 db 模块）
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "mysql", "migrate", "chrono"] }
 mysql_async = "0.34"
 
 # Serialization
@@ -69,6 +70,9 @@ async-trait = "0.1"
 
 # Validation
 validator = { version = "0.18", features = ["derive"] }
+
+# 过程宏：数据库后端能力注入（#[app_db]）
+stellar_macros = { path = "macros" }
 
 # Regex
 regex = "1.10"

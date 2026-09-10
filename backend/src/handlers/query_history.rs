@@ -1,6 +1,8 @@
+use crate::AppState;
 use axum::{Json, extract::State};
 use serde::Deserialize;
 use std::sync::Arc;
+use stellar_macros::app_db;
 
 use crate::models::starrocks::{QueryHistoryItem, QueryHistoryResponse};
 use crate::services::mysql_client::MySQLClient;
@@ -35,8 +37,9 @@ fn default_offset() -> i64 {
     security(("bearer_auth" = [])),
     tag = "Queries"
 )]
+#[app_db]
 pub async fn list_query_history(
-    State(state): State<Arc<crate::AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     axum::extract::Query(params): axum::extract::Query<HistoryQueryParams>,
 ) -> ApiResult<Json<QueryHistoryResponse>> {

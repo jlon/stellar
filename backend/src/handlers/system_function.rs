@@ -5,6 +5,7 @@ use axum::{
     response::IntoResponse,
 };
 use std::sync::Arc;
+use stellar_macros::app_db;
 use validator::Validate;
 
 use crate::AppState;
@@ -12,8 +13,9 @@ use crate::models::{CreateFunctionRequest, UpdateFunctionRequest, UpdateOrderReq
 use crate::utils::{ApiError, ApiResult};
 
 // GET /api/clusters/system-functions
+#[app_db]
 pub async fn get_system_functions(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
 ) -> ApiResult<impl IntoResponse> {
     let cluster = if org_ctx.is_super_admin {
@@ -32,8 +34,9 @@ pub async fn get_system_functions(
 }
 
 // POST /api/clusters/system-functions
+#[app_db]
 pub async fn create_system_function(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Extension(user_id): Extension<i64>,
     Json(req): Json<CreateFunctionRequest>,
@@ -58,8 +61,9 @@ pub async fn create_system_function(
 }
 
 // POST /api/clusters/system-functions/:function_id/execute
+#[app_db]
 pub async fn execute_system_function(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path(function_id): Path<i64>,
 ) -> ApiResult<impl IntoResponse> {
@@ -79,8 +83,9 @@ pub async fn execute_system_function(
 }
 
 // PUT /api/clusters/system-functions/orders
+#[app_db]
 pub async fn update_function_orders(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Json(req): Json<UpdateOrderRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -100,8 +105,9 @@ pub async fn update_function_orders(
 }
 
 // PUT /api/clusters/system-functions/:function_id/favorite
+#[app_db]
 pub async fn toggle_function_favorite(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path(function_id): Path<i64>,
 ) -> ApiResult<impl IntoResponse> {
@@ -121,8 +127,9 @@ pub async fn toggle_function_favorite(
 }
 
 // DELETE /api/clusters/system-functions/:function_id
+#[app_db]
 pub async fn delete_system_function(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path(function_id): Path<i64>,
 ) -> ApiResult<impl IntoResponse> {
@@ -142,8 +149,9 @@ pub async fn delete_system_function(
 }
 
 // PUT /api/clusters/system-functions/:function_id
+#[app_db]
 pub async fn update_function(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path(function_id): Path<i64>,
     Json(req): Json<UpdateFunctionRequest>,
@@ -168,8 +176,9 @@ pub async fn update_function(
 }
 
 // PUT /api/system-functions/:function_name/access-time
+#[app_db]
 pub async fn update_system_function_access_time(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Path(function_name): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
     state
@@ -180,8 +189,9 @@ pub async fn update_system_function_access_time(
 }
 
 // DELETE /api/system-functions/category/:category_name
+#[app_db]
 pub async fn delete_category(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Path(category_name): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
     state

@@ -1,3 +1,4 @@
+use crate::AppState;
 use axum::{
     Json,
     extract::{Path, State},
@@ -6,6 +7,7 @@ use axum::{
 };
 use serde_json::json;
 use std::sync::Arc;
+use stellar_macros::app_db;
 
 use crate::{
     services::{create_adapter, mysql_client::MySQLClient},
@@ -25,8 +27,9 @@ use crate::{
         ("bearer" = [])
     )
 )]
+#[app_db]
 pub async fn get_sessions(
-    State(state): State<Arc<crate::AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
 ) -> ApiResult<impl IntoResponse> {
     let cluster = if org_ctx.is_super_admin {
@@ -60,8 +63,9 @@ pub async fn get_sessions(
         ("bearer" = [])
     )
 )]
+#[app_db]
 pub async fn kill_session(
-    State(state): State<Arc<crate::AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path(session_id): Path<String>,
 ) -> ApiResult<impl IntoResponse> {

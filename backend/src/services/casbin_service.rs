@@ -1,5 +1,9 @@
+use crate::db::AppDb;
+use crate::models::cluster::ClusterType;
 use crate::utils::{ApiError, ApiResult};
 use casbin::prelude::*;
+use chrono::{DateTime, NaiveDateTime, Utc};
+use sqlx::Pool;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -130,7 +134,26 @@ m = g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act
 
     /// Load all policies from database into Casbin
     /// This should be called after role-permission mappings change
-    pub async fn reload_policies_from_db(&self, pool: &sqlx::SqlitePool) -> ApiResult<()> {
+    pub async fn reload_policies_from_db<DB: AppDb>(&self, pool: &Pool<DB>) -> ApiResult<()>
+    where
+        for<'c> &'c mut <DB as sqlx::Database>::Connection: sqlx::Executor<'c, Database = DB>,
+        for<'q> <DB as sqlx::database::HasArguments<'q>>::Arguments:
+            sqlx::IntoArguments<'q, DB> + Default,
+        usize: sqlx::ColumnIndex<<DB as sqlx::Database>::Row>,
+        for<'a> &'a str: sqlx::ColumnIndex<<DB as sqlx::Database>::Row>,
+        for<'q> i64: sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB> + sqlx::Type<DB>,
+        for<'q> i32: sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB> + sqlx::Type<DB>,
+        for<'q> f64: sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB> + sqlx::Type<DB>,
+        for<'q> bool: sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB> + sqlx::Type<DB>,
+        for<'q> String: sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB> + sqlx::Type<DB>,
+        for<'q> &'q str: sqlx::Encode<'q, DB> + sqlx::Type<DB>,
+        for<'q> Option<String>: sqlx::Encode<'q, DB>,
+        for<'q> Option<i64>: sqlx::Encode<'q, DB>,
+        for<'q> DateTime<Utc>: sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB> + sqlx::Type<DB>,
+        for<'q> Option<DateTime<Utc>>: sqlx::Encode<'q, DB>,
+        for<'q> NaiveDateTime: sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB> + sqlx::Type<DB>,
+        for<'q> ClusterType: sqlx::Type<DB> + sqlx::Decode<'q, DB> + sqlx::Encode<'q, DB>,
+    {
         let mut enforcer = self.enforcer.write().await;
 
         enforcer.clear_policy().await.map_err(|e| {

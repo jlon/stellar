@@ -229,7 +229,16 @@ app/
 port = 8080
 
 [database]
+# SQLite（默认）
 url = "sqlite://data/stellar.db"
+# MySQL（可选，运行时按 URL 协议自动选择后端）
+# url = "mysql://user:pass@localhost:3306/stellar?charset=utf8mb4"
+```
+
+**数据库后端**：同一二进制运行时按 URL 协议选择 SQLite / MySQL，
+方言抽象集中在 `backend/src/db/`（`AppDb` trait + `SqlDialect`/`LastInsertId`/`RowsAffected`），
+迁移脚本按方言分目录 `backend/migrations/{sqlite,mysql}/`，能力 bound 由
+`backend/macros` 的 `#[app_impl]`/`#[app_db]` 属性宏注入（详见 `docs/MYSQL_SUPPORT_DESIGN.md`）。
 
 [metrics]
 interval_secs = "30s"    # 指标采集间隔
