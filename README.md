@@ -152,6 +152,37 @@ Define and manage user roles with customizable permission sets.
 
 ## Configuration
 
+### Database Backend (SQLite / MySQL)
+
+Stellar stores its own metadata in SQLite (zero-configuration) or MySQL. The backend is selected **at runtime** by the URL scheme — no rebuild needed.
+
+**Switch to MySQL** (3 steps):
+
+```bash
+# 1. Create the database (table schema is created automatically by migrations on startup;
+#    you do NOT need to create any tables manually)
+mysql -u root -p -e "CREATE DATABASE stellar CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+
+# 2. Point the URL to it in conf/config.toml
+[database]
+url = "mysql://user:pass@localhost:3306/stellar?charset=utf8mb4"
+
+# 3. Start the service. On first connect, startup runs backend/migrations/mysql/*.sql
+#    and builds the full schema; a friendly error is shown if the database is missing.
+```
+
+Environment variable override also works: `APP_DATABASE_URL="mysql://..."`
+
+**Schema changes (migrations)**:
+
+- Startup automatically applies every migration file in `backend/migrations/{sqlite,mysql}/`
+  that has not been applied yet; the applied set is tracked in the `_sqlmigrations` table.
+- To change the schema, add a NEW numbered file (e.g. `backend/migrations/mysql/20260915000000_add_foo.sql`
+  and the SQLite counterpart), containing only the change (e.g. `ALTER TABLE ...`).
+  Never edit an already-applied file — sqlx rejects it by checksum.
+- Both dialect directories must be kept in sync (MySQL uses `AUTO_INCREMENT`, SQLite uses `AUTOINCREMENT`,
+  and so on — see `docs/MYSQL_SUPPORT_DESIGN.md` for the dialect checklist).
+
 ### StarRocks User Permissions (Important)
 
 **Before adding a cluster**, you need to create a dedicated monitoring user with appropriate read-only permissions in StarRocks.
