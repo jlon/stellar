@@ -154,13 +154,9 @@ m = g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act
         for<'q> NaiveDateTime: sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB> + sqlx::Type<DB>,
         for<'q> ClusterType: sqlx::Type<DB> + sqlx::Decode<'q, DB> + sqlx::Encode<'q, DB>,
     {
-        let mut enforcer = self.enforcer.write().await;
-
-        enforcer.clear_policy().await.map_err(|e| {
-            tracing::error!("Failed to clear policies: {:?}", e);
-            ApiError::internal_error(format!("Failed to clear policies: {}", e))
-        })?;
-
+        // 锁外执行所有 DB 查询与策略构建；写锁内只做纯内存替换，
+        // 避免锁持有期间所有并发请求的权限检查（enforce 读锁）被 IO 阻塞。
+        // （已知权衡：两次快速连续的 reload 可能以乱序提交内存快照，见调用方串行化。）
         let role_permissions: Vec<(i64, Option<i64>, String, String)> = sqlx::query_as(
             r#"
             SELECT rp.role_id, r.organization_id, p.code, COALESCE(p.action, '') as action
@@ -176,27 +172,6 @@ m = g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act
             ApiError::internal_error(format!("Failed to load policies: {}", e))
         })?;
 
-        for (role_id, org_id, code, action) in role_permissions {
-            let parts: Vec<&str> = code.split(':').collect();
-            if parts.len() >= 2 {
-                let resource = parts[1].to_string();
-
-                let act = if !action.is_empty() {
-                    action
-                } else if parts.len() >= 3 {
-                    parts[2..].join(":")
-                } else {
-                    "view".to_string()
-                };
-
-                let scoped_resource = Self::format_resource_key(org_id, &resource);
-
-                let policy_parts =
-                    vec![format!("r:{}", role_id), scoped_resource.clone(), act.clone()];
-                let _ = enforcer.add_policy(policy_parts).await;
-            }
-        }
-
         let user_roles: Vec<(i64, i64)> = sqlx::query_as("SELECT user_id, role_id FROM user_roles")
             .fetch_all(pool)
             .await
@@ -205,9 +180,54 @@ m = g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act
                 ApiError::internal_error(format!("Failed to load user roles: {}", e))
             })?;
 
-        for (user_id, role_id) in user_roles {
-            let grouping_parts = vec![format!("u:{}", user_id), format!("r:{}", role_id)];
-            let _ = enforcer.add_grouping_policy(grouping_parts).await;
+        let mut policies: Vec<Vec<String>> = Vec::new();
+        for (role_id, org_id, code, action) in role_permissions {
+            let parts: Vec<&str> = code.split(':').collect();
+            if parts.len() < 2 {
+                continue;
+            }
+            let resource = parts[1].to_string();
+
+            let act = if !action.is_empty() {
+                action
+            } else if parts.len() >= 3 {
+                parts[2..].join(":")
+            } else {
+                "view".to_string()
+            };
+
+            let scoped_resource = Self::format_resource_key(org_id, &resource);
+            policies.push(vec![format!("r:{}", role_id), scoped_resource, act]);
+        }
+
+        let grouping_policies: Vec<Vec<String>> = user_roles
+            .into_iter()
+            .map(|(user_id, role_id)| vec![format!("u:{}", user_id), format!("r:{}", role_id)])
+            .collect();
+
+        // 写锁内仅纯内存操作（adapter 为内存实现，无 IO），停顿窗口为微秒级
+        let mut enforcer = self.enforcer.write().await;
+
+        enforcer.clear_policy().await.map_err(|e| {
+            tracing::error!("Failed to clear policies: {:?}", e);
+            ApiError::internal_error(format!("Failed to clear policies: {}", e))
+        })?;
+
+        if !policies.is_empty() {
+            enforcer.add_policies(policies).await.map_err(|e| {
+                tracing::error!("Failed to add policies: {:?}", e);
+                ApiError::internal_error(format!("Failed to add policies: {}", e))
+            })?;
+        }
+
+        if !grouping_policies.is_empty() {
+            enforcer
+                .add_grouping_policies(grouping_policies)
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to add grouping policies: {:?}", e);
+                    ApiError::internal_error(format!("Failed to add grouping policies: {}", e))
+                })?;
         }
 
         tracing::info!("Policies reloaded from database successfully");

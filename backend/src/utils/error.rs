@@ -171,7 +171,12 @@ impl ApiError {
             Self::NotImplemented(_) => 4003,
 
             Self::InternalError(_) => 5001,
-            Self::Database(_) => 5002,
+            // UNIQUE 冲突（check-then-insert 竞态的 DB 兑底）应映射为用户可理解的 400，
+            // 而非 500：请求本身合法，只是名称已被并发请求占用。
+            Self::Database(e) => match e {
+                sqlx::Error::Database(db_err) if db_err.is_unique_violation() => 2002,
+                _ => 5002,
+            },
             Self::Other(_) => 5001,
 
             Self::SystemFunctionNotFound(_) => 6001,

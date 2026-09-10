@@ -9,6 +9,62 @@
 
 use sqlx::{Database, MySql, Sqlite, mysql::MySqlQueryResult, sqlite::SqliteQueryResult};
 
+/// 为字符串承载的强枚举生成 sqlx 的泛型 `Type/Decode/Encode` impl。
+///
+/// sqlx 的 `#[derive(sqlx::Type)]` 对强枚举只生成 per-backend impl，其 MySQL
+/// compatible() 仅认 `ENUM` 类型标记，与 VARCHAR/TEXT 列不兼容（实测报
+/// `mismatched types: as SQL type ENUM is not compatible with SQL type VARCHAR`）。
+/// 本宏将枚举与 `String` 同构（编码用 Display，解码用宽松解析），兼容任意
+/// 字符串列；两个后端均适用，替代 derive。
+///
+/// `$parse`: `fn(&str) -> $ty`，解析数据库中的字符串值（宽松解析，未知值
+/// 回退默认变体；与 serde 严格语义的差异是可接受的 DB 层容错）。
+#[macro_export]
+macro_rules! impl_string_backed_db_type {
+    ($ty:ty, $parse:expr) => {
+        impl<DB: ::sqlx::Database> ::sqlx::Type<DB> for $ty
+        where
+            String: ::sqlx::Type<DB>,
+        {
+            fn type_info() -> DB::TypeInfo {
+                <String as ::sqlx::Type<DB>>::type_info()
+            }
+
+            fn compatible(ty: &DB::TypeInfo) -> bool {
+                <String as ::sqlx::Type<DB>>::compatible(ty)
+            }
+        }
+
+        impl<'r, DB: ::sqlx::Database> ::sqlx::Decode<'r, DB> for $ty
+        where
+            String: ::sqlx::Decode<'r, DB>,
+        {
+            fn decode(
+                value: <DB as ::sqlx::database::HasValueRef<'r>>::ValueRef,
+            ) -> ::std::result::Result<
+                Self,
+                ::std::boxed::Box<dyn ::std::error::Error + Send + Sync>,
+            > {
+                let s = <String as ::sqlx::Decode<'r, DB>>::decode(value)?;
+                let parse: fn(&str) -> Self = $parse;
+                Ok(parse(&s))
+            }
+        }
+
+        impl<'q, DB: ::sqlx::Database> ::sqlx::Encode<'q, DB> for $ty
+        where
+            String: ::sqlx::Encode<'q, DB>,
+        {
+            fn encode_by_ref(
+                &self,
+                buf: &mut <DB as ::sqlx::database::HasArguments<'q>>::ArgumentBuffer,
+            ) -> ::sqlx::encode::IsNull {
+                self.to_string().encode_by_ref(buf)
+            }
+        }
+    };
+}
+
 /// 从 INSERT 执行结果中读取自增主键 id。
 ///
 /// SQLite 对应 `last_insert_rowid()`，MySQL 对应 `last_insert_id` 字段。

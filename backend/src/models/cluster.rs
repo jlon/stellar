@@ -4,9 +4,11 @@ use sqlx::FromRow;
 use utoipa::ToSchema;
 
 /// Cluster type for OLAP engine
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, ToSchema, sqlx::Type, Default)]
+///
+/// DB 编解码使用 `impl_string_backed_db_type`（与 String 同构，兼容 VARCHAR/TEXT），
+/// 不用 `sqlx::Type` derive：强枚举的 per-backend impl 与 VARCHAR 列不兼容（MySQL 实测）。
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, ToSchema, Default)]
 #[serde(rename_all = "lowercase")]
-#[sqlx(type_name = "TEXT", rename_all = "lowercase")]
 pub enum ClusterType {
     /// StarRocks OLAP engine
     #[default]
@@ -35,24 +37,28 @@ impl ClusterType {
 
     /// Parse from string (case-insensitive)
     pub fn from_str_loose(s: &str) -> Self {
-        if s.eq_ignore_ascii_case("doris") {
-            ClusterType::Doris
-        } else {
-            ClusterType::StarRocks
-        }
+        if s.eq_ignore_ascii_case("doris") { ClusterType::Doris } else { ClusterType::StarRocks }
     }
 }
 
 /// Deployment mode for cluster
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema, sqlx::Type, Default)]
+///
+/// DB 编解码同 `ClusterType`，见 `impl_string_backed_db_type`。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema, Default)]
 #[serde(rename_all = "snake_case")]
-#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 pub enum DeploymentMode {
     /// Shared-nothing architecture: BE nodes handle both storage and compute
     #[default]
     SharedNothing,
     /// Shared-data architecture: CN nodes for compute, separate object storage (S3/HDFS)
     SharedData,
+}
+
+impl DeploymentMode {
+    /// Parse from string (case-insensitive; unknown values fall back to default)
+    pub fn from_str_loose(s: &str) -> Self {
+        if s.eq_ignore_ascii_case("shared_data") { Self::SharedData } else { Self::SharedNothing }
+    }
 }
 
 impl std::fmt::Display for DeploymentMode {
@@ -270,11 +276,7 @@ impl Cluster {
     /// Get password for authentication - returns None if password is empty
     /// This is used for proper handling of no-password clusters
     pub fn get_auth_password(&self) -> Option<&str> {
-        if self.password_encrypted.is_empty() {
-            None
-        } else {
-            Some(&self.password_encrypted)
-        }
+        if self.password_encrypted.is_empty() { None } else { Some(&self.password_encrypted) }
     }
 
     /// Get execution credentials for permission operations
@@ -290,3 +292,7 @@ impl Cluster {
         (&self.username, self.get_auth_password())
     }
 }
+
+// 数据库编解码：与 String 同构（VARCHAR/TEXT 列），两后端通用
+crate::impl_string_backed_db_type!(ClusterType, |s| ClusterType::from_str_loose(s));
+crate::impl_string_backed_db_type!(DeploymentMode, |s| DeploymentMode::from_str_loose(s));
