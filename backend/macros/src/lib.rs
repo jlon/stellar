@@ -46,10 +46,8 @@ const DB_BOUNDS: &[&str] = &[
     "for<'q> ::std::option::Option<::chrono::DateTime<::chrono::Utc>>: ::sqlx::Encode<'q, DB>",
     "for<'q> ::std::option::Option<::chrono::NaiveDateTime>: ::sqlx::Encode<'q, DB>",
     "for<'q> ::std::option::Option<::chrono::NaiveDate>: ::sqlx::Encode<'q, DB>",
-    "for<'q> crate::models::cluster::ClusterType: \
-     ::sqlx::Type<DB> + ::sqlx::Decode<'q, DB> + ::sqlx::Encode<'q, DB>",
-    "for<'q> crate::models::cluster::DeploymentMode: \
-     ::sqlx::Type<DB> + ::sqlx::Decode<'q, DB> + ::sqlx::Encode<'q, DB>",
+
+
 ];
 
 fn inject_db_generic(generics: &mut syn::Generics) {

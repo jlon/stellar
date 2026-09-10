@@ -3,7 +3,8 @@
 use std::path::Path;
 use std::time::Duration;
 
-use sqlx::{Pool, Sqlite, sqlite::SqlitePoolOptions};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
+use sqlx::{Pool, Sqlite};
 
 use super::AppDb;
 
@@ -28,28 +29,30 @@ impl AppDb for Sqlite {
         }
 
         tracing::debug!("Creating database pool with max_connections=10, acquire_timeout=5s");
+        // 每连接 PRAGMA 必须走 ConnectOptions：busy_timeout/synchronous/foreign_keys 是
+        // 连接级设置，对池（max=10）借用单连接执行 PRAGMA 只会影响那一个连接，
+        // 其余连接会丢失 foreign_keys 与 busy_timeout（journal_mode=WAL 是文件级不受影响）。
+        let options = url
+            .parse::<SqliteConnectOptions>()
+            .map_err(|e| {
+                tracing::error!("Invalid SQLite URL: {}", e);
+                sqlx::Error::Configuration(Box::new(e))
+            })?
+            .journal_mode(SqliteJournalMode::Wal)
+            .synchronous(SqliteSynchronous::Normal)
+            .busy_timeout(Duration::from_secs(5))
+            .foreign_keys(true);
+
+        tracing::debug!("Creating database pool with max_connections=10, acquire_timeout=5s");
         let pool = SqlitePoolOptions::new()
             .max_connections(10)
             .acquire_timeout(Duration::from_secs(5))
-            .connect(url)
+            .connect_with(options)
             .await
             .map_err(|e| {
                 tracing::error!("Database connection failed: {}", e);
                 e
             })?;
-
-        sqlx::query("PRAGMA journal_mode = WAL")
-            .execute(&pool)
-            .await?;
-        sqlx::query("PRAGMA busy_timeout = 5000")
-            .execute(&pool)
-            .await?;
-        sqlx::query("PRAGMA synchronous = NORMAL")
-            .execute(&pool)
-            .await?;
-        sqlx::query("PRAGMA foreign_keys = ON")
-            .execute(&pool)
-            .await?;
 
         Ok(pool)
     }

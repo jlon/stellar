@@ -529,8 +529,20 @@ impl<DB: AppDb> OverviewService<DB> {
                 if age.num_minutes() < 10 {
                     return Ok(stats);
                 }
+
+                // stale-while-revalidate：缓存过期时返回稍旧数据，后台刷新，
+                // 避免前端请求被 StarRocks 全量采集（秒级）阻塞。
+                // 已知权衡：两次快速连续的刷新可能乱序提交，最后一次胜出由 DB 层 upsert 兑底。
+                let background = Arc::clone(service);
+                tokio::spawn(async move {
+                    if let Err(e) = background.update_statistics(cluster_id, None).await {
+                        tracing::warn!("Background data statistics refresh failed: {}", e);
+                    }
+                });
+                return Ok(stats);
             }
 
+            // 首次无缓存：同步采集
             let time_range_start = time_range.map(|tr| tr.start_time());
             service
                 .update_statistics(cluster_id, time_range_start)
