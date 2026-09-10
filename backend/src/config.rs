@@ -411,7 +411,8 @@ impl Default for ServerConfig {
 
 impl Default for DatabaseConfig {
     fn default() -> Self {
-        Self { url: "sqlite://tmp/stellar.db".to_string() }
+        // 与部署模板/文档一致：数据目录为 data/（此前误写为 tmp/）
+        Self { url: "sqlite://data/stellar.db".to_string() }
     }
 }
 
