@@ -316,13 +316,7 @@ impl DorisAdapter {
     fn add_priv_suffix(permissions: &[&str]) -> Vec<String> {
         permissions
             .iter()
-            .map(|p| {
-                if p.ends_with("_PRIV") {
-                    p.to_string()
-                } else {
-                    format!("{}_PRIV", p)
-                }
-            })
+            .map(|p| if p.ends_with("_PRIV") { p.to_string() } else { format!("{}_PRIV", p) })
             .collect()
     }
 
@@ -340,7 +334,7 @@ impl DorisAdapter {
                 } else {
                     format!("CATALOG {}", database)
                 }
-            }
+            },
             "TABLE" => {
                 // Table level permissions
                 if database == "*" {
@@ -358,15 +352,11 @@ impl DorisAdapter {
                     // No table specified, default to all tables in database
                     format!("{}.*", database)
                 }
-            }
+            },
             _ => {
                 // Database level permissions (default)
-                if database == "*" {
-                    "*.*".to_string()
-                } else {
-                    format!("{}.*", database)
-                }
-            }
+                if database == "*" { "*.*".to_string() } else { format!("{}.*", database) }
+            },
         }
     }
 
@@ -374,12 +364,15 @@ impl DorisAdapter {
     #[allow(dead_code)]
     fn parse_grant_statement(statement: &str) -> Option<DorisParsedGrant> {
         let statement = statement.trim();
-        
+
         // Check if it's a role grant: GRANT 'role_name' TO 'user'@'%'
         if statement.starts_with("GRANT '") || statement.starts_with("GRANT \"") {
             // Role grant
             let role_start = 7; // After "GRANT '"
-            if let Some(role_end) = statement[role_start..].find('\'').or_else(|| statement[role_start..].find('"')) {
+            if let Some(role_end) = statement[role_start..]
+                .find('\'')
+                .or_else(|| statement[role_start..].find('"'))
+            {
                 let role_name = &statement[role_start..role_start + role_end];
                 return Some(DorisParsedGrant {
                     privileges: vec!["ROLE".to_string()],
@@ -398,7 +391,7 @@ impl DorisAdapter {
         // Find "ON" keyword
         let on_pos = statement.find(" ON ")?;
         let privileges_str = &statement[6..on_pos]; // After "GRANT "
-        
+
         // Find "TO" keyword
         let to_pos = statement.find(" TO ")?;
         let resource_str = &statement[on_pos + 4..to_pos]; // After " ON "
@@ -426,12 +419,7 @@ impl DorisAdapter {
             "CATALOG".to_string()
         };
 
-        Some(DorisParsedGrant {
-            privileges,
-            resource_type,
-            resource_path,
-            granted_role: None,
-        })
+        Some(DorisParsedGrant { privileges, resource_type, resource_path, granted_role: None })
     }
 
     /// Parse Doris resource privileges format: "resource_path: Priv1, Priv2; resource_path2: Priv3"
@@ -1496,10 +1484,7 @@ impl ClusterAdapter for DorisAdapter {
         if password.is_empty() {
             Ok(format!("CREATE USER '{}'@'%';", username))
         } else {
-            Ok(format!(
-                "CREATE USER '{}'@'%' IDENTIFIED BY '{}';",
-                username, password
-            ))
+            Ok(format!("CREATE USER '{}'@'%' IDENTIFIED BY '{}';", username, password))
         }
     }
 
@@ -1520,25 +1505,20 @@ impl ClusterAdapter for DorisAdapter {
         let priv_permissions = Self::add_priv_suffix(permissions);
         let perm_str = priv_permissions.join(", ");
         let resource = Self::build_resource_path(resource_type, database, table);
-        
-        let with_grant = if with_grant_option {
-            " WITH GRANT OPTION"
-        } else {
-            ""
-        };
+
+        let with_grant = if with_grant_option { " WITH GRANT OPTION" } else { "" };
 
         let principal = match principal_type {
             "ROLE" => format!("'{}'", principal_name),
             "USER" => format!("'{}'@'%'", principal_name),
-            _ => return Err(ApiError::ValidationError(
-                "Principal type must be USER or ROLE".to_string(),
-            )),
+            _ => {
+                return Err(ApiError::ValidationError(
+                    "Principal type must be USER or ROLE".to_string(),
+                ));
+            },
         };
 
-        Ok(format!(
-            "GRANT {} ON {} TO {};{}",
-            perm_str, resource, principal, with_grant
-        ))
+        Ok(format!("GRANT {} ON {} TO {};{}", perm_str, resource, principal, with_grant))
     }
 
     async fn revoke_permissions(
@@ -1553,32 +1533,34 @@ impl ClusterAdapter for DorisAdapter {
         let priv_permissions = Self::add_priv_suffix(permissions);
         let perm_str = priv_permissions.join(", ");
         let resource = Self::build_resource_path(resource_type, database, table);
-        
+
         let principal = match principal_type {
             "ROLE" => format!("'{}'", principal_name),
             "USER" => format!("'{}'@'%'", principal_name),
-            _ => return Err(ApiError::ValidationError(
-                "Principal type must be USER or ROLE".to_string(),
-            )),
+            _ => {
+                return Err(ApiError::ValidationError(
+                    "Principal type must be USER or ROLE".to_string(),
+                ));
+            },
         };
 
-        Ok(format!(
-            "REVOKE {} ON {} FROM {};",
-            perm_str, resource, principal
-        ))
+        Ok(format!("REVOKE {} ON {} FROM {};", perm_str, resource, principal))
     }
 
     async fn grant_role(&self, role_name: &str, username: &str) -> ApiResult<String> {
-        Ok(format!(
-            "GRANT '{}' TO '{}'@'%';",
-            role_name, username
-        ))
+        Ok(format!("GRANT '{}' TO '{}'@'%';", role_name, username))
     }
 
-    async fn list_user_permissions(&self, username: &str) -> ApiResult<Vec<crate::models::DbUserPermissionDto>> {
+    async fn list_user_permissions(
+        &self,
+        username: &str,
+    ) -> ApiResult<Vec<crate::models::DbUserPermissionDto>> {
         tracing::debug!("[Doris] Listing permissions for user: {}", username);
-        
-        let mut conn = self.mysql_pool_manager.get_pool(&self.cluster).await?
+
+        let mut conn = self
+            .mysql_pool_manager
+            .get_pool(&self.cluster)
+            .await?
             .get_conn()
             .await
             .map_err(|e| {
@@ -1589,16 +1571,16 @@ impl ClusterAdapter for DorisAdapter {
         // Doris syntax: SHOW GRANTS FOR 'username'@'%'
         let query_str = format!("SHOW GRANTS FOR '{}'@'%'", username);
 
-        use mysql_async::prelude::Queryable;
         use mysql_async::Row;
         use mysql_async::Value;
-        
+        use mysql_async::prelude::Queryable;
+
         let rows: Vec<Row> = match conn.query(&query_str).await {
             Ok(rows) => rows,
             Err(e) => {
                 tracing::debug!("SHOW GRANTS query failed for user {}: {}", username, e);
                 return Ok(Vec::new());
-            }
+            },
         };
 
         let mut permissions: Vec<crate::models::DbUserPermissionDto> = Vec::new();
@@ -1607,7 +1589,10 @@ impl ClusterAdapter for DorisAdapter {
         // Helper function to safely get string value from row
         fn get_string_value(row: &Row, col_name: &str) -> Option<String> {
             // Try to get column index by name
-            let col_idx = row.columns_ref().iter().position(|c| c.name_str() == col_name)?;
+            let col_idx = row
+                .columns_ref()
+                .iter()
+                .position(|c| c.name_str() == col_name)?;
             match row.as_ref(col_idx)? {
                 Value::NULL => None,
                 Value::Bytes(b) => String::from_utf8(b.clone()).ok(),
@@ -1617,10 +1602,10 @@ impl ClusterAdapter for DorisAdapter {
 
         for row in rows {
             // Doris 2.x returns multi-column format:
-            // UserIdentity, Comment, Password, Roles, GlobalPrivs, CatalogPrivs, DatabasePrivs, 
-            // TablePrivs, ColPrivs, ResourcePrivs, CloudClusterPrivs, CloudStagePrivs, 
+            // UserIdentity, Comment, Password, Roles, GlobalPrivs, CatalogPrivs, DatabasePrivs,
+            // TablePrivs, ColPrivs, ResourcePrivs, CloudClusterPrivs, CloudStagePrivs,
             // StorageVaultPrivs, WorkloadGroupPrivs, ComputeGroupPrivs
-            
+
             // Parse Roles (granted roles)
             if let Some(roles_str) = get_string_value(&row, "Roles")
                 && !roles_str.is_empty()
@@ -1666,7 +1651,12 @@ impl ClusterAdapter for DorisAdapter {
                 && !privs_str.is_empty()
                 && privs_str != "NULL"
             {
-                Self::parse_doris_resource_privs(&privs_str, "CATALOG", &mut permissions, &mut id_counter);
+                Self::parse_doris_resource_privs(
+                    &privs_str,
+                    "CATALOG",
+                    &mut permissions,
+                    &mut id_counter,
+                );
             }
 
             // Parse DatabasePrivs (e.g., "internal.information_schema: Select_priv; internal.mysql: Select_priv")
@@ -1674,7 +1664,12 @@ impl ClusterAdapter for DorisAdapter {
                 && !privs_str.is_empty()
                 && privs_str != "NULL"
             {
-                Self::parse_doris_resource_privs(&privs_str, "DATABASE", &mut permissions, &mut id_counter);
+                Self::parse_doris_resource_privs(
+                    &privs_str,
+                    "DATABASE",
+                    &mut permissions,
+                    &mut id_counter,
+                );
             }
 
             // Parse TablePrivs
@@ -1682,7 +1677,12 @@ impl ClusterAdapter for DorisAdapter {
                 && !privs_str.is_empty()
                 && privs_str != "NULL"
             {
-                Self::parse_doris_resource_privs(&privs_str, "TABLE", &mut permissions, &mut id_counter);
+                Self::parse_doris_resource_privs(
+                    &privs_str,
+                    "TABLE",
+                    &mut permissions,
+                    &mut id_counter,
+                );
             }
 
             // Parse ColPrivs (column privileges)
@@ -1690,7 +1690,12 @@ impl ClusterAdapter for DorisAdapter {
                 && !privs_str.is_empty()
                 && privs_str != "NULL"
             {
-                Self::parse_doris_resource_privs(&privs_str, "COLUMN", &mut permissions, &mut id_counter);
+                Self::parse_doris_resource_privs(
+                    &privs_str,
+                    "COLUMN",
+                    &mut permissions,
+                    &mut id_counter,
+                );
             }
 
             // Parse ResourcePrivs
@@ -1698,7 +1703,12 @@ impl ClusterAdapter for DorisAdapter {
                 && !privs_str.is_empty()
                 && privs_str != "NULL"
             {
-                Self::parse_doris_resource_privs(&privs_str, "RESOURCE", &mut permissions, &mut id_counter);
+                Self::parse_doris_resource_privs(
+                    &privs_str,
+                    "RESOURCE",
+                    &mut permissions,
+                    &mut id_counter,
+                );
             }
 
             // Parse WorkloadGroupPrivs (e.g., "normal: Usage_priv")
@@ -1706,7 +1716,12 @@ impl ClusterAdapter for DorisAdapter {
                 && !privs_str.is_empty()
                 && privs_str != "NULL"
             {
-                Self::parse_doris_resource_privs(&privs_str, "WORKLOAD_GROUP", &mut permissions, &mut id_counter);
+                Self::parse_doris_resource_privs(
+                    &privs_str,
+                    "WORKLOAD_GROUP",
+                    &mut permissions,
+                    &mut id_counter,
+                );
             }
         }
 
@@ -1714,20 +1729,29 @@ impl ClusterAdapter for DorisAdapter {
         Ok(permissions)
     }
 
-    async fn list_role_permissions(&self, role_name: &str) -> ApiResult<Vec<crate::models::DbUserPermissionDto>> {
+    async fn list_role_permissions(
+        &self,
+        role_name: &str,
+    ) -> ApiResult<Vec<crate::models::DbUserPermissionDto>> {
         tracing::debug!("[Doris] Listing permissions for role: {}", role_name);
-        
+
         // Doris doesn't support SHOW GRANTS FOR ROLE syntax
         // We need to query the role's privileges from system tables or return empty
         // For now, return empty as Doris role permissions are shown inline with user grants
-        tracing::info!("[Doris] Role permission query not supported, returning empty list for role: {}", role_name);
+        tracing::info!(
+            "[Doris] Role permission query not supported, returning empty list for role: {}",
+            role_name
+        );
         Ok(Vec::new())
     }
 
     async fn list_db_accounts(&self) -> ApiResult<Vec<crate::models::DbAccountDto>> {
         tracing::debug!("[Doris] Listing database accounts");
-        
-        let mut conn = self.mysql_pool_manager.get_pool(&self.cluster).await?
+
+        let mut conn = self
+            .mysql_pool_manager
+            .get_pool(&self.cluster)
+            .await?
             .get_conn()
             .await
             .map_err(|e| {
@@ -1736,28 +1760,28 @@ impl ClusterAdapter for DorisAdapter {
             })?;
 
         // Doris uses INFORMATION_SCHEMA.USER_PRIVILEGES
-        let query_str = "SELECT DISTINCT GRANTEE FROM INFORMATION_SCHEMA.USER_PRIVILEGES ORDER BY GRANTEE";
+        let query_str =
+            "SELECT DISTINCT GRANTEE FROM INFORMATION_SCHEMA.USER_PRIVILEGES ORDER BY GRANTEE";
 
         use mysql_async::prelude::Queryable;
-        
+
         let rows: Vec<(String,)> = match conn.query(query_str).await {
             Ok(rows) => rows,
             Err(e) => {
                 tracing::debug!("INFORMATION_SCHEMA query failed: {}", e);
                 return Ok(Vec::new());
-            }
+            },
         };
 
         let mut accounts: Vec<crate::models::DbAccountDto> = Vec::new();
         for (grantee,) in rows {
             let (account_name, host) = Self::parse_user_identity(&grantee);
-            
-            if !accounts.iter().any(|a| a.account_name == account_name && a.host == host) {
-                accounts.push(crate::models::DbAccountDto {
-                    account_name,
-                    host,
-                    roles: vec![],
-                });
+
+            if !accounts
+                .iter()
+                .any(|a| a.account_name == account_name && a.host == host)
+            {
+                accounts.push(crate::models::DbAccountDto { account_name, host, roles: vec![] });
             }
         }
 
@@ -1766,8 +1790,11 @@ impl ClusterAdapter for DorisAdapter {
 
     async fn list_db_roles(&self) -> ApiResult<Vec<crate::models::DbRoleDto>> {
         tracing::debug!("[Doris] Listing database roles");
-        
-        let mut conn = self.mysql_pool_manager.get_pool(&self.cluster).await?
+
+        let mut conn = self
+            .mysql_pool_manager
+            .get_pool(&self.cluster)
+            .await?
             .get_conn()
             .await
             .map_err(|e| {
@@ -1778,24 +1805,28 @@ impl ClusterAdapter for DorisAdapter {
         // Doris uses SHOW ROLES
         let query_str = "SHOW ROLES";
 
-        use mysql_async::prelude::Queryable;
         use mysql_async::Row;
-        
+        use mysql_async::prelude::Queryable;
+
         let rows: Vec<Row> = match conn.query(query_str).await {
             Ok(rows) => rows,
             Err(e) => {
                 tracing::debug!("SHOW ROLES query failed: {}", e);
                 return Ok(Vec::new());
-            }
+            },
         };
 
         let mut roles: Vec<crate::models::DbRoleDto> = Vec::new();
         for row in rows {
             // Doris SHOW ROLES returns: Name, Comment, Users, GlobalPrivs, etc.
             let role_name: Option<String> = row.get("Name");
-            
+
             if let Some(name) = role_name {
-                let role_type = if name == "admin" || name == "operator" || name == "public" || name == "root" {
+                let role_type = if name == "admin"
+                    || name == "operator"
+                    || name == "public"
+                    || name == "root"
+                {
                     "built-in".to_string()
                 } else {
                     "custom".to_string()
@@ -1819,7 +1850,8 @@ impl DorisAdapter {
         if identity.contains('@') {
             let parts: Vec<&str> = identity.splitn(2, '@').collect();
             let account_name = parts[0].trim_matches('\'').trim_matches('"').to_string();
-            let host = parts.get(1)
+            let host = parts
+                .get(1)
                 .map(|h| h.trim_matches('\'').trim_matches('"').to_string())
                 .unwrap_or_else(|| "%".to_string());
             (account_name, host)

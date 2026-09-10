@@ -100,7 +100,7 @@ impl StarRocksAdapter {
                 } else {
                     format!("CATALOG {}", database)
                 }
-            }
+            },
             "TABLE" => {
                 // Table level permissions
                 if database == "*" {
@@ -118,27 +118,26 @@ impl StarRocksAdapter {
                     // No table specified, default to all tables in database
                     format!("{}.*", database)
                 }
-            }
+            },
             _ => {
                 // Database level permissions (default)
-                if database == "*" {
-                    "*.*".to_string()
-                } else {
-                    format!("{}.*", database)
-                }
-            }
+                if database == "*" { "*.*".to_string() } else { format!("{}.*", database) }
+            },
         }
     }
 
     /// Parse a GRANT statement into structured permission data
     fn parse_grant_statement(statement: &str) -> Option<ParsedGrant> {
         let statement = statement.trim();
-        
+
         // Check if it's a role grant: GRANT 'role_name' TO 'user'@'%'
         if statement.starts_with("GRANT '") || statement.starts_with("GRANT \"") {
             // Role grant
             let role_start = 7; // After "GRANT '"
-            if let Some(role_end) = statement[role_start..].find('\'').or_else(|| statement[role_start..].find('"')) {
+            if let Some(role_end) = statement[role_start..]
+                .find('\'')
+                .or_else(|| statement[role_start..].find('"'))
+            {
                 let role_name = &statement[role_start..role_start + role_end];
                 return Some(ParsedGrant {
                     privileges: vec!["ROLE".to_string()],
@@ -157,7 +156,7 @@ impl StarRocksAdapter {
         // Find "ON" keyword
         let on_pos = statement.find(" ON ")?;
         let privileges_str = &statement[6..on_pos]; // After "GRANT "
-        
+
         // Find "TO" keyword
         let to_pos = statement.find(" TO ")?;
         let resource_str = &statement[on_pos + 4..to_pos]; // After " ON "
@@ -181,12 +180,7 @@ impl StarRocksAdapter {
             "CATALOG".to_string()
         };
 
-        Some(ParsedGrant {
-            privileges,
-            resource_type,
-            resource_path,
-            granted_role: None,
-        })
+        Some(ParsedGrant { privileges, resource_type, resource_path, granted_role: None })
     }
 }
 
@@ -589,10 +583,7 @@ impl ClusterAdapter for StarRocksAdapter {
         if password.is_empty() {
             Ok(format!("CREATE USER '{}'@'%';", username))
         } else {
-            Ok(format!(
-                "CREATE USER '{}'@'%' IDENTIFIED BY '{}';",
-                username, password
-            ))
+            Ok(format!("CREATE USER '{}'@'%' IDENTIFIED BY '{}';", username, password))
         }
     }
 
@@ -612,25 +603,20 @@ impl ClusterAdapter for StarRocksAdapter {
     ) -> ApiResult<String> {
         let perm_str = permissions.join(", ");
         let resource = Self::build_resource_path(resource_type, database, table);
-        
-        let with_grant = if with_grant_option {
-            " WITH GRANT OPTION"
-        } else {
-            ""
-        };
+
+        let with_grant = if with_grant_option { " WITH GRANT OPTION" } else { "" };
 
         let principal = match principal_type {
             "ROLE" => format!("ROLE '{}'", principal_name),
             "USER" => format!("USER '{}'@'%'", principal_name),
-            _ => return Err(ApiError::ValidationError(
-                "Principal type must be USER or ROLE".to_string(),
-            )),
+            _ => {
+                return Err(ApiError::ValidationError(
+                    "Principal type must be USER or ROLE".to_string(),
+                ));
+            },
         };
 
-        Ok(format!(
-            "GRANT {} ON {} TO {};{}",
-            perm_str, resource, principal, with_grant
-        ))
+        Ok(format!("GRANT {} ON {} TO {};{}", perm_str, resource, principal, with_grant))
     }
 
     async fn revoke_permissions(
@@ -644,32 +630,34 @@ impl ClusterAdapter for StarRocksAdapter {
     ) -> ApiResult<String> {
         let perm_str = permissions.join(", ");
         let resource = Self::build_resource_path(resource_type, database, table);
-        
+
         let principal = match principal_type {
             "ROLE" => format!("ROLE '{}'", principal_name),
             "USER" => format!("USER '{}'@'%'", principal_name),
-            _ => return Err(ApiError::ValidationError(
-                "Principal type must be USER or ROLE".to_string(),
-            )),
+            _ => {
+                return Err(ApiError::ValidationError(
+                    "Principal type must be USER or ROLE".to_string(),
+                ));
+            },
         };
 
-        Ok(format!(
-            "REVOKE {} ON {} FROM {};",
-            perm_str, resource, principal
-        ))
+        Ok(format!("REVOKE {} ON {} FROM {};", perm_str, resource, principal))
     }
 
     async fn grant_role(&self, role_name: &str, username: &str) -> ApiResult<String> {
-        Ok(format!(
-            "GRANT '{}' TO USER '{}'@'%';",
-            role_name, username
-        ))
+        Ok(format!("GRANT '{}' TO USER '{}'@'%';", role_name, username))
     }
 
-    async fn list_user_permissions(&self, username: &str) -> ApiResult<Vec<crate::models::DbUserPermissionDto>> {
+    async fn list_user_permissions(
+        &self,
+        username: &str,
+    ) -> ApiResult<Vec<crate::models::DbUserPermissionDto>> {
         tracing::debug!("[StarRocks] Listing permissions for user: {}", username);
-        
-        let mut conn = self.mysql_pool_manager.get_pool(&self.cluster).await?
+
+        let mut conn = self
+            .mysql_pool_manager
+            .get_pool(&self.cluster)
+            .await?
             .get_conn()
             .await
             .map_err(|e| {
@@ -680,15 +668,15 @@ impl ClusterAdapter for StarRocksAdapter {
         // StarRocks syntax: SHOW GRANTS FOR 'username'
         let query_str = format!("SHOW GRANTS FOR '{}'", username);
 
-        use mysql_async::prelude::Queryable;
         use mysql_async::Row;
-        
+        use mysql_async::prelude::Queryable;
+
         let rows: Vec<Row> = match conn.query(&query_str).await {
             Ok(rows) => rows,
             Err(e) => {
                 tracing::debug!("SHOW GRANTS query failed for user {}: {}", username, e);
                 return Ok(Vec::new());
-            }
+            },
         };
 
         let mut permissions: Vec<crate::models::DbUserPermissionDto> = Vec::new();
@@ -696,19 +684,14 @@ impl ClusterAdapter for StarRocksAdapter {
 
         for row in rows {
             // StarRocks returns: (UserIdentity, Catalog, Grants) - 3 columns
-            let grant_statement: Option<String> = row.get("Grants")
-                .or_else(|| {
-                    let col_count = row.columns().len();
-                    if col_count > 0 {
-                        row.get(col_count - 1)
-                    } else {
-                        None
-                    }
-                });
+            let grant_statement: Option<String> = row.get("Grants").or_else(|| {
+                let col_count = row.columns().len();
+                if col_count > 0 { row.get(col_count - 1) } else { None }
+            });
 
             if let Some(grant_stmt) = grant_statement {
                 tracing::debug!("Parsing user grant statement: {}", grant_stmt);
-                
+
                 if let Some(parsed) = Self::parse_grant_statement(&grant_stmt) {
                     for priv_type in parsed.privileges {
                         permissions.push(crate::models::DbUserPermissionDto {
@@ -727,10 +710,16 @@ impl ClusterAdapter for StarRocksAdapter {
         Ok(permissions)
     }
 
-    async fn list_role_permissions(&self, role_name: &str) -> ApiResult<Vec<crate::models::DbUserPermissionDto>> {
+    async fn list_role_permissions(
+        &self,
+        role_name: &str,
+    ) -> ApiResult<Vec<crate::models::DbUserPermissionDto>> {
         tracing::debug!("[StarRocks] Listing permissions for role: {}", role_name);
-        
-        let mut conn = self.mysql_pool_manager.get_pool(&self.cluster).await?
+
+        let mut conn = self
+            .mysql_pool_manager
+            .get_pool(&self.cluster)
+            .await?
             .get_conn()
             .await
             .map_err(|e| {
@@ -741,15 +730,15 @@ impl ClusterAdapter for StarRocksAdapter {
         // StarRocks syntax: SHOW GRANTS FOR ROLE 'role_name'
         let query_str = format!("SHOW GRANTS FOR ROLE '{}'", role_name);
 
-        use mysql_async::prelude::Queryable;
         use mysql_async::Row;
-        
+        use mysql_async::prelude::Queryable;
+
         let rows: Vec<Row> = match conn.query(&query_str).await {
             Ok(rows) => rows,
             Err(e) => {
                 tracing::debug!("SHOW GRANTS FOR ROLE query failed for role {}: {}", role_name, e);
                 return Ok(Vec::new());
-            }
+            },
         };
 
         let mut permissions: Vec<crate::models::DbUserPermissionDto> = Vec::new();
@@ -757,19 +746,14 @@ impl ClusterAdapter for StarRocksAdapter {
 
         for row in rows {
             // StarRocks returns: (RoleIdentity, Catalog, Grants) - 3 columns
-            let grant_statement: Option<String> = row.get("Grants")
-                .or_else(|| {
-                    let col_count = row.columns().len();
-                    if col_count > 0 {
-                        row.get(col_count - 1)
-                    } else {
-                        None
-                    }
-                });
+            let grant_statement: Option<String> = row.get("Grants").or_else(|| {
+                let col_count = row.columns().len();
+                if col_count > 0 { row.get(col_count - 1) } else { None }
+            });
 
             if let Some(grant_stmt) = grant_statement {
                 tracing::debug!("Parsing role grant statement: {}", grant_stmt);
-                
+
                 if let Some(parsed) = Self::parse_grant_statement(&grant_stmt) {
                     for priv_type in parsed.privileges {
                         permissions.push(crate::models::DbUserPermissionDto {
@@ -790,8 +774,11 @@ impl ClusterAdapter for StarRocksAdapter {
 
     async fn list_db_accounts(&self) -> ApiResult<Vec<crate::models::DbAccountDto>> {
         tracing::debug!("[StarRocks] Listing database accounts");
-        
-        let mut conn = self.mysql_pool_manager.get_pool(&self.cluster).await?
+
+        let mut conn = self
+            .mysql_pool_manager
+            .get_pool(&self.cluster)
+            .await?
             .get_conn()
             .await
             .map_err(|e| {
@@ -802,27 +789,30 @@ impl ClusterAdapter for StarRocksAdapter {
         // StarRocks uses SHOW AUTHENTICATION to list users
         let query_str = "SHOW AUTHENTICATION";
 
-        use mysql_async::prelude::Queryable;
         use mysql_async::Row;
-        
+        use mysql_async::prelude::Queryable;
+
         let rows: Vec<Row> = match conn.query(query_str).await {
             Ok(rows) => rows,
             Err(e) => {
                 tracing::debug!("SHOW AUTHENTICATION failed: {}", e);
                 return Ok(Vec::new());
-            }
+            },
         };
 
         let mut accounts: Vec<crate::models::DbAccountDto> = Vec::new();
         for row in rows {
             // SHOW AUTHENTICATION returns: UserIdentity, Password, AuthPlugin, UserForAuthPlugin
             let user_identity: Option<String> = row.get("UserIdentity");
-            
+
             if let Some(identity) = user_identity {
                 // Parse 'username'@'host' format
                 let (account_name, host) = Self::parse_user_identity(&identity);
-                
-                if !accounts.iter().any(|a| a.account_name == account_name && a.host == host) {
+
+                if !accounts
+                    .iter()
+                    .any(|a| a.account_name == account_name && a.host == host)
+                {
                     accounts.push(crate::models::DbAccountDto {
                         account_name,
                         host,
@@ -837,8 +827,11 @@ impl ClusterAdapter for StarRocksAdapter {
 
     async fn list_db_roles(&self) -> ApiResult<Vec<crate::models::DbRoleDto>> {
         tracing::debug!("[StarRocks] Listing database roles");
-        
-        let mut conn = self.mysql_pool_manager.get_pool(&self.cluster).await?
+
+        let mut conn = self
+            .mysql_pool_manager
+            .get_pool(&self.cluster)
+            .await?
             .get_conn()
             .await
             .map_err(|e| {
@@ -849,24 +842,28 @@ impl ClusterAdapter for StarRocksAdapter {
         // StarRocks uses SHOW ROLES
         let query_str = "SHOW ROLES";
 
-        use mysql_async::prelude::Queryable;
         use mysql_async::Row;
-        
+        use mysql_async::prelude::Queryable;
+
         let rows: Vec<Row> = match conn.query(query_str).await {
             Ok(rows) => rows,
             Err(e) => {
                 tracing::debug!("SHOW ROLES query failed: {}", e);
                 return Ok(Vec::new());
-            }
+            },
         };
 
         let mut roles: Vec<crate::models::DbRoleDto> = Vec::new();
         for row in rows {
             // SHOW ROLES returns: Name column
             let role_name: Option<String> = row.get("Name");
-            
+
             if let Some(name) = role_name {
-                let role_type = if name == "admin" || name == "operator" || name == "public" || name == "root" {
+                let role_type = if name == "admin"
+                    || name == "operator"
+                    || name == "public"
+                    || name == "root"
+                {
                     "built-in".to_string()
                 } else {
                     "custom".to_string()
@@ -890,7 +887,8 @@ impl StarRocksAdapter {
         if identity.contains('@') {
             let parts: Vec<&str> = identity.splitn(2, '@').collect();
             let account_name = parts[0].trim_matches('\'').trim_matches('"').to_string();
-            let host = parts.get(1)
+            let host = parts
+                .get(1)
                 .map(|h| h.trim_matches('\'').trim_matches('"').to_string())
                 .unwrap_or_else(|| "%".to_string());
             (account_name, host)

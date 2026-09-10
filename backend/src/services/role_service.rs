@@ -1,25 +1,29 @@
+use crate::db::AppDb;
+use crate::db::dialect::LastInsertId;
 use crate::models::{
     CreateRoleRequest, PermissionResponse, Role, RoleResponse, RoleWithPermissions,
     UpdateRolePermissionsRequest, UpdateRoleRequest,
 };
 use crate::services::{casbin_service::CasbinService, permission_service::PermissionService};
 use crate::utils::organization_filter::apply_organization_filter;
-use crate::utils::{vec_to_map, ApiError, ApiResult};
-use sqlx::SqlitePool;
+use crate::utils::{ApiError, ApiResult, vec_to_map};
+use sqlx::Pool;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use stellar_macros::app_impl;
 
 #[derive(Clone)]
-pub struct RoleService {
-    pool: SqlitePool,
+pub struct RoleService<DB: AppDb> {
+    pool: Pool<DB>,
     casbin_service: Arc<CasbinService>,
 }
 
-impl RoleService {
+#[app_impl]
+impl<DB: AppDb> RoleService<DB> {
     pub fn new(
-        pool: SqlitePool,
+        pool: Pool<DB>,
         casbin_service: Arc<CasbinService>,
-        _permission_service: Arc<PermissionService>,
+        _permission_service: Arc<PermissionService<DB>>,
     ) -> Self {
         Self { pool, casbin_service }
     }
@@ -136,7 +140,7 @@ impl RoleService {
             .await?
         };
 
-        let role_id = result.last_insert_rowid();
+        let role_id = result.last_insert_id();
 
         let role: Role = sqlx::query_as("SELECT * FROM roles WHERE id = ?")
             .bind(role_id)

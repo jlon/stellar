@@ -1,5 +1,6 @@
 use axum::{Json, extract::State};
 use std::sync::Arc;
+use stellar_macros::app_db;
 
 use crate::AppState;
 use crate::models::{PermissionResponse, PermissionTree};
@@ -17,8 +18,9 @@ use crate::utils::ApiResult;
     ),
     tag = "Permissions"
 )]
+#[app_db]
 pub async fn list_permissions(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
 ) -> ApiResult<Json<Vec<PermissionResponse>>> {
     tracing::debug!("Listing all permissions");
 
@@ -40,8 +42,9 @@ pub async fn list_permissions(
     ),
     tag = "Permissions"
 )]
+#[app_db]
 pub async fn list_menu_permissions(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
 ) -> ApiResult<Json<Vec<PermissionResponse>>> {
     tracing::debug!("Listing menu permissions");
 
@@ -63,8 +66,9 @@ pub async fn list_menu_permissions(
     ),
     tag = "Permissions"
 )]
+#[app_db]
 pub async fn list_api_permissions(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
 ) -> ApiResult<Json<Vec<PermissionResponse>>> {
     tracing::debug!("Listing API permissions");
 
@@ -86,8 +90,9 @@ pub async fn list_api_permissions(
     ),
     tag = "Permissions"
 )]
+#[app_db]
 pub async fn get_permission_tree(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
 ) -> ApiResult<Json<Vec<PermissionTree>>> {
     tracing::debug!("Getting permission tree");
 
@@ -109,8 +114,9 @@ pub async fn get_permission_tree(
     ),
     tag = "Authentication"
 )]
+#[app_db]
 pub async fn get_current_user_permissions(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(user_id): axum::extract::Extension<i64>,
 ) -> ApiResult<Json<Vec<PermissionResponse>>> {
     tracing::debug!("Getting permissions for user: ID={}", user_id);

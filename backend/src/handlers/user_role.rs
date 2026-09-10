@@ -3,6 +3,7 @@ use axum::{
     extract::{Path, State},
 };
 use std::sync::Arc;
+use stellar_macros::app_db;
 
 use crate::AppState;
 use crate::models::{AssignUserRoleRequest, RoleResponse};
@@ -21,8 +22,9 @@ use crate::utils::ApiResult;
     ),
     tag = "Users"
 )]
+#[app_db]
 pub async fn get_user_roles(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Path(id): Path<i64>,
 ) -> ApiResult<Json<Vec<RoleResponse>>> {
     tracing::debug!("Getting roles for user: ID={}", id);
@@ -48,8 +50,9 @@ pub async fn get_user_roles(
     ),
     tag = "Users"
 )]
+#[app_db]
 pub async fn assign_role_to_user(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Path(id): Path<i64>,
     Json(req): Json<AssignUserRoleRequest>,
 ) -> ApiResult<Json<()>> {
@@ -75,8 +78,9 @@ pub async fn assign_role_to_user(
     ),
     tag = "Users"
 )]
+#[app_db]
 pub async fn remove_role_from_user(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Path((id, role_id)): Path<(i64, i64)>,
 ) -> ApiResult<Json<()>> {
     tracing::info!("Removing role from user: user_id={}, role_id={}", id, role_id);

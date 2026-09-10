@@ -3,6 +3,8 @@
 // Design Ref: CLUSTER_OVERVIEW_PLAN.md
 
 use crate::config::AuditLogConfig;
+use crate::db::AppDb;
+use crate::db::SqlDialect;
 use crate::models::Cluster;
 use crate::services::{
     AuditLogService, ClusterService, MySQLClient, MySQLPoolManager, TopTableByAccess,
@@ -10,8 +12,9 @@ use crate::services::{
 use crate::utils::ApiResult;
 use chrono::{NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
+use sqlx::Pool;
 use std::sync::Arc;
+use stellar_macros::app_impl;
 use utoipa::ToSchema;
 
 /// Top table by size
@@ -53,18 +56,19 @@ pub struct DataStatistics {
 }
 
 #[derive(Clone)]
-pub struct DataStatisticsService {
-    db: SqlitePool,
-    cluster_service: Arc<ClusterService>,
+pub struct DataStatisticsService<DB: AppDb> {
+    db: Pool<DB>,
+    cluster_service: Arc<ClusterService<DB>>,
     mysql_pool_manager: Arc<MySQLPoolManager>,
     audit_log_service: Arc<AuditLogService>,
 }
 
-impl DataStatisticsService {
+#[app_impl]
+impl<DB: AppDb> DataStatisticsService<DB> {
     /// Create a new DataStatisticsService
     pub fn new(
-        db: SqlitePool,
-        cluster_service: Arc<ClusterService>,
+        db: Pool<DB>,
+        cluster_service: Arc<ClusterService<DB>>,
         mysql_pool_manager: Arc<MySQLPoolManager>,
         audit_config: AuditLogConfig,
     ) -> Self {
@@ -348,59 +352,65 @@ impl DataStatisticsService {
         let top_tables_by_access_json = serde_json::to_string(&stats.top_tables_by_access)?;
         let unique_users_json = serde_json::to_string(&stats.unique_users)?;
 
-        sqlx::query(
-            r#"
-            INSERT INTO data_statistics (
-                cluster_id, updated_at,
-                database_count, table_count, total_data_size, total_index_size,
-                top_tables_by_size, top_tables_by_access,
-                mv_total, mv_running, mv_failed, mv_success,
-                schema_change_running, schema_change_pending, 
-                schema_change_finished, schema_change_failed,
-                active_users_1h, active_users_24h, unique_users
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(cluster_id) DO UPDATE SET
-                updated_at = excluded.updated_at,
-                database_count = excluded.database_count,
-                table_count = excluded.table_count,
-                total_data_size = excluded.total_data_size,
-                total_index_size = excluded.total_index_size,
-                top_tables_by_size = excluded.top_tables_by_size,
-                top_tables_by_access = excluded.top_tables_by_access,
-                mv_total = excluded.mv_total,
-                mv_running = excluded.mv_running,
-                mv_failed = excluded.mv_failed,
-                mv_success = excluded.mv_success,
-                schema_change_running = excluded.schema_change_running,
-                schema_change_pending = excluded.schema_change_pending,
-                schema_change_finished = excluded.schema_change_finished,
-                schema_change_failed = excluded.schema_change_failed,
-                active_users_1h = excluded.active_users_1h,
-                active_users_24h = excluded.active_users_24h,
-                unique_users = excluded.unique_users
-            "#,
-        )
-        .bind(stats.cluster_id)
-        .bind(stats.updated_at)
-        .bind(stats.database_count)
-        .bind(stats.table_count)
-        .bind(stats.total_data_size)
-        .bind(stats.total_index_size)
-        .bind(top_tables_by_size_json)
-        .bind(top_tables_by_access_json)
-        .bind(stats.mv_total)
-        .bind(stats.mv_running)
-        .bind(stats.mv_failed)
-        .bind(stats.mv_success)
-        .bind(stats.schema_change_running)
-        .bind(stats.schema_change_pending)
-        .bind(stats.schema_change_finished)
-        .bind(stats.schema_change_failed)
-        .bind(stats.active_users_1h)
-        .bind(stats.active_users_24h)
-        .bind(unique_users_json)
-        .execute(&self.db)
-        .await?;
+        // 方言 upsert：SQLite 用 ON CONFLICT，MySQL 用 ON DUPLICATE KEY UPDATE
+        let upsert_sql = format!(
+            "INSERT INTO data_statistics (\n\
+              \x20   cluster_id, updated_at,\n\
+              \x20   database_count, table_count, total_data_size, total_index_size,\n\
+              \x20   top_tables_by_size, top_tables_by_access,\n\
+              \x20   mv_total, mv_running, mv_failed, mv_success,\n\
+              \x20   schema_change_running, schema_change_pending, \n\
+              \x20   schema_change_finished, schema_change_failed,\n\
+              \x20   active_users_1h, active_users_24h, unique_users\n\
+              \x20) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) {}",
+            <DB as SqlDialect>::upsert_suffix(
+                &["cluster_id"],
+                &[
+                    "updated_at",
+                    "database_count",
+                    "table_count",
+                    "total_data_size",
+                    "total_index_size",
+                    "top_tables_by_size",
+                    "top_tables_by_access",
+                    "mv_total",
+                    "mv_running",
+                    "mv_failed",
+                    "mv_success",
+                    "schema_change_running",
+                    "schema_change_pending",
+                    "schema_change_finished",
+                    "schema_change_failed",
+                    "active_users_1h",
+                    "active_users_24h",
+                    "unique_users",
+                ],
+                &[],
+            ),
+        );
+
+        sqlx::query(&upsert_sql)
+            .bind(stats.cluster_id)
+            .bind(stats.updated_at)
+            .bind(stats.database_count)
+            .bind(stats.table_count)
+            .bind(stats.total_data_size)
+            .bind(stats.total_index_size)
+            .bind(top_tables_by_size_json)
+            .bind(top_tables_by_access_json)
+            .bind(stats.mv_total)
+            .bind(stats.mv_running)
+            .bind(stats.mv_failed)
+            .bind(stats.mv_success)
+            .bind(stats.schema_change_running)
+            .bind(stats.schema_change_pending)
+            .bind(stats.schema_change_finished)
+            .bind(stats.schema_change_failed)
+            .bind(stats.active_users_1h)
+            .bind(stats.active_users_24h)
+            .bind(unique_users_json)
+            .execute(&self.db)
+            .await?;
 
         Ok(())
     }

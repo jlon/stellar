@@ -1,17 +1,20 @@
+use crate::db::AppDb;
 use crate::models::{Permission, PermissionResponse, PermissionTree};
 use crate::services::casbin_service::CasbinService;
 use crate::utils::ApiResult;
-use sqlx::SqlitePool;
+use sqlx::Pool;
 use std::sync::Arc;
+use stellar_macros::app_impl;
 
 #[derive(Clone)]
-pub struct PermissionService {
-    pool: SqlitePool,
+pub struct PermissionService<DB: AppDb> {
+    pool: Pool<DB>,
     casbin_service: Arc<CasbinService>,
 }
 
-impl PermissionService {
-    pub fn new(pool: SqlitePool, casbin_service: Arc<CasbinService>) -> Self {
+#[app_impl]
+impl<DB: AppDb> PermissionService<DB> {
+    pub fn new(pool: Pool<DB>, casbin_service: Arc<CasbinService>) -> Self {
         Self { pool, casbin_service }
     }
 

@@ -8,6 +8,7 @@ use axum::{
 };
 use serde::Deserialize;
 use std::sync::Arc;
+use stellar_macros::app_db;
 
 use crate::AppState;
 use crate::services::{
@@ -61,8 +62,9 @@ pub struct TrendQueryParams {
     ),
     tag = "Cluster Overview"
 )]
+#[app_db]
 pub async fn get_cluster_overview(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Query(params): Query<OverviewQueryParams>,
 ) -> ApiResult<Json<ClusterOverview>> {
@@ -106,8 +108,9 @@ pub async fn get_cluster_overview(
     ),
     tag = "Cluster Overview"
 )]
+#[app_db]
 pub async fn get_health_cards(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
 ) -> ApiResult<Json<Vec<HealthCard>>> {
     let cluster = if org_ctx.is_super_admin {
@@ -147,8 +150,9 @@ pub async fn get_health_cards(
     ),
     tag = "Cluster Overview"
 )]
+#[app_db]
 pub async fn get_performance_trends(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Query(params): Query<TrendQueryParams>,
 ) -> ApiResult<Json<PerformanceTrends>> {
@@ -192,8 +196,9 @@ pub async fn get_performance_trends(
     ),
     tag = "Cluster Overview"
 )]
+#[app_db]
 pub async fn get_resource_trends(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Query(params): Query<TrendQueryParams>,
 ) -> ApiResult<Json<ResourceTrends>> {
@@ -240,8 +245,9 @@ pub async fn get_resource_trends(
     ),
     tag = "Cluster Overview"
 )]
+#[app_db]
 pub async fn get_data_statistics(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Query(params): Query<TrendQueryParams>,
 ) -> ApiResult<Json<DataStatistics>> {
@@ -277,8 +283,9 @@ pub async fn get_data_statistics(
     ),
     tag = "Cluster Overview"
 )]
+#[app_db]
 pub async fn get_capacity_prediction(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
 ) -> ApiResult<Json<CapacityPrediction>> {
     let cluster = if org_ctx.is_super_admin {
@@ -323,8 +330,9 @@ pub async fn get_capacity_prediction(
     ),
     tag = "Cluster Overview"
 )]
+#[app_db]
 pub async fn get_extended_cluster_overview(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Query(params): Query<OverviewQueryParams>,
 ) -> ApiResult<Json<ExtendedClusterOverview>> {
@@ -366,8 +374,9 @@ pub async fn get_extended_cluster_overview(
     ),
     tag = "Cluster Overview"
 )]
+#[app_db]
 pub async fn get_compaction_detail_stats(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Query(params): Query<TrendQueryParams>,
 ) -> ApiResult<Json<CompactionDetailStats>> {

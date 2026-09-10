@@ -1,5 +1,6 @@
 use axum::{Json, extract::State};
 use std::sync::Arc;
+use stellar_macros::app_db;
 
 use crate::AppState;
 use crate::models::RuntimeInfo;
@@ -19,8 +20,9 @@ use crate::utils::ApiResult;
     ),
     tag = "System"
 )]
+#[app_db]
 pub async fn get_runtime_info(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
 ) -> ApiResult<Json<RuntimeInfo>> {
     let cluster = if org_ctx.is_super_admin {

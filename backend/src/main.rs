@@ -11,15 +11,17 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
+use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+use sqlx::{Database, Executor, IntoArguments, MySql, Sqlite, database::HasArguments};
 use stellar::config::Config;
-use stellar::db;
+use stellar::db::{self, AppDb};
 use stellar::embedded::WebAssets;
 use stellar::models;
 use stellar::services::{
     AuthService, CasbinService, ClusterService, DataStatisticsService, DbAuthQueryService,
-    LLMServiceImpl, MetricsCollectorService, MySQLPoolManager, OrganizationService, OverviewService,
-    PermissionRequestService, PermissionService, RoleService, SystemFunctionService,
-    UserRoleService, UserService,
+    LLMServiceImpl, MetricsCollectorService, MySQLPoolManager, OrganizationService,
+    OverviewService, PermissionRequestService, PermissionService, RoleService,
+    SystemFunctionService, UserRoleService, UserService,
 };
 use stellar::utils::{JwtUtil, ScheduledExecutor};
 use stellar::{AppState, handlers, middleware, services};
@@ -310,7 +312,51 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("Stellar starting up");
     tracing::info!("Configuration loaded successfully");
 
-    let pool = db::create_pool(&config.database.url).await?;
+    // 按连接串协议选择数据库后端，同一二进制运行时双后端支持
+    let kind = stellar::db::DatabaseKind::from_url(&config.database.url)?;
+    match kind {
+        stellar::db::DatabaseKind::Sqlite => run::<Sqlite>(config).await?,
+        stellar::db::DatabaseKind::MySql => run::<MySql>(config).await?,
+    }
+
+    Ok(())
+}
+
+/// 泛型应用主流程：DB 由 main 的分发处具体化，全部代码路径在此单态化。
+///（bin crate 中宏的 `crate::` 路径不可用，此处手写完整能力 bound）
+#[allow(clippy::too_many_lines)]
+async fn run<DB: AppDb>(config: Config) -> Result<(), Box<dyn std::error::Error>>
+where
+    for<'c> &'c mut <DB as Database>::Connection: Executor<'c, Database = DB>,
+    for<'q> <DB as HasArguments<'q>>::Arguments: IntoArguments<'q, DB> + Default,
+    usize: sqlx::ColumnIndex<<DB as Database>::Row>,
+    for<'a> &'a str: sqlx::ColumnIndex<<DB as Database>::Row>,
+    for<'q> i64: sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB> + sqlx::Type<DB>,
+    for<'q> i32: sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB> + sqlx::Type<DB>,
+    for<'q> f64: sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB> + sqlx::Type<DB>,
+    for<'q> bool: sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB> + sqlx::Type<DB>,
+    for<'q> String: sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB> + sqlx::Type<DB>,
+    for<'q> &'q str: sqlx::Encode<'q, DB> + sqlx::Type<DB>,
+    for<'q> DateTime<Utc>: sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB> + sqlx::Type<DB>,
+    for<'q> NaiveDateTime: sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB> + sqlx::Type<DB>,
+    for<'q> NaiveDate: sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB> + sqlx::Type<DB>,
+    for<'q> Option<String>: sqlx::Encode<'q, DB>,
+    for<'q> Option<i64>: sqlx::Encode<'q, DB>,
+    for<'q> Option<i32>: sqlx::Encode<'q, DB>,
+    for<'q> Option<f64>: sqlx::Encode<'q, DB>,
+    for<'q> Option<bool>: sqlx::Encode<'q, DB>,
+    for<'q> Option<DateTime<Utc>>: sqlx::Encode<'q, DB>,
+    for<'q> Option<&'q str>: sqlx::Encode<'q, DB>,
+    for<'q> Option<NaiveDateTime>: sqlx::Encode<'q, DB>,
+    for<'q> Option<NaiveDate>: sqlx::Encode<'q, DB>,
+    for<'q> stellar::models::cluster::ClusterType:
+        sqlx::Type<DB> + sqlx::Decode<'q, DB> + sqlx::Encode<'q, DB>,
+    for<'q> stellar::models::cluster::DeploymentMode:
+        sqlx::Type<DB> + sqlx::Decode<'q, DB> + sqlx::Encode<'q, DB>,
+    for<'q> Option<&'q str>: sqlx::Encode<'q, DB>,
+    for<'q> Option<DateTime<Utc>>: sqlx::Encode<'q, DB>,
+{
+    let pool = db::create_pool::<DB>(&config.database.url).await?;
     tracing::info!("Database pool created successfully");
 
     let jwt_util = Arc::new(JwtUtil::new(&config.auth.jwt_secret, &config.auth.jwt_expires_in));
@@ -387,11 +433,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ));
     tracing::info!("DbAuthQueryService initialized with real cluster query support");
 
-    let permission_request_service = Arc::new(PermissionRequestService::new(
-        pool.clone(),
-        cluster_service.as_ref().clone(),
-        Arc::clone(&mysql_pool_manager),
-    ));
+    let permission_request_service = Arc::new(PermissionRequestService::new(pool.clone()));
     tracing::info!("PermissionRequestService initialized");
 
     let app_state = AppState {
@@ -647,23 +689,71 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/llm/providers/:id/test", post(handlers::llm::test_provider_connection))
         .route("/api/llm/analyze/root-cause", post(handlers::llm::analyze_root_cause))
         .route("/api/permission-requests/my", get(handlers::permission_request::list_my_requests))
-        .route("/api/permission-requests/pending", get(handlers::permission_request::list_pending_approvals))
+        .route(
+            "/api/permission-requests/pending",
+            get(handlers::permission_request::list_pending_approvals),
+        )
         .route("/api/permission-requests", post(handlers::permission_request::submit_request))
-        .route("/api/permission-requests/:request_id", get(handlers::permission_request::get_request))
-        .route("/api/permission-requests/:request_id/approve", post(handlers::permission_request::approve_request))
-        .route("/api/permission-requests/:request_id/reject", post(handlers::permission_request::reject_request))
-        .route("/api/permission-requests/:request_id/cancel", post(handlers::permission_request::cancel_request))
-        .route("/api/clusters/:cluster_id/db-auth/accounts", get(handlers::permission_request::list_db_accounts))
-        .route("/api/clusters/:cluster_id/db-auth/roles", get(handlers::permission_request::list_db_roles))
-        .route("/api/clusters/db-auth/accounts", get(handlers::permission_request::list_db_accounts_active))
-        .route("/api/clusters/db-auth/roles", get(handlers::permission_request::list_db_roles_active))
-        .route("/api/clusters/db-auth/my-permissions", get(handlers::permission_request::list_my_db_permissions))
-        .route("/api/clusters/db-auth/role-permissions/:role_name", get(handlers::permission_request::list_role_permissions))
+        .route(
+            "/api/permission-requests/:request_id",
+            get(handlers::permission_request::get_request),
+        )
+        .route(
+            "/api/permission-requests/:request_id/approve",
+            post(handlers::permission_request::approve_request),
+        )
+        .route(
+            "/api/permission-requests/:request_id/reject",
+            post(handlers::permission_request::reject_request),
+        )
+        .route(
+            "/api/permission-requests/:request_id/cancel",
+            post(handlers::permission_request::cancel_request),
+        )
+        .route(
+            "/api/clusters/:cluster_id/db-auth/accounts",
+            get(handlers::permission_request::list_db_accounts),
+        )
+        .route(
+            "/api/clusters/:cluster_id/db-auth/roles",
+            get(handlers::permission_request::list_db_roles),
+        )
+        .route(
+            "/api/clusters/db-auth/accounts",
+            get(handlers::permission_request::list_db_accounts_active),
+        )
+        .route(
+            "/api/clusters/db-auth/roles",
+            get(handlers::permission_request::list_db_roles_active),
+        )
+        .route(
+            "/api/clusters/db-auth/my-permissions",
+            get(handlers::permission_request::list_my_db_permissions),
+        )
+        .route(
+            "/api/clusters/db-auth/role-permissions/:role_name",
+            get(handlers::permission_request::list_role_permissions),
+        )
         .route("/api/db-auth/preview-sql", post(handlers::permission_request::preview_sql))
-        .route("/api/clusters/resource-groups", get(handlers::resource_group::list_resource_groups).post(handlers::resource_group::create_resource_group))
-        .route("/api/clusters/resource-groups/usage", get(handlers::resource_group::get_resource_group_usage))
-        .route("/api/clusters/resource-groups/analysis", get(handlers::resource_group::analyze_resource_usage))
-        .route("/api/clusters/resource-groups/:name", get(handlers::resource_group::get_resource_group).put(handlers::resource_group::update_resource_group).delete(handlers::resource_group::delete_resource_group))
+        .route(
+            "/api/clusters/resource-groups",
+            get(handlers::resource_group::list_resource_groups)
+                .post(handlers::resource_group::create_resource_group),
+        )
+        .route(
+            "/api/clusters/resource-groups/usage",
+            get(handlers::resource_group::get_resource_group_usage),
+        )
+        .route(
+            "/api/clusters/resource-groups/analysis",
+            get(handlers::resource_group::analyze_resource_usage),
+        )
+        .route(
+            "/api/clusters/resource-groups/:name",
+            get(handlers::resource_group::get_resource_group)
+                .put(handlers::resource_group::update_resource_group)
+                .delete(handlers::resource_group::delete_resource_group),
+        )
         .with_state(Arc::clone(&app_state_arc))
         .layer(axum_middleware::from_fn_with_state(auth_state, middleware::auth_middleware));
 
