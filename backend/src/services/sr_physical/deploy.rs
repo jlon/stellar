@@ -1598,6 +1598,11 @@ impl SrDeploymentService {
             }
             let version_dir = format!("{}/{}", runtime.install_dir, archive_root);
             self.executor.run(context, &format!("test ! -e {} && mkdir -p {} && tar -xzf {} -C {} --no-same-owner && ln -sfn {} {}/current", shell_quote(&version_dir), shell_quote(&runtime.install_dir), shell_quote(&remote_archive), shell_quote(&runtime.install_dir), shell_quote(&version_dir), shell_quote(&runtime.install_dir))).await?;
+            // Remove the per-task staging copy only on success; failed tasks
+            // deliberately keep remote state for diagnosis.
+            self.executor
+                .run(context, &format!("rm -rf {}", shell_quote(&remote_dir)))
+                .await?;
         }
         for frontend in &runtime.frontends {
             let context = contexts.get(&frontend.host_id).unwrap();
