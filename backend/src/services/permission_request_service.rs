@@ -1,5 +1,5 @@
 use crate::db::AppDb;
-use crate::db::dialect::LastInsertId;
+use crate::db::query as db_query;
 use chrono::Utc;
 use serde_json;
 use sqlx::{Pool, Row};
@@ -36,7 +36,7 @@ impl<DB: AppDb> PermissionRequestService<DB> {
         mysql_pool_manager: Arc<MySQLPoolManager>,
     ) -> ApiResult<i64> {
         // Get applicant's organization from database
-        let applicant = sqlx::query("SELECT organization_id FROM users WHERE id = ?")
+        let applicant = db_query::query("SELECT organization_id FROM users WHERE id = ?")
             .bind(applicant_id)
             .fetch_one(&self.pool)
             .await?;
@@ -60,7 +60,7 @@ impl<DB: AppDb> PermissionRequestService<DB> {
 
         // Insert request record
         let now = Utc::now();
-        let request_id = sqlx::query(
+        let request_id = db_query::query(
             "INSERT INTO permission_requests (
                 cluster_id, applicant_id, applicant_org_id, request_type,
                 request_details, reason, valid_until, status, executed_sql, created_at, updated_at
@@ -76,9 +76,8 @@ impl<DB: AppDb> PermissionRequestService<DB> {
         .bind(&preview_sql)
         .bind(now)
         .bind(now)
-        .execute(&self.pool)
-        .await?
-        .last_insert_id();
+        .insert_id(&self.pool)
+        .await?;
 
         Ok(request_id)
     }
@@ -99,20 +98,16 @@ impl<DB: AppDb> PermissionRequestService<DB> {
             JOIN users u ON pr.applicant_id = u.id
             JOIN clusters c ON pr.cluster_id = c.id
             LEFT JOIN users approver ON pr.approver_id = approver.id
-            WHERE pr.applicant_id = $1";
+            WHERE pr.applicant_id = ?";
 
         // Build dynamic WHERE clause with parameter placeholders
         let mut conditions = Vec::new();
-        let mut param_index = 2; // $1 is applicant_id
-
         if filter.status.is_some() {
-            conditions.push(format!("pr.status = ${}", param_index));
-            param_index += 1;
+            conditions.push("pr.status = ?".to_string());
         }
 
         if filter.request_type.is_some() {
-            conditions.push(format!("pr.request_type = ${}", param_index));
-            param_index += 1;
+            conditions.push("pr.request_type = ?".to_string());
         }
 
         let where_clause = if conditions.is_empty() {
@@ -123,12 +118,12 @@ impl<DB: AppDb> PermissionRequestService<DB> {
 
         // Count query
         let count_query = format!(
-            "SELECT COUNT(*) FROM permission_requests pr WHERE pr.applicant_id = $1{}",
+            "SELECT COUNT(*) FROM permission_requests pr WHERE pr.applicant_id = ?{}",
             where_clause
         );
 
         // Build count query with bindings
-        let mut count_builder = sqlx::query_scalar::<_, i64>(&count_query).bind(applicant_id);
+        let mut count_builder = db_query::query_scalar::<_, i64>(&count_query).bind(applicant_id);
 
         if let Some(ref status) = filter.status {
             count_builder = count_builder.bind(status);
@@ -140,15 +135,10 @@ impl<DB: AppDb> PermissionRequestService<DB> {
         let total: i64 = count_builder.fetch_one(&self.pool).await?;
 
         // Data query with pagination
-        let data_query = format!(
-            "{}{} ORDER BY pr.created_at DESC LIMIT ${} OFFSET ${}",
-            base_query,
-            where_clause,
-            param_index,
-            param_index + 1
-        );
+        let data_query =
+            format!("{}{} ORDER BY pr.created_at DESC LIMIT ? OFFSET ?", base_query, where_clause,);
 
-        let mut data_builder = sqlx::query(&data_query).bind(applicant_id);
+        let mut data_builder = db_query::query(&data_query).bind(applicant_id);
 
         if let Some(ref status) = filter.status {
             data_builder = data_builder.bind(status);
@@ -224,7 +214,7 @@ impl<DB: AppDb> PermissionRequestService<DB> {
             param_index + 1
         );
 
-        let mut data_builder = sqlx::query(&data_query);
+        let mut data_builder = db_query::query(&data_query);
 
         if !is_super_admin {
             data_builder = data_builder.bind(approver_org_id);
@@ -262,7 +252,7 @@ impl<DB: AppDb> PermissionRequestService<DB> {
             .await?;
 
         // Get cluster_id from request to check admin user configuration before approval
-        let request = sqlx::query("SELECT cluster_id FROM permission_requests WHERE id = ?")
+        let request = db_query::query("SELECT cluster_id FROM permission_requests WHERE id = ?")
             .bind(request_id)
             .fetch_one(&self.pool)
             .await
@@ -284,7 +274,7 @@ impl<DB: AppDb> PermissionRequestService<DB> {
         let now = Utc::now();
 
         // Update status to approved
-        sqlx::query(
+        db_query::query(
             "UPDATE permission_requests SET status = 'approved', approver_id = ?, approval_comment = ?,
              approved_at = ?, updated_at = ? WHERE id = ?"
         )
@@ -316,7 +306,7 @@ impl<DB: AppDb> PermissionRequestService<DB> {
 
         let now = Utc::now();
 
-        sqlx::query(
+        db_query::query(
             "UPDATE permission_requests SET status = 'rejected', approver_id = ?, approval_comment = ?,
              approved_at = ?, updated_at = ? WHERE id = ?"
         )
@@ -334,7 +324,7 @@ impl<DB: AppDb> PermissionRequestService<DB> {
     /// Cancel a pending request (only by applicant)
     pub async fn cancel_request(&self, request_id: i64, applicant_id: i64) -> ApiResult<()> {
         let request =
-            sqlx::query("SELECT applicant_id, status FROM permission_requests WHERE id = ?")
+            db_query::query("SELECT applicant_id, status FROM permission_requests WHERE id = ?")
                 .bind(request_id)
                 .fetch_one(&self.pool)
                 .await
@@ -354,7 +344,7 @@ impl<DB: AppDb> PermissionRequestService<DB> {
         }
 
         let now = Utc::now();
-        sqlx::query(
+        db_query::query(
             "UPDATE permission_requests SET status = 'rejected', updated_at = ? WHERE id = ?",
         )
         .bind(&now)
@@ -370,7 +360,7 @@ impl<DB: AppDb> PermissionRequestService<DB> {
         &self,
         request_id: i64,
     ) -> ApiResult<PermissionRequestResponse> {
-        let row = sqlx::query(
+        let row = db_query::query(
             "SELECT pr.*, u.username as applicant_name, c.name as cluster_name, approver.username as approver_name
             FROM permission_requests pr
             JOIN users u ON pr.applicant_id = u.id
@@ -616,12 +606,13 @@ impl<DB: AppDb> PermissionRequestService<DB> {
         _mysql_pool_manager: Arc<MySQLPoolManager>,
     ) -> ApiResult<()> {
         // Query for request details including cluster_id and executed_sql
-        let request =
-            sqlx::query("SELECT cluster_id, executed_sql FROM permission_requests WHERE id = ?")
-                .bind(request_id)
-                .fetch_one(pool)
-                .await
-                .map_err(|_| ApiError::ResourceNotFound("Request not found".to_string()))?;
+        let request = db_query::query(
+            "SELECT cluster_id, executed_sql FROM permission_requests WHERE id = ?",
+        )
+        .bind(request_id)
+        .fetch_one(pool)
+        .await
+        .map_err(|_| ApiError::ResourceNotFound("Request not found".to_string()))?;
 
         let cluster_id: i64 = request.get("cluster_id");
         let executed_sql: Option<String> = request.get("executed_sql");
@@ -634,7 +625,7 @@ impl<DB: AppDb> PermissionRequestService<DB> {
 
         // Update status to executing
         let now = Utc::now();
-        sqlx::query(
+        db_query::query(
             "UPDATE permission_requests SET status = 'executing', updated_at = ? WHERE id = ?",
         )
         .bind(&now)
@@ -656,7 +647,7 @@ impl<DB: AppDb> PermissionRequestService<DB> {
         match exec_result {
             Ok(_) => {
                 tracing::info!("Permission request {} executed successfully", request_id);
-                sqlx::query(
+                db_query::query(
                     "UPDATE permission_requests SET status = 'completed', execution_result = ?, executed_at = ?, updated_at = ? WHERE id = ?"
                 )
                 .bind("执行成功")
@@ -674,7 +665,7 @@ impl<DB: AppDb> PermissionRequestService<DB> {
                     request_id,
                     error_msg
                 );
-                sqlx::query(
+                db_query::query(
                     "UPDATE permission_requests SET status = 'failed', execution_result = ?, executed_at = ?, updated_at = ? WHERE id = ?"
                 )
                 .bind(&error_msg)
@@ -758,26 +749,28 @@ impl<DB: AppDb> PermissionRequestService<DB> {
     /// Only organization admins or super admins can approve requests
     async fn check_approval_permission(&self, request_id: i64, approver_id: i64) -> ApiResult<()> {
         // Get the request and approver information including roles
-        let result = sqlx::query(
+        let approval_query = format!(
             r#"
             SELECT 
                 pr.applicant_org_id,
                 pr.applicant_id,
                 u.username as approver_name,
                 u.organization_id as approver_org_id,
-                GROUP_CONCAT(r.code) as role_codes
+                {} as role_codes
             FROM permission_requests pr
-            JOIN users u ON u.id = $1
+            JOIN users u ON u.id = ?
             LEFT JOIN user_roles ur ON ur.user_id = u.id
             LEFT JOIN roles r ON r.id = ur.role_id
-            WHERE pr.id = $2
+            WHERE pr.id = ?
             GROUP BY pr.id, u.id
             "#,
-        )
-        .bind(approver_id)
-        .bind(request_id)
-        .fetch_optional(&self.pool)
-        .await?;
+            DB::string_aggregate("r.code", "','"),
+        );
+        let result = db_query::query(&approval_query)
+            .bind(approver_id)
+            .bind(request_id)
+            .fetch_optional(&self.pool)
+            .await?;
 
         let row = match result {
             Some(row) => row,

@@ -1,3 +1,4 @@
+use crate::db::query as db_query;
 use axum::{
     Json,
     extract::{Extension, Path, Query, State},
@@ -71,7 +72,7 @@ pub async fn list_pending_approvals(
     tracing::debug!("User {} listing pending approvals", user_id);
 
     // Get user's org_id from database
-    let user = sqlx::query("SELECT organization_id FROM users WHERE id = ?")
+    let user = db_query::query("SELECT organization_id FROM users WHERE id = ?")
         .bind(user_id)
         .fetch_one(&state.db)
         .await?;
@@ -361,7 +362,7 @@ pub async fn list_db_accounts_active(
     tracing::debug!("Listing database accounts for active cluster of user {}", user_id);
 
     // Get user's organization_id
-    let user = sqlx::query("SELECT organization_id FROM users WHERE id = ?")
+    let user = db_query::query("SELECT organization_id FROM users WHERE id = ?")
         .bind(user_id)
         .fetch_one(&state.db)
         .await?;
@@ -401,7 +402,7 @@ pub async fn list_db_roles_active(
     tracing::debug!("Listing database roles for active cluster of user {}", user_id);
 
     // Get user's organization_id
-    let user = sqlx::query("SELECT organization_id FROM users WHERE id = ?")
+    let user = db_query::query("SELECT organization_id FROM users WHERE id = ?")
         .bind(user_id)
         .fetch_one(&state.db)
         .await?;
@@ -443,7 +444,7 @@ pub async fn list_my_db_permissions(
     tracing::debug!("Listing database permissions for user {}", user_id);
 
     // Get user's organization_id
-    let user = sqlx::query("SELECT organization_id FROM users WHERE id = ?")
+    let user = db_query::query("SELECT organization_id FROM users WHERE id = ?")
         .bind(user_id)
         .fetch_one(&state.db)
         .await?;
@@ -498,7 +499,7 @@ pub async fn list_role_permissions(
     tracing::debug!("Listing permissions for role {} by user {}", role_name, user_id);
 
     // Get user's organization_id
-    let user = sqlx::query("SELECT organization_id FROM users WHERE id = ?")
+    let user = db_query::query("SELECT organization_id FROM users WHERE id = ?")
         .bind(user_id)
         .fetch_one(&state.db)
         .await?;
