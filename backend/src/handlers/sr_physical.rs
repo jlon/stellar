@@ -315,9 +315,12 @@ fn resolve_organization_id(
 ) -> ApiResult<i64> {
     if org_ctx.is_super_admin {
         return requested_organization_id
+            .or(org_ctx.organization_id)
             .filter(|organization_id| *organization_id > 0)
             .ok_or_else(|| {
-                ApiError::validation_error("organization_id is required for super administrators")
+                ApiError::validation_error(
+                    "organization_id is required when no current organization is selected",
+                )
             });
     }
 
@@ -333,6 +336,24 @@ fn resolve_organization_id(
     }
 
     Ok(organization_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_organization_id;
+    use crate::middleware::OrgContext;
+
+    #[test]
+    fn super_admin_defaults_to_the_current_organization() {
+        let context = OrgContext {
+            user_id: 1,
+            username: "admin".to_string(),
+            organization_id: Some(7),
+            is_super_admin: true,
+        };
+
+        assert_eq!(resolve_organization_id(&context, None).unwrap(), 7);
+    }
 }
 
 fn scoped_organization_id(org_ctx: &OrgContext) -> ApiResult<Option<i64>> {

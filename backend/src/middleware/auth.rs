@@ -86,12 +86,11 @@ pub async fn auth_middleware(
     .bind(user_id)
     .bind(user_id)
     .fetch_optional(&state.db)
-    .await
-    .unwrap_or(None)
+    .await?
     .unwrap_or((false, None));
 
     let organization_id = if organization_id.is_none() {
-        fetch_org_from_user_organizations(&state.db, user_id).await
+        fetch_org_from_user_organizations(&state.db, user_id).await?
     } else {
         organization_id
     };
@@ -199,15 +198,16 @@ fn mutates_cluster(path: &str, method: &str) -> bool {
 }
 
 // Helper to fetch organization from user_organizations when users.organization_id is NULL
-async fn fetch_org_from_user_organizations(db: &SqlitePool, user_id: i64) -> Option<i64> {
-    sqlx::query_scalar::<_, i64>(
+async fn fetch_org_from_user_organizations(
+    db: &SqlitePool,
+    user_id: i64,
+) -> Result<Option<i64>, ApiError> {
+    Ok(sqlx::query_scalar::<_, i64>(
         r#"SELECT organization_id FROM user_organizations WHERE user_id = ?"#,
     )
     .bind(user_id)
     .fetch_optional(db)
-    .await
-    .ok()
-    .flatten()
+    .await?)
 }
 
 #[cfg(test)]

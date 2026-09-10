@@ -33,7 +33,8 @@ use super::{
     fe_config, shell_quote,
 };
 
-const READY_RETRIES: usize = 40;
+// A fresh FE may take several minutes to initialize BDB and elect itself leader.
+const READY_RETRIES: usize = 200;
 const READY_INTERVAL: Duration = Duration::from_secs(3);
 const MIN_FREE_KB: i64 = 20 * 1024 * 1024;
 const SQL_TIMEOUT: Duration = Duration::from_secs(30);
@@ -523,10 +524,6 @@ impl SrDeploymentService {
                 "GRANT SELECT ON ALL TABLES IN DATABASE information_schema TO USER '{}'@'%'",
                 operator
             )).await?;
-            execute_sql(&leader.advertise_host, leader_query_port, &format!(
-                "GRANT USAGE ON ALL DATABASES TO USER '{}'@'%'",
-                operator
-            )).await?;
             self.record(task_id, "create_operator", "succeeded", "Operator account created", None).await?;
 
             let cluster = self.cluster_service.create_cluster_with_activation(
@@ -837,8 +834,14 @@ impl SrDeploymentService {
             ApiError::internal_error(format!("failed to create package cache: {error}"))
         })?;
         let path = self.cache_dir.join(format!("{}.tar.gz", payload.sha256));
-        if path.exists() && sha256_file(&path)? == payload.sha256 {
-            return Ok(path);
+        if path.exists() {
+            let cached_path = path.clone();
+            let cached_digest = tokio::task::spawn_blocking(move || sha256_file(&cached_path))
+                .await
+                .map_err(|_| ApiError::internal_error("package checksum task failed"))??;
+            if cached_digest == payload.sha256 {
+                return Ok(path);
+            }
         }
         let temporary = path.with_extension(format!("download.{task_id}"));
         let response = reqwest::Client::builder()
@@ -1231,6 +1234,7 @@ async fn query_starrocks(
                 .map(|(_, rows)| rows)
                 .map_err(|_| ApiError::cluster_connection_failed("StarRocks query failed"))
         });
+    drop(client);
     pool.disconnect().await.map_err(|_| {
         ApiError::cluster_connection_failed("failed to close StarRocks adoption connection")
     })?;
@@ -1359,6 +1363,7 @@ async fn execute_sql(host: &str, port: i64, sql: &str) -> ApiResult<()> {
         .and_then(|result| {
             result.map_err(|_| ApiError::cluster_connection_failed("FE SQL command failed"))
         });
+    drop(connection);
     pool.disconnect().await.map_err(|error| {
         ApiError::cluster_connection_failed(format!("failed to close FE connection: {error}"))
     })?;

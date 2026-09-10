@@ -9,7 +9,8 @@ use tokio::{process::Command, time::timeout};
 
 use crate::utils::{ApiError, ApiResult};
 
-const COMMAND_TIMEOUT: Duration = Duration::from_secs(600);
+// Controlled package extraction can legitimately exceed ten minutes on busy hosts.
+const COMMAND_TIMEOUT: Duration = Duration::from_secs(1_800);
 
 #[derive(Clone)]
 pub struct SshTarget {

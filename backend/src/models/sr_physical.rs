@@ -224,7 +224,7 @@ impl CreateSshCredentialRequest {
     pub fn normalize(mut self) -> ApiResult<Self> {
         self.name = self.name.trim().to_owned();
         self.username = self.username.trim().to_owned();
-        self.private_key = self.private_key.trim().to_owned();
+        self.private_key = format!("{}\n", self.private_key.trim());
 
         if !is_valid_name(&self.name, 100) {
             return Err(ApiError::validation_error(
@@ -635,7 +635,8 @@ fn default_be_brpc_port() -> u16 {
 mod tests {
     use super::{
         BackendDeploymentNode, CreateDeploymentRequest, CreatePhysicalHostRequest,
-        CreateSrPackageRequest, FrontendDeploymentNode, host_key_fingerprint,
+        CreateSrPackageRequest, CreateSshCredentialRequest, FrontendDeploymentNode,
+        host_key_fingerprint,
     };
 
     fn valid_request() -> CreatePhysicalHostRequest {
@@ -668,6 +669,21 @@ mod tests {
         request.ssh_target = "host; rm -rf /".to_string();
 
         assert!(request.normalize().is_err());
+    }
+
+    #[test]
+    fn preserves_a_terminal_newline_for_ssh_private_keys() {
+        let request = CreateSshCredentialRequest {
+            organization_id: Some(1),
+            name: "key".to_string(),
+            username: "oppo".to_string(),
+            private_key:
+                "-----BEGIN OPENSSH PRIVATE KEY-----\nkey-data\n-----END OPENSSH PRIVATE KEY-----\n"
+                    .to_string(),
+        };
+
+        let request = request.normalize().unwrap();
+        assert!(request.private_key.ends_with("-----\n"));
     }
 
     #[test]
