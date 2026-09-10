@@ -5,7 +5,9 @@
 
 use std::time::Duration;
 
-use sqlx::{MySql, Pool, mysql::MySqlPoolOptions};
+use sqlx::Connection;
+use sqlx::mysql::{MySqlConnection, MySqlPoolOptions};
+use sqlx::{MySql, Pool};
 
 use super::AppDb;
 
@@ -15,6 +17,36 @@ impl AppDb for MySql {
     }
 
     async fn connect(url: &str) -> sqlx::Result<Pool<MySql>> {
+        // 先用单连接探测：Pool::connect 会把底层错误包装为 PoolTimedOut（重试后），
+        // 导致无法识别具体原因（如 database 不存在）；直连的错误原样透出。
+        let probe = MySqlConnection::connect(url).await;
+        if let Err(e) = probe {
+            // 与 SQLite（建文件即可用）不同，MySQL 的 database 本身需要预先创建；
+            // 表结构会由启动时的 migrations 自动建立。给忘记建库的用户明确指引。
+            if let sqlx::Error::Database(db_err) = &e
+                // Box<dyn DatabaseError> 无法 downcast（trait 非 Any），trait code()
+                // 返回 SQLState（42000）而非 MySQL 内部码 1049；message() 的
+                // "Unknown database" 是 MySQL 文档化固定文案，据此识别 1049。
+                && db_err.message().starts_with("Unknown database")
+            {
+                let db_name = url
+                    .rsplit_once('/')
+                    .map(|(_, p)| p.split('?').next().unwrap_or(p))
+                    .unwrap_or("");
+                return Err(sqlx::Error::Configuration(
+                    format!(
+                        "MySQL database '{}' does not exist (error 1049). Create it first, e.g. \
+                         CREATE DATABASE {} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; \
+                         table schema is created automatically by migrations on startup.",
+                        db_name, db_name,
+                    )
+                    .into(),
+                ));
+            }
+            tracing::error!("Database connection failed: {}", e);
+            return Err(e);
+        }
+
         tracing::debug!("Creating database pool with max_connections=10, acquire_timeout=5s");
         let pool = MySqlPoolOptions::new()
             .max_connections(10)
