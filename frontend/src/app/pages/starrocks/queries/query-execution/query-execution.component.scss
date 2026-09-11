@@ -1086,7 +1086,7 @@
   }
 }
 
-// Page-level loading overlay for info dialogs
+// Page-level loading overlay for info dialogs (above nb-dialog's cdk-overlay)
 .info-dialog-loading-overlay {
   position: fixed;
   top: 0;
@@ -1097,7 +1097,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1050;
+  z-index: 1100;
   
   .loading-content {
     display: flex;

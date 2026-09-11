@@ -1761,7 +1761,6 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       pager: {
         display: true,
         perPage: this.infoDialogPerPage,
-        perPageSelectLabel: '每页显示',
       },
       columns: transactionColumns,
     };
@@ -1853,7 +1852,6 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
             pager: {
               display: true,
               perPage: this.infoDialogPerPage,
-              perPageSelectLabel: '每页显示',
             },
             columns: transactionColumns,
           };
@@ -2405,7 +2403,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       mode: 'external',
       hideSubHeader: false,
       actions: { add: false, edit: false, delete: false, position: 'left' },
-      pager: { display: true, perPage: this.infoDialogPerPage, perPageSelectLabel: '每页显示' },
+      pager: { display: true, perPage: this.infoDialogPerPage },
       columns: partitionColumns,
     };
 
@@ -2669,7 +2667,6 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       pager: {
         display: pagerEnabled,
         perPage: this.infoDialogPerPage,
-        perPageSelectLabel: '每页显示',
       },
       columns: columns,
     };
@@ -2941,7 +2938,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     this.infoDialogSource.load([]);
     this.infoDialogSettings = {
       actions: { add: false, edit: false, delete: false, position: 'left' },
-      pager: { display: true, perPage: 15, perPageSelectLabel: '每页显示' },
+      pager: { display: true, perPage: 15 },
       columns: {},
       noDataMessage: '暂无数据',
     };
@@ -4025,7 +4022,6 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       pager: {
         display: true,
         perPage: this.infoDialogPerPage,
-        perPageSelectLabel: '每页显示',
       },
       columns: settings.columns,
     };
