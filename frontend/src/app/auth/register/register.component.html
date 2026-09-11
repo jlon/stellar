@@ -1,135 +1,177 @@
-<h1 id="title" class="title">Register</h1>
-<p class="sub-title">Create a Stellar account.</p>
-
-<nb-alert *ngIf="errors?.length && !submitted" outline="danger" role="alert">
-  <ul class="alert-message-list">
-    <li *ngFor="let error of errors" class="alert-message">{{ error }}</li>
-  </ul>
-</nb-alert>
-
-<nb-alert *ngIf="messages?.length && !submitted" outline="success" role="alert">
-  <ul class="alert-message-list">
-    <li *ngFor="let message of messages" class="alert-message">{{ message }}</li>
-  </ul>
-</nb-alert>
-
-<form (ngSubmit)="register()" #form="ngForm" aria-labelledby="title">
-  <div class="form-control-group">
-    <label class="label" for="input-username">Username:</label>
-    <input nbInput
-           fullWidth
-           [(ngModel)]="user.username"
-           #username="ngModel"
-           name="username"
-           id="input-username"
-           placeholder="Username"
-           autofocus
-           [status]="username.dirty ? (username.invalid ? 'danger' : 'success') : 'basic'"
-           [required]="true"
-           [minlength]="3"
-           [attr.aria-invalid]="username.invalid && username.touched ? true : null">
-    <ng-container *ngIf="username.invalid && username.touched">
-      <p class="caption status-danger" *ngIf="username.errors?.['required']">
-        Username is required!
-      </p>
-      <p class="caption status-danger" *ngIf="username.errors?.['minlength']">
-        Username must be at least 3 characters
-      </p>
-    </ng-container>
-  </div>
-
-  <div class="form-control-group">
-    <label class="label" for="input-email">Email address:</label>
-    <input nbInput
-           fullWidth
-           [(ngModel)]="user.email"
-           #email="ngModel"
-           name="email"
-           type="email"
-           id="input-email"
-           placeholder="Email address"
-           [status]="email.dirty ? (email.invalid ? 'danger' : 'success') : 'basic'"
-           [required]="true"
-           pattern="^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,4}$"
-           [attr.aria-invalid]="email.invalid && email.touched ? true : null">
-    <ng-container *ngIf="email.invalid && email.touched">
-      <p class="caption status-danger" *ngIf="email.errors?.['required']">
-        Email is required!
-      </p>
-      <p class="caption status-danger" *ngIf="email.errors?.['pattern']">
-        Email should be the real one!
-      </p>
-    </ng-container>
-  </div>
-
-  <div class="form-control-group">
-    <label class="label" for="input-password">Password:</label>
-    <input nbInput
-           fullWidth
-           [(ngModel)]="user.password"
-           #password="ngModel"
-           name="password"
-           type="password"
-           id="input-password"
-           placeholder="Password"
-           [status]="password.dirty ? (password.invalid ? 'danger' : 'success') : 'basic'"
-           [required]="true"
-           [minlength]="6"
-           [attr.aria-invalid]="password.invalid && password.touched ? true : null">
-    <ng-container *ngIf="password.invalid && password.touched">
-      <p class="caption status-danger" *ngIf="password.errors?.['required']">
-        Password is required!
-      </p>
-      <p class="caption status-danger" *ngIf="password.errors?.['minlength']">
-        Password should contain at least 6 characters
-      </p>
-    </ng-container>
-  </div>
-
-  <div class="form-control-group">
-    <label class="label" for="input-confirm-password">Confirm Password:</label>
-    <input nbInput
-           fullWidth
-           [(ngModel)]="user.confirmPassword"
-           #confirmPassword="ngModel"
-           name="confirmPassword"
-           type="password"
-           id="input-confirm-password"
-           placeholder="Confirm Password"
-           [status]="confirmPassword.dirty ? (confirmPassword.invalid ? 'danger' : 'success') : 'basic'"
-           [required]="true"
-           [attr.aria-invalid]="confirmPassword.invalid && confirmPassword.touched ? true : null">
-    <p class="caption status-danger" *ngIf="user.password !== user.confirmPassword && confirmPassword.touched">
-      Password does not match the confirm password.
-    </p>
-  </div>
-
-  <div class="form-control-group">
-    <label class="label">Avatar:</label>
-    <div class="avatar-options">
-      <button
-        type="button"
-        class="avatar-option"
-        *ngFor="let avatar of availableAvatars"
-        [class.selected]="user.avatar === avatar"
-        (click)="selectAvatar(avatar)">
-        <img [src]="avatar" alt="avatar">
-      </button>
+<div class="register-shell">
+  <div class="register-visual" aria-hidden="true">
+    <div class="visual-grid"></div>
+    <div class="visual-orb visual-orb--1"></div>
+    <div class="visual-orb visual-orb--2"></div>
+    <div class="visual-hero-bg" aria-hidden="true">
+      <img class="visual-hero-img" src="assets/images/starrocks-hero.png" alt="">
     </div>
-    <button type="button" nbButton ghost size="small" (click)="generateAvatarOptions()">
-      Generate new avatars
-    </button>
+    <div class="visual-content">
+      <div class="brand-row">
+        <div class="brand-ring">
+          <div class="brand-ring__pulse"></div>
+          <nb-icon icon="database-outline"></nb-icon>
+        </div>
+        <h1 class="brand-name">Stellar</h1>
+      </div>
+      <p class="brand-tagline">一站式 StarRocks 集群运维管理平台</p>
+      <div class="visual-metrics">
+        <div class="metric">
+          <span class="metric__value">多集群</span>
+          <span class="metric__label">统一纳管</span>
+        </div>
+        <div class="metric">
+          <span class="metric__value">实时</span>
+          <span class="metric__label">集群监控</span>
+        </div>
+        <div class="metric">
+          <span class="metric__value">智能</span>
+          <span class="metric__label">Profile 诊断</span>
+        </div>
+      </div>
+    </div>
   </div>
 
-  <button nbButton
-          fullWidth
-          status="primary"
-          size="large"
-          [disabled]="submitted || !form.valid || user.password !== user.confirmPassword">
-    Register
-  </button>
-</form>
+  <div class="register-panel">
+    <div class="panel-glow" aria-hidden="true"></div>
+    <div class="panel-header">
+      <h2 id="title" class="title">创建账号</h2>
+      <p class="sub-title">注册后开始管理你的 StarRocks 集群</p>
+    </div>
 
-<section class="another-action">
-  Already have an account? <a class="text-link" routerLink="../login">Log in</a>
-</section>
+    <nb-alert *ngIf="errors?.length && !submitted" outline="danger" role="alert">
+      <ul class="alert-message-list">
+        <li *ngFor="let error of errors" class="alert-message">{{ error }}</li>
+      </ul>
+    </nb-alert>
+
+    <nb-alert *ngIf="messages?.length && !submitted" outline="success" role="alert">
+      <ul class="alert-message-list">
+        <li *ngFor="let message of messages" class="alert-message">{{ message }}</li>
+      </ul>
+    </nb-alert>
+
+    <form (ngSubmit)="register()" #form="ngForm" aria-labelledby="title">
+      <div class="form-control-group">
+        <label class="label" for="input-username">用户名</label>
+        <input nbInput
+               fullWidth
+               [(ngModel)]="user.username"
+               #username="ngModel"
+               name="username"
+               id="input-username"
+               placeholder="请输入用户名"
+               autofocus
+               [status]="username.dirty ? (username.invalid ? 'danger' : 'success') : 'basic'"
+               [required]="true"
+               [minlength]="3"
+               [attr.aria-invalid]="username.invalid && username.touched ? true : null">
+        <ng-container *ngIf="username.invalid && username.touched">
+          <p class="caption status-danger" *ngIf="username.errors?.['required']">
+            请填写用户名
+          </p>
+          <p class="caption status-danger" *ngIf="username.errors?.['minlength']">
+            用户名至少 3 个字符
+          </p>
+        </ng-container>
+      </div>
+
+      <div class="form-control-group">
+        <label class="label" for="input-email">邮箱地址</label>
+        <input nbInput
+               fullWidth
+               [(ngModel)]="user.email"
+               #email="ngModel"
+               name="email"
+               type="email"
+               id="input-email"
+               placeholder="请输入邮箱地址"
+               [status]="email.dirty ? (email.invalid ? 'danger' : 'success') : 'basic'"
+               [required]="true"
+               pattern="^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,4}$"
+               [attr.aria-invalid]="email.invalid && email.touched ? true : null">
+        <ng-container *ngIf="email.invalid && email.touched">
+          <p class="caption status-danger" *ngIf="email.errors?.['required']">
+            请填写邮箱地址
+          </p>
+          <p class="caption status-danger" *ngIf="email.errors?.['pattern']">
+            邮箱格式不正确
+          </p>
+        </ng-container>
+      </div>
+
+      <div class="form-control-group">
+        <label class="label" for="input-password">密码</label>
+        <input nbInput
+               fullWidth
+               [(ngModel)]="user.password"
+               #password="ngModel"
+               name="password"
+               type="password"
+               id="input-password"
+               placeholder="请设置密码（至少 6 位）"
+               [status]="password.dirty ? (password.invalid ? 'danger' : 'success') : 'basic'"
+               [required]="true"
+               [minlength]="6"
+               [attr.aria-invalid]="password.invalid && password.touched ? true : null">
+        <ng-container *ngIf="password.invalid && password.touched">
+          <p class="caption status-danger" *ngIf="password.errors?.['required']">
+            请设置密码
+          </p>
+          <p class="caption status-danger" *ngIf="password.errors?.['minlength']">
+            密码至少 6 个字符
+          </p>
+        </ng-container>
+      </div>
+
+      <div class="form-control-group">
+        <label class="label" for="input-confirm-password">确认密码</label>
+        <input nbInput
+               fullWidth
+               [(ngModel)]="user.confirmPassword"
+               #confirmPassword="ngModel"
+               name="confirmPassword"
+               type="password"
+               id="input-confirm-password"
+               placeholder="请再次输入密码"
+               [status]="confirmPassword.dirty ? (confirmPassword.invalid ? 'danger' : 'success') : 'basic'"
+               [required]="true"
+               [attr.aria-invalid]="confirmPassword.invalid && confirmPassword.touched ? true : null">
+        <p class="caption status-danger" *ngIf="user.password !== user.confirmPassword && confirmPassword.touched">
+          两次输入的密码不一致
+        </p>
+      </div>
+
+      <div class="form-control-group">
+        <label class="label">头像</label>
+        <div class="avatar-options">
+          <button
+            type="button"
+            class="avatar-option"
+            *ngFor="let avatar of availableAvatars"
+            [class.selected]="user.avatar === avatar"
+            (click)="selectAvatar(avatar)">
+            <img [src]="avatar" alt="avatar">
+          </button>
+        </div>
+        <button type="button" nbButton ghost size="small" (click)="generateAvatarOptions()">
+          换一批头像
+        </button>
+      </div>
+
+      <button nbButton
+              fullWidth
+              status="primary"
+              size="large"
+              [disabled]="submitted || !form.valid || user.password !== user.confirmPassword"
+              [class.btn-pulse]="submitted">
+        <nb-icon *ngIf="!submitted" icon="person-add-outline"></nb-icon>
+        {{ submitted ? '正在注册...' : '注册' }}
+      </button>
+    </form>
+
+    <section class="another-action">
+      已有账号？<a class="text-link" routerLink="../login">登录</a>
+    </section>
+  </div>
+</div>

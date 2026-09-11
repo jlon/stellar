@@ -1,7 +1,7 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, ViewEncapsulation } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
-import { NbToastrService, NbAlertModule, NbInputModule, NbButtonModule } from '@nebular/theme';
+import { NbToastrService, NbAlertModule, NbInputModule, NbButtonModule, NbIconModule } from '@nebular/theme';
 import { AuthService } from '../../@core/data/auth.service';
 import { DiceBearService } from '../../@core/services/dicebear.service';
 
@@ -11,7 +11,8 @@ import { FormsModule } from '@angular/forms';
     selector: 'ngx-register',
     templateUrl: './register.component.html',
     styleUrls: ['./register.component.scss'],
-    imports: [CommonModule, NbAlertModule, FormsModule, NbInputModule, NbButtonModule, RouterLink]
+    encapsulation: ViewEncapsulation.None,
+    imports: [CommonModule, NbAlertModule, FormsModule, NbInputModule, NbButtonModule, NbIconModule, RouterLink]
 })
 export class RegisterComponent {
   protected router = inject(Router);
@@ -63,19 +64,19 @@ export class RegisterComponent {
 
     // Validation
     if (!this.user.username || !this.user.email || !this.user.password || !this.user.confirmPassword) {
-      this.errors.push('All fields are required!');
+      this.errors.push('请填写所有必填项');
       this.submitted = false;
       return;
     }
 
     if (this.user.password !== this.user.confirmPassword) {
-      this.errors.push('Passwords do not match!');
+      this.errors.push('两次输入的密码不一致');
       this.submitted = false;
       return;
     }
 
     if (this.user.password.length < 6) {
-      this.errors.push('Password must be at least 6 characters long!');
+      this.errors.push('密码长度至少 6 位');
       this.submitted = false;
       return;
     }
@@ -91,7 +92,7 @@ export class RegisterComponent {
       next: (response) => {
         this.submitted = false;
         // Show single toast notification for registration success
-        this.toastrService.success('Please login with your credentials', 'Registration Successful');
+        this.toastrService.success('注册成功，请使用你的账号登录。', '注册成功');
         // Navigate to login after short delay
         setTimeout(() => {
           this.router.navigate(['/auth/login']);
@@ -100,7 +101,7 @@ export class RegisterComponent {
       error: (error) => {
         this.submitted = false;
         // Show error in alert (form validation errors use alert, API errors use toast)
-        const errorMessage = error.error?.message || 'Registration failed. Please try again.';
+        const errorMessage = error.error?.message || '注册失败，请稍后重试。';
         this.errors = [errorMessage];
         this.showMessages = true;
         // Don't show toast for API errors since we already show alert

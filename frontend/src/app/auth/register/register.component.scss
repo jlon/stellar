@@ -1,35 +1,405 @@
 @import '../../@theme/styles/themes';
 
-@include nb-install-component() {
-  :host {
-    display: block;
+// ViewEncapsulation.None: global selectors, not scoped to the component.
+// Layout shell lives OUTSIDE nb-install-component (that mixin gates output on theme context).
+// Colors come from stellar-auth-* theme variables registered in themes.scss.
+// Visual side mirrors the login page for a consistent auth experience.
+
+ngx-register .register-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: stretch;
+  width: 100vw;
+  height: 100vh;
+  background: nb-theme(stellar-auth-bg-deep);
+}
+
+ngx-register .register-visual {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 25% 15%, nb-theme(stellar-auth-accent-orb-soft) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 85%, nb-theme(stellar-auth-secondary-orb-soft) 0%, transparent 55%),
+    linear-gradient(160deg, nb-theme(stellar-auth-bg-deep) 0%, nb-theme(stellar-auth-bg-mid) 50%, nb-theme(stellar-auth-bg-deep) 100%);
+}
+
+ngx-register .visual-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(nb-theme(stellar-auth-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, nb-theme(stellar-auth-grid-line) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse at center, black 25%, transparent 78%);
+}
+
+// Soft ambient orbs
+ngx-register .visual-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  pointer-events: none;
+  animation: orb-drift 14s ease-in-out infinite alternate;
+
+  &--1 {
+    width: 26rem;
+    height: 26rem;
+    top: -8rem;
+    right: -6rem;
+    background: radial-gradient(circle, nb-theme(stellar-auth-accent-orb) 0%, transparent 70%);
   }
 
-  .avatar-options {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
+  &--2 {
+    width: 22rem;
+    height: 22rem;
+    bottom: -7rem;
+    left: -5rem;
+    background: radial-gradient(circle, nb-theme(stellar-auth-secondary-orb) 0%, transparent 70%);
+    animation-delay: -7s;
+  }
+}
+
+ngx-register .visual-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  padding: 3rem 4rem;
+  width: 100%;
+  max-width: 44rem;
+  min-height: 100vh;
+}
+
+ngx-register .brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  margin-bottom: 1rem;
+  animation: fade-up 0.6s 0.1s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+ngx-register .brand-ring {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  border: 1.5px solid nb-theme(stellar-auth-accent);
+  box-shadow: 0 0 1rem nb-theme(stellar-auth-accent-glow-soft);
+
+  nb-icon {
+    font-size: 1.5rem;
+    color: nb-theme(stellar-auth-accent);
+  }
+
+  &__pulse {
+    position: absolute;
+    inset: -1.5px;
+    border-radius: 50%;
+    border: 1.5px solid nb-theme(stellar-auth-accent);
+    animation: ring-pulse 3s ease-out infinite;
+  }
+}
+
+ngx-register .brand-name {
+  margin: 0;
+  font-size: 2.5rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: nb-theme(stellar-auth-text-strong);
+}
+
+ngx-register .brand-tagline {
+  margin: 0 0 3rem;
+  font-size: 1rem;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: nb-theme(stellar-auth-text-hint);
+  animation: fade-up 0.6s 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+ngx-register .visual-metrics {
+  display: flex;
+  justify-content: center;
+  gap: 3rem;
+  animation: fade-up 0.6s 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+ngx-register .metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+
+  &__value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: nb-theme(stellar-auth-accent);
+    letter-spacing: -0.02em;
+  }
+
+  &__label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    color: nb-theme(stellar-auth-text-faint);
+  }
+}
+
+// Hero PNG as blurred background layer behind content
+ngx-register .visual-hero-bg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 0;
+}
+
+ngx-register .visual-hero-img {
+  display: block;
+  width: 90%;
+  max-width: 38rem;
+  height: auto;
+  opacity: 0.3;
+  filter: blur(2px) saturate(1.2);
+  border-radius: nb-theme(card-border-radius);
+  animation: hero-float 8s ease-in-out infinite alternate;
+}
+
+ngx-register .register-panel {
+  position: relative;
+  flex: 0 0 34rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  padding: 3rem 4rem;
+  overflow-y: auto;
+  background:
+    radial-gradient(ellipse at 80% 0%, nb-theme(stellar-auth-accent-orb-faint) 0%, transparent 50%),
+    linear-gradient(180deg, nb-theme(stellar-auth-bg-panel) 0%, nb-theme(stellar-auth-bg-deep) 100%);
+  animation: panel-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+ngx-register .panel-glow {
+  position: absolute;
+  top: 0;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, nb-theme(stellar-auth-accent-glow), transparent);
+  pointer-events: none;
+}
+
+ngx-register .panel-header {
+  margin-bottom: 2rem;
+
+  .title {
+    margin: 0 0 0.5rem;
+    text-align: left;
+    font-size: 2rem;
+    font-weight: 700;
+    color: nb-theme(stellar-auth-text-strong);
+    animation: fade-up 0.6s 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .sub-title {
+    margin: 0;
+    text-align: left;
+    color: nb-theme(stellar-auth-text-hint);
+    animation: fade-up 0.6s 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+}
+
+// Form fields
+ngx-register form {
+  animation: fade-up 0.6s 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+
+  .form-control-group {
+    margin-bottom: 1.5rem;
+  }
+
+  .label {
+    color: nb-theme(stellar-auth-text-medium);
+    font-size: 0.85rem;
+    font-weight: 500;
     margin-bottom: 0.5rem;
   }
 
-  .avatar-option {
-    width: 3rem;
-    height: 3rem;
-    padding: 0;
-    border: 2px solid nb-theme(border-basic-color-3);
-    border-radius: nb-theme(border-radius);
-    background: transparent;
-    cursor: pointer;
-    overflow: hidden;
+  input[nbInput] {
+    background: nb-theme(stellar-auth-glass-input-bg) !important;
+    border: 1px solid nb-theme(stellar-auth-glass-input-border) !important;
+    color: nb-theme(stellar-auth-text-strong) !important;
+    border-radius: nb-theme(border-radius) !important;
+    transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
 
-    img {
-      display: block;
-      width: 100%;
-      height: 100%;
+    &::placeholder {
+      color: nb-theme(stellar-auth-text-faint) !important;
     }
 
-    &.selected {
-      border-color: nb-theme(color-primary-default);
+    &:focus {
+      background: nb-theme(stellar-auth-glass-input-focus-bg) !important;
+      border-color: nb-theme(stellar-auth-accent-glow-border) !important;
+      box-shadow: 0 0 0 3px nb-theme(stellar-auth-accent-glow-soft) !important;
+      outline: none;
     }
+
+    &.status-danger {
+      border-color: nb-theme(stellar-auth-danger-border) !important;
+    }
+
+    &.status-success {
+      border-color: nb-theme(stellar-auth-success-border) !important;
+    }
+  }
+
+  .caption {
+    color: nb-theme(stellar-auth-text-hint);
+  }
+
+  .status-danger {
+    color: nb-theme(stellar-auth-danger) !important;
+  }
+
+  button[nbButton][status="primary"] {
+    background: nb-theme(stellar-auth-accent) !important;
+    border: none !important;
+    color: nb-theme(stellar-auth-accent-text) !important;
+    font-weight: 700 !important;
+    border-radius: nb-theme(border-radius) !important;
+    letter-spacing: 0.02em;
+    box-shadow: 0 0 1.5rem nb-theme(stellar-auth-accent-glow);
+    transition: transform 0.2s ease, box-shadow 0.25s ease !important;
+
+    &:hover:not([disabled]) {
+      transform: translateY(-1px);
+      box-shadow: 0 0 2.25rem nb-theme(stellar-auth-accent-glow);
+    }
+
+    &:active:not([disabled]) {
+      transform: translateY(0);
+    }
+
+    &[disabled] {
+      opacity: 0.5;
+    }
+  }
+}
+
+// Avatar picker
+ngx-register .avatar-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+ngx-register .avatar-option {
+  width: 3rem;
+  height: 3rem;
+  padding: 0;
+  border: 2px solid nb-theme(stellar-auth-glass-input-border);
+  border-radius: nb-theme(border-radius);
+  background: transparent;
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+
+  img {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  &.selected {
+    border-color: nb-theme(stellar-auth-accent);
+    box-shadow: 0 0 0.5rem nb-theme(stellar-auth-accent-glow-soft);
+  }
+}
+
+ngx-register .another-action {
+  margin-top: 2rem;
+  text-align: center;
+  color: nb-theme(stellar-auth-text-hint);
+  animation: fade-up 0.6s 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+
+  .text-link {
+    color: nb-theme(stellar-auth-accent);
+    font-weight: 600;
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}
+
+ngx-register nb-alert {
+  animation: fade-up 0.4s ease both;
+}
+
+// ---- Motion ----
+@keyframes panel-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(1rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes orb-drift {
+  from { transform: translate(0, 0) scale(1); }
+  to { transform: translate(2rem, 2.5rem) scale(1.1); }
+}
+
+@keyframes ring-pulse {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+@keyframes hero-float {
+  from { transform: translateY(0) scale(1); }
+  to { transform: translateY(-1rem) scale(1.02); }
+}
+
+@media (max-width: 992px) {
+  ngx-register .register-visual {
+    display: none;
+  }
+
+  ngx-register .register-panel {
+    flex-basis: 100% !important;
+    padding: 2rem 1.5rem;
   }
 }

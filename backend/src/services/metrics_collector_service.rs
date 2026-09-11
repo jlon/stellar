@@ -21,6 +21,10 @@ use std::time::{Duration, Instant};
 use stellar_macros::app_impl;
 use utoipa::ToSchema;
 
+/// 审计日志延迟百分位查询代价高（percentile_approx 扫全窗口），
+/// 而该指标是低频缓变值——30s 采集周期内复用缓存即可。
+const LATENCY_PERCENTILES_CACHE_TTL: Duration = Duration::from_secs(600);
+
 struct CachedNodeList<T> {
     nodes: Vec<T>,
     fetched_at: Instant,
@@ -120,6 +124,8 @@ pub struct MetricsCollectorService<DB: AppDb> {
     retention_days: i64,
     backend_list_cache: Arc<DashMap<i64, CachedNodeList<Backend>>>,
     frontend_list_cache: Arc<DashMap<i64, CachedNodeList<Frontend>>>,
+    /// (p50, p95, p99, fetched_at) per cluster；审计 percentile 查询代价高，低频刷新。
+    latency_percentiles_cache: Arc<DashMap<i64, (f64, f64, f64, Instant)>>,
 }
 
 #[app_impl]
@@ -138,6 +144,7 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
             retention_days,
             backend_list_cache: Arc::new(DashMap::new()),
             frontend_list_cache: Arc::new(DashMap::new()),
+            latency_percentiles_cache: Arc::new(DashMap::new()),
         }
     }
 
@@ -1115,6 +1122,12 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
     /// Get real latency percentiles from audit logs using StarRocks percentile functions
     /// Reference: https://docs.starrocks.io/zh/docs/category/percentile/
     async fn get_real_latency_percentiles(&self, cluster: &Cluster) -> ApiResult<(f64, f64, f64)> {
+        if let Some(entry) = self.latency_percentiles_cache.get(&cluster.id)
+            && entry.3.elapsed() < LATENCY_PERCENTILES_CACHE_TTL
+        {
+            return Ok((entry.0, entry.1, entry.2));
+        }
+
         use crate::services::mysql_client::MySQLClient;
 
         let pool = self.mysql_pool_manager.get_pool(cluster).await?;
@@ -1146,7 +1159,7 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
                 COALESCE(percentile_approx({}, 0.95), 0) as p95,
                 COALESCE(percentile_approx({}, 0.99), 0) as p99
             FROM {}
-            WHERE {} >= DATE_SUB(NOW(), INTERVAL 3 DAY)
+            WHERE {} >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
                 AND {} > 0
                 AND state = 'EOF'
                 AND {} = 1
@@ -1202,6 +1215,8 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
                         p95,
                         p99
                     );
+                    self.latency_percentiles_cache
+                        .insert(cluster.id, (p50, p95, p99, Instant::now()));
 
                     Ok((p50, p95, p99))
                 } else {

@@ -214,26 +214,6 @@ ngx-login .panel-glow {
   pointer-events: none;
 }
 
-ngx-login .panel-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.35rem 0.85rem;
-  margin-bottom: 1.5rem;
-  border-radius: 2rem;
-  border: 1px solid nb-theme(stellar-auth-accent-glow-border);
-  background: nb-theme(stellar-auth-accent-glow-soft);
-  color: nb-theme(stellar-auth-accent);
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  animation: fade-up 0.6s 0.1s cubic-bezier(0.22, 1, 0.36, 1) both;
-
-  nb-icon {
-    font-size: 0.9rem;
-  }
-}
-
 ngx-login .panel-header {
   margin-bottom: 2rem;
 
