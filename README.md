@@ -39,7 +39,7 @@ Stellar is a professional, enterprise-grade OLAP database cluster management pla
 git clone https://github.com/jlon/stellar.git
 cd stellar
 
-# 2. Build and package
+# 2. Build and package (use make build-static for a fully static single binary)
 make build
 
 # 3. Start the service
@@ -333,7 +333,7 @@ Stellar 是一个专业的、企业级的 OLAP 数据库集群管理平台，提
 git clone https://github.com/jlon/stellar.git
 cd stellar
 
-# 2. 构建和打包
+# 2. 构建和打包（发布推荐 make build-static：musl 全静态单二进制）
 make build
 
 # 3. 启动服务
