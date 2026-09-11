@@ -1,4 +1,5 @@
 import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { NbButtonModule, NbIconModule, NbTooltipModule } from '@nebular/theme';
 
 interface RoleRow {
   id: number;
@@ -7,7 +8,8 @@ interface RoleRow {
 }
 
 @Component({
-  standalone: false,
+  standalone: true,
+  imports: [NbButtonModule, NbIconModule, NbTooltipModule],
   selector: 'ngx-roles-configure-cell',
   template: `
     <button

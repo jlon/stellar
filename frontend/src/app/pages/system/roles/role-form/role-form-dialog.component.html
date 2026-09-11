@@ -12,39 +12,47 @@
           </label>
 
           <!-- Organization Selection (Super Admin Only) -->
-          <div class="form-group" *ngIf="isSuperAdmin">
-            <label class="label" for="input-organization">所属组织</label>
-            <nb-form-field>
-              <nb-icon nbPrefix icon="home-outline"></nb-icon>
-              <nb-select
-                formControlName="organizationId"
-                id="input-organization"
-                placeholder="请选择组织"
-                fullWidth
-              >
-                <nb-option *ngFor="let org of organizations" [value]="org.id">
-                  {{ org.name }}
-                  <span class="org-code" *ngIf="org.code">({{ org.code }})</span>
-                </nb-option>
-              </nb-select>
-            </nb-form-field>
-          </div>
+          @if (isSuperAdmin) {
+            <div class="form-group">
+              <label class="label" for="input-organization">所属组织</label>
+              <nb-form-field>
+                <nb-icon nbPrefix icon="home-outline"></nb-icon>
+                <nb-select
+                  formControlName="organizationId"
+                  id="input-organization"
+                  placeholder="请选择组织"
+                  fullWidth
+                  >
+                  @for (org of organizations; track org) {
+                    <nb-option [value]="org.id">
+                      {{ org.name }}
+                      @if (org.code) {
+                        <span class="org-code">({{ org.code }})</span>
+                      }
+                    </nb-option>
+                  }
+                </nb-select>
+              </nb-form-field>
+            </div>
+          }
 
           <!-- Organization Display (Org Admin) -->
-          <div class="form-group" *ngIf="!isSuperAdmin && currentOrganization">
-            <label class="label">所属组织</label>
-            <nb-form-field>
-              <nb-icon nbPrefix icon="home-outline"></nb-icon>
-              <input
-                nbInput
-                fullWidth
-                type="text"
-                [value]="currentOrganization.name"
-                disabled
-              />
-            </nb-form-field>
-            <p class="caption status-hint">组织管理员只能在本组织内创建角色</p>
-          </div>
+          @if (!isSuperAdmin && currentOrganization) {
+            <div class="form-group">
+              <label class="label">所属组织</label>
+              <nb-form-field>
+                <nb-icon nbPrefix icon="home-outline"></nb-icon>
+                <input
+                  nbInput
+                  fullWidth
+                  type="text"
+                  [value]="currentOrganization.name"
+                  disabled
+                  />
+              </nb-form-field>
+              <p class="caption status-hint">组织管理员只能在本组织内创建角色</p>
+            </div>
+          }
 
           <div class="form-group">
             <label class="label" for="input-code">角色代码</label>
@@ -58,7 +66,7 @@
                 placeholder="请输入角色代码"
                 [readonly]="mode === 'edit'"
                 maxlength="50"
-              />
+                />
             </nb-form-field>
           </div>
 
@@ -73,7 +81,7 @@
                 formControlName="name"
                 placeholder="请输入角色名称"
                 maxlength="50"
-              />
+                />
             </nb-form-field>
           </div>
 
@@ -102,18 +110,19 @@
           <div class="permission-tree-container">
             <!-- Simple tree structure (inspired by query-execution) -->
             <div class="tree-scroll">
-              <ul class="permission-tree" *ngIf="permissionTree.length > 0; else emptyTree">
-                <ng-container *ngFor="let node of permissionTree; trackBy: trackNodeById">
-                  <ng-container *ngTemplateOutlet="treeNodeTemplate; context: { $implicit: node }"></ng-container>
-                </ng-container>
-              </ul>
-              
-              <ng-template #emptyTree>
+              @if (permissionTree.length > 0) {
+                <ul class="permission-tree">
+                  @for (node of permissionTree; track trackNodeById($index, node)) {
+                    <ng-container *ngTemplateOutlet="treeNodeTemplate; context: { $implicit: node }"></ng-container>
+                  }
+                </ul>
+              } @else {
                 <div class="empty-tree">
                   <nb-icon icon="inbox-outline"></nb-icon>
                   <span>暂无可用权限</span>
                 </div>
-              </ng-template>
+              }
+
             </div>
           </div>
         </div>
@@ -135,31 +144,34 @@
               [indeterminate]="node.indeterminate"
               (checkedChange)="onNodeCheckChange(node, $event)"
               (click)="$event.stopPropagation()"
-            >
+              >
               <span class="node-text">{{ node.name }}</span>
             </nb-checkbox>
 
             <!-- Expand/collapse button (right side) -->
-            <button
-              *ngIf="isNodeExpandable(node)"
-              nbButton
-              ghost
-              size="tiny"
-              class="toggle-btn"
-              type="button"
-              (click)="toggleNode(node, $event)"
-              [class.expanded]="node.expanded"
-            >
-              <nb-icon [icon]="node.expanded ? 'chevron-down-outline' : 'chevron-right-outline'"></nb-icon>
-            </button>
+            @if (isNodeExpandable(node)) {
+              <button
+                nbButton
+                ghost
+                size="tiny"
+                class="toggle-btn"
+                type="button"
+                (click)="toggleNode(node, $event)"
+                [class.expanded]="node.expanded"
+                >
+                <nb-icon [icon]="node.expanded ? 'chevron-down-outline' : 'chevron-right-outline'"></nb-icon>
+              </button>
+            }
           </div>
 
           <!-- Children (recursive) -->
-          <ul class="tree-children" *ngIf="node.children && node.children.length && node.expanded">
-            <ng-container *ngFor="let child of node.children; trackBy: trackNodeById">
-              <ng-container *ngTemplateOutlet="treeNodeTemplate; context: { $implicit: child }"></ng-container>
-            </ng-container>
-          </ul>
+          @if (node.children && node.children.length && node.expanded) {
+            <ul class="tree-children">
+              @for (child of node.children; track trackNodeById($index, child)) {
+                <ng-container *ngTemplateOutlet="treeNodeTemplate; context: { $implicit: child }"></ng-container>
+              }
+            </ul>
+          }
         </li>
       </ng-template>
     </form>

@@ -1,18 +1,31 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { NbDialogService, NbToastrService } from '@nebular/theme';
-import { LocalDataSource } from 'angular2-smart-table';
+import { NbDialogService, NbToastrService, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule } from '@nebular/theme';
+import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { ClusterService, Cluster } from '../../../../@core/data/cluster.service';
 import { ErrorHandler } from '../../../../@core/utils/error-handler';
 import { ConfirmDialogService } from '../../../../@core/services/confirm-dialog.service';
 
+
 @Component({
-  standalone: false,
-  selector: 'ngx-cluster-list',
-  templateUrl: './cluster-list.component.html',
-  styleUrls: ['./cluster-list.component.scss'],
+    selector: 'ngx-cluster-list',
+    templateUrl: './cluster-list.component.html',
+    styleUrls: ['./cluster-list.component.scss'],
+    imports: [
+    NbCardModule,
+    NbButtonModule,
+    NbIconModule,
+    NbSpinnerModule,
+    Angular2SmartTableModule
+],
 })
 export class ClusterListComponent implements OnInit {
+  private clusterService = inject(ClusterService);
+  private router = inject(Router);
+  private dialogService = inject(NbDialogService);
+  private toastrService = inject(NbToastrService);
+  private confirmDialogService = inject(ConfirmDialogService);
+
   source: LocalDataSource = new LocalDataSource();
   loading = true;
 
@@ -80,14 +93,6 @@ export class ClusterListComponent implements OnInit {
       },
     },
   };
-
-  constructor(
-    private clusterService: ClusterService,
-    private router: Router,
-    private dialogService: NbDialogService,
-    private toastrService: NbToastrService,
-    private confirmDialogService: ConfirmDialogService,
-  ) {}
 
   ngOnInit(): void {
     this.loadClusters();

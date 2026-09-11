@@ -1,7 +1,7 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 
-import { NbToastrService, NbDialogService } from '@nebular/theme';
-import { LocalDataSource } from 'angular2-smart-table';
+import { NbToastrService, NbDialogService, NbCardModule, NbCheckboxModule, NbButtonModule, NbIconModule, NbSelectModule, NbOptionModule, NbSpinnerModule, NbAlertModule } from '@nebular/theme';
+import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
@@ -14,13 +14,33 @@ import { renderLongText } from '../../../@core/utils/text-truncate';
 import { ConfirmDialogService } from '../../../@core/services/confirm-dialog.service';
 import { AuthService } from '../../../@core/data/auth.service';
 
+import { FormsModule } from '@angular/forms';
+
 @Component({
-  standalone: false,
-  selector: 'ngx-sessions',
-  templateUrl: './sessions.component.html',
-  styleUrls: ['./sessions.component.scss'],
+    selector: 'ngx-sessions',
+    templateUrl: './sessions.component.html',
+    styleUrls: ['./sessions.component.scss'],
+    imports: [
+    NbCardModule,
+    NbCheckboxModule,
+    FormsModule,
+    NbButtonModule,
+    NbIconModule,
+    NbSelectModule,
+    NbOptionModule,
+    NbSpinnerModule,
+    NbAlertModule,
+    Angular2SmartTableModule
+],
 })
 export class SessionsComponent implements OnInit, OnDestroy {
+  private toastrService = inject(NbToastrService);
+  private dialogService = inject(NbDialogService);
+  private confirmDialogService = inject(ConfirmDialogService);
+  private clusterContext = inject(ClusterContextService);
+  private nodeService = inject(NodeService);
+  private authService = inject(AuthService);
+
   clusterId: number;
   activeCluster: Cluster | null = null;
   sessions: Session[] = [];
@@ -120,15 +140,7 @@ export class SessionsComponent implements OnInit, OnDestroy {
     },
   };
 
-  constructor(
-    
-    private toastrService: NbToastrService,
-    private dialogService: NbDialogService,
-    private confirmDialogService: ConfirmDialogService,
-    private clusterContext: ClusterContextService,
-    private nodeService: NodeService,
-    private authService: AuthService,
-  ) {
+  constructor() {
     // Try to get clusterId from route first
     // Get clusterId from ClusterContextService
     this.clusterId = this.clusterContext.getActiveClusterId() || 0;

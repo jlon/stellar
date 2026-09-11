@@ -1,10 +1,11 @@
-import { Component, OnInit, OnDestroy, Input, Output, EventEmitter, ViewChild, TemplateRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, Input, Output, EventEmitter, ViewChild, TemplateRef, inject } from '@angular/core';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
-import { LocalDataSource } from 'angular2-smart-table';
+import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { PermissionRequestService } from '../../../../@core/data/permission-request.service';
 import { DbUserPermissionDto } from '../../../../@core/data/permission-request.model';
-import { NbDialogService, NbToastrService } from '@nebular/theme';
+import { NbDialogService, NbToastrService, NbCardModule, NbIconModule, NbButtonModule, NbSpinnerModule, NbListModule, NbBadgeModule, NbAccordionModule } from '@nebular/theme';
+
 
 /**
  * Standard Permission Dashboard Component
@@ -25,12 +26,25 @@ interface PermissionRecord extends DbUserPermissionDto {
 }
 
 @Component({
-  standalone: false,
-  selector: 'ngx-permission-dashboard-standard',
-  templateUrl: './permission-dashboard-standard.component.html',
-  styleUrls: ['./permission-dashboard-standard.component.scss'],
+    selector: 'ngx-permission-dashboard-standard',
+    templateUrl: './permission-dashboard-standard.component.html',
+    styleUrls: ['./permission-dashboard-standard.component.scss'],
+    imports: [
+    NbCardModule,
+    NbIconModule,
+    NbButtonModule,
+    NbSpinnerModule,
+    Angular2SmartTableModule,
+    NbListModule,
+    NbBadgeModule,
+    NbAccordionModule
+],
 })
 export class PermissionDashboardStandardComponent implements OnInit, OnDestroy {
+  private permissionService = inject(PermissionRequestService);
+  private toastr = inject(NbToastrService);
+  private dialogService = inject(NbDialogService);
+
   @Input() refresh$: Subject<void>;
   @Input() clusterId: number;
   @Output() revokePermission = new EventEmitter<PermissionRecord>();
@@ -104,12 +118,6 @@ export class PermissionDashboardStandardComponent implements OnInit, OnDestroy {
   loadingRolePermissions = false;
 
   private destroy$ = new Subject<void>();
-
-  constructor(
-    private permissionService: PermissionRequestService,
-    private toastr: NbToastrService,
-    private dialogService: NbDialogService,
-  ) {}
 
   ngOnInit(): void {
     if (this.refresh$) {

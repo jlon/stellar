@@ -18,8 +18,12 @@
       </nb-card-header>
       <nb-card-body>
         <p class="text-hint mb-3">匹配黑名单正则表达式的 SQL 将被拒绝执行</p>
-        <div *ngIf="loading" class="text-center mt-3"><nb-spinner status="primary" [message]="''"></nb-spinner></div>
-        <angular2-smart-table *ngIf="!loading" [settings]="blacklistSettings" [source]="blacklistSource" (delete)="onDeleteConfirm($event)"></angular2-smart-table>
+        @if (loading) {
+          <div class="text-center mt-3"><nb-spinner status="primary" [message]="''"></nb-spinner></div>
+        }
+        @if (!loading) {
+          <angular2-smart-table [settings]="blacklistSettings" [source]="blacklistSource" (delete)="onDeleteConfirm($event)"></angular2-smart-table>
+        }
       </nb-card-body>
     </nb-card>
   </div>
@@ -48,28 +52,30 @@
           </nb-accordion-item-header>
           <nb-accordion-item-body>
             <div class="template-list">
-              <div class="template-item" *ngFor="let template of exampleTemplates; trackBy: trackTemplate">
-                <div class="template-header">
-                  <div class="template-info">
-                    <nb-icon [icon]="template.icon" status="basic" class="template-icon"></nb-icon>
-                    <div class="template-text">
-                      <span class="template-title">{{template.title}}</span>
-                      <small class="template-desc">{{template.description}}</small>
+              @for (template of exampleTemplates; track trackTemplate($index, template)) {
+                <div class="template-item">
+                  <div class="template-header">
+                    <div class="template-info">
+                      <nb-icon [icon]="template.icon" status="basic" class="template-icon"></nb-icon>
+                      <div class="template-text">
+                        <span class="template-title">{{template.title}}</span>
+                        <small class="template-desc">{{template.description}}</small>
+                      </div>
                     </div>
+                    <button nbButton
+                      ghost
+                      size="tiny"
+                      status="basic"
+                      (click)="useTemplate(template)"
+                      title="使用此模板">
+                      <nb-icon icon="copy-outline"></nb-icon>
+                    </button>
                   </div>
-                  <button nbButton 
-                          ghost 
-                          size="tiny" 
-                          status="basic"
-                          (click)="useTemplate(template)"
-                          title="使用此模板">
-                    <nb-icon icon="copy-outline"></nb-icon>
-                  </button>
+                  <div class="template-code-block">
+                    <code>{{template.pattern}}</code>
+                  </div>
                 </div>
-                <div class="template-code-block">
-                  <code>{{template.pattern}}</code>
-                </div>
-              </div>
+              }
             </div>
           </nb-accordion-item-body>
         </nb-accordion-item>

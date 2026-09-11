@@ -80,9 +80,8 @@ const PIPES = [
 ];
 
 @NgModule({
-  imports: [CommonModule, ...NB_MODULES],
-  exports: [CommonModule, ...PIPES, ...COMPONENTS, ...NB_MODULES],
-  declarations: [...COMPONENTS, ...PIPES],
+    imports: [CommonModule, ...NB_MODULES, ...COMPONENTS, ...PIPES],
+    exports: [CommonModule, ...PIPES, ...COMPONENTS, ...NB_MODULES],
 })
 export class ThemeModule {
   static forRoot(): ModuleWithProviders<ThemeModule> {

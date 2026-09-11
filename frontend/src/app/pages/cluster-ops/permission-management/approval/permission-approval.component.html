@@ -7,7 +7,9 @@
       </div>
       <div class="d-flex align-items-center gap-2">
         <nb-select [(selected)]="typeFilter" (selectedChange)="onTypeFilterChange()" size="small">
-          <nb-option *ngFor="let opt of typeOptions" [value]="opt.value">{{ opt.label }}</nb-option>
+          @for (opt of typeOptions; track opt) {
+            <nb-option [value]="opt.value">{{ opt.label }}</nb-option>
+          }
         </nb-select>
         <button nbButton status="primary" size="small" (click)="loadPendingRequests()">
           <nb-icon icon="refresh-outline"></nb-icon>
@@ -17,20 +19,25 @@
   </nb-card-header>
 
   <nb-card-body>
-    <div *ngIf="requestsLoading" class="text-center p-4">
-      <nb-spinner status="primary"></nb-spinner>
-    </div>
+    @if (requestsLoading) {
+      <div class="text-center p-4">
+        <nb-spinner status="primary"></nb-spinner>
+      </div>
+    }
 
-    <angular2-smart-table
-      *ngIf="!requestsLoading && filteredRequests.length > 0"
-      [settings]="tableSettings"
-      [source]="approvalSource"
-      (edit)="onEditRow($event)">
-    </angular2-smart-table>
+    @if (!requestsLoading && filteredRequests.length > 0) {
+      <angular2-smart-table
+        [settings]="tableSettings"
+        [source]="approvalSource"
+        (edit)="onEditRow($event)">
+      </angular2-smart-table>
+    }
 
-    <div *ngIf="!requestsLoading && filteredRequests.length === 0" class="empty-state">
-      <nb-icon icon="checkmark-circle-2-outline" class="empty-icon" status="success"></nb-icon>
-      <p>暂无待审批申请</p>
-    </div>
+    @if (!requestsLoading && filteredRequests.length === 0) {
+      <div class="empty-state">
+        <nb-icon icon="checkmark-circle-2-outline" class="empty-icon" status="success"></nb-icon>
+        <p>暂无待审批申请</p>
+      </div>
+    }
   </nb-card-body>
 </nb-card>

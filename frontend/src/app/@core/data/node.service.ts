@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiService } from './api.service';
 
@@ -321,7 +321,8 @@ export interface ProfileAnalysisResult {
   providedIn: 'root',
 })
 export class NodeService {
-  constructor(private api: ApiService) {}
+  private api = inject(ApiService);
+
 
   // All API methods now use backend routes without cluster ID
   // The active cluster is determined by the backend

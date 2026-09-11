@@ -2,42 +2,45 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
 
 import { UserWithRoles } from '../../../../@core/data/user.service';
 
-@Component({
-  standalone: false,
-  selector: 'ngx-users-actions-cell',
-  template: `
-    <div class="actions-container">
-      <button
-        nbButton
-        ghost
-        size="tiny"
-        status="primary"
-        *ngIf="value?.canEdit"
-        (click)="editUser.emit(rowData)"
-        nbTooltip="编辑用户信息"
-        nbTooltipPlacement="top"
-        class="action-btn"
-      >
-        <nb-icon icon="edit-2-outline"></nb-icon>
-      </button>
+import { NbButtonModule, NbTooltipModule, NbIconModule } from '@nebular/theme';
 
-      <button
-        nbButton
-        ghost
-        size="tiny"
-        status="danger"
-        *ngIf="value?.canDelete"
-        (click)="deleteUser.emit(rowData)"
-        nbTooltip="删除用户"
-        nbTooltipPlacement="top"
-        class="action-btn"
-      >
-        <nb-icon icon="trash-2-outline"></nb-icon>
-      </button>
+@Component({
+    selector: 'ngx-users-actions-cell',
+    template: `
+    <div class="actions-container">
+      @if (value?.canEdit) {
+        <button
+          nbButton
+          ghost
+          size="tiny"
+          status="primary"
+          (click)="editUser.emit(rowData)"
+          nbTooltip="编辑用户信息"
+          nbTooltipPlacement="top"
+          class="action-btn"
+          >
+          <nb-icon icon="edit-2-outline"></nb-icon>
+        </button>
+      }
+    
+      @if (value?.canDelete) {
+        <button
+          nbButton
+          ghost
+          size="tiny"
+          status="danger"
+          (click)="deleteUser.emit(rowData)"
+          nbTooltip="删除用户"
+          nbTooltipPlacement="top"
+          class="action-btn"
+          >
+          <nb-icon icon="trash-2-outline"></nb-icon>
+        </button>
+      }
     </div>
-  `,
-  styles: [
-    `
+    `,
+    styles: [
+        `
       .actions-container {
         display: flex;
         gap: 0.25rem;
@@ -57,7 +60,12 @@ import { UserWithRoles } from '../../../../@core/data/user.service';
         transform: translateY(0);
       }
     `,
-  ],
+    ],
+    imports: [
+    NbButtonModule,
+    NbTooltipModule,
+    NbIconModule
+],
 })
 export class UsersActionsCellComponent {
   @Input() value: { canEdit: boolean; canDelete: boolean } | null = null;

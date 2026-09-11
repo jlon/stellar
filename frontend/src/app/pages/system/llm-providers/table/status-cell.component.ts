@@ -1,10 +1,10 @@
 import { Component, Input } from '@angular/core';
 import { LLMProvider } from '../../../../@core/data/llm-provider.service';
+import { NbBadgeModule } from '@nebular/theme';
 
 @Component({
-  standalone: false,
-  selector: 'ngx-llm-provider-status-cell',
-  template: `
+    selector: 'ngx-llm-provider-status-cell',
+    template: `
     <div class="d-flex flex-wrap align-items-center">
       <nb-badge
         [text]="rowData.is_active ? '已激活' : '未激活'"
@@ -17,6 +17,7 @@ import { LLMProvider } from '../../../../@core/data/llm-provider.service';
       ></nb-badge>
     </div>
   `,
+    imports: [NbBadgeModule],
 })
 export class LLMProviderStatusCellComponent {
   @Input() rowData!: LLMProvider;

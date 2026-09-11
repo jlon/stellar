@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { timeout } from 'rxjs/operators';
@@ -8,10 +8,12 @@ import { environment } from '../../../environments/environment';
   providedIn: 'root',
 })
 export class ApiService {
+  private http = inject(HttpClient);
+
   private readonly baseUrl = environment.apiUrl;
   private readonly resolvedBaseUrl: string;
 
-  constructor(private http: HttpClient) {
+  constructor() {
     this.resolvedBaseUrl = this.computeBaseUrl(this.baseUrl);
   }
 

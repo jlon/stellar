@@ -1,29 +1,37 @@
 import { Component, Input } from '@angular/core';
 
+import { NbBadgeModule } from '@nebular/theme';
+
 interface Role {
   id: number;
   name: string;
 }
 
 @Component({
-  standalone: false,
-  selector: 'ngx-users-role-badge-cell',
-  template: `
-    <div class="d-flex flex-wrap align-items-center" *ngIf="value?.length; else empty">
-      <nb-badge
-        *ngFor="let role of getDisplayRoles(); let i = index"
-        [text]="role.name"
-        [status]="i === 0 ? 'primary' : 'basic'"
-        class="mr-1 mb-1"
-      ></nb-badge>
-      <span class="text-hint" *ngIf="value.length > maxDisplay">
-        +{{ value.length - maxDisplay }}
-      </span>
-    </div>
-    <ng-template #empty>
+    selector: 'ngx-users-role-badge-cell',
+    template: `
+    @if (value?.length) {
+      <div class="d-flex flex-wrap align-items-center">
+        @for (role of getDisplayRoles(); track role; let i = $index) {
+          <nb-badge
+            [text]="role.name"
+            [status]="i === 0 ? 'primary' : 'basic'"
+            class="mr-1 mb-1"
+          ></nb-badge>
+        }
+        @if (value.length > maxDisplay) {
+          <span class="text-hint">
+            +{{ value.length - maxDisplay }}
+          </span>
+        }
+      </div>
+    } @else {
       <span class="text-hint">-</span>
-    </ng-template>
-  `,
+    }
+    `,
+    imports: [
+    NbBadgeModule
+],
 })
 export class UsersRoleBadgeCellComponent {
   @Input() value: Role[] = [];

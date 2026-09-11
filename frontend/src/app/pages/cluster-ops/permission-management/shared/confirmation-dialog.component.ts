@@ -1,5 +1,7 @@
-import { Component, Input } from '@angular/core';
-import { NbDialogRef } from '@nebular/theme';
+import { Component, Input, inject } from '@angular/core';
+import { NbDialogRef, NbCardModule, NbInputModule, NbAlertModule, NbButtonModule, NbIconModule } from '@nebular/theme';
+
+import { FormsModule } from '@angular/forms';
 
 /**
  * Confirmation Dialog Component
@@ -7,47 +9,58 @@ import { NbDialogRef } from '@nebular/theme';
  * Used for approval/rejection confirmations with comment input
  */
 @Component({
-  standalone: false,
-  selector: 'ngx-confirmation-dialog',
-  template: `
+    selector: 'ngx-confirmation-dialog',
+    template: `
     <nb-card class="confirmation-dialog">
       <nb-card-header>
         <h5>{{ title }}</h5>
       </nb-card-header>
-
+    
       <nb-card-body>
-        <div class="message-content" *ngIf="message">
-          <p>{{ message }}</p>
-        </div>
-
-        <div class="form-group" *ngIf="showCommentInput">
-          <label for="comment">
-            {{ commentLabel }}
-            <span class="text-danger" *ngIf="commentRequired">*</span>
-          </label>
-          <textarea
-            nbInput
-            fullWidth
-            [rows]="commentRows"
-            [(ngModel)]="comment"
-            [placeholder]="commentPlaceholder"
-            [required]="commentRequired"
-            id="comment">
-          </textarea>
-          <small class="form-text text-muted" *ngIf="commentHint">
-            {{ commentHint }}
-          </small>
-        </div>
-
-        <nb-alert *ngIf="alertMessage" [status]="alertStatus" appearance="outline">
-          {{ alertMessage }}
-        </nb-alert>
+        @if (message) {
+          <div class="message-content">
+            <p>{{ message }}</p>
+          </div>
+        }
+    
+        @if (showCommentInput) {
+          <div class="form-group">
+            <label for="comment">
+              {{ commentLabel }}
+              @if (commentRequired) {
+                <span class="text-danger">*</span>
+              }
+            </label>
+            <textarea
+              nbInput
+              fullWidth
+              [rows]="commentRows"
+              [(ngModel)]="comment"
+              [placeholder]="commentPlaceholder"
+              [required]="commentRequired"
+              id="comment">
+            </textarea>
+            @if (commentHint) {
+              <small class="form-text text-muted">
+                {{ commentHint }}
+              </small>
+            }
+          </div>
+        }
+    
+        @if (alertMessage) {
+          <nb-alert [status]="alertStatus" appearance="outline">
+            {{ alertMessage }}
+          </nb-alert>
+        }
       </nb-card-body>
-
+    
       <nb-card-footer>
         <div class="d-flex justify-content-end gap-2">
           <button nbButton [status]="confirmButtonStatus" (click)="confirm()">
-            <nb-icon *ngIf="confirmIcon" [icon]="confirmIcon"></nb-icon>
+            @if (confirmIcon) {
+              <nb-icon [icon]="confirmIcon"></nb-icon>
+            }
             {{ confirmText }}
           </button>
           <button nbButton status="basic" (click)="cancel()">
@@ -56,8 +69,8 @@ import { NbDialogRef } from '@nebular/theme';
         </div>
       </nb-card-footer>
     </nb-card>
-  `,
-  styles: [`
+    `,
+    styles: [`
     .confirmation-dialog {
       min-width: 400px;
       max-width: 500px;
@@ -90,8 +103,18 @@ import { NbDialogRef } from '@nebular/theme';
       margin-top: 1rem;
     }
   `],
+    imports: [
+    NbCardModule,
+    NbInputModule,
+    FormsModule,
+    NbAlertModule,
+    NbButtonModule,
+    NbIconModule
+],
 })
 export class ConfirmationDialogComponent {
+  protected dialogRef = inject<NbDialogRef<ConfirmationDialogComponent>>(NbDialogRef);
+
   @Input() title: string = '确认';
   @Input() message: string = '';
   @Input() confirmText: string = '确认';
@@ -112,8 +135,6 @@ export class ConfirmationDialogComponent {
   @Input() alertStatus: string = 'info';
 
   comment: string = '';
-
-  constructor(protected dialogRef: NbDialogRef<ConfirmationDialogComponent>) {}
 
   confirm() {
     if (this.showCommentInput && this.commentRequired && !this.comment?.trim()) {

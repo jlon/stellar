@@ -1,22 +1,29 @@
 import { Component, Input, OnInit } from '@angular/core';
 import { trigger, transition, style, animate } from '@angular/animations';
+import { NbCardModule, NbSpinnerModule, NbIconModule, NbBadgeModule } from '@nebular/theme';
+
 
 @Component({
-  standalone: false,
-  selector: 'ngx-metric-card-group',
-  templateUrl: './metric-card-group.component.html',
-  styleUrls: ['./metric-card-group.component.scss'],
-  animations: [
-    trigger('slideDown', [
-      transition(':enter', [
-        style({ height: 0, opacity: 0, overflow: 'hidden' }),
-        animate('300ms ease-out', style({ height: '*', opacity: 1 })),
-      ]),
-      transition(':leave', [
-        animate('300ms ease-in', style({ height: 0, opacity: 0, overflow: 'hidden' })),
-      ]),
-    ]),
-  ],
+    selector: 'ngx-metric-card-group',
+    templateUrl: './metric-card-group.component.html',
+    styleUrls: ['./metric-card-group.component.scss'],
+    animations: [
+        trigger('slideDown', [
+            transition(':enter', [
+                style({ height: 0, opacity: 0, overflow: 'hidden' }),
+                animate('300ms ease-out', style({ height: '*', opacity: 1 })),
+            ]),
+            transition(':leave', [
+                animate('300ms ease-in', style({ height: 0, opacity: 0, overflow: 'hidden' })),
+            ]),
+        ]),
+    ],
+    imports: [
+    NbCardModule,
+    NbSpinnerModule,
+    NbIconModule,
+    NbBadgeModule
+],
 })
 export class MetricCardGroupComponent implements OnInit {
   @Input() title: string;

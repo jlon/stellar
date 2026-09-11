@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { NbDialogService } from '@nebular/theme';
 import { Observable } from 'rxjs';
 import { ConfirmDialogComponent } from '../components/confirm-dialog/confirm-dialog.component';
@@ -7,7 +7,8 @@ import { ConfirmDialogComponent } from '../components/confirm-dialog/confirm-dia
   providedIn: 'root'
 })
 export class ConfirmDialogService {
-  constructor(private dialogService: NbDialogService) {}
+  private dialogService = inject(NbDialogService);
+
 
   confirm(
     title: string,

@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Router, CanActivate, ActivatedRouteSnapshot, RouterStateSnapshot } from '@angular/router';
 import { PermissionService } from '../data/permission.service';
 
@@ -6,10 +6,9 @@ import { PermissionService } from '../data/permission.service';
   providedIn: 'root',
 })
 export class PermissionGuard implements CanActivate {
-  constructor(
-    private permissionService: PermissionService,
-    private router: Router,
-  ) {}
+  private permissionService = inject(PermissionService);
+  private router = inject(Router);
+
 
   canActivate(
     route: ActivatedRouteSnapshot,

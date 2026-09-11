@@ -1,6 +1,6 @@
-import { Component, OnInit, OnDestroy, TemplateRef, ViewChild, ChangeDetectorRef } from '@angular/core';
-import { NbToastrService, NbDialogService, NbDialogRef } from '@nebular/theme';
-import { LocalDataSource } from 'angular2-smart-table';
+import { Component, OnInit, OnDestroy, TemplateRef, ViewChild, ChangeDetectorRef, inject } from '@angular/core';
+import { NbToastrService, NbDialogService, NbDialogRef, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule, NbAccordionModule, NbBadgeModule, NbInputModule } from '@nebular/theme';
+import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { NodeService, SqlBlacklistItem } from '../../../../@core/data/node.service';
@@ -9,13 +9,32 @@ import { Cluster } from '../../../../@core/data/cluster.service';
 import { ErrorHandler } from '../../../../@core/utils/error-handler';
 import { ConfirmDialogService } from '../../../../@core/services/confirm-dialog.service';
 
+import { FormsModule } from '@angular/forms';
+
 @Component({
-  standalone: false,
-  selector: 'ngx-sql-blacklist',
-  templateUrl: './sql-blacklist.component.html',
-  styleUrls: ['./sql-blacklist.component.scss'],
+    selector: 'ngx-sql-blacklist',
+    templateUrl: './sql-blacklist.component.html',
+    styleUrls: ['./sql-blacklist.component.scss'],
+    imports: [
+    NbCardModule,
+    NbButtonModule,
+    NbIconModule,
+    NbSpinnerModule,
+    Angular2SmartTableModule,
+    NbAccordionModule,
+    NbBadgeModule,
+    NbInputModule,
+    FormsModule
+],
 })
 export class SqlBlacklistComponent implements OnInit, OnDestroy {
+  private nodeService = inject(NodeService);
+  private toastrService = inject(NbToastrService);
+  private clusterContext = inject(ClusterContextService);
+  private dialogService = inject(NbDialogService);
+  private confirmDialogService = inject(ConfirmDialogService);
+  private cdr = inject(ChangeDetectorRef);
+
   blacklistSource: LocalDataSource = new LocalDataSource();
   activeCluster: Cluster | null = null;
   loading = false;
@@ -75,15 +94,6 @@ export class SqlBlacklistComponent implements OnInit, OnDestroy {
       Pattern: { title: '正则表达式', type: 'string', width: '90%' },
     },
   };
-
-  constructor(
-    private nodeService: NodeService,
-    private toastrService: NbToastrService,
-    private clusterContext: ClusterContextService,
-    private dialogService: NbDialogService,
-    private confirmDialogService: ConfirmDialogService,
-    private cdr: ChangeDetectorRef,
-  ) {}
 
   ngOnInit(): void {
     this.clusterContext.activeCluster$.pipe(takeUntil(this.destroy$)).subscribe(cluster => {

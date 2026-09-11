@@ -1,12 +1,12 @@
-import { Component, OnInit } from '@angular/core';
-import { FormBuilder, FormGroup, Validators, AbstractControl, ValidationErrors } from '@angular/forms';
-import { NbDialogRef } from '@nebular/theme';
+import { Component, OnInit, inject } from '@angular/core';
+import { FormBuilder, FormGroup, Validators, AbstractControl, ValidationErrors, FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { NbDialogRef, NbCardModule, NbIconModule, NbInputModule, NbButtonModule } from '@nebular/theme';
 import { CreateFunctionRequest } from '../../../../@core/data/system-function';
 
+
 @Component({
-  standalone: false,
-  selector: 'ngx-add-function-dialog',
-  template: `
+    selector: 'ngx-add-function-dialog',
+    template: `
     <nb-card>
       <nb-card-header>
         <div class="d-flex align-items-center">
@@ -29,13 +29,17 @@ import { CreateFunctionRequest } from '../../../../@core/data/system-function';
                   placeholder="请输入分类名称"
                   [readonly]="isCategoryNameReadonly"
                   status="basic"
-                />
-                <div *ngIf="addFunctionForm.get('category_name')?.invalid && addFunctionForm.get('category_name')?.touched" class="text-danger small mt-1">
-                  分类名称是必填项
-                </div>
-                <small *ngIf="isCategoryNameReadonly" class="text-hint">
-                  从分类卡片添加时，分类名称不可修改
-                </small>
+                  />
+                @if (addFunctionForm.get('category_name')?.invalid && addFunctionForm.get('category_name')?.touched) {
+                  <div class="text-danger small mt-1">
+                    分类名称是必填项
+                  </div>
+                }
+                @if (isCategoryNameReadonly) {
+                  <small class="text-hint">
+                    从分类卡片添加时，分类名称不可修改
+                  </small>
+                }
               </div>
             </div>
             <div class="col-md-6">
@@ -49,14 +53,16 @@ import { CreateFunctionRequest } from '../../../../@core/data/system-function';
                   fullWidth
                   placeholder="请输入功能名称"
                   status="basic"
-                />
-                <div *ngIf="addFunctionForm.get('function_name')?.invalid && addFunctionForm.get('function_name')?.touched" class="text-danger small mt-1">
-                  功能名称是必填项
-                </div>
+                  />
+                @if (addFunctionForm.get('function_name')?.invalid && addFunctionForm.get('function_name')?.touched) {
+                  <div class="text-danger small mt-1">
+                    功能名称是必填项
+                  </div>
+                }
               </div>
             </div>
           </div>
-
+    
           <div class="form-group">
             <label for="description" class="label">功能说明 *</label>
             <textarea
@@ -68,11 +74,13 @@ import { CreateFunctionRequest } from '../../../../@core/data/system-function';
               placeholder="请输入功能说明"
               status="basic"
             ></textarea>
-            <div *ngIf="addFunctionForm.get('description')?.invalid && addFunctionForm.get('description')?.touched" class="text-danger small mt-1">
-              功能说明是必填项
-            </div>
+            @if (addFunctionForm.get('description')?.invalid && addFunctionForm.get('description')?.touched) {
+              <div class="text-danger small mt-1">
+                功能说明是必填项
+              </div>
+            }
           </div>
-
+    
           <div class="form-group">
             <label for="sql_query" class="label">SQL查询 *</label>
             <textarea
@@ -84,9 +92,11 @@ import { CreateFunctionRequest } from '../../../../@core/data/system-function';
               placeholder="请输入SQL查询语句（只支持SELECT和SHOW语句）"
               status="basic"
             ></textarea>
-            <div *ngIf="addFunctionForm.get('sql_query')?.invalid && addFunctionForm.get('sql_query')?.touched" class="text-danger small mt-1">
-              SQL查询是必填项
-            </div>
+            @if (addFunctionForm.get('sql_query')?.invalid && addFunctionForm.get('sql_query')?.touched) {
+              <div class="text-danger small mt-1">
+                SQL查询是必填项
+              </div>
+            }
             <small class="text-hint">
               只支持SELECT和SHOW类型的SQL查询语句
             </small>
@@ -100,7 +110,7 @@ import { CreateFunctionRequest } from '../../../../@core/data/system-function';
             nbButton
             status="basic"
             (click)="onCancel()"
-          >
+            >
             <nb-icon icon="close-outline"></nb-icon>
             取消
           </button>
@@ -110,15 +120,15 @@ import { CreateFunctionRequest } from '../../../../@core/data/system-function';
             status="primary"
             [disabled]="addFunctionForm.invalid"
             (click)="onSubmit()"
-          >
+            >
             <nb-icon icon="checkmark-outline"></nb-icon>
             添加
           </button>
         </div>
       </nb-card-footer>
     </nb-card>
-  `,
-  styles: [`
+    `,
+    styles: [`
     :host {
       display: block;
       width: 100%;
@@ -150,17 +160,18 @@ import { CreateFunctionRequest } from '../../../../@core/data/system-function';
     .gap-2 > * + * {
       margin-left: 0.5rem;
     }
-  `]
+  `],
+    imports: [NbCardModule, NbIconModule, FormsModule, ReactiveFormsModule, NbInputModule, NbButtonModule]
 })
 export class AddFunctionDialogComponent implements OnInit {
+  private fb = inject(FormBuilder);
+  private dialogRef = inject<NbDialogRef<AddFunctionDialogComponent>>(NbDialogRef);
+
   addFunctionForm: FormGroup;
   categoryName: string = '';
   isCategoryNameReadonly: boolean = false;
 
-  constructor(
-    private fb: FormBuilder,
-    private dialogRef: NbDialogRef<AddFunctionDialogComponent>
-  ) {
+  constructor() {
     this.addFunctionForm = this.fb.group({
       category_name: ['', [Validators.required, Validators.maxLength(100), this.trimValidator]],
       function_name: ['', [Validators.required, Validators.maxLength(100), this.trimValidator]],

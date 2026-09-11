@@ -1,20 +1,32 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { interval, Subject } from 'rxjs';
 import { takeUntil, switchMap } from 'rxjs/operators';
-import { NbToastrService } from '@nebular/theme';
-import { LocalDataSource } from 'angular2-smart-table';
+import { NbToastrService, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule } from '@nebular/theme';
+import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { NodeService } from '../../../@core/data/node.service';
 import { ClusterService, Cluster } from '../../../@core/data/cluster.service';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
 import { ErrorHandler } from '../../../@core/utils/error-handler';
 
+
 @Component({
-  standalone: false,
-  selector: 'ngx-frontends',
-  templateUrl: './frontends.component.html',
-  styleUrls: ['./frontends.component.scss'],
+    selector: 'ngx-frontends',
+    templateUrl: './frontends.component.html',
+    styleUrls: ['./frontends.component.scss'],
+    imports: [
+    NbCardModule,
+    NbButtonModule,
+    NbIconModule,
+    NbSpinnerModule,
+    Angular2SmartTableModule
+],
 })
 export class FrontendsComponent implements OnInit, OnDestroy {
+  private nodeService = inject(NodeService);
+  private clusterService = inject(ClusterService);
+  private clusterContext = inject(ClusterContextService);
+  private toastrService = inject(NbToastrService);
+
   source: LocalDataSource = new LocalDataSource();
   clusterId: number;
   activeCluster: Cluster | null = null;
@@ -97,12 +109,7 @@ export class FrontendsComponent implements OnInit, OnDestroy {
     },
   };
 
-  constructor(
-    private nodeService: NodeService,
-    private clusterService: ClusterService,
-    private clusterContext: ClusterContextService,
-    private toastrService: NbToastrService,
-  ) {
+  constructor() {
     this.clusterId = this.clusterContext.getActiveClusterId() || 0;
   }
 

@@ -1,6 +1,7 @@
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 
 import { RoleSummary } from '../../../../@core/data/role.service';
+import { NbButtonModule, NbTooltipModule, NbIconModule } from '@nebular/theme';
 
 export interface RoleActionPermissions {
   canEdit: boolean;
@@ -8,9 +9,8 @@ export interface RoleActionPermissions {
 }
 
 @Component({
-  standalone: false,
-  selector: 'ngx-roles-actions-cell',
-  template: `
+    selector: 'ngx-roles-actions-cell',
+    template: `
     <div class="actions-container">
       <button
         nbButton
@@ -40,8 +40,8 @@ export interface RoleActionPermissions {
       </button>
     </div>
   `,
-  styles: [
-    `
+    styles: [
+        `
       .actions-container {
         display: flex;
         justify-content: center;
@@ -61,7 +61,12 @@ export interface RoleActionPermissions {
         transform: translateY(0);
       }
     `,
-  ],
+    ],
+    imports: [
+        NbButtonModule,
+        NbTooltipModule,
+        NbIconModule,
+    ],
 })
 export class RolesActionsCellComponent {
   @Input() value: RoleActionPermissions | null = null;

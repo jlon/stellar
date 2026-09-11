@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiService } from './api.service';
 import {
@@ -26,7 +26,8 @@ import {
   providedIn: 'root',
 })
 export class PermissionRequestService {
-  constructor(private api: ApiService) {}
+  private api = inject(ApiService);
+
 
   /**
    * 获取我的权限申请列表（分页）

@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import {
   HttpRequest,
   HttpHandler,
@@ -14,11 +14,10 @@ import { NbToastrService } from '@nebular/theme';
 
 @Injectable()
 export class JwtInterceptor implements HttpInterceptor {
-  constructor(
-    private authService: AuthService,
-    private toastrService: NbToastrService,
-    private router: Router,
-  ) {}
+  private authService = inject(AuthService);
+  private toastrService = inject(NbToastrService);
+  private router = inject(Router);
+
 
   intercept(request: HttpRequest<unknown>, next: HttpHandler): Observable<HttpEvent<unknown>> {
     // Add authorization header with JWT token if available

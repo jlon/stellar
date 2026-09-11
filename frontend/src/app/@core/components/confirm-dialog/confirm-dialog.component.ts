@@ -1,10 +1,9 @@
-import { Component, Input } from '@angular/core';
-import { NbDialogRef } from '@nebular/theme';
+import { Component, Input, inject } from '@angular/core';
+import { NbDialogRef, NbCardModule, NbButtonModule } from '@nebular/theme';
 
 @Component({
-  standalone: false,
-  selector: 'ngx-confirm-dialog',
-  template: `
+    selector: 'ngx-confirm-dialog',
+    template: `
     <nb-card>
       <nb-card-header>{{ title }}</nb-card-header>
       <nb-card-body>
@@ -16,7 +15,7 @@ import { NbDialogRef } from '@nebular/theme';
       </nb-card-footer>
     </nb-card>
   `,
-  styles: [`
+    styles: [`
     nb-card {
       margin: 0;
       min-width: 400px;
@@ -33,16 +32,17 @@ import { NbDialogRef } from '@nebular/theme';
       margin: 0;
       line-height: 1.5;
     }
-  `]
+  `],
+    imports: [NbCardModule, NbButtonModule]
 })
 export class ConfirmDialogComponent {
+  protected ref = inject<NbDialogRef<ConfirmDialogComponent>>(NbDialogRef);
+
   @Input() title: string;
   @Input() message: string;
   @Input() confirmText: string = '确定';
   @Input() cancelText: string = '取消';
   @Input() confirmStatus: string = 'primary';
-
-  constructor(protected ref: NbDialogRef<ConfirmDialogComponent>) {}
 
   cancel() {
     this.ref.close(false);

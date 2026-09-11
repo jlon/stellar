@@ -1,20 +1,41 @@
-import { Component, OnInit } from '@angular/core';
-import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { Component, OnInit, inject } from '@angular/core';
+import { FormBuilder, FormGroup, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { NbToastrService } from '@nebular/theme';
+import { NbToastrService, NbCardModule, NbFormFieldModule, NbSelectModule, NbOptionModule, NbIconModule, NbInputModule, NbCheckboxModule, NbButtonModule } from '@nebular/theme';
 import { ClusterService, Cluster } from '../../../../@core/data/cluster.service';
 import { OrganizationService, Organization } from '../../../../@core/data/organization.service';
 import { AuthService } from '../../../../@core/data/auth.service';
 import { ErrorHandler } from '../../../../@core/utils/error-handler';
 import { TabReuseService } from '../../../../@core/services/tab-reuse.service';
 
+
 @Component({
-  standalone: false,
-  selector: 'ngx-cluster-form',
-  templateUrl: './cluster-form.component.html',
-  styleUrls: ['./cluster-form.component.scss'],
+    selector: 'ngx-cluster-form',
+    templateUrl: './cluster-form.component.html',
+    styleUrls: ['./cluster-form.component.scss'],
+    imports: [
+    NbCardModule,
+    FormsModule,
+    ReactiveFormsModule,
+    NbFormFieldModule,
+    NbSelectModule,
+    NbOptionModule,
+    NbIconModule,
+    NbInputModule,
+    NbCheckboxModule,
+    NbButtonModule
+],
 })
 export class ClusterFormComponent implements OnInit {
+  private fb = inject(FormBuilder);
+  private clusterService = inject(ClusterService);
+  private organizationService = inject(OrganizationService);
+  private authService = inject(AuthService);
+  private router = inject(Router);
+  private route = inject(ActivatedRoute);
+  private toastrService = inject(NbToastrService);
+  private tabReuseService = inject(TabReuseService);
+
   clusterForm: FormGroup;
   loading = false;
   isEditMode = false;
@@ -29,16 +50,7 @@ export class ClusterFormComponent implements OnInit {
   isOrgAdmin = false;  // Check if user is organization admin
   organizationsLoading = false;
 
-  constructor(
-    private fb: FormBuilder,
-    private clusterService: ClusterService,
-    private organizationService: OrganizationService,
-    private authService: AuthService,
-    private router: Router,
-    private route: ActivatedRoute,
-    private toastrService: NbToastrService,
-    private tabReuseService: TabReuseService,
-  ) {
+  constructor() {
     this.clusterForm = this.fb.group({
       organization_id: [null],
       name: ['', [Validators.required, Validators.maxLength(100)]],

@@ -1,12 +1,12 @@
-import { Component, OnInit } from '@angular/core';
-import { FormBuilder, FormGroup, Validators, AbstractControl, ValidationErrors } from '@angular/forms';
-import { NbDialogRef } from '@nebular/theme';
+import { Component, OnInit, inject } from '@angular/core';
+import { FormBuilder, FormGroup, Validators, AbstractControl, ValidationErrors, FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { NbDialogRef, NbCardModule, NbIconModule, NbInputModule, NbButtonModule } from '@nebular/theme';
 import { SystemFunction } from '../../../../@core/data/system-function';
 
+
 @Component({
-  standalone: false,
-  selector: 'ngx-edit-function-dialog',
-  template: `
+    selector: 'ngx-edit-function-dialog',
+    template: `
     <nb-card>
       <nb-card-header>
         <div class="d-flex align-items-center">
@@ -29,7 +29,7 @@ import { SystemFunction } from '../../../../@core/data/system-function';
                   placeholder="请输入分类名称"
                   status="basic"
                   readonly
-                />
+                  />
                 <small class="text-hint">
                   编辑时分类名称不可修改
                 </small>
@@ -46,14 +46,16 @@ import { SystemFunction } from '../../../../@core/data/system-function';
                   fullWidth
                   placeholder="请输入功能名称"
                   status="basic"
-                />
-                <div *ngIf="editFunctionForm.get('function_name')?.invalid && editFunctionForm.get('function_name')?.touched" class="text-danger small mt-1">
-                  功能名称是必填项
-                </div>
+                  />
+                @if (editFunctionForm.get('function_name')?.invalid && editFunctionForm.get('function_name')?.touched) {
+                  <div class="text-danger small mt-1">
+                    功能名称是必填项
+                  </div>
+                }
               </div>
             </div>
           </div>
-
+    
           <div class="form-group">
             <label for="description" class="label">功能说明 *</label>
             <textarea
@@ -65,11 +67,13 @@ import { SystemFunction } from '../../../../@core/data/system-function';
               placeholder="请输入功能说明"
               status="basic"
             ></textarea>
-            <div *ngIf="editFunctionForm.get('description')?.invalid && editFunctionForm.get('description')?.touched" class="text-danger small mt-1">
-              功能说明是必填项
-            </div>
+            @if (editFunctionForm.get('description')?.invalid && editFunctionForm.get('description')?.touched) {
+              <div class="text-danger small mt-1">
+                功能说明是必填项
+              </div>
+            }
           </div>
-
+    
           <div class="form-group">
             <label for="sql_query" class="label">SQL查询 *</label>
             <textarea
@@ -81,9 +85,11 @@ import { SystemFunction } from '../../../../@core/data/system-function';
               placeholder="请输入SQL查询语句（只支持SELECT和SHOW语句）"
               status="basic"
             ></textarea>
-            <div *ngIf="editFunctionForm.get('sql_query')?.invalid && editFunctionForm.get('sql_query')?.touched" class="text-danger small mt-1">
-              SQL查询是必填项
-            </div>
+            @if (editFunctionForm.get('sql_query')?.invalid && editFunctionForm.get('sql_query')?.touched) {
+              <div class="text-danger small mt-1">
+                SQL查询是必填项
+              </div>
+            }
             <small class="text-hint">
               只支持SELECT和SHOW类型的SQL查询语句
             </small>
@@ -97,7 +103,7 @@ import { SystemFunction } from '../../../../@core/data/system-function';
             nbButton
             status="basic"
             (click)="onCancel()"
-          >
+            >
             <nb-icon icon="close-outline"></nb-icon>
             取消
           </button>
@@ -107,15 +113,15 @@ import { SystemFunction } from '../../../../@core/data/system-function';
             status="primary"
             [disabled]="editFunctionForm.invalid"
             (click)="onSubmit()"
-          >
+            >
             <nb-icon icon="checkmark-outline"></nb-icon>
             保存
           </button>
         </div>
       </nb-card-footer>
     </nb-card>
-  `,
-  styles: [`
+    `,
+    styles: [`
     :host {
       display: block;
       width: 100%;
@@ -153,16 +159,17 @@ import { SystemFunction } from '../../../../@core/data/system-function';
       color: var(--text-hint-color) !important;
       cursor: not-allowed !important;
     }
-  `]
+  `],
+    imports: [NbCardModule, NbIconModule, FormsModule, ReactiveFormsModule, NbInputModule, NbButtonModule]
 })
 export class EditFunctionDialogComponent implements OnInit {
+  private fb = inject(FormBuilder);
+  private dialogRef = inject<NbDialogRef<EditFunctionDialogComponent>>(NbDialogRef);
+
   editFunctionForm: FormGroup;
   function: SystemFunction;
 
-  constructor(
-    private fb: FormBuilder,
-    private dialogRef: NbDialogRef<EditFunctionDialogComponent>
-  ) {
+  constructor() {
     this.editFunctionForm = this.fb.group({
       category_name: ['', [Validators.required, Validators.maxLength(100), this.trimValidator]],
       function_name: ['', [Validators.required, Validators.maxLength(100), this.trimValidator]],
