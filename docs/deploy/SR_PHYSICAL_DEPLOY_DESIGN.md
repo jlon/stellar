@@ -461,7 +461,16 @@ pending -> cancelled
 - **预检磁盘门槛**：数据目录所在文件系统同样要求 ≥20 GiB 余量。
 - 明确不做（P2）：升级、只读接管转受管。
 
-## 14. API 与权限
+## 14. 侧边栏组织
+
+部署管理菜单分三段，子项拥有独立菜单权限码（`menu:deployment:hosts/credentials/packages/clusters/adopt/deploy/tasks`）：
+- **集群资产**：主机管理、SSH 凭据、安装包（登记类，低频）。
+- **受管集群**：托管集群（默认页，聚合概览指标）、集群接管（只读导入）。
+- **部署执行**：新建部署、部署任务（动作类）。
+
+部署总览不再是独立入口，其内容并入托管集群首页；旧 `/deployment/overview` URL 重定向兼容。空分组（子项全部无权限时）自动隐藏。
+
+## 15. API 与权限
 
 所有路由挂在认证中间件后，但授权必须通过扩展后的 `permission_extractor` 产生 Casbin resource/action。
 
