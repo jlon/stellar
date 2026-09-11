@@ -1086,18 +1086,19 @@
   }
 }
 
-// Page-level loading overlay for info dialogs (above nb-dialog's cdk-overlay)
+// Loading overlay for info dialogs; lives inside .info-dialog-card and covers it
 .info-dialog-loading-overlay {
-  position: fixed;
+  position: absolute;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1100;
+  z-index: 10;
+  border-radius: nb-theme(border-radius);
   
   .loading-content {
     display: flex;
@@ -1119,6 +1120,7 @@
 
 // Info dialog card styles - limit size and make scrollable
 .info-dialog-card {
+  position: relative;
   max-width: 90vw;
   max-height: 85vh;
   width: min(90vw, 1200px);
