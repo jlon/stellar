@@ -14,6 +14,15 @@ BACKEND_DIR="$PROJECT_ROOT/backend"
 BUILD_DIR="$PROJECT_ROOT/build"
 DIST_DIR="$BUILD_DIR/dist"
 
+# Target selection: BUILD_TARGET override, default native glibc.
+#   glibc:  x86_64-unknown-linux-gnu (dev / quick builds)
+#   static: x86_64-unknown-linux-musl via cargo zigbuild (release artifact)
+BUILD_TARGET="${BUILD_TARGET:-x86_64-unknown-linux-gnu}"
+case "$BUILD_TARGET" in
+    *-musl) BUILD_CMD=(cargo zigbuild) ;;
+    *)      BUILD_CMD=(cargo build) ;;
+esac
+
 # Colors
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -21,8 +30,22 @@ NC='\033[0m'
 
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}Building Stellar Backend${NC}"
+echo -e "${GREEN}Target: $BUILD_TARGET${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
+
+# Verify toolchain for musl (requires zig + cargo-zigbuild)
+if [[ "$BUILD_TARGET" == *-musl ]]; then
+    if ! command -v zig >/dev/null; then
+        echo -e "${RED}Error: zig not found. Install it (e.g. apt install zig or from ziglang.org) for musl builds.${NC}" >&2
+        exit 1
+    fi
+    if ! command -v cargo-zigbuild >/dev/null; then
+        echo -e "${RED}Error: cargo-zigbuild not found. Run: cargo install cargo-zigbuild${NC}" >&2
+        exit 1
+    fi
+fi
+
 
 # Create dist directories
 echo -e "${YELLOW}[0/4]${NC} Creating build directories..."
@@ -39,13 +62,13 @@ rm -f "$DIST_DIR/conf/"*
 rm -f "$DIST_DIR/lib/"*
 
 # Build backend
-echo -e "${YELLOW}[1/4]${NC} Compiling Rust backend (release mode)..."
+echo -e "${YELLOW}[1/4]${NC} Compiling Rust backend (release, $BUILD_TARGET)..."
 cd "$BACKEND_DIR"
-cargo build --release
+"${BUILD_CMD[@]}" --release --target "$BUILD_TARGET" --bin stellar
 
 # Copy binary
 echo -e "${YELLOW}[2/4]${NC} Copying backend binary..."
-cp target/release/stellar "$DIST_DIR/bin/"
+cp "target/$BUILD_TARGET/release/stellar" "$DIST_DIR/bin/"
 
 # Create production configuration file
 echo -e "${YELLOW}[3/4]${NC} Creating production configuration file..."

@@ -1,4 +1,4 @@
-.PHONY: help build docker-build docker-up docker-down clean
+.PHONY: help build build-static dev-backend dev-frontend docker-build docker-up docker-down clean
 
 # Project paths
 PROJECT_ROOT := $(shell pwd)
@@ -11,17 +11,36 @@ DIST_DIR := $(BUILD_DIR)/dist
 help:
 	@echo "Stellar - Build Commands:"
 	@echo ""
-	@echo "Build:"
-	@echo "  make build              - Build backend and frontend, then create distribution package"
-	@echo "  make docker-build       - Build Docker image"
-	@echo "  make docker-up          - Start Docker container (uses existing image)"
-	@echo "  make docker-down        - Stop Docker container"
-	@echo "  make clean              - Clean build artifacts"
+	@echo "Development (fast feedback, glibc, no packaging):"
+	@echo "  make dev-backend      - Start backend via scripts/dev/start_backend.sh"
+	@echo "  make dev-frontend     - Start Angular dev server via scripts/dev/start_frontend.sh"
 	@echo ""
+	@echo "Production builds (output: build/dist/, packaged as stellar-<ver>-linux-<arch>[-musl].tar.gz + SHA256SUMS):"
+	@echo "  make build            - glibc release binary + embedded frontend + tarball"
+	@echo "  make build-static     - fully static musl release binary (cargo zigbuild) + tarball"
+	@echo "  make package          - (re)package existing build/dist without rebuilding"
+	@echo ""
+	@echo "Docker:"
+	@echo "  make docker-build     - Build Docker image"
+	@echo "  make docker-up        - Start Docker container (uses existing image)"
+	@echo "  make docker-down      - Stop Docker container"
+	@echo "  make clean            - Clean build artifacts"
 
-# Build both backend and frontend, then create distribution package
+# ---- Development environment (no binary packaging) ----
+dev-backend:
+	@bash scripts/dev/start_backend.sh
+
+dev-frontend:
+	@bash scripts/dev/start_frontend.sh
+
+# ---- Production build helpers ----
+# Frontend is required for embedding; SKIP_FRONTEND=1 reuses an existing frontend/dist.
+build-frontend:
+	@bash build/build-frontend.sh
+
+# ---- Production: glibc release binary ----
 build:
-	@echo "Building Stellar..."
+	@echo "Building Stellar (glibc release)"
 	@echo "Step 1: Building frontend (required for embedding)..."
 	@bash build/build-frontend.sh
 	@echo ""
@@ -31,16 +50,29 @@ build:
 	@echo ""
 	@echo "Step 3: Building backend (with embedded frontend)..."
 	@bash build/build-backend.sh
-	@echo "Build complete! Output: $(DIST_DIR)"
-	@echo "Creating distribution package..."
-	@TIMESTAMP=$$(date +"%Y%m%d"); \
-	PACKAGE_NAME="stellar-$$TIMESTAMP.tar.gz"; \
-	PACKAGE_PATH="$(DIST_DIR)/$$PACKAGE_NAME"; \
-	echo "Package name: $$PACKAGE_NAME"; \
-	cd $(DIST_DIR) && tar -czf "$$PACKAGE_NAME" --transform 's,^,stellar/,' bin conf lib data logs 2>/dev/null || \
-	cd $(DIST_DIR) && tar -czf "$$PACKAGE_NAME" --transform 's,^,stellar/,' bin conf lib data logs; \
-	echo "Package created: $$PACKAGE_PATH"; \
-	echo "To extract: tar -xzf $$PACKAGE_NAME"
+	@echo ""
+	@echo "Step 4: Packaging..."
+	@bash build/package.sh
+
+# ---- Production: fully static musl release binary ----
+build-static:
+	@echo "Building Stellar (static musl release)"
+	@echo "Step 1: Building frontend (required for embedding)..."
+	@bash build/build-frontend.sh
+	@echo ""
+	@echo "Step 2: Running clippy checks on backend..."
+	@cd $(BACKEND_DIR) && cargo clippy --release --all-targets -- --deny warnings --allow clippy::uninlined-format-args
+	@echo "✓ Clippy checks passed!"
+	@echo ""
+	@echo "Step 3: Building backend (BUILD_TARGET=x86_64-unknown-linux-musl)..."
+	@BUILD_TARGET=x86_64-unknown-linux-musl bash build/build-backend.sh
+	@echo ""
+	@echo "Step 4: Packaging..."
+	@BUILD_TARGET=x86_64-unknown-linux-musl bash build/package.sh
+
+# Repackage existing dist (e.g. after a manual build) without rebuilding
+package:
+	@bash build/package.sh
 
 # Build Docker image
 docker-build:

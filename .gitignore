@@ -1,7 +1,6 @@
 # Rust (from backend)
 backend/target/
 **/*.rs.bk
-backend/Cargo.lock
 
 # Database
 backend/*.db
