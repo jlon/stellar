@@ -20,17 +20,17 @@ impl ResourceGroupService {
 
         let mut groups = Vec::new();
         for row in rows {
-            let name = row.get(0).unwrap_or(&String::new()).clone();
+            let name = row.first().cloned().unwrap_or_default();
             let id: i64 = row.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
             let cpu_weight: Option<i32> = row.get(2).and_then(|s| s.parse().ok());
             let exclusive_cpu_cores: Option<i32> = row.get(3).and_then(|s| s.parse().ok());
-            let mem_limit: Option<String> = row.get(4).map(|s| s.clone());
+            let mem_limit: Option<String> = row.get(4).cloned();
             let big_query_cpu_second_limit: Option<i64> = row.get(5).and_then(|s| s.parse().ok());
             let big_query_scan_rows_limit: Option<i64> = row.get(6).and_then(|s| s.parse().ok());
-            let big_query_mem_limit: Option<String> = row.get(7).map(|s| s.clone());
+            let big_query_mem_limit: Option<String> = row.get(7).cloned();
             let concurrency_limit: Option<i32> = row.get(8).and_then(|s| s.parse().ok());
-            let spill_mem_limit_threshold: Option<String> = row.get(9).map(|s| s.clone());
-            let classifiers_str: Option<String> = row.get(10).map(|s| s.clone());
+            let spill_mem_limit_threshold: Option<String> = row.get(9).cloned();
+            let classifiers_str: Option<String> = row.get(10).cloned();
 
             let classifiers = Self::parse_classifiers(&classifiers_str.unwrap_or_default())?;
 
@@ -62,17 +62,17 @@ impl ResourceGroupService {
         let row = rows.into_iter().next()
             .ok_or_else(|| anyhow::anyhow!("Resource group not found"))?;
 
-        let name = row.get(0).unwrap_or(&String::new()).clone();
+        let name = row.first().cloned().unwrap_or_default();
         let id: i64 = row.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
         let cpu_weight: Option<i32> = row.get(2).and_then(|s| s.parse().ok());
         let exclusive_cpu_cores: Option<i32> = row.get(3).and_then(|s| s.parse().ok());
-        let mem_limit: Option<String> = row.get(4).map(|s| s.clone());
+        let mem_limit: Option<String> = row.get(4).cloned();
         let big_query_cpu_second_limit: Option<i64> = row.get(5).and_then(|s| s.parse().ok());
         let big_query_scan_rows_limit: Option<i64> = row.get(6).and_then(|s| s.parse().ok());
-        let big_query_mem_limit: Option<String> = row.get(7).map(|s| s.clone());
+        let big_query_mem_limit: Option<String> = row.get(7).cloned();
         let concurrency_limit: Option<i32> = row.get(8).and_then(|s| s.parse().ok());
-        let spill_mem_limit_threshold: Option<String> = row.get(9).map(|s| s.clone());
-        let classifiers_str: Option<String> = row.get(10).map(|s| s.clone());
+        let spill_mem_limit_threshold: Option<String> = row.get(9).cloned();
+        let classifiers_str: Option<String> = row.get(10).cloned();
 
         let classifiers = Self::parse_classifiers(&classifiers_str.unwrap_or_default())?;
 
@@ -134,7 +134,7 @@ impl ResourceGroupService {
 
         let mut usages = Vec::new();
         for row in rows {
-            let id: i64 = row.get(0).and_then(|s| s.parse().ok()).unwrap_or(0);
+            let id: i64 = row.first().and_then(|s| s.parse().ok()).unwrap_or(0);
             let backend = row.get(1).unwrap_or(&String::new()).clone();
             let be_in_use_cpu_cores: f64 = row.get(2).and_then(|s| s.parse().ok()).unwrap_or(0.0);
             let be_in_use_mem_bytes: i64 = row.get(3).and_then(|s| s.parse().ok()).unwrap_or(0);
@@ -194,7 +194,7 @@ impl ResourceGroupService {
 
         let mut results = Vec::new();
         for row in rows {
-            let user = row.get(0).unwrap_or(&String::new()).clone();
+            let user = row.first().cloned().unwrap_or_default();
             let total_cpu_seconds: f64 = row.get(1).and_then(|s| s.parse().ok()).unwrap_or(0.0);
             let cpu_usage_percentage: f64 = row.get(2).and_then(|s| s.parse().ok()).unwrap_or(0.0);
 
@@ -205,7 +205,7 @@ impl ResourceGroupService {
                 user,
                 total_cpu_seconds,
                 cpu_usage_percentage,
-                suggested_cpu_weight: suggested_cpu_weight.max(1).min(100),
+                suggested_cpu_weight: suggested_cpu_weight.clamp(1, 100),
                 suggested_exclusive_cores: suggested_exclusive_cores.max(0),
             });
         }
@@ -236,7 +236,7 @@ impl ResourceGroupService {
 
         let mut results = Vec::new();
         for row in rows {
-            let user = row.get(0).unwrap_or(&String::new()).clone();
+            let user = row.first().cloned().unwrap_or_default();
             let max_mem_mb: f64 = row.get(1).and_then(|s| s.parse().ok()).unwrap_or(0.0);
 
             let suggested_mem_limit = format!("{}%", ((max_mem_mb / 1024.0) * 1.2).round() as i32);
@@ -298,7 +298,7 @@ impl ResourceGroupService {
 
         let mut results = Vec::new();
         for row in rows {
-            let user = row.get(0).unwrap_or(&String::new()).clone();
+            let user = row.first().cloned().unwrap_or_default();
             let max_concurrency_per_second: f64 = row.get(2).and_then(|s| s.parse().ok()).unwrap_or(0.0);
 
             let suggested_concurrency_limit = (max_concurrency_per_second * 1.5).ceil() as i32;
@@ -321,7 +321,7 @@ impl ResourceGroupService {
             let classifiers: Vec<String> = req
                 .classifiers
                 .iter()
-                .map(|c| Self::build_classifier_clause(c))
+                .map(Self::build_classifier_clause)
                 .collect();
             sql.push_str(&classifiers.join(", "));
             sql.push(')');
@@ -428,7 +428,7 @@ impl ResourceGroupService {
                 sql.push_str(" ADD (");
                 let classifiers: Vec<String> = add_classifiers
                     .iter()
-                    .map(|c| Self::build_classifier_clause(c))
+                    .map(Self::build_classifier_clause)
                     .collect();
                 sql.push_str(&classifiers.join(", "));
                 sql.push(')');
