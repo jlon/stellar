@@ -1,6 +1,30 @@
-const { executablePath } = require('puppeteer');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
-process.env.CHROME_BIN = executablePath();
+// Resolve a Chrome binary synchronously: system chrome first, then the
+// puppeteer download cache (puppeteer's executablePath() is async now).
+function findChromeBinary() {
+  const candidates = [
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  const cacheDir = path.join(os.homedir(), '.cache/puppeteer/chrome');
+  if (fs.existsSync(cacheDir)) {
+    for (const ver of fs.readdirSync(cacheDir)) {
+      const bin = path.join(cacheDir, ver, 'chrome-linux64', 'chrome');
+      if (fs.existsSync(bin)) return bin;
+    }
+  }
+  return undefined;
+}
+
+process.env.CHROME_BIN = findChromeBinary();
 
 // Karma configuration file generated for Angular CLI unit tests
 module.exports = function (config) {

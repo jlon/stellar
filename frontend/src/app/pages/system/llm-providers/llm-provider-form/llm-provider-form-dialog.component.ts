@@ -1,8 +1,9 @@
-import { Component, Input, OnInit } from '@angular/core';
-import { FormBuilder, FormGroup, Validators } from '@angular/forms';
-import { NbDialogRef } from '@nebular/theme';
+import { Component, Input, OnInit, inject } from '@angular/core';
+import { FormBuilder, FormGroup, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { NbDialogRef, NbCardModule, NbSelectModule, NbOptionModule, NbInputModule, NbFormFieldModule, NbButtonModule, NbIconModule, NbAccordionModule } from '@nebular/theme';
 
 import { LLMProvider } from '../../../../@core/data/llm-provider.service';
+
 
 export type LLMProviderFormMode = 'create' | 'edit';
 
@@ -19,12 +20,26 @@ export interface LLMProviderFormDialogResult {
 }
 
 @Component({
-  standalone: false,
-  selector: 'ngx-llm-provider-form-dialog',
-  templateUrl: './llm-provider-form-dialog.component.html',
-  styleUrls: ['./llm-provider-form-dialog.component.scss'],
+    selector: 'ngx-llm-provider-form-dialog',
+    templateUrl: './llm-provider-form-dialog.component.html',
+    styleUrls: ['./llm-provider-form-dialog.component.scss'],
+    imports: [
+    NbCardModule,
+    FormsModule,
+    ReactiveFormsModule,
+    NbSelectModule,
+    NbOptionModule,
+    NbInputModule,
+    NbFormFieldModule,
+    NbButtonModule,
+    NbIconModule,
+    NbAccordionModule
+],
 })
 export class LLMProviderFormDialogComponent implements OnInit {
+  private dialogRef = inject<NbDialogRef<LLMProviderFormDialogComponent>>(NbDialogRef);
+  private fb = inject(FormBuilder);
+
   @Input() mode: LLMProviderFormMode = 'create';
   @Input() provider?: LLMProvider;
 
@@ -40,10 +55,7 @@ export class LLMProviderFormDialogComponent implements OnInit {
     { name: 'custom', display: '自定义', api_base: '', model: '' },
   ];
 
-  constructor(
-    private dialogRef: NbDialogRef<LLMProviderFormDialogComponent>,
-    private fb: FormBuilder,
-  ) {
+  constructor() {
     this.form = this.fb.group({
       name: ['', [Validators.required, Validators.maxLength(50), Validators.pattern(/^[a-z0-9_-]+$/)]],
       display_name: ['', [Validators.required, Validators.maxLength(100)]],

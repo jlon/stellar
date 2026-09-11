@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiService } from './api.service';
 import { SystemFunction, CreateFunctionRequest, UpdateOrderRequest } from './system-function';
@@ -7,8 +7,8 @@ import { SystemFunction, CreateFunctionRequest, UpdateOrderRequest } from './sys
   providedIn: 'root'
 })
 export class SystemFunctionService {
+  private api = inject(ApiService);
 
-  constructor(private api: ApiService) {}
 
   // Get all custom functions
   getFunctions(): Observable<SystemFunction[]> {

@@ -9,7 +9,7 @@
         (click)="openCreateUser()"
         [disabled]="!canCreateUser"
         ngxHasPermission="api:users:create"
-      >
+        >
         <nb-icon icon="person-add-outline"></nb-icon>
         新增用户
       </button>
@@ -17,18 +17,23 @@
   </nb-card-header>
 
   <nb-card-body>
-    <div *ngIf="loading" class="text-center">
-      <nb-spinner status="primary"></nb-spinner>
-    </div>
+    @if (loading) {
+      <div class="text-center">
+        <nb-spinner status="primary"></nb-spinner>
+      </div>
+    }
 
-    <nb-alert *ngIf="!loading && !hasListPermission" status="warning">
-      您暂无查看用户的权限，请联系管理员进行授权。
-    </nb-alert>
+    @if (!loading && !hasListPermission) {
+      <nb-alert status="warning">
+        您暂无查看用户的权限，请联系管理员进行授权。
+      </nb-alert>
+    }
 
-    <angular2-smart-table
-      *ngIf="!loading && hasListPermission"
-      [settings]="settings"
-      [source]="source"
-    ></angular2-smart-table>
+    @if (!loading && hasListPermission) {
+      <angular2-smart-table
+        [settings]="settings"
+        [source]="source"
+      ></angular2-smart-table>
+    }
   </nb-card-body>
 </nb-card>

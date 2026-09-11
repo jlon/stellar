@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiService } from './api.service';
 
@@ -33,7 +33,8 @@ export interface UpdateOrganizationRequest {
   providedIn: 'root',
 })
 export class OrganizationService {
-  constructor(private api: ApiService) {}
+  private api = inject(ApiService);
+
 
   listOrganizations(): Observable<Organization[]> {
     return this.api.get<Organization[]>('/organizations');

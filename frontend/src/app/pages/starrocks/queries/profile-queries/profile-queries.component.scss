@@ -1280,7 +1280,11 @@
       align-items: flex-start;
       gap: 8px;
       padding: 10px 12px;
-      background: linear-gradient(135deg, var(--color-warning-transparent-100) 0%, var(--color-warning-transparent-100) 100%);
+      background: linear-gradient(
+        135deg,
+        var(--color-warning-transparent-100) 0%,
+        var(--color-warning-transparent-100) 100%
+      );
       border-radius: 6px;
       border-left: 3px solid var(--color-warning-default);
       margin-bottom: 12px;
@@ -1470,7 +1474,11 @@
         gap: 4px;
         font-size: 13px;
         padding: 12px 14px;
-        background: linear-gradient(135deg, var(--color-info-transparent-100) 0%, var(--color-basic-transparent-100) 100%);
+        background: linear-gradient(
+          135deg,
+          var(--color-info-transparent-100) 0%,
+          var(--color-basic-transparent-100) 100%
+        );
         border-radius: 8px;
         border-left: 4px solid var(--color-info-default);
         

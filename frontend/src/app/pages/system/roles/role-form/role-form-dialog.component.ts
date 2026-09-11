@@ -1,6 +1,6 @@
-import { Component, Input, OnInit } from '@angular/core';
-import { FormBuilder, FormGroup, Validators } from '@angular/forms';
-import { NbDialogRef } from '@nebular/theme';
+import { Component, Input, OnInit, inject } from '@angular/core';
+import { FormBuilder, FormGroup, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { NbDialogRef, NbCardModule, NbIconModule, NbFormFieldModule, NbSelectModule, NbOptionModule, NbInputModule, NbCheckboxModule, NbButtonModule } from '@nebular/theme';
 
 import {
   CreateRolePayload,
@@ -11,6 +11,7 @@ import {
 import { Organization } from '../../../../@core/data/organization.service';
 import { PermissionService } from '../../../../@core/data/permission.service';
 import { AuthService } from '../../../../@core/data/auth.service';
+import { NgTemplateOutlet } from '@angular/common';
 
 export type RoleFormMode = 'create' | 'edit';
 
@@ -42,12 +43,29 @@ interface PermissionTreeNode {
 }
 
 @Component({
-  standalone: false,
-  selector: 'ngx-role-form-dialog',
-  templateUrl: './role-form-dialog.component.html',
-  styleUrls: ['./role-form-dialog.component.scss'],
+    selector: 'ngx-role-form-dialog',
+    templateUrl: './role-form-dialog.component.html',
+    styleUrls: ['./role-form-dialog.component.scss'],
+    imports: [
+    NbCardModule,
+    FormsModule,
+    ReactiveFormsModule,
+    NbIconModule,
+    NbFormFieldModule,
+    NbSelectModule,
+    NbOptionModule,
+    NbInputModule,
+    NgTemplateOutlet,
+    NbCheckboxModule,
+    NbButtonModule
+],
 })
 export class RoleFormDialogComponent implements OnInit {
+  private dialogRef = inject<NbDialogRef<RoleFormDialogComponent>>(NbDialogRef);
+  private fb = inject(FormBuilder);
+  private permissionService = inject(PermissionService);
+  private authService = inject(AuthService);
+
   @Input() mode: RoleFormMode = 'create';
   @Input() role?: RoleSummary;
   @Input() permissions: PermissionDto[] = [];
@@ -69,12 +87,7 @@ export class RoleFormDialogComponent implements OnInit {
   private menuToApis = new Map<number, PermissionDto[]>();
   private apiToMenus = new Map<number, number[]>();
 
-  constructor(
-    private dialogRef: NbDialogRef<RoleFormDialogComponent>,
-    private fb: FormBuilder,
-    private permissionService: PermissionService,
-    private authService: AuthService,
-  ) {
+  constructor() {
     this.form = this.fb.group({
       code: ['', [Validators.required, Validators.maxLength(50)]],
       name: ['', [Validators.required, Validators.maxLength(50)]],

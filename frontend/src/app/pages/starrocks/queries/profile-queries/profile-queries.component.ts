@@ -1,8 +1,8 @@
-import { ChangeDetectorRef, Component, OnInit, OnDestroy, TemplateRef, ViewChild, ViewEncapsulation } from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit, OnDestroy, TemplateRef, ViewChild, ViewEncapsulation, inject } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
-import { Location } from '@angular/common'; // Import Location
-import { NbToastrService, NbDialogService } from '@nebular/theme';
-import { LocalDataSource } from 'angular2-smart-table';
+import { Location, NgStyle, NgClass, DecimalPipe } from '@angular/common'; // Import Location
+import { NbToastrService, NbDialogService, NbCardModule, NbButtonModule, NbIconModule, NbSelectModule, NbOptionModule, NbSpinnerModule, NbTabsetModule, NbTooltipModule } from '@nebular/theme';
+import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { NodeService } from '../../../../@core/data/node.service';
@@ -16,13 +16,35 @@ import { themeColor } from '../../../../@core/utils/theme-color';
 import * as dagre from 'dagre';
 
 @Component({
-  standalone: false,
-  selector: 'ngx-profile-queries',
-  templateUrl: './profile-queries.component.html',
-  styleUrls: ['./profile-queries.component.scss'],
-  encapsulation: ViewEncapsulation.None,
+    selector: 'ngx-profile-queries',
+    templateUrl: './profile-queries.component.html',
+    styleUrls: ['./profile-queries.component.scss'],
+    encapsulation: ViewEncapsulation.None,
+    imports: [
+    NbCardModule,
+    NbButtonModule,
+    NbIconModule,
+    NbSelectModule,
+    NbOptionModule,
+    NbSpinnerModule,
+    Angular2SmartTableModule,
+    NgStyle,
+    NbTabsetModule,
+    NbTooltipModule,
+    NgClass,
+    DecimalPipe
+],
 })
 export class ProfileQueriesComponent implements OnInit, OnDestroy {
+  private route = inject(ActivatedRoute);
+  private nodeService = inject(NodeService);
+  private clusterContextService = inject(ClusterContextService);
+  private toastrService = inject(NbToastrService);
+  private dialogService = inject(NbDialogService);
+  private authService = inject(AuthService);
+  private cdr = inject(ChangeDetectorRef);
+  private location = inject(Location);
+
   // Data sources
   profileSource: LocalDataSource = new LocalDataSource();
   
@@ -574,16 +596,7 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
     },
   };
 
-  constructor(
-    private route: ActivatedRoute,
-    private nodeService: NodeService,
-    private clusterContextService: ClusterContextService,
-    private toastrService: NbToastrService,
-    private dialogService: NbDialogService,
-    private authService: AuthService,
-    private cdr: ChangeDetectorRef,
-    private location: Location, // Inject Location
-  ) {
+  constructor() {
     // Try to get clusterId from route first (for direct navigation)
     const routeClusterId = parseInt(this.route.snapshot.paramMap.get('clusterId') || '0', 10);
     this.clusterId = routeClusterId;

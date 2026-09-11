@@ -1,6 +1,6 @@
-import { Component, Input, OnInit } from '@angular/core';
-import { AbstractControl, FormBuilder, FormGroup, ValidationErrors, Validators } from '@angular/forms';
-import { NbDialogRef } from '@nebular/theme';
+import { Component, Input, OnInit, inject } from '@angular/core';
+import { AbstractControl, FormBuilder, FormGroup, ValidationErrors, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { NbDialogRef, NbCardModule, NbSelectModule, NbOptionModule, NbInputModule, NbButtonModule } from '@nebular/theme';
 
 import {
   CreateUserPayload,
@@ -12,6 +12,7 @@ import { DiceBearService } from '../../../../@core/services/dicebear.service';
 import { Organization } from '../../../../@core/data/organization.service';
 import { AuthService } from '../../../../@core/data/auth.service';
 
+
 export type UserFormMode = 'create' | 'edit';
 
 export interface UserFormDialogResult {
@@ -20,12 +21,25 @@ export interface UserFormDialogResult {
 }
 
 @Component({
-  standalone: false,
-  selector: 'ngx-user-form-dialog',
-  templateUrl: './user-form-dialog.component.html',
-  styleUrls: ['./user-form-dialog.component.scss'],
+    selector: 'ngx-user-form-dialog',
+    templateUrl: './user-form-dialog.component.html',
+    styleUrls: ['./user-form-dialog.component.scss'],
+    imports: [
+    NbCardModule,
+    FormsModule,
+    ReactiveFormsModule,
+    NbSelectModule,
+    NbOptionModule,
+    NbInputModule,
+    NbButtonModule
+],
 })
 export class UserFormDialogComponent implements OnInit {
+  private dialogRef = inject<NbDialogRef<UserFormDialogComponent>>(NbDialogRef);
+  private fb = inject(FormBuilder);
+  private diceBearService = inject(DiceBearService);
+  private authService = inject(AuthService);
+
   @Input() mode: UserFormMode = 'create';
   @Input() user?: UserWithRoles;
   @Input() roles: RoleWithPermissions[] = [];
@@ -37,12 +51,7 @@ export class UserFormDialogComponent implements OnInit {
   isSuperAdmin = false;
   filteredRoles: RoleWithPermissions[] = [];
 
-  constructor(
-    private dialogRef: NbDialogRef<UserFormDialogComponent>,
-    private fb: FormBuilder,
-    private diceBearService: DiceBearService,
-    private authService: AuthService,
-  ) {
+  constructor() {
     this.form = this.fb.group({
       organizationId: [null],
       username: ['', [Validators.required, Validators.minLength(3), Validators.maxLength(50)]],

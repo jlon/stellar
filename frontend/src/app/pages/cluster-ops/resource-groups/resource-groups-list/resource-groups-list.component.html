@@ -19,7 +19,7 @@
               status="info"
               size="small"
               (click)="viewUsage()"
-            >
+              >
               <nb-icon icon="activity-outline"></nb-icon>
               使用情况
             </button>
@@ -28,7 +28,7 @@
               status="warning"
               size="small"
               (click)="viewAnalysis()"
-            >
+              >
               <nb-icon icon="bar-chart-outline"></nb-icon>
               使用分析
             </button>
@@ -37,7 +37,7 @@
               status="primary"
               size="small"
               (click)="createResourceGroup()"
-            >
+              >
               <nb-icon icon="plus-outline"></nb-icon>
               创建资源组
             </button>
@@ -46,17 +46,20 @@
       </nb-card-header>
 
       <nb-card-body>
-        <div *ngIf="loading" class="text-center">
-          <nb-spinner status="primary"></nb-spinner>
-        </div>
+        @if (loading) {
+          <div class="text-center">
+            <nb-spinner status="primary"></nb-spinner>
+          </div>
+        }
 
-        <angular2-smart-table
-          *ngIf="!loading"
-          [settings]="settings"
-          [source]="source"
-          (custom)="onCustomAction($event)"
-        >
-        </angular2-smart-table>
+        @if (!loading) {
+          <angular2-smart-table
+            [settings]="settings"
+            [source]="source"
+            (custom)="onCustomAction($event)"
+            >
+          </angular2-smart-table>
+        }
       </nb-card-body>
     </nb-card>
   </div>

@@ -16,27 +16,25 @@ import { UserSettingsComponent } from './user-settings.component';
 import { RouterModule } from '@angular/router';
 
 @NgModule({
-  declarations: [
-    UserSettingsComponent
-  ],
-  imports: [
-    CommonModule,
-    FormsModule,
-    NbCardModule,
-    NbInputModule,
-    NbButtonModule,
-    NbAlertModule,
-    NbSpinnerModule,
-    NbIconModule,
-    NbTooltipModule,
-    NbRadioModule,
-    RouterModule.forChild([
-      {
-        path: '',
-        component: UserSettingsComponent
-      }
-    ])
-  ]
+    imports: [
+        CommonModule,
+        FormsModule,
+        NbCardModule,
+        NbInputModule,
+        NbButtonModule,
+        NbAlertModule,
+        NbSpinnerModule,
+        NbIconModule,
+        NbTooltipModule,
+        NbRadioModule,
+        RouterModule.forChild([
+            {
+                path: '',
+                component: UserSettingsComponent
+            }
+        ]),
+        UserSettingsComponent
+    ]
 })
 export class UserSettingsModule { }
 

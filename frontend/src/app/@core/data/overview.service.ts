@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiService } from './api.service';
 
@@ -267,7 +267,8 @@ export interface Alert {
   providedIn: 'root',
 })
 export class OverviewService {
-  constructor(private api: ApiService) {}
+  private api = inject(ApiService);
+
 
   /**
    * Format bytes to human-readable size with adaptive unit

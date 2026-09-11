@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { NavigationExtras, Router } from '@angular/router';
 import { BehaviorSubject, Observable, of } from 'rxjs';
 import { tap, switchMap, map, catchError } from 'rxjs/operators';
@@ -37,15 +37,15 @@ export interface LoginResponse {
   providedIn: 'root',
 })
 export class AuthService {
+  private api = inject(ApiService);
+  private router = inject(Router);
+  private permissionService = inject(PermissionService);
+
   private currentUserSubject: BehaviorSubject<User | null>;
   public currentUser: Observable<User | null>;
   private tokenKey = 'jwt_token';
 
-  constructor(
-    private api: ApiService,
-    private router: Router,
-    private permissionService: PermissionService,
-  ) {
+  constructor() {
     const storedUser = localStorage.getItem('current_user');
     this.currentUserSubject = new BehaviorSubject<User | null>(
       storedUser ? JSON.parse(storedUser) : null,

@@ -1,6 +1,6 @@
-import { Component, OnDestroy, OnInit } from '@angular/core';
-import { NbDialogService, NbToastrService } from '@nebular/theme';
-import { LocalDataSource } from 'angular2-smart-table';
+import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { NbDialogService, NbToastrService, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule, NbAlertModule } from '@nebular/theme';
+import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { Observable, Subject, forkJoin, of } from 'rxjs';
 import { finalize, map, switchMap, takeUntil, tap } from 'rxjs/operators';
 
@@ -22,14 +22,32 @@ import {
 } from './role-form/role-form-dialog.component';
 import { Organization, OrganizationService } from '../../../@core/data/organization.service';
 import { AuthService } from '../../../@core/data/auth.service';
+import { HasPermissionDirective } from '../../../@core/directives/has-permission.directive';
+
 
 @Component({
-  standalone: false,
-  selector: 'ngx-roles',
-  templateUrl: './roles.component.html',
-  styleUrls: ['./roles.component.scss'],
+    selector: 'ngx-roles',
+    templateUrl: './roles.component.html',
+    styleUrls: ['./roles.component.scss'],
+    imports: [
+    NbCardModule,
+    NbButtonModule,
+    HasPermissionDirective,
+    NbIconModule,
+    NbSpinnerModule,
+    NbAlertModule,
+    Angular2SmartTableModule
+],
 })
 export class RolesComponent implements OnInit, OnDestroy {
+  private roleService = inject(RoleService);
+  private permissionService = inject(PermissionService);
+  private dialogService = inject(NbDialogService);
+  private confirmDialog = inject(ConfirmDialogService);
+  private toastrService = inject(NbToastrService);
+  private organizationService = inject(OrganizationService);
+  private authService = inject(AuthService);
+
   source: LocalDataSource = new LocalDataSource();
   loading = false;
   private destroy$ = new Subject<void>();
@@ -46,16 +64,6 @@ export class RolesComponent implements OnInit, OnDestroy {
   organizations: Organization[] = [];
   currentOrganization?: Organization;
   isSuperAdmin = false;
-
-  constructor(
-    private roleService: RoleService,
-    private permissionService: PermissionService,
-    private dialogService: NbDialogService,
-    private confirmDialog: ConfirmDialogService,
-    private toastrService: NbToastrService,
-    private organizationService: OrganizationService,
-    private authService: AuthService,
-  ) {}
 
   ngOnInit(): void {
     this.permissionService.permissions$

@@ -1,7 +1,7 @@
-import { Component, OnInit, OnDestroy, ViewChild, AfterViewInit, ElementRef, HostListener, TemplateRef, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild, AfterViewInit, ElementRef, HostListener, TemplateRef, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
-import { NbDialogRef, NbDialogService, NbMenuItem, NbMenuService, NbSidebarService, NbToastrService, NbThemeService } from '@nebular/theme';
-import { LocalDataSource } from 'angular2-smart-table';
+import { NbDialogRef, NbDialogService, NbMenuItem, NbMenuService, NbSidebarService, NbToastrService, NbThemeService, NbSpinnerModule, NbCardModule, NbTabsetModule, NbIconModule, NbButtonModule, NbSelectModule, NbOptionModule, NbAlertModule, NbTooltipModule, NbCheckboxModule, NbInputModule, NbBadgeModule } from '@nebular/theme';
+import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { Subject, Observable, forkJoin, of, fromEvent } from 'rxjs';
 import { map, catchError, takeUntil, debounceTime, finalize } from 'rxjs/operators';
 import { NodeService, Query, QueryExecuteResult, SingleQueryResult, TableInfo, TableObjectType, SqlDiagResponse, SqlDiagResult, PerfIssue, QueryExecutionHistoryItem } from '../../../../@core/data/node.service';
@@ -25,6 +25,10 @@ import { renderLongText } from '../../../../@core/utils/text-truncate';
 import { ConfirmDialogService } from '../../../../@core/services/confirm-dialog.service';
 import { AuthService } from '../../../../@core/data/auth.service';
 import { themeColor, themeColorAlpha, themeChartChrome } from '../../../../@core/utils/theme-color';
+import { NgTemplateOutlet, NgClass, SlicePipe, DecimalPipe, DatePipe } from '@angular/common';
+import { NgxEchartsDirective } from 'ngx-echarts';
+import { FormsModule } from '@angular/forms';
+import { DashboardComponent } from '../../dashboard/dashboard.component';
 
 // Chart 相关类型定义
 type FieldType = 'numeric' | 'text';
@@ -102,28 +106,61 @@ interface NavTreeNode {
 }
 
 @Component({
-  standalone: false,
-  selector: 'ngx-query-execution',
-  templateUrl: './query-execution.component.html',
-  styleUrls: ['./query-execution.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  animations: [
-    trigger('editorCollapse', [
-      state('expanded', style({ height: '*', opacity: 1, overflow: 'visible' })),
-      state('collapsed', style({ 
-        height: '0px', 
-        opacity: 0, 
-        paddingTop: 0, 
-        paddingBottom: 0, 
-        marginTop: 0,
-        marginBottom: 0, 
-        overflow: 'hidden' 
-      })),
-      transition('expanded <=> collapsed', animate('200ms ease')),
-    ]),
-  ],
+    selector: 'ngx-query-execution',
+    templateUrl: './query-execution.component.html',
+    styleUrls: ['./query-execution.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush,
+    animations: [
+        trigger('editorCollapse', [
+            state('expanded', style({ height: '*', opacity: 1, overflow: 'visible' })),
+            state('collapsed', style({
+                height: '0px',
+                opacity: 0,
+                paddingTop: 0,
+                paddingBottom: 0,
+                marginTop: 0,
+                marginBottom: 0,
+                overflow: 'hidden'
+            })),
+            transition('expanded <=> collapsed', animate('200ms ease')),
+        ]),
+    ],
+    imports: [
+    NbSpinnerModule,
+    NbCardModule,
+    NbTabsetModule,
+    NbIconModule,
+    NbButtonModule,
+    NgTemplateOutlet,
+    NbSelectModule,
+    NbOptionModule,
+    NbAlertModule,
+    Angular2SmartTableModule,
+    NbTooltipModule,
+    NbCheckboxModule,
+    NgxEchartsDirective,
+    NgClass,
+    FormsModule,
+    NbInputModule,
+    NbBadgeModule,
+    DashboardComponent,
+    SlicePipe,
+    DecimalPipe,
+    DatePipe
+],
 })
 export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit {
+  private nodeService = inject(NodeService);
+  private route = inject(ActivatedRoute);
+  private toastrService = inject(NbToastrService);
+  private clusterContext = inject(ClusterContextService);
+  private themeService = inject(NbThemeService);
+  private sidebarService = inject(NbSidebarService);
+  private dialogService = inject(NbDialogService);
+  private confirmDialogService = inject(ConfirmDialogService);
+  private authService = inject(AuthService);
+  private cdr = inject(ChangeDetectorRef);
+
   @ViewChild('editorContainer', { static: false }) editorContainer!: ElementRef;
   @ViewChild('tableSchemaDialog', { static: false }) tableSchemaDialogTemplate!: TemplateRef<any>;
   @ViewChild('infoDialog', { static: false }) infoDialogTemplate!: TemplateRef<any>;
@@ -532,18 +569,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   diagCached = false;
   explainSectionExpanded = false;
 
-  constructor(
-    private nodeService: NodeService,
-    private route: ActivatedRoute,
-    private toastrService: NbToastrService,
-    private clusterContext: ClusterContextService,
-    private themeService: NbThemeService,
-    private sidebarService: NbSidebarService,
-    private dialogService: NbDialogService,
-    private confirmDialogService: ConfirmDialogService,
-    private authService: AuthService,
-    private cdr: ChangeDetectorRef,
-  ) {
+  constructor() {
     const routeClusterId = parseInt(this.route.snapshot.paramMap.get('clusterId') || '0', 10);
     this.clusterId = routeClusterId;
   }

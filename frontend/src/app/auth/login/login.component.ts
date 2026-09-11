@@ -1,15 +1,22 @@
-import { Component, OnInit } from '@angular/core';
-import { Router, ActivatedRoute } from '@angular/router';
-import { NbToastrService } from '@nebular/theme';
+import { Component, OnInit, inject } from '@angular/core';
+import { Router, ActivatedRoute, RouterLink } from '@angular/router';
+import { NbToastrService, NbAlertModule, NbInputModule, NbCheckboxModule, NbButtonModule } from '@nebular/theme';
 import { AuthService } from '../../@core/data/auth.service';
 
+import { FormsModule } from '@angular/forms';
+
 @Component({
-  standalone: false,
-  selector: 'ngx-login',
-  templateUrl: './login.component.html',
-  styleUrls: ['./login.component.scss']
+    selector: 'ngx-login',
+    templateUrl: './login.component.html',
+    styleUrls: ['./login.component.scss'],
+    imports: [NbAlertModule, FormsModule, NbInputModule, NbCheckboxModule, NbButtonModule, RouterLink]
 })
 export class LoginComponent implements OnInit {
+  protected router = inject(Router);
+  private route = inject(ActivatedRoute);
+  private authService = inject(AuthService);
+  private toastrService = inject(NbToastrService);
+
   submitted = false;
   user = {
     username: '',
@@ -20,13 +27,6 @@ export class LoginComponent implements OnInit {
   messages: string[] = [];
   showMessages = false;
   returnUrl: string;
-
-  constructor(
-    protected router: Router,
-    private route: ActivatedRoute,
-    private authService: AuthService,
-    private toastrService: NbToastrService
-  ) {}
 
   ngOnInit() {
     const rawReturnUrl = this.route.snapshot.queryParams['returnUrl'];

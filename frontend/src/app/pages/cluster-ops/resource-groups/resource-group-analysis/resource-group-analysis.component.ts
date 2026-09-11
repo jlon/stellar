@@ -1,7 +1,7 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { NbToastrService } from '@nebular/theme';
-import { LocalDataSource } from 'angular2-smart-table';
+import { NbToastrService, NbCardModule, NbSelectModule, NbOptionModule, NbButtonModule, NbTooltipModule, NbIconModule, NbSpinnerModule, NbAlertModule, NbTabsetModule } from '@nebular/theme';
+import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
@@ -13,13 +13,29 @@ import {
   UserConcurrency,
 } from '../models/resource-group.model';
 
+
 @Component({
-  standalone: false,
-  selector: 'ngx-resource-group-analysis',
-  templateUrl: './resource-group-analysis.component.html',
-  styleUrls: ['./resource-group-analysis.component.scss'],
+    selector: 'ngx-resource-group-analysis',
+    templateUrl: './resource-group-analysis.component.html',
+    styleUrls: ['./resource-group-analysis.component.scss'],
+    imports: [
+    NbCardModule,
+    NbSelectModule,
+    NbOptionModule,
+    NbButtonModule,
+    NbTooltipModule,
+    NbIconModule,
+    NbSpinnerModule,
+    NbAlertModule,
+    NbTabsetModule,
+    Angular2SmartTableModule
+],
 })
 export class ResourceGroupAnalysisComponent implements OnInit, OnDestroy {
+  private resourceGroupService = inject(ResourceGroupService);
+  private router = inject(Router);
+  private toastrService = inject(NbToastrService);
+
   private destroy$ = new Subject<void>();
 
   loading = false;
@@ -105,12 +121,6 @@ export class ResourceGroupAnalysisComponent implements OnInit, OnDestroy {
       },
     },
   };
-
-  constructor(
-    private resourceGroupService: ResourceGroupService,
-    private router: Router,
-    private toastrService: NbToastrService,
-  ) {}
 
   ngOnInit(): void {
     this.loadAnalysis();

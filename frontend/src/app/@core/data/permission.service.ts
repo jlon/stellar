@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { BehaviorSubject, Observable, of } from 'rxjs';
 import { tap, catchError, map } from 'rxjs/operators';
 import { ApiService } from './api.service';
@@ -18,12 +18,14 @@ export interface Permission {
   providedIn: 'root',
 })
 export class PermissionService {
+  private api = inject(ApiService);
+
   private permissionsSubject = new BehaviorSubject<Permission[]>([]);
   public permissions$: Observable<Permission[]>;
   private permissionsKey = 'user_permissions';
   private initialized = false;
 
-  constructor(private api: ApiService) {
+  constructor() {
     this.permissions$ = this.permissionsSubject.asObservable();
     // Try to load permissions from localStorage on init
     this.loadFromStorage();

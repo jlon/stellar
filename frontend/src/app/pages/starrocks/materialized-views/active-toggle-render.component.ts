@@ -1,17 +1,20 @@
 import { Component, Input, Output, EventEmitter, OnInit } from '@angular/core';
 
+import { NbButtonModule, NbIconModule } from '@nebular/theme';
+
 @Component({
-  standalone: false,
-  selector: 'ngx-active-toggle-render',
-  template: `
+    selector: 'ngx-active-toggle-render',
+    template: `
     <div class="d-flex align-items-center">
-      <span *ngIf="isRollup" class="badge badge-success">Active</span>
-      <ng-container *ngIf="!isRollup">
+      @if (isRollup) {
+        <span class="badge badge-success">Active</span>
+      }
+      @if (!isRollup) {
         <span [class]="isActive ? 'badge badge-success' : 'badge badge-warning'">
           {{ isActive ? 'Active' : 'Inactive' }}
         </span>
-        <button 
-          nbButton 
+        <button
+          nbButton
           size="tiny"
           [status]="isActive ? 'warning' : 'success'"
           [outline]="true"
@@ -20,10 +23,10 @@ import { Component, Input, Output, EventEmitter, OnInit } from '@angular/core';
           [title]="isActive ? '停用' : '激活'">
           <nb-icon icon="power-outline"></nb-icon>
         </button>
-      </ng-container>
+      }
     </div>
-  `,
-  styles: [`
+    `,
+    styles: [`
     .d-flex {
       display: flex;
       align-items: center;
@@ -34,12 +37,13 @@ import { Component, Input, Output, EventEmitter, OnInit } from '@angular/core';
     button {
       padding: 0.25rem 0.5rem;
     }
-  `]
+  `],
+    imports: [NbButtonModule, NbIconModule]
 })
 export class ActiveToggleRenderComponent implements OnInit {
   @Input() value: string | number;
   @Input() rowData: any;
-  @Output() toggle: EventEmitter<any> = new EventEmitter();
+  @Output() toggleActive: EventEmitter<any> = new EventEmitter();
   
   isActive: boolean;
   isRollup: boolean;
@@ -51,7 +55,7 @@ export class ActiveToggleRenderComponent implements OnInit {
   }
   
   onToggle() {
-    this.toggle.emit(this.rowData);
+    this.toggleActive.emit(this.rowData);
   }
 }
 

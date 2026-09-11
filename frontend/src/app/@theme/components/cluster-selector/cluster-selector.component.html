@@ -1,19 +1,23 @@
-<nb-select
-  *ngIf="!loading && clusters.length > 0"
-  [(selected)]="activeCluster"
-  [compareWith]="compareById"
-  (selectedChange)="onClusterChange($event)"
-  placeholder="选择集群"
-  status="primary"
->
-  <nb-option *ngFor="let cluster of clusters" [value]="cluster">{{ cluster.name }}</nb-option>
-</nb-select>
-<button
-  *ngIf="!loading && clusters.length === 0"
-  nbButton
-  size="small"
-  status="primary"
-  (click)="goToClusterManagement()"
->
-  添加集群
-</button>
+@if (!loading && clusters.length > 0) {
+  <nb-select
+    [(selected)]="activeCluster"
+    [compareWith]="compareById"
+    (selectedChange)="onClusterChange($event)"
+    placeholder="选择集群"
+    status="primary"
+    >
+    @for (cluster of clusters; track cluster) {
+      <nb-option [value]="cluster">{{ cluster.name }}</nb-option>
+    }
+  </nb-select>
+}
+@if (!loading && clusters.length === 0) {
+  <button
+    nbButton
+    size="small"
+    status="primary"
+    (click)="goToClusterManagement()"
+    >
+    添加集群
+  </button>
+}

@@ -1,7 +1,7 @@
-import { Component, OnInit, OnDestroy, ViewChild } from '@angular/core';
-import { FormBuilder, FormGroup, FormArray, Validators } from '@angular/forms';
+import { Component, OnInit, OnDestroy, ViewChild, inject } from '@angular/core';
+import { FormBuilder, FormGroup, FormArray, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { NbToastrService, NbTabsetComponent } from '@nebular/theme';
+import { NbToastrService, NbTabsetComponent, NbCardModule, NbSpinnerModule, NbTabsetModule, NbInputModule, NbIconModule, NbButtonModule, NbFormFieldModule, NbSelectModule, NbOptionModule } from '@nebular/theme';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
@@ -13,13 +13,32 @@ import {
   ClassifierRequest,
 } from '../models/resource-group.model';
 
+
 @Component({
-  standalone: false,
-  selector: 'ngx-resource-group-form',
-  templateUrl: './resource-group-form.component.html',
-  styleUrls: ['./resource-group-form.component.scss'],
+    selector: 'ngx-resource-group-form',
+    templateUrl: './resource-group-form.component.html',
+    styleUrls: ['./resource-group-form.component.scss'],
+    imports: [
+    NbCardModule,
+    NbSpinnerModule,
+    FormsModule,
+    ReactiveFormsModule,
+    NbTabsetModule,
+    NbInputModule,
+    NbIconModule,
+    NbButtonModule,
+    NbFormFieldModule,
+    NbSelectModule,
+    NbOptionModule
+],
 })
 export class ResourceGroupFormComponent implements OnInit, OnDestroy {
+  private fb = inject(FormBuilder);
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+  private resourceGroupService = inject(ResourceGroupService);
+  private toastrService = inject(NbToastrService);
+
   @ViewChild('tabset') tabset: NbTabsetComponent;
   
   private destroy$ = new Subject<void>();
@@ -36,13 +55,7 @@ export class ResourceGroupFormComponent implements OnInit, OnDestroy {
     { value: 'DELETE', label: 'DELETE' },
   ];
 
-  constructor(
-    private fb: FormBuilder,
-    private route: ActivatedRoute,
-    private router: Router,
-    private resourceGroupService: ResourceGroupService,
-    private toastrService: NbToastrService,
-  ) {
+  constructor() {
     this.initForm();
   }
 
