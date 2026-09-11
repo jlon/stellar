@@ -86,7 +86,10 @@
           "builder": "@angular-devkit/build-angular:dev-server",
           "options": {
             "buildTarget": "stellar:build",
-            "proxyConfig": "proxy.conf.json"
+            "proxyConfig": "proxy.conf.json",
+            "headers": {
+              "Cache-Control": "no-store"
+            }
           },
           "configurations": {
             "production": {
