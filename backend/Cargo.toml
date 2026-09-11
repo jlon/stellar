@@ -39,7 +39,7 @@ jsonwebtoken = "9.2"
 bcrypt = "0.15"
 
 # HTTP client for StarRocks
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.11", features = ["json", "native-tls-vendored"] }
 
 # Configuration
 dotenvy = "0.15"
