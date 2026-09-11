@@ -1032,8 +1032,18 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     return { x, y };
   }
 
+  private isExternalNode(node: NavTreeNode): boolean {
+    // External tables/databases live in external catalogs (hive/jdbc/iceberg/...) and
+    // have no StarRocks tablets, bucketing, compaction, transactions, loads or stats.
+    return !!node.data?.catalog && node.data.catalog !== 'default_catalog';
+  }
+
   private buildContextMenuItems(node: NavTreeNode): TreeContextMenuItem[] {
     if (node.type === 'database') {
+      // External catalog databases have no StarRocks-specific operations.
+      if (this.isExternalNode(node)) {
+        return [];
+      }
       return [
         {
           label: '查看事务信息',
@@ -1060,6 +1070,9 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
     if (node.type === 'table') {
       const tableType = node.data?.tableType;
+      // External tables live in external catalogs and have no StarRocks tablets,
+      // bucketing, compaction, transactions or stats. See isExternalNode().
+      const isExternal = this.isExternalNode(node);
       
       // View (视图) - 只有逻辑结构，没有物理存储
       if (tableType === 'VIEW') {
@@ -1104,8 +1117,29 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
           },
         ];
       }
+
+      // External table (外表) - 分桶/Compaction/事务/统计均为 StarRocks 内表概念
+      if (isExternal) {
+        return [
+          ...this.tableQueryMenuItems(),
+          {
+            label: '查看表结构',
+            icon: 'file-text-outline',
+            action: 'viewSchema',
+          },
+          {
+            label: '查看查询计划',
+            icon: 'search-outline',
+            action: 'viewViewQueryPlan',
+          },
+        ];
+      }
       
-      // Regular Table (普通表) - 所有功能
+      // Regular Table (内表) - 所有功能；存算分离下手动 Compaction 需 v3.2.5+
+      const compactionLabel =
+        this.activeCluster?.deployment_mode === 'shared_data'
+          ? '手动触发Compaction (3.2.5+)'
+          : '手动触发Compaction';
       return [
         ...this.tableQueryMenuItems(),
         {
@@ -1129,7 +1163,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
           action: 'viewTransactions',
         },
         {
-          label: '手动触发Compaction',
+          label: compactionLabel,
           icon: 'flash-outline',
           action: 'triggerCompaction',
         },
@@ -1216,8 +1250,8 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       case 'viewViewQueryPlan':
         if (targetNode.type === 'table') {
           const tableType = targetNode.data?.tableType;
-          // Only VIEW supports query plan (materialized views are physical tables, query plan is just table scan)
-          if (tableType === 'VIEW') {
+          // View 与外表均可用 EXPLAIN 查看执行计划
+          if (tableType === 'VIEW' || this.isExternalNode(targetNode)) {
             this.viewViewQueryPlan(targetNode);
           }
         }
@@ -2791,8 +2825,8 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   private viewViewQueryPlan(node: NavTreeNode): void {
     const info = this.extractNodeInfo(node);
     if (!this.validateNodeInfo(info, true, {
-      database: '无法识别该视图所属的数据库',
-      table: '无法识别视图名称'
+      database: '无法识别该表所属的数据库',
+      table: '无法识别表名称'
     })) {
       return;
     }
@@ -2800,7 +2834,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     const { catalogName, databaseName, tableName } = info!;
 
     // Show query plan in a dialog
-    this.schemaDialogTitle = '视图查询计划';
+    this.schemaDialogTitle = '查询计划';
     this.schemaDialogSubtitle = tableName;
     this.currentSchemaCatalog = catalogName || null;
     this.currentSchemaDatabase = databaseName;
