@@ -37,37 +37,55 @@ export const MENU_ITEMS: NbMenuItem[] = [
     data: { permission: 'menu:deployment' },
     children: [
       {
-        title: '部署总览',
-        link: '/pages/starrocks/deployment/overview',
-      },
+        title: '集群资产',
+        children: [
+          {
+            title: '主机管理',
+            link: '/pages/starrocks/deployment/hosts',
+            data: { permission: 'menu:deployment:hosts' },
+          } as NbMenuItem & { data?: { permission: string } },
+          {
+            title: 'SSH 凭据',
+            link: '/pages/starrocks/deployment/credentials',
+            data: { permission: 'menu:deployment:credentials' },
+          } as NbMenuItem & { data?: { permission: string } },
+          {
+            title: '安装包',
+            link: '/pages/starrocks/deployment/packages',
+            data: { permission: 'menu:deployment:packages' },
+          } as NbMenuItem & { data?: { permission: string } },
+        ],
+      } as NbMenuItem,
       {
-        title: '主机管理',
-        link: '/pages/starrocks/deployment/hosts',
-      },
+        title: '受管集群',
+        children: [
+          {
+            title: '托管集群',
+            link: '/pages/starrocks/deployment/clusters',
+            data: { permission: 'menu:deployment:clusters' },
+          } as NbMenuItem & { data?: { permission: string } },
+          {
+            title: '集群接管',
+            link: '/pages/starrocks/deployment/adopt',
+            data: { permission: 'menu:deployment:adopt' },
+          } as NbMenuItem & { data?: { permission: string } },
+        ],
+      } as NbMenuItem,
       {
-        title: 'SSH 凭据',
-        link: '/pages/starrocks/deployment/credentials',
-      },
-      {
-        title: '安装包',
-        link: '/pages/starrocks/deployment/packages',
-      },
-      {
-        title: '托管集群',
-        link: '/pages/starrocks/deployment/clusters',
-      },
-      {
-        title: '新建部署',
-        link: '/pages/starrocks/deployment/deploy',
-      },
-      {
-        title: '集群接管',
-        link: '/pages/starrocks/deployment/adopt',
-      },
-      {
-        title: '部署任务',
-        link: '/pages/starrocks/deployment/tasks',
-      },
+        title: '部署执行',
+        children: [
+          {
+            title: '新建部署',
+            link: '/pages/starrocks/deployment/deploy',
+            data: { permission: 'menu:deployment:deploy' },
+          } as NbMenuItem & { data?: { permission: string } },
+          {
+            title: '部署任务',
+            link: '/pages/starrocks/deployment/tasks',
+            data: { permission: 'menu:deployment:tasks' },
+          } as NbMenuItem & { data?: { permission: string } },
+        ],
+      } as NbMenuItem,
     ],
   } as NbMenuItem & { data?: { permission: string } },
   {

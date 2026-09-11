@@ -35,7 +35,7 @@ export class MenuFilterService {
         if (item.children && item.children.length > 0) {
           item.children = this.filterMenuItems(item.children);
           // If all children are filtered out, filter out parent too
-          if (item.children.length === 0 && item.link) {
+          if (item.children.length === 0) {
             return null;
           }
         }

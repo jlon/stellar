@@ -35,7 +35,7 @@
   </ng-container>
 
   <ng-template #statusView>
-    <div class="metrics" *ngIf="mode === 'overview'">
+    <div class="metrics" *ngIf="mode === 'overview' || mode === 'clusters'">
       <nb-card><nb-card-body><strong>{{ clusters.length }}</strong><span>受管集群</span></nb-card-body></nb-card>
       <nb-card><nb-card-body><strong>{{ tasks.length }}</strong><span>部署任务</span></nb-card-body></nb-card>
       <nb-card><nb-card-body><strong>{{ runningTaskCount }}</strong><span>执行中</span></nb-card-body></nb-card>

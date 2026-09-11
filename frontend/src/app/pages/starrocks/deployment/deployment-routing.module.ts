@@ -11,23 +11,21 @@ import { AdoptionComponent } from './adoption.component';
 const routes: Routes = [
   {
     path: '',
-    redirectTo: 'overview',
+    redirectTo: 'clusters',
     pathMatch: 'full',
   },
+  // The standalone overview was merged into the managed-clusters landing
+  // page; keep the old URL working.
   {
     path: 'overview',
-    component: DeploymentConsoleComponent,
-    data: {
-      title: '部署总览',
-      description: '集中查看物理机部署、受管集群和任务执行状态。',
-      icon: 'layers-outline',
-    },
+    redirectTo: 'clusters',
+    pathMatch: 'full',
   },
   {
     path: 'hosts',
     component: HostManagementComponent,
     data: {
-      permission: 'menu:deployment',
+      permission: 'menu:deployment:hosts',
     },
     canActivate: [PermissionGuard],
   },
@@ -36,15 +34,15 @@ const routes: Routes = [
     component: CredentialManagementComponent,
     data: {
       title: 'SSH 凭据',
-      description: '维护部署服务账号和经确认的 SSH 主机身份信息。',
-      icon: 'lock-outline',
+      permission: 'menu:deployment:credentials',
     },
+    canActivate: [PermissionGuard],
   },
   {
     path: 'packages',
     component: PackageManagementComponent,
     data: {
-      permission: 'menu:deployment',
+      permission: 'menu:deployment:packages',
     },
     canActivate: [PermissionGuard],
   },
@@ -53,36 +51,36 @@ const routes: Routes = [
     component: DeploymentConsoleComponent,
     data: {
       title: '托管集群',
-      description: '查看由 Stellar 部署或只读接管的 StarRocks 集群。',
-      icon: 'cube-outline',
+      permission: 'menu:deployment:clusters',
     },
+    canActivate: [PermissionGuard],
   },
   {
     path: 'deploy',
     component: DeploymentConsoleComponent,
     data: {
       title: '新建部署',
-      description: '按主机、凭据、安装包和拓扑创建受控部署计划。',
-      icon: 'plus-circle-outline',
+      permission: 'menu:deployment:deploy',
     },
+    canActivate: [PermissionGuard],
   },
   {
     path: 'adopt',
     component: AdoptionComponent,
     data: {
       title: '集群接管',
-      description: '以只读模式纳入现有 StarRocks 集群，后续再完成基础设施绑定。',
-      icon: 'link-2-outline',
+      permission: 'menu:deployment:adopt',
     },
+    canActivate: [PermissionGuard],
   },
   {
     path: 'tasks',
     component: DeploymentConsoleComponent,
     data: {
       title: '部署任务',
-      description: '追踪部署、预检和接管任务的步骤、日志及最终结果。',
-      icon: 'clock-outline',
+      permission: 'menu:deployment:tasks',
     },
+    canActivate: [PermissionGuard],
   },
 ];
 
