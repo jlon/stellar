@@ -450,7 +450,18 @@ pending -> cancelled
 - **升级**：仅支持版本矩阵中明确允许的路径，且必须先做单节点可用性测试。顺序为 BE/CN → Follower FE → Leader FE。升级前保存现有 balance/tablet clone 相关配置，结束后按原值恢复，不能硬编码“默认恢复值”。分别保留 BE/CN 的 UDF 目录和 FE 的 `spark-dpp`；`bin`、`lib`、`spark-dpp` 的替换使用独立原子命令。连续小版本、降级后二次升级等场景按官方要求处理 image 同步和兼容性配置。
 - **shared-data**：先增加独立的加密存储凭据/存储卷模型、对象存储连通性预检和 CN 生命周期；不得在任务 JSON 中保存 `CREATE STORAGE VOLUME` 的密钥。
 
-## 13. API 与权限
+## 13. 生产收口能力（P1）
+
+- **bootstrap 凭据**：部署请求可提供 `bootstrap_credential_id`，任务尾部执行 `ALTER USER root IDENTIFIED BY ...` 关闭空密码 root 窗口；扩容/配置变更使用 operator 凭据（部署时授予内置角色 `cluster_admin`，连接内 `SET ROLE` 激活，4.1 不允许直接授予 NODE）。
+- **退役 decommission**：受控任务停止全部节点（端口确认消失后）才允许删除远端 install/数据目录；可选项 `deregister` 删除导入的 clusters 行；托管集群标记 `removed` 并释放全部端口预占。审计历史随行保留。
+- **运行中任务取消**：runner 在步骤间检查取消标志，取消的任务保持 `cancelled`；deploy 取消同时恢复集群状态；SSH 子进程仍受单步超时兜底。
+- **扩容 scale_out**：向运行中的集群追加 FE/BE；每个新主机使用独立安装目录（`{install_dir}-host{id}`，规避官方脚本的 pidfile 冲突）；失败自动回滚 planned 节点与端口预占；同 host 同 role 至多一个节点。
+- **配置变更**：整文件替换，服务端校验 managed 键（路径/端口/地址）不可变更，其余调优键允许；写入即生成新 revision，可选随后重启节点。
+- **状态刷新**：按 SSH 探测各节点监听端口回写节点状态（FE query / BE thrift）。
+- **预检磁盘门槛**：数据目录所在文件系统同样要求 ≥20 GiB 余量。
+- 明确不做（P2）：升级、只读接管转受管。
+
+## 14. API 与权限
 
 所有路由挂在认证中间件后，但授权必须通过扩展后的 `permission_extractor` 产生 Casbin resource/action。
 
@@ -466,6 +477,10 @@ pending -> cancelled
 | POST | `/api/sr-ops/clusters/:id/nodes/:node/commands` | `clusters:manage` | 白名单节点启停/重启。 |
 | GET | `/api/sr-ops/clusters/:id/nodes/:node/logs` | `clusters:logs` | 白名单节点日志读取。 |
 | GET | `/api/sr-ops/clusters/:id/configs/:node(/revisions/:r|/diff)` | `configs:read` | 配置版本历史与差异。 |
+| POST | `/api/sr-ops/clusters/:id/nodes/:node/config` | `clusters:manage` | 拓扑键受保护的配置变更。 |
+| POST | `/api/sr-ops/clusters/:id/nodes` | `clusters:manage` | 扩容新节点。 |
+| POST | `/api/sr-ops/clusters/:id/decommission` | `clusters:delete` | 退役并释放预占。 |
+| POST | `/api/sr-ops/clusters/:id/refresh` | `clusters:get` | 刷新节点真实状态。 |
 | POST | `/api/sr-ops/deployments` | `deployments:create` | 使用强类型 `DeployRequest` 创建 deploy 任务；不接受泛型 task payload。 |
 | POST | `/api/sr-ops/adoptions` | `adoptions:create` | 只读接管。 |
 | GET | `/api/sr-ops/tasks/:id` | `tasks:get` | 查询任务与已脱敏事件。 |
