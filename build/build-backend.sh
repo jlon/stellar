@@ -31,14 +31,12 @@ mkdir -p "$DIST_DIR/conf"
 mkdir -p "$DIST_DIR/lib"
 mkdir -p "$DIST_DIR/data"
 mkdir -p "$DIST_DIR/logs"
-mkdir -p "$DIST_DIR/migrations"
 
 # Clean old backend artifacts
 echo -e "${YELLOW}[0/4]${NC} Cleaning old backend artifacts..."
 rm -f "$DIST_DIR/bin/"*
 rm -f "$DIST_DIR/conf/"*
 rm -f "$DIST_DIR/lib/"*
-rm -f "$DIST_DIR/migrations/"*
 
 # Build backend
 echo -e "${YELLOW}[1/4]${NC} Compiling Rust backend (release mode)..."
@@ -81,14 +79,10 @@ table = "starrocks_audit_tbl__"
 EOF
 echo "Created production config.toml"
 
-# Copy migrations
-echo -e "${YELLOW}[4/4]${NC} Copying database migrations..."
-if [ -d "$BACKEND_DIR/migrations" ]; then
-    cp -r "$BACKEND_DIR/migrations"/* "$DIST_DIR/migrations/"
-    echo "Copied $(ls "$DIST_DIR/migrations" | wc -l) migration files"
-else
-    echo "Warning: No migrations directory found in backend"
-fi
+# Migrations are embedded into the binary at compile time (sqlx::migrate!,
+# one static Migrator per backend under backend/migrations/<backend>/);
+# no runtime migration files are shipped.
+echo -e "${YELLOW}[4/4]${NC} Database migrations are embedded in the binary (no runtime files shipped)"
 
 # Create enhanced start script for backend
 cat > "$DIST_DIR/bin/stellar.sh" << 'EOF'

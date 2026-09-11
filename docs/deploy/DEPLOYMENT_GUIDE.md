@@ -121,9 +121,11 @@ build/dist/
 │   └── config.toml         # 主配置文件
 ├── data/                   # 数据目录 (SQLite 数据库)
 ├── logs/                   # 日志目录
-├── lib/                    # 依赖库
-└── migrations/             # 数据库迁移文件
+└── lib/                    # 依赖库
 ```
+
+> 数据库迁移脚本在编译期嵌入 `bin/stellar`（`sqlx::migrate!`，按 SQLite/MySQL/PostgreSQL
+> 方言各一份），运行时按 `database.url` 协议选择执行；发行包不再包含 migrations 目录。
 
 ---
 

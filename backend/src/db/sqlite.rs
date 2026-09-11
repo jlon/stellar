@@ -8,6 +8,8 @@ use sqlx::{Pool, Sqlite};
 
 use super::AppDb;
 
+static MIGRATIONS: sqlx::migrate::Migrator = sqlx::migrate!("./migrations/sqlite");
+
 impl AppDb for Sqlite {
     type Query<'q> =
         sqlx::query::Query<'q, Self, <Self as sqlx::database::HasArguments<'q>>::Arguments>;
@@ -16,8 +18,8 @@ impl AppDb for Sqlite {
         sqlx::query(sql)
     }
 
-    fn migrations_dir() -> &'static str {
-        "migrations/sqlite"
+    fn migrations() -> &'static sqlx::migrate::Migrator {
+        &MIGRATIONS
     }
 
     async fn connect(url: &str) -> sqlx::Result<Pool<Sqlite>> {
