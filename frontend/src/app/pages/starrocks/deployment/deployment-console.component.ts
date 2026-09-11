@@ -14,6 +14,7 @@ import {
   DeploymentTaskDetail, ManagedCluster, ManagedClusterDetail, ManagedClusterNode, SrDeploymentService,
 } from '../../../@core/data/sr-deployment.service';
 import { ErrorHandler } from '../../../@core/utils/error-handler';
+import { ConfirmDialogService } from '../../../@core/services/confirm-dialog.service';
 
 type ConsoleMode = 'overview' | 'deploy' | 'tasks' | 'clusters';
 
@@ -38,6 +39,7 @@ export class DeploymentConsoleComponent implements OnInit, OnDestroy {
   private readonly hostService = inject(PhysicalHostService);
   private readonly packageService = inject(SrPackageService);
   private readonly toastr = inject(NbToastrService);
+  private readonly confirmDialog = inject(ConfirmDialogService);
   private taskRefresh?: Subscription;
 
   mode: ConsoleMode = 'overview';
@@ -284,14 +286,31 @@ export class DeploymentConsoleComponent implements OnInit, OnDestroy {
     if (!this.clusterDetail) {
       return;
     }
-    const name = window.prompt(`输入集群名 ${this.clusterDetail.name} 以确认退役：`);
-    if (!name || name !== this.clusterDetail.name) {
+    this.confirmDialog
+      .confirm(
+        '确认退役',
+        `将停止集群 ${this.clusterDetail.name} 的全部节点，并释放其占用的端口。\n是否同时删除远端安装与数据目录将由后续确认选择。`,
+        '继续',
+        '取消',
+        'danger',
+      )
+      .subscribe((confirmed) => {
+        if (!confirmed) {
+          return;
+        }
+        this.confirmDialog
+          .confirm('删除远端目录', '是否同时删除远端安装与数据目录？该操作不可恢复。', '删除', '保留', 'danger')
+          .subscribe((removeFiles) => this.submitDecommission(removeFiles));
+      });
+  }
+
+  private submitDecommission(removeFiles: boolean): void {
+    if (!this.clusterDetail) {
       return;
     }
-    const removeFiles = window.confirm('是否同时删除远端安装与数据目录？');
     this.deploymentService
       .decommissionCluster(this.clusterDetail.id, {
-        confirm: name,
+        confirm: this.clusterDetail.name,
         remove_remote_files: removeFiles,
         deregister: false,
       })
