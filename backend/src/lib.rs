@@ -25,6 +25,8 @@ pub mod models;
 pub mod services;
 pub mod utils;
 
+use crate::services::profile_analyzer::ProfileAnalysisCache;
+
 // Re-export commonly used types
 pub use config::Config;
 pub use services::llm::{LLMError, LLMProviderInfo, LLMService, LLMServiceImpl};
@@ -67,4 +69,5 @@ pub struct AppState<DB: AppDb> {
 
     pub db_auth_query_service: Arc<DbAuthQueryService<DB>>,
     pub permission_request_service: Arc<PermissionRequestService<DB>>,
+    pub profile_analysis_cache: Arc<ProfileAnalysisCache>,
 }

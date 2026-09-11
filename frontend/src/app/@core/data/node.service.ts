@@ -462,8 +462,11 @@ export class NodeService {
     return this.api.get<ProfileDetail>(`/clusters/profiles/${queryId}`);
   }
 
-  analyzeProfile(queryId: string): Observable<ProfileAnalysisResult> {
-    return this.api.get<ProfileAnalysisResult>(`/clusters/profiles/${queryId}/analyze`);
+  analyzeProfile(queryId: string, refresh = false): Observable<ProfileAnalysisResult> {
+    return this.api.get<ProfileAnalysisResult>(
+      `/clusters/profiles/${queryId}/analyze`,
+      refresh ? { refresh: 'true' } : undefined,
+    );
   }
 
   /**

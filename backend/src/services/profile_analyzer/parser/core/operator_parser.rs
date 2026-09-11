@@ -75,29 +75,55 @@ impl OperatorParser {
         }
     }
 
-    /// Get canonical topology name for an operator
-    ///
-    /// Maps various operator names to their canonical form used in topology
+    pub fn parse_starrocks_plan_node_id(header: &str) -> Option<i32> {
+        let rest = header.split_once("plan_node_id=")?.1.trim_start();
+        let mut token = String::new();
+        let mut chars = rest.chars().peekable();
+        if chars.peek() == Some(&'-') {
+            token.push('-');
+            chars.next();
+        }
+        for c in chars {
+            if c.is_ascii_digit() {
+                token.push(c);
+            } else {
+                break;
+            }
+        }
+        if token.is_empty() || token == "-" {
+            return None;
+        }
+        token.parse().ok()
+    }
+
+    pub fn contributes_output_rows(operator_name: &str) -> bool {
+        let name = operator_name.to_uppercase();
+        !name.contains("_SINK") && !name.contains("_BUILD")
+    }
+
     pub fn canonical_topology_name(operator_name: &str) -> String {
         let name = operator_name.to_uppercase();
 
-        match name.as_str() {
-            "OLAP_SCAN" | "OLAP_SCAN_OPERATOR" => "OLAP_SCAN".to_string(),
-            "CONNECTOR_SCAN" | "CONNECTOR_SCAN_OPERATOR" => "CONNECTOR_SCAN".to_string(),
-
-            "HASH_JOIN" | "HASH_JOIN_BUILD" | "HASH_JOIN_PROBE" => "HASH_JOIN".to_string(),
-            "NEST_LOOP_JOIN" | "NESTLOOP_JOIN" => "NESTLOOP_JOIN".to_string(),
-
-            "AGGREGATE" | "AGGREGATION" | "AGGREGATE_BLOCKING" | "AGGREGATE_STREAMING" => {
-                "AGGREGATE".to_string()
-            },
-
-            "EXCHANGE" | "EXCHANGE_SOURCE" | "EXCHANGE_SINK" | "MERGE_EXCHANGE" => {
-                "EXCHANGE".to_string()
-            },
-
-            _ => name,
+        if name.starts_with("OLAP_SCAN") {
+            return "OLAP_SCAN".to_string();
         }
+        if name.starts_with("CONNECTOR_SCAN") {
+            return "CONNECTOR_SCAN".to_string();
+        }
+        if name.starts_with("HASH_JOIN") {
+            return "HASH_JOIN".to_string();
+        }
+        if name.starts_with("NEST_LOOP_JOIN") || name.starts_with("NESTLOOP_JOIN") {
+            return "NESTLOOP_JOIN".to_string();
+        }
+        if name == "AGGREGATION" || name.starts_with("AGGREGATE") {
+            return "AGGREGATE".to_string();
+        }
+        if name == "MERGE_EXCHANGE" || name.starts_with("EXCHANGE") {
+            return "EXCHANGE".to_string();
+        }
+
+        name
     }
 
     /// Extract operator block from profile text
@@ -210,5 +236,47 @@ mod tests {
         assert_eq!(OperatorParser::canonical_topology_name("OLAP_SCAN"), "OLAP_SCAN");
         assert_eq!(OperatorParser::canonical_topology_name("HASH_JOIN_BUILD"), "HASH_JOIN");
         assert_eq!(OperatorParser::canonical_topology_name("AGGREGATE_BLOCKING"), "AGGREGATE");
+        assert_eq!(
+            OperatorParser::canonical_topology_name("AGGREGATE_BLOCKING_SOURCE"),
+            "AGGREGATE"
+        );
+        assert_eq!(OperatorParser::canonical_topology_name("AGGREGATION"), "AGGREGATE");
+        assert_eq!(
+            OperatorParser::canonical_topology_name("AGGREGATE_DISTINCT_STREAMING_SINK"),
+            "AGGREGATE"
+        );
+        assert_eq!(OperatorParser::canonical_topology_name("MERGE_EXCHANGE"), "EXCHANGE");
+    }
+
+    #[test]
+    fn test_parse_starrocks_plan_node_id() {
+        assert_eq!(
+            OperatorParser::parse_starrocks_plan_node_id("OLAP_SCAN (plan_node_id=0):"),
+            Some(0)
+        );
+        assert_eq!(
+            OperatorParser::parse_starrocks_plan_node_id("RESULT_SINK (plan_node_id=-1):"),
+            Some(-1)
+        );
+        assert_eq!(
+            OperatorParser::parse_starrocks_plan_node_id(
+                "LIMIT (plan_node_id=21) (operator id=1):"
+            ),
+            Some(21)
+        );
+        assert_eq!(
+            OperatorParser::parse_starrocks_plan_node_id("LIMIT (plan_node_id=-10) (operator id=3):"),
+            Some(-10)
+        );
+        assert_eq!(OperatorParser::parse_starrocks_plan_node_id("OLAP_SCAN:"), None);
+    }
+
+    #[test]
+    fn test_contributes_output_rows() {
+        assert!(OperatorParser::contributes_output_rows("HASH_JOIN_PROBE"));
+        assert!(OperatorParser::contributes_output_rows("AGGREGATE_BLOCKING_SOURCE"));
+        assert!(!OperatorParser::contributes_output_rows("HASH_JOIN_BUILD"));
+        assert!(!OperatorParser::contributes_output_rows("AGGREGATE_BLOCKING_SINK"));
+        assert!(!OperatorParser::contributes_output_rows("RESULT_SINK"));
     }
 }

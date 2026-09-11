@@ -1,6 +1,6 @@
 import { ChangeDetectorRef, Component, OnInit, OnDestroy, TemplateRef, ViewChild, ViewEncapsulation, inject } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
-import { Location, NgStyle, NgClass, DecimalPipe } from '@angular/common'; // Import Location
+import { CommonModule, Location, NgStyle, NgClass, DecimalPipe } from '@angular/common'; // Import Location
 import { NbToastrService, NbDialogService, NbCardModule, NbButtonModule, NbIconModule, NbSelectModule, NbOptionModule, NbSpinnerModule, NbTabsetModule, NbTooltipModule } from '@nebular/theme';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
@@ -33,7 +33,8 @@ import * as dagre from 'dagre';
     NbTabsetModule,
     NbTooltipModule,
     NgClass,
-    DecimalPipe
+    DecimalPipe,
+    CommonModule
 ],
 })
 export class ProfileQueriesComponent implements OnInit, OnDestroy {
@@ -785,13 +786,12 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
     this.loadAnalysis(queryId);
   }
   
-  // Load profile analysis for DAG (includes profile_content)
-  loadAnalysis(queryId: string): void {
+  loadAnalysis(queryId: string, refresh = false): void {
     this.analysisLoading = true;
     this.profileDetailLoading = true;
     this.analysisError = '';
     
-    this.nodeService.analyzeProfile(queryId).subscribe({
+    this.nodeService.analyzeProfile(queryId, refresh).subscribe({
       next: (data) => {
         this.analysisData = data;
         this.topNodes = data.summary?.top_time_consuming_nodes || [];
@@ -904,10 +904,9 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
     return this.analysisData?.llm_analysis?.from_cache === true;
   }
   
-  // Refresh analysis
   refreshAnalysis(): void {
     if (this.currentQueryId) {
-      this.loadAnalysis(this.currentQueryId);
+      this.loadAnalysis(this.currentQueryId, true);
     }
   }
 
@@ -954,8 +953,6 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
       }
     }
 
-    console.log('Building graph with nodes:', nodeList.length);
-
     // Add nodes
     nodeList.forEach((node: any) => {
       // Node height: Header(35) + Body(55) + Progress(3) ≈ 93px
@@ -975,13 +972,6 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
     // Calculate layout
     dagre.layout(g);
 
-    console.log('Graph layout complete:', {
-      width: g.graph().width,
-      height: g.graph().height,
-      nodes: g.nodes().length,
-      edges: g.edges().length
-    });
-
     // Extract coordinates - round to integer pixels to prevent subpixel blur
     this.graphNodes = nodeList.map((node: any) => {
       const layoutNode = g.node(node.id);
@@ -998,7 +988,9 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
         x,
         y,
         width,
-        height
+        height,
+        left: Math.round(x - width / 2),
+        top: Math.round(y - height / 2),
       };
     });
 
@@ -1076,7 +1068,7 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
       }
 
       // Determine stroke color based on target node type
-      let strokeColor = themeColor('--border-basic-color-4', '#c5cee0');
+      let strokeColor = themeColor('--text-hint-color', '#8f9bb3');
       if (targetNode) {
         const name = targetNode.operator_name?.toUpperCase() || '';
         if (name.includes('SCAN') || name.includes('JOIN')) {
@@ -1160,24 +1152,7 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
     
     // Force change detection to update view
     this.cdr.markForCheck();
-    
-    // DEBUG: Log final results
-    console.log('=== 构建完成 ===');
-    console.log('graphNodes 数量:', this.graphNodes.length);
-    console.log('graphEdges 数量:', this.graphEdges.length);
-    console.log('图表尺寸:', this.graphWidth, 'x', this.graphHeight);
-    if (this.graphNodes.length > 0) {
-      console.log('第一个节点:', {
-        id: this.graphNodes[0].id,
-        operator_name: this.graphNodes[0].operator_name,
-        x: this.graphNodes[0].x,
-        y: this.graphNodes[0].y,
-        width: this.graphNodes[0].width,
-        height: this.graphNodes[0].height
-      });
-    }
-    console.log('=============');
-    
+
     // Calculate node ranks for color coding
     this.calculateNodeRanks();
     
@@ -1190,7 +1165,7 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
   
   // Update edge positions after DOM has rendered (measure actual node heights)
   private updateEdgesAfterRender(): void {
-    const nodeElements = document.querySelectorAll('.dag-node');
+    const nodeElements = document.querySelectorAll('.dag-layout .dag-node');
     if (!nodeElements.length) return;
     
     // Build a map of actual DOM heights
@@ -1262,25 +1237,21 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
       
       return edge;
     });
-    console.log('Edges updated with actual DOM heights');
     this.cdr.markForCheck();
   }
-  
-  // Center the graph in the viewport
+
+  get graphTransform(): string {
+    const translate = `translate(${this.translateX}px, ${this.translateY}px)`;
+    return this.zoomLevel === 1 ? translate : `${translate} scale(${this.zoomLevel})`;
+  }
+
   centerGraph(): void {
-    const viewport = document.querySelector('.dag-center-panel') as HTMLElement;
+    const viewport = document.querySelector('.dag-layout .graph-viewport') as HTMLElement;
     if (viewport && this.graphWidth > 0 && this.graphHeight > 0) {
       const vw = viewport.clientWidth;
       const vh = viewport.clientHeight;
-      // Calculate scaled dimensions
-      const scaledWidth = this.graphWidth * this.zoomLevel;
-      const scaledHeight = this.graphHeight * this.zoomLevel;
-      // Center the graph
-      this.translateX = Math.round((vw - scaledWidth) / 2);
-      this.translateY = Math.round((vh - scaledHeight) / 2);
-      // Ensure some padding if content is larger than viewport
-      if (this.translateY < 20) this.translateY = 20;
-      if (this.translateX < 20) this.translateX = 20;
+      this.translateX = Math.round((vw - this.graphWidth * this.zoomLevel) / 2);
+      this.translateY = Math.round((vh - this.graphHeight * this.zoomLevel) / 2);
     }
   }
   
@@ -2015,27 +1986,26 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
     return `translate(${pos.x}, ${pos.y})`;
   }
 
-  // Zoom controls - use 0.25 steps for crisper rendering (avoid fractional pixels)
   zoomIn(): void {
-    this.zoomLevel = Math.min(Math.round((this.zoomLevel + 0.25) * 4) / 4, 3);
+    this.setZoom(this.zoomLevel + 0.25);
   }
 
   zoomOut(): void {
-    this.zoomLevel = Math.max(Math.round((this.zoomLevel - 0.25) * 4) / 4, 0.25);
+    this.setZoom(this.zoomLevel - 0.25);
   }
 
   resetZoom(): void {
-    this.zoomLevel = 1;
-    this.translateX = 0;
-    this.translateY = 0;
+    this.setZoom(1);
+  }
+
+  private setZoom(next: number): void {
+    this.zoomLevel = Math.min(3, Math.max(0.25, Math.round(next * 4) / 4));
+    this.centerGraph();
   }
   
   toggleFullscreen(): void {
     this.isFullscreen = !this.isFullscreen;
-    setTimeout(() => {
-        // Trigger resize event to re-layout if needed
-        window.dispatchEvent(new Event('resize'));
-    });
+    setTimeout(() => this.centerGraph());
   }
 
   // Toggle graph direction (BT <-> LR)
@@ -2277,7 +2247,7 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
     const rank = this.getNodeRank(node);
     if (rank === 1) return themeColor('--color-danger-default', '#ff3d71');
     if (rank > 0 || this.isScanNode(node) || this.isJoinNode(node)) return themeColor('--color-warning-default', '#ffaa00');
-    return themeColor('--border-basic-color-4', '#c5cee0');
+    return themeColor('--text-hint-color', '#8f9bb3');
   }
 
   // Toggle functions for right panel sections

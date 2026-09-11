@@ -439,6 +439,8 @@ where
     let permission_request_service = Arc::new(PermissionRequestService::new(pool.clone()));
     tracing::info!("PermissionRequestService initialized");
 
+    let profile_analysis_cache = Arc::new(stellar::services::profile_analyzer::ProfileAnalysisCache::new());
+
     let app_state = AppState {
         db: pool.clone(),
         mysql_pool_manager: Arc::clone(&mysql_pool_manager),
@@ -459,6 +461,7 @@ where
         llm_service: Arc::clone(&llm_service),
         db_auth_query_service: Arc::clone(&db_auth_query_service),
         permission_request_service: Arc::clone(&permission_request_service),
+        profile_analysis_cache,
     };
 
     if config.metrics.enabled {

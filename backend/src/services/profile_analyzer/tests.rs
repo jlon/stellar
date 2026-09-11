@@ -366,6 +366,33 @@ mod profile_tests {
             assert!(!profile.summary.query_id.is_empty());
             assert!(profile.execution_tree.is_some());
         }
+
+        #[test]
+        fn test_compose_profile10_limit_nodes() {
+            let profile_text = load_profile("profile10.txt");
+            let fragments = FragmentParser::extract_all_fragments(&profile_text);
+            let limit_ids: Vec<String> = fragments
+                .iter()
+                .flat_map(|f| f.pipelines.iter())
+                .flat_map(|p| p.operators.iter())
+                .filter(|op| op.name == "LIMIT")
+                .filter_map(|op| op.plan_node_id.clone())
+                .collect();
+            assert!(limit_ids.contains(&"5".to_string()));
+            assert!(limit_ids.contains(&"4".to_string()));
+
+            let mut composer = ProfileComposer::new();
+            let profile = composer.parse(&profile_text).expect("parse profile10");
+            let tree = profile.execution_tree.expect("tree");
+            for plan_id in [4, 5] {
+                let node = tree
+                    .nodes
+                    .iter()
+                    .find(|n| n.plan_node_id == Some(plan_id))
+                    .unwrap_or_else(|| panic!("missing plan node {plan_id}"));
+                assert!(node.metrics.operator_total_time.unwrap_or(0) > 0);
+            }
+        }
     }
 
     mod analysis_tests {
@@ -1055,6 +1082,11 @@ Query:
         fn test_canonical_topology_name() {
             assert_eq!(OperatorParser::canonical_topology_name("HASH_JOIN_BUILD"), "HASH_JOIN");
             assert_eq!(OperatorParser::canonical_topology_name("AGGREGATE_BLOCKING"), "AGGREGATE");
+            assert_eq!(
+                OperatorParser::canonical_topology_name("AGGREGATE_BLOCKING_SOURCE"),
+                "AGGREGATE"
+            );
+            assert_eq!(OperatorParser::canonical_topology_name("AGGREGATION"), "AGGREGATE");
             assert_eq!(OperatorParser::canonical_topology_name("OLAP_SCAN"), "OLAP_SCAN");
         }
     }

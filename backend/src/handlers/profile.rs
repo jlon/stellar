@@ -1,7 +1,7 @@
 use crate::AppState;
 use axum::{
     Json,
-    extract::{Path, State},
+    extract::{Path, Query, State},
 };
 use std::sync::Arc;
 use stellar_macros::app_db;
@@ -126,12 +126,19 @@ pub async fn get_profile(
     Ok(Json(ProfileDetail { query_id: safe_query_id, profile_content }))
 }
 
+#[derive(Debug, Default, serde::Deserialize)]
+pub struct AnalyzeProfileQuery {
+    #[serde(default)]
+    pub refresh: bool,
+}
+
 /// Analyze a query profile and return structured visualization data
 #[utoipa::path(
     get,
     path = "/api/clusters/profiles/{query_id}/analyze",
     params(
-        ("query_id" = String, Path, description = "Query ID to analyze")
+        ("query_id" = String, Path, description = "Query ID to analyze"),
+        ("refresh" = Option<bool>, Query, description = "Bypass analysis cache and re-parse")
     ),
     responses(
         (status = 200, description = "Profile analysis result with execution tree"),
@@ -148,6 +155,7 @@ pub async fn analyze_profile_handler(
     State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path(query_id): Path<String>,
+    Query(query): Query<AnalyzeProfileQuery>,
 ) -> ApiResult<Json<ProfileAnalysisResponse>> {
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
@@ -164,6 +172,17 @@ pub async fn analyze_profile_handler(
         tracing::debug!("Query ID sanitized: '{}' -> '{}'", query_id, safe_query_id);
     }
 
+    if query.refresh {
+        state.profile_analysis_cache.invalidate(cluster.id, &safe_query_id);
+    } else if let Some(cached) = state.profile_analysis_cache.get(cluster.id, &safe_query_id) {
+        tracing::info!(
+            "Profile analysis cache hit for query {} in cluster {}",
+            safe_query_id,
+            cluster.id
+        );
+        return Ok(Json(attach_llm_pending(cached, state.llm_service.is_available())));
+    }
+
     tracing::info!("Analyzing profile for query {} in cluster {}", safe_query_id, cluster.id);
 
     let adapter = create_adapter(cluster.clone(), state.mysql_pool_manager.clone());
@@ -175,25 +194,36 @@ pub async fn analyze_profile_handler(
         safe_query_id
     );
 
-    // Fetch cluster variables for analysis context
     let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
     let mysql_client = MySQLClient::from_pool(pool);
     let cluster_variables = fetch_cluster_variables(&mysql_client).await;
 
     let context = AnalysisContext { cluster_variables, cluster_id: Some(cluster.id) };
 
-    let mut response = analyze_profile_with_context(&profile_content, &context)
+    let response = analyze_profile_with_context(&profile_content, &context)
         .map_err(|e| ApiError::internal_error(format!("Analysis failed: {}", e)))?;
 
-    if state.llm_service.is_available() {
-        response.llm_analysis = Some(LLMEnhancedAnalysis {
-            available: true,
-            status: "pending".to_string(), // Frontend should call /api/llm/enhance API
-            ..Default::default()
-        });
-    }
+    state
+        .profile_analysis_cache
+        .insert(cluster.id, safe_query_id, response.clone());
 
-    Ok(Json(response))
+    Ok(Json(attach_llm_pending(response, state.llm_service.is_available())))
+}
+
+fn attach_llm_pending(
+    mut response: ProfileAnalysisResponse,
+    llm_available: bool,
+) -> ProfileAnalysisResponse {
+    response.llm_analysis = if llm_available {
+        Some(LLMEnhancedAnalysis {
+            available: true,
+            status: "pending".to_string(),
+            ..Default::default()
+        })
+    } else {
+        None
+    };
+    response
 }
 
 /// Request body for LLM enhancement

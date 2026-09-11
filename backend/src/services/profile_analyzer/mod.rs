@@ -44,6 +44,7 @@
 //! ```
 
 pub mod analyzer;
+pub mod cache;
 pub mod models;
 pub mod parser;
 
@@ -51,6 +52,7 @@ pub mod parser;
 mod tests;
 
 pub use analyzer::RuleEngine;
+pub use cache::ProfileAnalysisCache;
 pub use models::*;
 pub use parser::ProfileComposer;
 

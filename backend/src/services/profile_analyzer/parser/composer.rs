@@ -103,15 +103,9 @@ impl ProfileComposer {
             FragmentParser::extract_all_fragments(text)
         };
 
-        let topology_result = Self::extract_topology_json(&execution_info.topology)
-            .and_then(|json| TopologyParser::parse_with_fragments(&json, text, &fragments))
-            .ok();
-
-        let execution_tree = if let Some(ref topology) = topology_result {
-            let nodes = self.build_nodes_from_topology_and_fragments(topology, &fragments)?;
-            TreeBuilder::build_from_topology(topology, nodes, &fragments, &summary)?
-        } else {
-            let nodes = self.build_nodes_from_fragments(text, &fragments, is_doris_format)?;
+        let mut topology_degraded = false;
+        let execution_tree = if is_doris_format {
+            let nodes = self.build_nodes_from_fragments(text, &fragments, true)?;
             tracing::debug!("[Doris] Built {} nodes from fragments", nodes.len());
             if nodes.is_empty() {
                 tracing::warn!(
@@ -124,13 +118,40 @@ impl ProfileComposer {
                 );
             }
             TreeBuilder::build_from_fragments(nodes, &summary, &fragments)?
+        } else {
+            match Self::extract_topology_json(&execution_info.topology)
+                .and_then(|json| TopologyParser::parse_with_fragments(&json, text, &fragments))
+            {
+                Ok(topology) => {
+                    let nodes = self.build_nodes_from_topology_and_fragments(&topology, &fragments)?;
+                    TreeBuilder::build_from_topology(&topology, nodes, &fragments, &summary)?
+                },
+                Err(err) => {
+                    tracing::warn!(
+                        error = %err,
+                        "StarRocks profile topology unavailable; DAG edges omitted"
+                    );
+                    topology_degraded = true;
+                    let nodes = self.build_nodes_from_fragments(text, &fragments, false)?;
+                    TreeBuilder::build_without_topology_edges(nodes, &summary, &fragments)?
+                },
+            }
         };
 
-        // Compute top 10 time-consuming nodes (frontend expects top 10)
         let top_nodes = Self::compute_top_time_consuming_nodes(&execution_tree.nodes, 10);
         summary.top_time_consuming_nodes = Some(top_nodes);
 
         Self::analyze_profile_completeness(text, &mut summary);
+        if topology_degraded {
+            summary.is_profile_complete = Some(false);
+            let msg = "执行计划 Topology 缺失或无法解析，节点已展示但边关系不可用，请勿按图中连线理解数据流";
+            summary.profile_completeness_warning = Some(
+                match summary.profile_completeness_warning.take() {
+                    Some(existing) => format!("{existing}；{msg}"),
+                    None => msg.to_string(),
+                },
+            );
+        }
 
         Ok(Profile {
             summary,
@@ -319,65 +340,7 @@ impl ProfileComposer {
             nodes.push(tree_node);
         }
 
-        self.add_sink_nodes(&mut nodes, fragments, topology);
-
         Ok(nodes)
-    }
-
-    /// Add sink nodes that are not in the topology
-    fn add_sink_nodes(
-        &self,
-        nodes: &mut Vec<ExecutionTreeNode>,
-        fragments: &[Fragment],
-        topology: &TopologyGraph,
-    ) {
-        let mut next_sink_id = -1;
-
-        for fragment in fragments {
-            for pipeline in &fragment.pipelines {
-                for operator in &pipeline.operators {
-                    let pure_name = Self::extract_operator_name(&operator.name);
-
-                    if pure_name.ends_with("_SINK") {
-                        let plan_id = operator
-                            .plan_node_id
-                            .as_ref()
-                            .and_then(|id| id.parse::<i32>().ok())
-                            .unwrap_or(next_sink_id);
-
-                        if !topology.nodes.iter().any(|n| n.id == plan_id) {
-                            let metrics = MetricsParser::from_hashmap(&operator.common_metrics);
-                            let rows = metrics.push_row_num.or(metrics.pull_row_num);
-
-                            let sink_node = ExecutionTreeNode {
-                                id: format!("sink_{}", plan_id.abs()),
-                                plan_node_id: Some(plan_id),
-                                operator_name: pure_name.clone(),
-                                node_type: OperatorParser::determine_node_type(&pure_name),
-                                parent_plan_node_id: None,
-                                children: Vec::new(),
-                                depth: 0,
-                                metrics,
-                                is_hotspot: false,
-                                hotspot_severity: HotSeverity::Normal,
-                                fragment_id: Some(fragment.id.clone()),
-                                pipeline_id: Some(pipeline.id.clone()),
-                                time_percentage: None,
-                                rows,
-                                is_most_consuming: false,
-                                is_second_most_consuming: false,
-                                unique_metrics: operator.unique_metrics.clone(),
-                                has_diagnostic: false,
-                                diagnostic_ids: Vec::new(),
-                            };
-
-                            nodes.push(sink_node);
-                            next_sink_id -= 1;
-                        }
-                    }
-                }
-            }
-        }
     }
 
     /// Build nodes from fragments only (fallback)
@@ -544,16 +507,24 @@ impl ProfileComposer {
         topology_name: &str,
     ) -> crate::services::profile_analyzer::models::Operator {
         if operators.is_empty() {
-            panic!("Empty operators list");
+            return crate::services::profile_analyzer::models::Operator {
+                name: topology_name.to_string(),
+                plan_node_id: None,
+                operator_id: None,
+                common_metrics: HashMap::new(),
+                unique_metrics: HashMap::new(),
+                children: Vec::new(),
+            };
         }
 
+        let topology_canonical = OperatorParser::canonical_topology_name(topology_name);
         let mut matching_operators: Vec<&crate::services::profile_analyzer::models::Operator> =
             Vec::new();
 
         for &op in operators {
             let op_name = Self::extract_operator_name(&op.name);
             let op_canonical = OperatorParser::canonical_topology_name(&op_name);
-            if op_canonical == topology_name {
+            if op_canonical == topology_canonical {
                 matching_operators.push(op);
             }
         }
@@ -594,7 +565,27 @@ impl ProfileComposer {
             matching_operators.push(operators[0]);
         }
 
-        let mut base_operator = matching_operators[0].clone();
+        let row_operators: Vec<&crate::services::profile_analyzer::models::Operator> = {
+            let contributing: Vec<_> = matching_operators
+                .iter()
+                .copied()
+                .filter(|op| {
+                    OperatorParser::contributes_output_rows(&Self::extract_operator_name(&op.name))
+                })
+                .collect();
+            if contributing.is_empty() {
+                matching_operators.clone()
+            } else {
+                contributing
+            }
+        };
+
+        let mut base_operator = row_operators
+            .first()
+            .copied()
+            .or_else(|| matching_operators.first().copied())
+            .unwrap_or(operators[0])
+            .clone();
 
         let mut total_time_ns: u64 = 0;
         for &op in &matching_operators {
@@ -615,7 +606,7 @@ impl ProfileComposer {
         let count_metrics = ["PushChunkNum", "PushRowNum", "PullChunkNum", "PullRowNum"];
         for metric_name in &count_metrics {
             let mut total_count: u64 = 0;
-            for &op in &matching_operators {
+            for &op in &row_operators {
                 if let Some(count_str) = op.common_metrics.get(*metric_name)
                     && let Ok(count) = count_str.parse::<u64>()
                 {
@@ -772,5 +763,107 @@ mod tests {
             "OLAP_SCAN"
         );
         assert_eq!(ProfileComposer::extract_operator_name("HASH_JOIN"), "HASH_JOIN");
+    }
+
+    fn sample_starrocks_profile(include_topology: bool) -> String {
+        let topology = if include_topology {
+            r#"     - Topology: {"rootId":7,"nodes":[{"id":7,"name":"LIMIT","properties":{},"children":[4]},{"id":4,"name":"AGGREGATION","properties":{},"children":[3]},{"id":3,"name":"HASH_JOIN","properties":{},"children":[0]},{"id":0,"name":"OLAP_SCAN","properties":{},"children":[]}]}"#
+        } else {
+            r#"     - QueryCumulativeOperatorTime: 18ms"#
+        };
+        format!(
+            r#"Query:
+  Summary:
+     - Query ID: sample-profile
+     - Start Time: 2024-01-01 00:00:00
+     - End Time: 2024-01-01 00:00:01
+     - Total: 20ms
+     - Query State: Finished
+     - StarRocks Version: 3.3.0
+     - Sql Statement: select 1
+  Planner:
+     - -- Total[1] 1ms
+  Execution:
+{topology}
+     - QueryCumulativeOperatorTime: 18ms
+    Fragment 0:
+        Pipeline (id=0):
+        RESULT_SINK (plan_node_id=-1):
+          CommonMetrics:
+             - OperatorTotalTime: 1ms
+             - PushRowNum: 5
+        LIMIT (plan_node_id=7) (operator id=1):
+          CommonMetrics:
+             - OperatorTotalTime: 4ms
+             - PullRowNum: 7
+        AGGREGATE_BLOCKING_SINK (plan_node_id=4):
+          CommonMetrics:
+             - OperatorTotalTime: 2ms
+             - PushRowNum: 999
+             - PullRowNum: 999
+        AGGREGATE_BLOCKING_SOURCE (plan_node_id=4):
+          CommonMetrics:
+             - OperatorTotalTime: 3ms
+             - PullRowNum: 42
+        HASH_JOIN_BUILD (plan_node_id=3):
+          CommonMetrics:
+             - OperatorTotalTime: 1ms
+             - PushRowNum: 80
+        HASH_JOIN_PROBE (plan_node_id=3):
+          CommonMetrics:
+             - OperatorTotalTime: 2ms
+             - PullRowNum: 11
+        OLAP_SCAN (plan_node_id=0):
+          CommonMetrics:
+             - OperatorTotalTime: 5ms
+             - PullRowNum: 100
+"#
+        )
+    }
+
+    #[test]
+    fn test_limit_plan_id_and_row_alignment() {
+        let mut composer = ProfileComposer::new();
+        let profile = composer.parse(&sample_starrocks_profile(true)).unwrap();
+        let tree = profile.execution_tree.expect("tree");
+
+        let limit = tree.nodes.iter().find(|n| n.operator_name == "LIMIT").expect("LIMIT");
+        assert_eq!(limit.plan_node_id, Some(7));
+        assert!(limit.metrics.operator_total_time.unwrap_or(0) > 0);
+        assert_eq!(limit.rows, Some(7));
+
+        let agg = tree
+            .nodes
+            .iter()
+            .find(|n| n.operator_name == "AGGREGATION")
+            .expect("AGGREGATION");
+        assert_eq!(agg.rows, Some(42));
+
+        let join = tree
+            .nodes
+            .iter()
+            .find(|n| n.operator_name == "HASH_JOIN")
+            .expect("HASH_JOIN");
+        assert_eq!(join.rows, Some(11));
+
+        let sink = tree
+            .nodes
+            .iter()
+            .find(|n| n.operator_name == "RESULT_SINK")
+            .expect("RESULT_SINK");
+        assert_eq!(sink.rows, Some(5));
+    }
+
+    #[test]
+    fn test_starrocks_without_topology_does_not_fabricate_edges() {
+        let mut composer = ProfileComposer::new();
+        let profile = composer.parse(&sample_starrocks_profile(false)).unwrap();
+        assert_eq!(profile.summary.is_profile_complete, Some(false));
+        let warning = profile.summary.profile_completeness_warning.unwrap_or_default();
+        assert!(warning.contains("Topology"));
+
+        let tree = profile.execution_tree.expect("tree");
+        assert!(!tree.nodes.is_empty());
+        assert!(tree.nodes.iter().all(|n| n.children.is_empty()));
     }
 }

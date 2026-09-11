@@ -146,19 +146,12 @@
   box-sizing: border-box;
 }
 
-// ============================================
-// DAG Layout - 两栏布局
-// ============================================
-.dag-layout {
+.dag-analysis-shell {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   height: 100%;
   width: 100%;
-  max-width: 100%;  // Prevent expansion beyond parent
-  background-color: var(--background-basic-color-2);
-  position: relative;
-  overflow: hidden;
-  box-sizing: border-box;
+  min-height: 0;
 
   &.fullscreen-mode {
     position: fixed;
@@ -167,7 +160,35 @@
     width: 100vw;
     height: 100vh;
     z-index: 1000;
+    background-color: var(--background-basic-color-2);
   }
+}
+
+.profile-degrade-banner {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--color-warning-600);
+  background-color: var(--background-basic-color-1);
+  border-bottom: 1px solid var(--border-basic-color-3);
+}
+
+// ============================================
+// DAG Layout - 两栏布局
+// ============================================
+.dag-layout {
+  display: flex;
+  flex-direction: row;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+  max-width: 100%;  // Prevent expansion beyond parent
+  background-color: var(--background-basic-color-2);
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 // ============================================
@@ -199,31 +220,18 @@
   .graph-viewport {
     width: 100%;
     height: 100%;
-    overflow: auto;
+    overflow: hidden;
     display: flex;
     justify-content: center;
     align-items: center;
-    // Tech-style gradient background with subtle dot grid
     background:
       radial-gradient(circle at 1px 1px, var(--color-basic-transparent-400) 1px, transparent 0),
       var(--background-basic-color-2);
     background-size: 24px 24px, 100% 100%;
-    @include themed-scrollbar;
   }
   
   .graph-content {
     position: relative;
-    // Prevent blur when using transform: scale()
-    // These properties force the browser to render at higher quality
-    image-rendering: -webkit-optimize-contrast;
-    image-rendering: crisp-edges;
-    // Force GPU compositing layer
-    will-change: transform;
-    // Ensure pixel-perfect rendering
-    -webkit-backface-visibility: hidden;
-    backface-visibility: hidden;
-    // Preserve 3D transforms for child elements (nodes)
-    transform-style: preserve-3d;
   }
 }
 
@@ -241,41 +249,12 @@
   min-width: 200px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   box-shadow: 0 4px 12px var(--color-basic-transparent-200);
-  // Only transition box-shadow, not all properties - prevents blur
   transition: box-shadow 0.2s ease;
   overflow: hidden;
-  
-  // ============================================
-  // Critical rendering optimizations for crisp nodes
-  // ============================================
-  // CRITICAL: Force browser to create separate compositing layer for each node
-  // Use opacity: 0.999 hack to guarantee compositing layer creation
-  // This ensures nodes are always crisp, not just on hover
-  opacity: 0.999;
-  // Use translate3d to force GPU compositing layer
-  transform: translate3d(0, 0, 0);
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
-  // Create new stacking context for isolated rendering
-  isolation: isolate;
-  // Hint browser to optimize for transform
-  will-change: transform;
-  // Ensure pixel-aligned rendering
-  image-rendering: crisp-edges;
-  image-rendering: -webkit-optimize-contrast;
-  // Ensure text remains sharp - use optimizeLegibility for better clarity
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-  
-  // REMOVED ::after pseudo-element - it was causing blur by adding extra rendering layer
-  // The inset box-shadow was creating an additional compositing layer that blurred the node
-  
+
   &:hover {
     box-shadow: 0 8px 24px var(--color-basic-transparent-400);
     z-index: 20;
-    // Ensure hover state maintains crisp rendering
-    // opacity stays at 0.999 (no change needed, already creates compositing layer)
   }
   
   &.selected {
@@ -379,42 +358,7 @@
     .progress-bar {
       height: 100%;
       border-radius: 0 0 6px 6px;
-      animation: progressGrow 0.8s ease-out backwards;
-      animation-delay: 0.5s;
-      position: relative;
-      
-      // Animated shine effect on progress bar
-      &::after {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: linear-gradient(
-          90deg,
-          transparent 0%,
-          var(--color-basic-control-transparent-400) 50%,
-          transparent 100%
-        );
-        animation: progressShine 2s ease-in-out infinite;
-      }
     }
-  }
-  
-  @keyframes progressGrow {
-    from {
-      transform: scaleX(0);
-      transform-origin: left;
-    }
-    to {
-      transform: scaleX(1);
-    }
-  }
-  
-  @keyframes progressShine {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(100%); }
   }
 
   // Top 1 Node (RED) - Most time consuming with pulse glow effect
@@ -505,9 +449,8 @@
     shape-rendering: geometricPrecision;
   }
   
-  // Base edge path (static, semi-transparent)
   .edge-base {
-    opacity: 0.4;
+    opacity: 0.9;
   }
   
   // Animated flow overlay - data flowing along edges
@@ -526,18 +469,6 @@
   }
   100% {
     stroke-dashoffset: 0;
-  }
-}
-
-// Edge label entrance animation
-@keyframes labelFloat {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.8);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
   }
 }
 
@@ -594,32 +525,6 @@
   border: 1px solid var(--border-basic-color-4);
   box-shadow: 0 4px 12px var(--color-basic-transparent-300),
               0 1px 3px var(--color-basic-transparent-200);
-  animation: labelFloat 0.5s ease-out backwards;
-  animation-delay: 0.3s;
-  
-  // Subtle shimmer on data labels
-  &::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      var(--color-basic-control-transparent-500),
-      transparent
-    );
-    animation: shimmer 3s ease-in-out infinite;
-    animation-delay: 1s;
-    border-radius: inherit;
-  }
-}
-
-@keyframes shimmer {
-  0%, 100% { left: -100%; }
-  50% { left: 100%; }
 }
 
 // ============================================

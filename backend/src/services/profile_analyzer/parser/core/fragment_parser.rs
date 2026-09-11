@@ -216,13 +216,7 @@ impl FragmentParser {
                 // Note: Doris operator pattern: ^([A-Z_]+_OPERATOR)(?:\\([^)]+\\))?\\(id=(\\d+)\\)
                 // This means id= must be followed by digits, but there can be additional info after
                 let plan_node_id = if full_header.contains("plan_node_id=") {
-                    // StarRocks format: (plan_node_id=0)
-                    full_header
-                        .split("plan_node_id=")
-                        .nth(1)
-                        .and_then(|s| s.split(',').next())
-                        .and_then(|s| s.trim_end_matches(')').parse::<i32>().ok())
-                        .map(|n| n.to_string())
+                    OperatorParser::parse_starrocks_plan_node_id(&full_header).map(|n| n.to_string())
                 } else if let Some(id_start) = full_header.find("(id=") {
                     // Doris format: (id=0) or (id=0. nereids_id=32...) or (id=0. nereids_id=74. table name = xxx)
                     // Extract the number immediately after "id=", before any dot or closing paren
@@ -431,5 +425,27 @@ mod tests {
         let addrs = FragmentParser::extract_backend_addresses(text);
         assert_eq!(addrs.len(), 2);
         assert_eq!(addrs[0], "192.168.1.1:9060");
+    }
+
+    #[test]
+    fn test_extract_limit_plan_node_id_with_operator_suffix() {
+        let text = r#"
+     Fragment 0:
+        Pipeline (id=0):
+        LIMIT (plan_node_id=21) (operator id=1):
+          CommonMetrics:
+             - OperatorTotalTime: 1ms
+             - PullRowNum: 10
+        OLAP_SCAN (plan_node_id=0):
+          CommonMetrics:
+             - OperatorTotalTime: 2ms
+             - PullRowNum: 100
+"#;
+        let fragments = FragmentParser::extract_all_fragments(text);
+        assert_eq!(fragments.len(), 1);
+        let ops = &fragments[0].pipelines[0].operators;
+        let limit = ops.iter().find(|op| op.name == "LIMIT");
+        assert!(limit.is_some());
+        assert_eq!(limit.unwrap().plan_node_id.as_deref(), Some("21"));
     }
 }

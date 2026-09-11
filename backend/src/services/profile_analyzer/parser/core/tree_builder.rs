@@ -114,6 +114,21 @@ impl TreeBuilder {
         Ok(ExecutionTree { root, nodes })
     }
 
+    pub fn build_without_topology_edges(
+        nodes: Vec<ExecutionTreeNode>,
+        summary: &ProfileSummary,
+        fragments: &[Fragment],
+    ) -> ParseResult<ExecutionTree> {
+        if nodes.is_empty() {
+            return Err(ParseError::TreeError("No nodes to build tree".to_string()));
+        }
+
+        let mut nodes = nodes;
+        Self::calculate_time_percentages(&mut nodes, summary, fragments)?;
+        let root = nodes[0].clone();
+        Ok(ExecutionTree { root, nodes })
+    }
+
     /// Find sink node to use as tree root
     fn find_sink_node_for_tree_root(fragments: &[Fragment]) -> Option<String> {
         let mut sink_candidates = Vec::new();
