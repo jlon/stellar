@@ -788,22 +788,6 @@
         [source]="infoDialogSource">
       </angular2-smart-table>
     </nb-card-body>
-    <nb-card-footer>
-      <div class="d-flex justify-content-end align-items-center">
-        <!-- Per page selector, right-aligned -->
-        <div class="per-page-selector" *ngIf="!infoDialogError">
-          <label>每页显示：</label>
-          <nb-select 
-            [(selected)]="infoDialogPerPage" 
-            (selectedChange)="onPerPageChange($event)"
-            size="small">
-            <nb-option *ngFor="let option of perPageOptions" [value]="option">
-              {{ option }}
-            </nb-option>
-          </nb-select>
-        </div>
-      </div>
-    </nb-card-footer>
   </nb-card>
 </ng-template>
 

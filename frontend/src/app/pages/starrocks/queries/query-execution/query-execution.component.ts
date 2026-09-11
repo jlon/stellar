@@ -257,10 +257,6 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   // Page-level loading state for info dialogs
   infoDialogPageLoading: boolean = false;
   
-  // Pagination settings for info dialogs
-  infoDialogPerPage: number = 15;
-  perPageOptions = [10, 15, 20, 30, 50, 100];
-  
   // Transaction dialog state (for tab switching)
   transactionRunningData: any[] = [];
   transactionFinishedData: any[] = [];
@@ -1759,8 +1755,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         position: 'left',
       },
       pager: {
-        display: true,
-        perPage: this.infoDialogPerPage,
+        ...QueryExecutionComponent.INFO_DIALOG_PAGER,
       },
       columns: transactionColumns,
     };
@@ -1850,8 +1845,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
               position: 'left',
             },
             pager: {
-              display: true,
-              perPage: this.infoDialogPerPage,
+              ...QueryExecutionComponent.INFO_DIALOG_PAGER,
             },
             columns: transactionColumns,
           };
@@ -2403,7 +2397,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       mode: 'external',
       hideSubHeader: false,
       actions: { add: false, edit: false, delete: false, position: 'left' },
-      pager: { display: true, perPage: this.infoDialogPerPage },
+      pager: { ...QueryExecutionComponent.INFO_DIALOG_PAGER },
       columns: partitionColumns,
     };
 
@@ -2665,8 +2659,8 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         position: 'left',
       },
       pager: {
+        ...QueryExecutionComponent.INFO_DIALOG_PAGER,
         display: pagerEnabled,
-        perPage: this.infoDialogPerPage,
       },
       columns: columns,
     };
@@ -2938,7 +2932,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     this.infoDialogSource.load([]);
     this.infoDialogSettings = {
       actions: { add: false, edit: false, delete: false, position: 'left' },
-      pager: { display: true, perPage: 15 },
+      pager: { ...QueryExecutionComponent.INFO_DIALOG_PAGER },
       columns: {},
       noDataMessage: '暂无数据',
     };
@@ -3990,6 +3984,14 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   // Helper methods for info dialog
+  /** Native smart-table pager for all info dialogs (ngx-admin style). */
+  private static readonly INFO_DIALOG_PAGER = {
+    display: true,
+    perPage: 15,
+    perPageSelect: [10, 15, 20, 30, 50, 100],
+    perPageSelectLabel: '每页显示',
+  };
+
   private openInfoDialog(
     title: string,
     type: 'transactions' | 'compactions' | 'compactionDetails' | 'loads' | 'databaseStats' | 'tableStats' | 'partitions' | 'compactionScore' | 'mvRefreshStatus',
@@ -4000,15 +4002,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   ): void {
     this.infoDialogTitle = title;
     this.infoDialogType = type;
-    // Load perPage preference from localStorage
-    const savedPerPage = localStorage.getItem('infoDialogPerPage');
-    if (savedPerPage) {
-      const parsed = parseInt(savedPerPage, 10);
-      if (this.perPageOptions.includes(parsed)) {
-        this.infoDialogPerPage = parsed;
-      }
-    }
-    
+
     this.infoDialogSettings = {
       mode: 'external',
       hideSubHeader: false,
@@ -4019,10 +4013,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         delete: false,
         position: 'left',
       },
-      pager: {
-        display: true,
-        perPage: this.infoDialogPerPage,
-      },
+      pager: { ...QueryExecutionComponent.INFO_DIALOG_PAGER },
       columns: settings.columns,
     };
     this.infoDialogLoading = false; // Don't show loading in dialog
@@ -4175,24 +4166,6 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     } else {
       this.fallbackCopyText(text);
     }
-  }
-
-  // Handle per page change
-  onPerPageChange(newPerPage: number): void {
-    this.infoDialogPerPage = newPerPage;
-    localStorage.setItem('infoDialogPerPage', newPerPage.toString());
-    
-    // Update settings and reload data
-    this.infoDialogSettings = {
-      ...this.infoDialogSettings,
-      pager: {
-        ...this.infoDialogSettings.pager,
-        perPage: newPerPage,
-      },
-    };
-    
-    // Reload data source to apply new pagination
-    this.infoDialogSource.setPaging(1, newPerPage, true);
   }
 
   private fallbackCopyText(text: string): void {
