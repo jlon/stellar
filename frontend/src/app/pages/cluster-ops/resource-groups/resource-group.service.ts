@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
@@ -14,9 +14,9 @@ import {
   providedIn: 'root',
 })
 export class ResourceGroupService {
-  private readonly apiUrl = '/api/clusters/resource-groups';
+  private http = inject(HttpClient);
 
-  constructor(private http: HttpClient) {}
+  private readonly apiUrl = '/api/clusters/resource-groups';
 
   getResourceGroups(): Observable<ResourceGroup[]> {
     return this.http.get<ResourceGroup[]>(this.apiUrl);

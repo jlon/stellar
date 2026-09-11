@@ -1,29 +1,32 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
-import { NbToastrService } from '@nebular/theme';
+import { NbToastrService, NbSelectModule, NbOptionModule, NbButtonModule } from '@nebular/theme';
 import { ClusterService, Cluster } from '../../../@core/data/cluster.service';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
 
+
 @Component({
-  standalone: false,
-  selector: 'ngx-cluster-selector',
-  templateUrl: './cluster-selector.component.html',
-  styleUrls: ['./cluster-selector.component.scss'],
+    selector: 'ngx-cluster-selector',
+    templateUrl: './cluster-selector.component.html',
+    styleUrls: ['./cluster-selector.component.scss'],
+    imports: [
+    NbSelectModule,
+    NbOptionModule,
+    NbButtonModule
+],
 })
 export class ClusterSelectorComponent implements OnInit, OnDestroy {
+  private clusterService = inject(ClusterService);
+  private clusterContext = inject(ClusterContextService);
+  private router = inject(Router);
+  private toastr = inject(NbToastrService);
+
   clusters: Cluster[] = [];
   activeCluster: Cluster | null = null;
   loading = false;
   private destroy$ = new Subject<void>();
-
-  constructor(
-    private clusterService: ClusterService,
-    private clusterContext: ClusterContextService,
-    private router: Router,
-    private toastr: NbToastrService,
-  ) {}
 
   ngOnInit(): void {
     // Subscribe to active cluster changes

@@ -1,23 +1,18 @@
-import { Directive, Input, OnInit, OnDestroy, ElementRef, Renderer2 } from '@angular/core';
+import { Directive, Input, OnInit, OnDestroy, ElementRef, Renderer2, inject } from '@angular/core';
 import { Subscription } from 'rxjs';
 import { PermissionService } from '../data/permission.service';
 import { AuthService } from '../data/auth.service';
 
-@Directive({
-  standalone: false,
-  selector: '[ngxHasPermission]',
-})
+@Directive({ selector: '[ngxHasPermission]', })
 export class HasPermissionDirective implements OnInit, OnDestroy {
+  private el = inject(ElementRef);
+  private renderer = inject(Renderer2);
+  private permissionService = inject(PermissionService);
+  private authService = inject(AuthService);
+
   @Input('ngxHasPermission') permissionCode: string = '';
   private permissionSubscription?: Subscription;
   private userSubscription?: Subscription;
-
-  constructor(
-    private el: ElementRef,
-    private renderer: Renderer2,
-    private permissionService: PermissionService,
-    private authService: AuthService,
-  ) {}
 
   ngOnInit(): void {
     if (!this.permissionCode) {

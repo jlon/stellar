@@ -1,6 +1,6 @@
-import { Component, OnInit } from '@angular/core';
-import { Router, NavigationEnd } from '@angular/router';
-import { NbMenuService } from '@nebular/theme';
+import { Component, OnInit, inject } from '@angular/core';
+import { Router, NavigationEnd, RouterOutlet } from '@angular/router';
+import { NbMenuService, NbMenuModule } from '@nebular/theme';
 import { filter, map } from 'rxjs/operators';
 
 import { MENU_ITEMS } from './pages-menu';
@@ -8,29 +8,32 @@ import { AuthService } from '../@core/data/auth.service';
 import { TabService } from '../@core/services/tab.service';
 import { MenuFilterService } from '../@core/services/menu-filter.service';
 import { PermissionService } from '../@core/data/permission.service';
+import { OneColumnLayoutComponent } from '../@theme/layouts/one-column/one-column.layout';
 
 @Component({
-  standalone: false,
-  selector: 'ngx-pages',
-  styleUrls: ['pages.component.scss'],
-  template: `
+    selector: 'ngx-pages',
+    styleUrls: ['pages.component.scss'],
+    template: `
     <ngx-one-column-layout>
       <nb-menu [items]="menu" tag="menu" (itemClick)="onMenuClick($event)"></nb-menu>
       <router-outlet></router-outlet>
     </ngx-one-column-layout>
   `,
+    imports: [
+        OneColumnLayoutComponent,
+        NbMenuModule,
+        RouterOutlet,
+    ],
 })
 export class PagesComponent implements OnInit {
-  menu = MENU_ITEMS;
+  private menuService = inject(NbMenuService);
+  private authService = inject(AuthService);
+  private router = inject(Router);
+  private tabService = inject(TabService);
+  private menuFilterService = inject(MenuFilterService);
+  private permissionService = inject(PermissionService);
 
-  constructor(
-    private menuService: NbMenuService,
-    private authService: AuthService,
-    private router: Router,
-    private tabService: TabService,
-    private menuFilterService: MenuFilterService,
-    private permissionService: PermissionService
-  ) {}
+  menu = MENU_ITEMS;
 
   ngOnInit() {
     // Filter menu items based on permissions

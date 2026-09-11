@@ -1,6 +1,6 @@
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { NbMediaBreakpointsService, NbMenuService, NbSidebarService, NbThemeService, NbToastrService } from '@nebular/theme';
+import { NbMediaBreakpointsService, NbMenuService, NbSidebarService, NbThemeService, NbToastrService, NbIconModule, NbSelectModule, NbOptionModule, NbActionsModule, NbUserModule, NbContextMenuModule } from '@nebular/theme';
 
 import { LayoutService } from '../../../@core/utils';
 import { AuthService } from '../../../@core/data/auth.service';
@@ -8,13 +8,34 @@ import { persistTheme } from '../../styles/theme-preference';
 import { map, takeUntil, filter } from 'rxjs/operators';
 import { Subject } from 'rxjs';
 
+import { ClusterSelectorComponent } from '../cluster-selector/cluster-selector.component';
+import { NbSecurityModule } from '@nebular/security';
+
 @Component({
-  standalone: false,
-  selector: 'ngx-header',
-  styleUrls: ['./header.component.scss'],
-  templateUrl: './header.component.html',
+    selector: 'ngx-header',
+    styleUrls: ['./header.component.scss'],
+    templateUrl: './header.component.html',
+    imports: [
+    NbIconModule,
+    NbSelectModule,
+    NbOptionModule,
+    ClusterSelectorComponent,
+    NbActionsModule,
+    NbSecurityModule,
+    NbUserModule,
+    NbContextMenuModule
+],
 })
 export class HeaderComponent implements OnInit, OnDestroy {
+  private sidebarService = inject(NbSidebarService);
+  private menuService = inject(NbMenuService);
+  private themeService = inject(NbThemeService);
+  private authService = inject(AuthService);
+  private layoutService = inject(LayoutService);
+  private breakpointService = inject(NbMediaBreakpointsService);
+  private router = inject(Router);
+  private toastr = inject(NbToastrService);
+
 
   private destroy$: Subject<void> = new Subject<void>();
   userPictureOnly: boolean = false;
@@ -45,18 +66,6 @@ export class HeaderComponent implements OnInit, OnDestroy {
     { title: '用户设置', icon: 'settings-outline', data: { id: 'settings' } },
     { title: '退出登录', icon: 'log-out-outline', data: { id: 'logout' } },
   ];
-
-  constructor(
-    private sidebarService: NbSidebarService,
-    private menuService: NbMenuService,
-    private themeService: NbThemeService,
-    private authService: AuthService,
-    private layoutService: LayoutService,
-    private breakpointService: NbMediaBreakpointsService,
-    private router: Router,
-    private toastr: NbToastrService,
-  ) {
-  }
 
   ngOnInit() {
     this.currentTheme = this.themeService.currentTheme;

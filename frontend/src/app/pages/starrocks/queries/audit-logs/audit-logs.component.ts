@@ -1,7 +1,7 @@
-import { Component, OnInit, OnDestroy, TemplateRef, ViewChild } from '@angular/core';
+import { Component, OnInit, OnDestroy, TemplateRef, ViewChild, inject } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
-import { NbToastrService, NbDialogService } from '@nebular/theme';
-import { LocalDataSource } from 'angular2-smart-table';
+import { NbToastrService, NbDialogService, NbCardModule, NbButtonModule, NbIconModule, NbSelectModule, NbOptionModule, NbFormFieldModule, NbInputModule, NbBadgeModule, NbSpinnerModule } from '@nebular/theme';
+import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { NodeService, QueryHistoryItem } from '../../../../@core/data/node.service';
@@ -12,13 +12,34 @@ import { MetricThresholds, renderMetricBadge } from '../../../../@core/utils/met
 import { renderLongText } from '../../../../@core/utils/text-truncate';
 import { AuthService } from '../../../../@core/data/auth.service';
 
+import { FormsModule } from '@angular/forms';
+
 @Component({
-  standalone: false,
-  selector: 'ngx-audit-logs',
-  templateUrl: './audit-logs.component.html',
-  styleUrls: ['./audit-logs.component.scss'],
+    selector: 'ngx-audit-logs',
+    templateUrl: './audit-logs.component.html',
+    styleUrls: ['./audit-logs.component.scss'],
+    imports: [
+    NbCardModule,
+    NbButtonModule,
+    NbIconModule,
+    NbSelectModule,
+    NbOptionModule,
+    NbFormFieldModule,
+    NbInputModule,
+    FormsModule,
+    NbBadgeModule,
+    NbSpinnerModule,
+    Angular2SmartTableModule
+],
 })
 export class AuditLogsComponent implements OnInit, OnDestroy {
+  private nodeService = inject(NodeService);
+  private route = inject(ActivatedRoute);
+  private toastrService = inject(NbToastrService);
+  private clusterContext = inject(ClusterContextService);
+  private dialogService = inject(NbDialogService);
+  private authService = inject(AuthService);
+
   // Data sources
   historySource: LocalDataSource = new LocalDataSource();
   
@@ -98,14 +119,7 @@ export class AuditLogsComponent implements OnInit, OnDestroy {
     },
   };
 
-  constructor(
-    private nodeService: NodeService,
-    private route: ActivatedRoute,
-    private toastrService: NbToastrService,
-    private clusterContext: ClusterContextService,
-    private dialogService: NbDialogService,
-    private authService: AuthService,
-  ) {
+  constructor() {
     // Try to get clusterId from route first (for direct navigation)
     const routeClusterId = parseInt(this.route.snapshot.paramMap.get('clusterId') || '0', 10);
     this.clusterId = routeClusterId;

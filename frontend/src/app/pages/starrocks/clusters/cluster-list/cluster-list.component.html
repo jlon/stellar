@@ -11,19 +11,22 @@
         </div>
       </nb-card-header>
       <nb-card-body>
-        <div *ngIf="loading" class="text-center">
-          <nb-spinner status="primary"></nb-spinner>
-        </div>
+        @if (loading) {
+          <div class="text-center">
+            <nb-spinner status="primary"></nb-spinner>
+          </div>
+        }
 
-        <angular2-smart-table
-          *ngIf="!loading"
-          [settings]="settings"
-          [source]="source"
-          (edit)="onEdit($event)"
-          (delete)="onDelete($event)"
-          (userRowSelect)="onRowSelect($event)"
-        >
-        </angular2-smart-table>
+        @if (!loading) {
+          <angular2-smart-table
+            [settings]="settings"
+            [source]="source"
+            (edit)="onEdit($event)"
+            (delete)="onDelete($event)"
+            (userRowSelect)="onRowSelect($event)"
+            >
+          </angular2-smart-table>
+        }
       </nb-card-body>
     </nb-card>
   </div>

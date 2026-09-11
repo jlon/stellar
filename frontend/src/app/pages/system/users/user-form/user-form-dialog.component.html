@@ -4,52 +4,60 @@
   <nb-card-body>
     <form [formGroup]="form" novalidate>
       <!-- Organization (Super Admin) -->
-      <div class="form-row" *ngIf="isSuperAdmin">
-        <div class="form-group full">
-          <label class="label">所属组织</label>
-          <nb-select formControlName="organizationId" placeholder="请选择组织" fullWidth
-            [status]="form.get('organizationId')?.invalid && form.get('organizationId')?.touched ? 'danger' : 'basic'">
-            <nb-option *ngFor="let org of organizations" [value]="org.id">{{ org.name }}</nb-option>
-              </nb-select>
-        </div>
-          </div>
-
-          <!-- Organization Display (Org Admin) -->
-      <div class="form-row" *ngIf="!isSuperAdmin && currentOrganization">
-        <div class="form-group full">
+      @if (isSuperAdmin) {
+        <div class="form-row">
+          <div class="form-group full">
             <label class="label">所属组织</label>
-          <input nbInput fullWidth [value]="currentOrganization.name" disabled />
-        </div>
+            <nb-select formControlName="organizationId" placeholder="请选择组织" fullWidth
+              [status]="form.get('organizationId')?.invalid && form.get('organizationId')?.touched ? 'danger' : 'basic'">
+              @for (org of organizations; track org) {
+                <nb-option [value]="org.id">{{ org.name }}</nb-option>
+              }
+            </nb-select>
           </div>
+        </div>
+      }
+
+      <!-- Organization Display (Org Admin) -->
+      @if (!isSuperAdmin && currentOrganization) {
+        <div class="form-row">
+          <div class="form-group full">
+            <label class="label">所属组织</label>
+            <input nbInput fullWidth [value]="currentOrganization.name" disabled />
+          </div>
+        </div>
+      }
 
       <!-- Username & Email -->
       <div class="form-row">
-          <div class="form-group">
+        <div class="form-group">
           <label class="label">用户名</label>
           <input nbInput fullWidth formControlName="username" placeholder="用户名"
             [status]="form.get('username')?.invalid && form.get('username')?.touched ? 'danger' : 'basic'" />
-          </div>
-          <div class="form-group">
+        </div>
+        <div class="form-group">
           <label class="label">邮箱</label>
           <input nbInput fullWidth type="email" formControlName="email" placeholder="邮箱地址"
             [status]="form.get('email')?.invalid && form.get('email')?.touched ? 'danger' : 'basic'" />
         </div>
-          </div>
+      </div>
 
       <!-- Password & Confirm -->
       <div class="form-row">
-          <div class="form-group">
-          <label class="label">密码 <span class="hint" *ngIf="mode === 'edit'">(留空不改)</span></label>
+        <div class="form-group">
+          <label class="label">密码 @if (mode === 'edit') {
+            <span class="hint">(留空不改)</span>
+          }</label>
           <input nbInput fullWidth type="password" formControlName="password"
             [placeholder]="mode === 'create' ? '密码' : '留空不修改'"
             [status]="form.get('password')?.invalid && form.get('password')?.touched ? 'danger' : 'basic'" />
-          </div>
-          <div class="form-group">
+        </div>
+        <div class="form-group">
           <label class="label">确认密码</label>
           <input nbInput fullWidth type="password" formControlName="confirmPassword" placeholder="再次输入"
             [status]="(form.get('confirmPassword')?.invalid || form.errors?.['passwordMismatch']) && form.get('confirmPassword')?.touched ? 'danger' : 'basic'" />
         </div>
-          </div>
+      </div>
 
       <!-- Role -->
       <div class="form-row">
@@ -57,9 +65,11 @@
           <label class="label">角色</label>
           <nb-select formControlName="roleIds" placeholder="选择角色（可多选）" multiple fullWidth
             [status]="form.get('roleIds')?.invalid && form.get('roleIds')?.touched ? 'danger' : 'basic'">
-            <nb-option *ngFor="let role of filteredRoles" [value]="role.id">{{ role.name }}</nb-option>
-              </nb-select>
-          </div>
+            @for (role of filteredRoles; track role) {
+              <nb-option [value]="role.id">{{ role.name }}</nb-option>
+            }
+          </nb-select>
+        </div>
       </div>
     </form>
   </nb-card-body>

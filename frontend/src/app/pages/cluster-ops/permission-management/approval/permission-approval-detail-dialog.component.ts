@@ -1,6 +1,7 @@
-import { Component, Input } from '@angular/core';
-import { NbDialogRef } from '@nebular/theme';
+import { Component, Input, inject } from '@angular/core';
+import { NbDialogRef, NbCardModule, NbBadgeModule, NbIconModule, NbListModule, NbButtonModule } from '@nebular/theme';
 import { PermissionRequestResponse } from '../../../../@core/data/permission-request.model';
+import { NgClass } from '@angular/common';
 
 /**
  * Permission Approval Detail Dialog Component
@@ -8,16 +9,15 @@ import { PermissionRequestResponse } from '../../../../@core/data/permission-req
  * 设计风格与 user-form-dialog 保持一致
  */
 @Component({
-  standalone: false,
-  selector: 'ngx-permission-approval-detail-dialog',
-  template: `
+    selector: 'ngx-permission-approval-detail-dialog',
+    template: `
     <nb-card class="approval-detail-dialog">
       <nb-card-header>
         申请详情
         <nb-badge [text]="getRequestTypeLabel(request.request_type)" [status]="getRequestTypeStatus(request.request_type)"></nb-badge>
         <nb-badge [text]="getStatusLabel(request.status)" [status]="getStatusBadge(request.status)"></nb-badge>
       </nb-card-header>
-
+    
       <nb-card-body>
         <!-- 基本信息 - 使用 nb-list -->
         <div class="section">
@@ -44,153 +44,188 @@ import { PermissionRequestResponse } from '../../../../@core/data/permission-req
                 <span class="item-value">{{ formatDateTime(request.created_at) }}</span>
               </div>
             </nb-list-item>
-            <nb-list-item *ngIf="request.valid_until">
-              <div class="list-item-content">
-                <span class="item-label">有效期至</span>
-                <span class="item-value">{{ formatDateTime(request.valid_until) }}</span>
-              </div>
-            </nb-list-item>
-          </nb-list>
-        </div>
-
-        <!-- 权限详情 - 使用 nb-list -->
-        <div class="section" *ngIf="request.request_details">
-          <div class="section-title">
-            <nb-icon icon="shield-outline"></nb-icon>
-            <span>权限详情</span>
-          </div>
-
-          <!-- 授予角色类型 -->
-          <nb-list class="info-list" *ngIf="request.request_type === 'grant_role'">
-            <nb-list-item>
-              <div class="list-item-content">
-                <span class="item-label">目标用户</span>
-                <code class="item-code">{{ request.request_details.target_user || '-' }}</code>
-              </div>
-            </nb-list-item>
-            <nb-list-item>
-              <div class="list-item-content">
-                <span class="item-label">授予角色</span>
-                <nb-badge [text]="request.request_details.target_role || '-'" status="info"></nb-badge>
-              </div>
-            </nb-list-item>
-          </nb-list>
-
-          <!-- 授予/撤销权限类型 -->
-          <nb-list class="info-list" *ngIf="request.request_type !== 'grant_role'">
-            <nb-list-item>
-              <div class="list-item-content">
-                <span class="item-label">目标用户</span>
-                <code class="item-code">{{ request.request_details.target_user || '-' }}</code>
-              </div>
-            </nb-list-item>
-            <nb-list-item *ngIf="request.request_details.permissions?.length">
-              <div class="list-item-content">
-                <span class="item-label">申请权限</span>
-                <div class="permission-tags">
-                  <nb-badge *ngFor="let perm of request.request_details.permissions" [text]="perm" status="success"></nb-badge>
+            @if (request.valid_until) {
+              <nb-list-item>
+                <div class="list-item-content">
+                  <span class="item-label">有效期至</span>
+                  <span class="item-value">{{ formatDateTime(request.valid_until) }}</span>
                 </div>
-              </div>
-            </nb-list-item>
-            <nb-list-item>
-              <div class="list-item-content">
-                <span class="item-label">资源范围</span>
-                <code class="item-code">{{ buildResourcePath() }}</code>
-              </div>
-            </nb-list-item>
+              </nb-list-item>
+            }
           </nb-list>
-
-          <!-- 资源详情 -->
-          <div class="resource-details" *ngIf="request.request_type !== 'grant_role'">
-            <span *ngIf="request.request_details.resource_type" class="resource-item">
-              <nb-icon icon="layers-outline"></nb-icon>
-              类型: {{ request.request_details.resource_type }}
-            </span>
-            <span *ngIf="request.request_details.catalog" class="resource-item">
-              <nb-icon icon="folder-outline"></nb-icon>
-              Catalog: {{ request.request_details.catalog }}
-            </span>
-            <span *ngIf="request.request_details.database" class="resource-item">
-              <nb-icon icon="archive-outline"></nb-icon>
-              Database: {{ request.request_details.database }}
-            </span>
-            <span *ngIf="request.request_details.table" class="resource-item">
-              <nb-icon icon="grid-outline"></nb-icon>
-              Table: {{ request.request_details.table }}
-            </span>
-          </div>
         </div>
-
+    
+        <!-- 权限详情 - 使用 nb-list -->
+        @if (request.request_details) {
+          <div class="section">
+            <div class="section-title">
+              <nb-icon icon="shield-outline"></nb-icon>
+              <span>权限详情</span>
+            </div>
+            <!-- 授予角色类型 -->
+            @if (request.request_type === 'grant_role') {
+              <nb-list class="info-list">
+                <nb-list-item>
+                  <div class="list-item-content">
+                    <span class="item-label">目标用户</span>
+                    <code class="item-code">{{ request.request_details.target_user || '-' }}</code>
+                  </div>
+                </nb-list-item>
+                <nb-list-item>
+                  <div class="list-item-content">
+                    <span class="item-label">授予角色</span>
+                    <nb-badge [text]="request.request_details.target_role || '-'" status="info"></nb-badge>
+                  </div>
+                </nb-list-item>
+              </nb-list>
+            }
+            <!-- 授予/撤销权限类型 -->
+            @if (request.request_type !== 'grant_role') {
+              <nb-list class="info-list">
+                <nb-list-item>
+                  <div class="list-item-content">
+                    <span class="item-label">目标用户</span>
+                    <code class="item-code">{{ request.request_details.target_user || '-' }}</code>
+                  </div>
+                </nb-list-item>
+                @if (request.request_details.permissions?.length) {
+                  <nb-list-item>
+                    <div class="list-item-content">
+                      <span class="item-label">申请权限</span>
+                      <div class="permission-tags">
+                        @for (perm of request.request_details.permissions; track perm) {
+                          <nb-badge [text]="perm" status="success"></nb-badge>
+                        }
+                      </div>
+                    </div>
+                  </nb-list-item>
+                }
+                <nb-list-item>
+                  <div class="list-item-content">
+                    <span class="item-label">资源范围</span>
+                    <code class="item-code">{{ buildResourcePath() }}</code>
+                  </div>
+                </nb-list-item>
+              </nb-list>
+            }
+            <!-- 资源详情 -->
+            @if (request.request_type !== 'grant_role') {
+              <div class="resource-details">
+                @if (request.request_details.resource_type) {
+                  <span class="resource-item">
+                    <nb-icon icon="layers-outline"></nb-icon>
+                    类型: {{ request.request_details.resource_type }}
+                  </span>
+                }
+                @if (request.request_details.catalog) {
+                  <span class="resource-item">
+                    <nb-icon icon="folder-outline"></nb-icon>
+                    Catalog: {{ request.request_details.catalog }}
+                  </span>
+                }
+                @if (request.request_details.database) {
+                  <span class="resource-item">
+                    <nb-icon icon="archive-outline"></nb-icon>
+                    Database: {{ request.request_details.database }}
+                  </span>
+                }
+                @if (request.request_details.table) {
+                  <span class="resource-item">
+                    <nb-icon icon="grid-outline"></nb-icon>
+                    Table: {{ request.request_details.table }}
+                  </span>
+                }
+              </div>
+            }
+          </div>
+        }
+    
         <!-- 申请理由 -->
-        <div class="section" *ngIf="request.reason">
-          <div class="section-title">
-            <nb-icon icon="message-square-outline"></nb-icon>
-            <span>申请理由</span>
-          </div>
-          <div class="reason-box">
-            {{ request.reason }}
-          </div>
-        </div>
-
-        <!-- 审批信息 - 使用 nb-list -->
-        <div class="section" *ngIf="request.status !== 'pending'">
-          <div class="section-title">
-            <nb-icon icon="checkmark-circle-outline"></nb-icon>
-            <span>审批信息</span>
-          </div>
-          <nb-list class="info-list">
-            <nb-list-item>
-              <div class="list-item-content">
-                <span class="item-label">审批人</span>
-                <span class="item-value">{{ request.approver_name || '-' }}</span>
-              </div>
-            </nb-list-item>
-            <nb-list-item>
-              <div class="list-item-content">
-                <span class="item-label">审批时间</span>
-                <span class="item-value">{{ formatDateTime(request.approved_at) }}</span>
-              </div>
-            </nb-list-item>
-          </nb-list>
-          <div class="reason-box mt-2" *ngIf="request.approval_comment">
-            <label>审批备注</label>
-            {{ request.approval_comment }}
-          </div>
-        </div>
-
-        <!-- 执行信息 -->
-        <div class="section" *ngIf="request.status === 'completed' || request.status === 'failed'">
-          <div class="section-title">
-            <nb-icon icon="flash-outline"></nb-icon>
-            <span>执行结果</span>
-          </div>
-          <div class="execution-result" [ngClass]="request.status">
-            <nb-icon [icon]="request.status === 'completed' ? 'checkmark-circle-2-outline' : 'alert-circle-outline'"></nb-icon>
-            <div class="result-content">
-              <span class="result-status">{{ request.status === 'completed' ? '执行成功' : '执行失败' }}</span>
-              <span class="result-time" *ngIf="request.executed_at">{{ formatDateTime(request.executed_at) }}</span>
-              <p class="result-message" *ngIf="request.execution_result">{{ request.execution_result }}</p>
+        @if (request.reason) {
+          <div class="section">
+            <div class="section-title">
+              <nb-icon icon="message-square-outline"></nb-icon>
+              <span>申请理由</span>
+            </div>
+            <div class="reason-box">
+              {{ request.reason }}
             </div>
           </div>
-        </div>
+        }
+    
+        <!-- 审批信息 - 使用 nb-list -->
+        @if (request.status !== 'pending') {
+          <div class="section">
+            <div class="section-title">
+              <nb-icon icon="checkmark-circle-outline"></nb-icon>
+              <span>审批信息</span>
+            </div>
+            <nb-list class="info-list">
+              <nb-list-item>
+                <div class="list-item-content">
+                  <span class="item-label">审批人</span>
+                  <span class="item-value">{{ request.approver_name || '-' }}</span>
+                </div>
+              </nb-list-item>
+              <nb-list-item>
+                <div class="list-item-content">
+                  <span class="item-label">审批时间</span>
+                  <span class="item-value">{{ formatDateTime(request.approved_at) }}</span>
+                </div>
+              </nb-list-item>
+            </nb-list>
+            @if (request.approval_comment) {
+              <div class="reason-box mt-2">
+                <label>审批备注</label>
+                {{ request.approval_comment }}
+              </div>
+            }
+          </div>
+        }
+    
+        <!-- 执行信息 -->
+        @if (request.status === 'completed' || request.status === 'failed') {
+          <div class="section">
+            <div class="section-title">
+              <nb-icon icon="flash-outline"></nb-icon>
+              <span>执行结果</span>
+            </div>
+            <div class="execution-result" [ngClass]="request.status">
+              <nb-icon [icon]="request.status === 'completed' ? 'checkmark-circle-2-outline' : 'alert-circle-outline'"></nb-icon>
+              <div class="result-content">
+                <span class="result-status">{{ request.status === 'completed' ? '执行成功' : '执行失败' }}</span>
+                @if (request.executed_at) {
+                  <span class="result-time">{{ formatDateTime(request.executed_at) }}</span>
+                }
+                @if (request.execution_result) {
+                  <p class="result-message">{{ request.execution_result }}</p>
+                }
+              </div>
+            </div>
+          </div>
+        }
       </nb-card-body>
-
-      <nb-card-footer *ngIf="showActions && request.status === 'pending'">
-        <button nbButton status="success" size="small" (click)="approve()">
-          <nb-icon icon="checkmark-outline"></nb-icon> 批准
-        </button>
-        <button nbButton status="danger" size="small" (click)="reject()">
-          <nb-icon icon="close-outline"></nb-icon> 拒绝
-        </button>
-        <button nbButton status="basic" size="small" (click)="close()">关闭</button>
-      </nb-card-footer>
-
-      <nb-card-footer *ngIf="!showActions || request.status !== 'pending'">
-        <button nbButton status="basic" size="small" (click)="close()">关闭</button>
-      </nb-card-footer>
+    
+      @if (showActions && request.status === 'pending') {
+        <nb-card-footer>
+          <button nbButton status="success" size="small" (click)="approve()">
+            <nb-icon icon="checkmark-outline"></nb-icon> 批准
+          </button>
+          <button nbButton status="danger" size="small" (click)="reject()">
+            <nb-icon icon="close-outline"></nb-icon> 拒绝
+          </button>
+          <button nbButton status="basic" size="small" (click)="close()">关闭</button>
+        </nb-card-footer>
+      }
+    
+      @if (!showActions || request.status !== 'pending') {
+        <nb-card-footer>
+          <button nbButton status="basic" size="small" (click)="close()">关闭</button>
+        </nb-card-footer>
+      }
     </nb-card>
-  `,
-  styles: [`
+    `,
+    styles: [`
     :host {
       display: block;
       width: 32rem;
@@ -383,12 +418,20 @@ import { PermissionRequestResponse } from '../../../../@core/data/permission-req
       }
     }
   `],
+    imports: [
+    NbCardModule,
+    NbBadgeModule,
+    NbIconModule,
+    NbListModule,
+    NgClass,
+    NbButtonModule
+],
 })
 export class PermissionApprovalDetailDialogComponent {
+  protected dialogRef = inject<NbDialogRef<PermissionApprovalDetailDialogComponent>>(NbDialogRef);
+
   @Input() request: PermissionRequestResponse;
   @Input() showActions: boolean = false;
-
-  constructor(protected dialogRef: NbDialogRef<PermissionApprovalDetailDialogComponent>) {}
 
   close() {
     this.dialogRef.close();

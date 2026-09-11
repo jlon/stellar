@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { Router } from '@angular/router';
 import { normalizeUrl } from '../utils/url-normalizer';
@@ -18,11 +18,14 @@ export interface TabItem {
   providedIn: 'root'
 })
 export class TabService {
+  private router = inject(Router);
+  private tabReuseService = inject(TabReuseService);
+
   private readonly STORAGE_KEY = 'stellar_tabs';
   private tabsSubject = new BehaviorSubject<TabItem[]>([]);
   public tabs$ = this.tabsSubject.asObservable();
 
-  constructor(private router: Router, private tabReuseService: TabReuseService) {
+  constructor() {
     this.loadTabs();
     this.initializeDefaultTab();
   }

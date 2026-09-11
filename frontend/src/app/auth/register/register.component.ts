@@ -1,16 +1,23 @@
-import { Component } from '@angular/core';
-import { Router } from '@angular/router';
-import { NbToastrService } from '@nebular/theme';
+import { Component, inject } from '@angular/core';
+import { Router, RouterLink } from '@angular/router';
+import { NbToastrService, NbAlertModule, NbInputModule, NbButtonModule } from '@nebular/theme';
 import { AuthService } from '../../@core/data/auth.service';
 import { DiceBearService } from '../../@core/services/dicebear.service';
 
+import { FormsModule } from '@angular/forms';
+
 @Component({
-  standalone: false,
-  selector: 'ngx-register',
-  templateUrl: './register.component.html',
-  styleUrls: ['./register.component.scss']
+    selector: 'ngx-register',
+    templateUrl: './register.component.html',
+    styleUrls: ['./register.component.scss'],
+    imports: [NbAlertModule, FormsModule, NbInputModule, NbButtonModule, RouterLink]
 })
 export class RegisterComponent {
+  protected router = inject(Router);
+  private authService = inject(AuthService);
+  private toastrService = inject(NbToastrService);
+  private diceBearService = inject(DiceBearService);
+
   submitted = false;
   user = {
     username: '',
@@ -28,12 +35,7 @@ export class RegisterComponent {
   availableAvatars: string[] = [];
   avatarStyles = this.diceBearService.avatarStyles;
 
-  constructor(
-    protected router: Router,
-    private authService: AuthService,
-    private toastrService: NbToastrService,
-    private diceBearService: DiceBearService
-  ) {
+  constructor() {
     this.generateAvatarOptions();
     // 随机选择一个头像
     if (this.availableAvatars.length > 0) {

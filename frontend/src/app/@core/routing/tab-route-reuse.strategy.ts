@@ -1,10 +1,11 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { ActivatedRouteSnapshot, DetachedRouteHandle, RouteReuseStrategy } from '@angular/router';
 import { TabReuseService } from '../services/tab-reuse.service';
 
 @Injectable()
 export class TabRouteReuseStrategy implements RouteReuseStrategy {
-  constructor(private reuseService: TabReuseService) {}
+  private reuseService = inject(TabReuseService);
+
 
   shouldDetach(route: ActivatedRouteSnapshot): boolean {
     return this.reuseService.shouldDetach(route);

@@ -4,52 +4,62 @@
   <nb-card-body>
     <form [formGroup]="form" novalidate>
       <!-- Code & Name (create mode) -->
-      <div class="form-row" *ngIf="mode === 'create'">
-        <div class="form-group">
-          <label class="label">组织代码</label>
-          <input nbInput fullWidth formControlName="code" placeholder="小写字母、数字、下划线"
-            [status]="form.get('code')?.invalid && form.get('code')?.touched ? 'danger' : 'basic'" />
+      @if (mode === 'create') {
+        <div class="form-row">
+          <div class="form-group">
+            <label class="label">组织代码</label>
+            <input nbInput fullWidth formControlName="code" placeholder="小写字母、数字、下划线"
+              [status]="form.get('code')?.invalid && form.get('code')?.touched ? 'danger' : 'basic'" />
+          </div>
+          <div class="form-group">
+            <label class="label">组织名称</label>
+            <input nbInput fullWidth formControlName="name" placeholder="组织名称"
+              [status]="form.get('name')?.invalid && form.get('name')?.touched ? 'danger' : 'basic'" />
+          </div>
         </div>
-        <div class="form-group">
-          <label class="label">组织名称</label>
-          <input nbInput fullWidth formControlName="name" placeholder="组织名称"
-            [status]="form.get('name')?.invalid && form.get('name')?.touched ? 'danger' : 'basic'" />
-        </div>
-      </div>
+      }
 
       <!-- Name only (edit mode) -->
-      <div class="form-row" *ngIf="mode === 'edit'">
-        <div class="form-group full">
-          <label class="label">组织名称</label>
-          <input nbInput fullWidth formControlName="name" placeholder="组织名称"
-            [status]="form.get('name')?.invalid && form.get('name')?.touched ? 'danger' : 'basic'" />
+      @if (mode === 'edit') {
+        <div class="form-row">
+          <div class="form-group full">
+            <label class="label">组织名称</label>
+            <input nbInput fullWidth formControlName="name" placeholder="组织名称"
+              [status]="form.get('name')?.invalid && form.get('name')?.touched ? 'danger' : 'basic'" />
+          </div>
         </div>
-        </div>
+      }
 
-        <!-- Description -->
+      <!-- Description -->
       <div class="form-row">
         <div class="form-group full">
           <label class="label">描述</label>
           <textarea nbInput fullWidth formControlName="description" placeholder="组织描述（可选）" rows="2"></textarea>
         </div>
-        </div>
+      </div>
 
       <!-- Admin (edit mode) -->
-      <div class="form-row" *ngIf="mode === 'edit'">
-        <div class="form-group full">
-          <label class="label">管理员</label>
-          <nb-select formControlName="admin_user_id" placeholder="选择管理员（可选）" fullWidth>
-              <nb-option *ngFor="let user of availableUsers; trackBy: trackByUserId" [value]="user.id">
-              {{ user.username }} <span class="hint" *ngIf="user.email">- {{ user.email }}</span>
+      @if (mode === 'edit') {
+        <div class="form-row">
+          <div class="form-group full">
+            <label class="label">管理员</label>
+            <nb-select formControlName="admin_user_id" placeholder="选择管理员（可选）" fullWidth>
+              @for (user of availableUsers; track trackByUserId($index, user)) {
+                <nb-option [value]="user.id">
+                  {{ user.username }} @if (user.email) {
+                  <span class="hint">- {{ user.email }}</span>
+                }
               </nb-option>
-            </nb-select>
+            }
+          </nb-select>
         </div>
       </div>
-    </form>
-  </nb-card-body>
+    }
+  </form>
+</nb-card-body>
 
-  <nb-card-footer>
-    <button class="cancel" nbButton status="danger" (click)="cancel()">取消</button>
-    <button nbButton status="success" (click)="submit()" [disabled]="form.invalid">保存</button>
-  </nb-card-footer>
+<nb-card-footer>
+  <button class="cancel" nbButton status="danger" (click)="cancel()">取消</button>
+  <button nbButton status="success" (click)="submit()" [disabled]="form.invalid">保存</button>
+</nb-card-footer>
 </nb-card>

@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { NbMenuItem } from '@nebular/theme';
 import { PermissionService } from '../data/permission.service';
 
@@ -6,7 +6,8 @@ import { PermissionService } from '../data/permission.service';
   providedIn: 'root',
 })
 export class MenuFilterService {
-  constructor(private permissionService: PermissionService) {}
+  private permissionService = inject(PermissionService);
+
 
   /**
    * Filter menu items based on user permissions

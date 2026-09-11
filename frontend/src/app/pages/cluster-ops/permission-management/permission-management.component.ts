@@ -1,18 +1,31 @@
 // @ts-nocheck
-import { Component, OnDestroy, ViewChild } from '@angular/core';
+import { Component, OnDestroy, ViewChild, inject } from '@angular/core';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { PermissionService } from '../../../@core/data/permission.service';
 import { AuthService } from '../../../@core/data/auth.service';
 import { PermissionRequestComponent } from './request/permission-request.component';
+import { NbCardModule, NbTabsetModule } from '@nebular/theme';
+import { PermissionDashboardStandardComponent } from './dashboard/permission-dashboard-standard.component';
+
+import { PermissionApprovalComponent } from './approval/permission-approval.component';
 
 @Component({
-  standalone: false,
-  selector: 'ngx-permission-management',
-  templateUrl: './permission-management.component.html',
-  styleUrls: ['./permission-management.component.scss'],
+    selector: 'ngx-permission-management',
+    templateUrl: './permission-management.component.html',
+    styleUrls: ['./permission-management.component.scss'],
+    imports: [
+    NbCardModule,
+    NbTabsetModule,
+    PermissionDashboardStandardComponent,
+    PermissionRequestComponent,
+    PermissionApprovalComponent
+],
 })
 export class PermissionManagementComponent implements OnDestroy {
+  private permissionService = inject(PermissionService);
+  private authService = inject(AuthService);
+
   activeTabIndex = 0;
 
   // 预填的撤销权限信息
@@ -26,11 +39,6 @@ export class PermissionManagementComponent implements OnDestroy {
   @ViewChild(PermissionRequestComponent) requestComponent: PermissionRequestComponent;
 
   private destroy$ = new Subject<void>();
-
-  constructor(
-    private permissionService: PermissionService,
-    private authService: AuthService,
-  ) {}
 
   ngOnDestroy(): void {
     this.destroy$.next();

@@ -1,10 +1,12 @@
 import { Component } from '@angular/core';
+import { NbLayoutModule, NbSidebarModule } from '@nebular/theme';
+import { HeaderComponent } from '../../components/header/header.component';
+import { TabBarComponent } from '../../components/tab-bar/tab-bar.component';
 
 @Component({
-  standalone: false,
-  selector: 'ngx-one-column-layout',
-  styleUrls: ['./one-column.layout.scss'],
-  template: `
+    selector: 'ngx-one-column-layout',
+    styleUrls: ['./one-column.layout.scss'],
+    template: `
     <nb-layout windowMode>
       <nb-layout-header fixed>
         <ngx-header></ngx-header>
@@ -20,5 +22,11 @@ import { Component } from '@angular/core';
       </nb-layout-column>
     </nb-layout>
   `,
+    imports: [
+        NbLayoutModule,
+        HeaderComponent,
+        NbSidebarModule,
+        TabBarComponent,
+    ],
 })
 export class OneColumnLayoutComponent {}

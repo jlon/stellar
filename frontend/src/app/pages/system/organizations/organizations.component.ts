@@ -1,6 +1,6 @@
-import { Component, OnDestroy, OnInit } from '@angular/core';
-import { NbDialogService, NbToastrService } from '@nebular/theme';
-import { LocalDataSource } from 'angular2-smart-table';
+import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { NbDialogService, NbToastrService, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule, NbAlertModule } from '@nebular/theme';
+import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
@@ -20,14 +20,32 @@ import {
 } from './organization-form/organization-form-dialog.component';
 import { AuthService } from '../../../@core/data/auth.service';
 import { UserService } from '../../../@core/data/user.service';
+import { HasPermissionDirective } from '../../../@core/directives/has-permission.directive';
+
 
 @Component({
-  standalone: false,
-  selector: 'ngx-organizations',
-  templateUrl: './organizations.component.html',
-  styleUrls: ['./organizations.component.scss'],
+    selector: 'ngx-organizations',
+    templateUrl: './organizations.component.html',
+    styleUrls: ['./organizations.component.scss'],
+    imports: [
+    NbCardModule,
+    NbButtonModule,
+    HasPermissionDirective,
+    NbIconModule,
+    NbSpinnerModule,
+    NbAlertModule,
+    Angular2SmartTableModule
+],
 })
 export class OrganizationsComponent implements OnInit, OnDestroy {
+  private organizationService = inject(OrganizationService);
+  private permissionService = inject(PermissionService);
+  private dialogService = inject(NbDialogService);
+  private confirmDialog = inject(ConfirmDialogService);
+  private toastrService = inject(NbToastrService);
+  private authService = inject(AuthService);
+  private userService = inject(UserService);
+
   source: LocalDataSource = new LocalDataSource();
   loading = false;
   private destroy$ = new Subject<void>();
@@ -39,16 +57,6 @@ export class OrganizationsComponent implements OnInit, OnDestroy {
   canDeleteOrganization = false;
 
   settings = this.buildTableSettings();
-
-  constructor(
-    private organizationService: OrganizationService,
-    private permissionService: PermissionService,
-    private dialogService: NbDialogService,
-    private confirmDialog: ConfirmDialogService,
-    private toastrService: NbToastrService,
-    private authService: AuthService,
-    private userService: UserService,
-  ) {}
 
   ngOnInit(): void {
     this.permissionService.permissions$

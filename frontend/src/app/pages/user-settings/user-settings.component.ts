@@ -1,17 +1,25 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { NbToastrService } from '@nebular/theme';
+import { NbToastrService, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule, NbAlertModule, NbInputModule } from '@nebular/theme';
 import { AuthService, User } from '../../@core/data/auth.service';
 import { ApiService } from '../../@core/data/api.service';
 import { DiceBearService } from '../../@core/services/dicebear.service';
 
+import { FormsModule } from '@angular/forms';
+
 @Component({
-  standalone: false,
-  selector: 'ngx-user-settings',
-  templateUrl: './user-settings.component.html',
-  styleUrls: ['./user-settings.component.scss']
+    selector: 'ngx-user-settings',
+    templateUrl: './user-settings.component.html',
+    styleUrls: ['./user-settings.component.scss'],
+    imports: [NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule, NbAlertModule, FormsModule, NbInputModule]
 })
 export class UserSettingsComponent implements OnInit {
+  private authService = inject(AuthService);
+  private apiService = inject(ApiService);
+  private toastrService = inject(NbToastrService);
+  private router = inject(Router);
+  private diceBearService = inject(DiceBearService);
+
   loading = false;
   submitted = false;
   currentUser: User | null = null;
@@ -33,14 +41,6 @@ export class UserSettingsComponent implements OnInit {
   // DiceBear头像选项
   availableAvatars: string[] = [];
   avatarStyles = this.diceBearService.avatarStyles;
-
-  constructor(
-    private authService: AuthService,
-    private apiService: ApiService,
-    private toastrService: NbToastrService,
-    private router: Router,
-    private diceBearService: DiceBearService
-  ) {}
 
   ngOnInit() {
     this.loadUserInfo();

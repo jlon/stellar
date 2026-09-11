@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiService } from './api.service';
 
@@ -71,9 +71,9 @@ export interface LLMUsageStats {
   providedIn: 'root',
 })
 export class LLMProviderService {
-  private readonly basePath = '/llm/providers';
+  private api = inject(ApiService);
 
-  constructor(private api: ApiService) {}
+  private readonly basePath = '/llm/providers';
 
   // List all providers
   listProviders(): Observable<LLMProvider[]> {

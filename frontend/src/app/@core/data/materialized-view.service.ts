@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiService } from './api.service';
 
@@ -50,7 +50,8 @@ export interface AlterMaterializedViewRequest {
   providedIn: 'root',
 })
 export class MaterializedViewService {
-  constructor(private api: ApiService) {}
+  private api = inject(ApiService);
+
 
   // All methods now use backend routes without cluster ID
   // The active cluster is determined by the backend

@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiService } from './api.service';
 
@@ -61,7 +61,8 @@ export interface HealthCheck {
   providedIn: 'root',
 })
 export class ClusterService {
-  constructor(private api: ApiService) {}
+  private api = inject(ApiService);
+
 
   listClusters(): Observable<Cluster[]> {
     return this.api.get<Cluster[]>('/clusters');

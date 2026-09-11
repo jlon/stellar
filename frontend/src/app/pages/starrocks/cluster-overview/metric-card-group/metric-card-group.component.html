@@ -4,21 +4,24 @@
       <div class="group-title">
         <nb-icon [icon]="icon" status="primary" class="group-icon"></nb-icon>
         <h6>{{ title }}</h6>
-        <nb-badge 
-          *ngIf="badgeCount > 0" 
-          [text]="badgeCount.toString()" 
-          [status]="badgeStatus"
-          class="badge-count">
-        </nb-badge>
+        @if (badgeCount > 0) {
+          <nb-badge
+            [text]="badgeCount.toString()"
+            [status]="badgeStatus"
+            class="badge-count">
+          </nb-badge>
+        }
       </div>
-      <nb-icon 
+      <nb-icon
         [icon]="collapsed ? 'chevron-down-outline' : 'chevron-up-outline'"
         class="toggle-icon">
       </nb-icon>
     </div>
   </nb-card-header>
-  <nb-card-body *ngIf="!collapsed" [@slideDown] class="group-body">
-    <ng-content></ng-content>
-  </nb-card-body>
+  @if (!collapsed) {
+    <nb-card-body [@slideDown] class="group-body">
+      <ng-content></ng-content>
+    </nb-card-body>
+  }
 </nb-card>
 

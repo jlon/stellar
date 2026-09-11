@@ -1,8 +1,9 @@
-import { Component, Input, Output, EventEmitter, OnInit, OnDestroy } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, inject } from '@angular/core';
 import { Subject, of } from 'rxjs';
 import { takeUntil, debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { CascadeSelectorCacheService } from '../../../../@core/services/cascade-selector-cache.service';
-import { NbToastrService } from '@nebular/theme';
+import { NbToastrService, NbSelectModule, NbOptionModule, NbSpinnerModule, NbButtonModule, NbIconModule } from '@nebular/theme';
+
 
 /**
  * Optimized Cascade Selector Component
@@ -13,71 +14,90 @@ import { NbToastrService } from '@nebular/theme';
  * In production, replace with actual API calls.
  */
 @Component({
-  standalone: false,
-  selector: 'ngx-cascade-selector',
-  template: `
+    selector: 'ngx-cascade-selector',
+    template: `
     <div class="cascade-selector-container">
       <!-- Catalog Selector -->
-      <div class="selector-group" *ngIf="showCatalog">
-        <label>Catalog</label>
-        <nb-select
-          [(selected)]="selectedCatalog"
-          placeholder="选择 Catalog"
-          [disabled]="!clusterId || catalogLoading"
-          (selectedChange)="onCatalogChange($event)"
-          fullWidth>
-          <nb-option value="">全部</nb-option>
-          <nb-option *ngFor="let catalog of catalogs" [value]="catalog">
-            {{ catalog }}
-          </nb-option>
-        </nb-select>
-        <nb-spinner *ngIf="catalogLoading" size="tiny" status="primary"></nb-spinner>
-      </div>
-
+      @if (showCatalog) {
+        <div class="selector-group">
+          <label>Catalog</label>
+          <nb-select
+            [(selected)]="selectedCatalog"
+            placeholder="选择 Catalog"
+            [disabled]="!clusterId || catalogLoading"
+            (selectedChange)="onCatalogChange($event)"
+            fullWidth>
+            <nb-option value="">全部</nb-option>
+            @for (catalog of catalogs; track catalog) {
+              <nb-option [value]="catalog">
+                {{ catalog }}
+              </nb-option>
+            }
+          </nb-select>
+          @if (catalogLoading) {
+            <nb-spinner size="tiny" status="primary"></nb-spinner>
+          }
+        </div>
+      }
+    
       <!-- Database Selector -->
-      <div class="selector-group" *ngIf="showDatabase">
-        <label>Database</label>
-        <nb-select
-          [(selected)]="selectedDatabase"
-          placeholder="选择 Database"
-          [disabled]="!clusterId || (!selectedCatalog && requireCatalog) || databaseLoading"
-          (selectedChange)="onDatabaseChange($event)"
-          fullWidth>
-          <nb-option value="">全部</nb-option>
-          <nb-option *ngFor="let database of databases" [value]="database">
-            {{ database }}
-          </nb-option>
-        </nb-select>
-        <nb-spinner *ngIf="databaseLoading" size="tiny" status="primary"></nb-spinner>
-      </div>
-
+      @if (showDatabase) {
+        <div class="selector-group">
+          <label>Database</label>
+          <nb-select
+            [(selected)]="selectedDatabase"
+            placeholder="选择 Database"
+            [disabled]="!clusterId || (!selectedCatalog && requireCatalog) || databaseLoading"
+            (selectedChange)="onDatabaseChange($event)"
+            fullWidth>
+            <nb-option value="">全部</nb-option>
+            @for (database of databases; track database) {
+              <nb-option [value]="database">
+                {{ database }}
+              </nb-option>
+            }
+          </nb-select>
+          @if (databaseLoading) {
+            <nb-spinner size="tiny" status="primary"></nb-spinner>
+          }
+        </div>
+      }
+    
       <!-- Table Selector -->
-      <div class="selector-group" *ngIf="showTable">
-        <label>Table</label>
-        <nb-select
-          [(selected)]="selectedTable"
-          placeholder="选择 Table"
-          [disabled]="!clusterId || !selectedDatabase || tableLoading"
-          (selectedChange)="onTableChange($event)"
-          fullWidth>
-          <nb-option value="">全部</nb-option>
-          <nb-option *ngFor="let table of tables" [value]="table">
-            {{ table }}
-          </nb-option>
-        </nb-select>
-        <nb-spinner *ngIf="tableLoading" size="tiny" status="primary"></nb-spinner>
-      </div>
-
+      @if (showTable) {
+        <div class="selector-group">
+          <label>Table</label>
+          <nb-select
+            [(selected)]="selectedTable"
+            placeholder="选择 Table"
+            [disabled]="!clusterId || !selectedDatabase || tableLoading"
+            (selectedChange)="onTableChange($event)"
+            fullWidth>
+            <nb-option value="">全部</nb-option>
+            @for (table of tables; track table) {
+              <nb-option [value]="table">
+                {{ table }}
+              </nb-option>
+            }
+          </nb-select>
+          @if (tableLoading) {
+            <nb-spinner size="tiny" status="primary"></nb-spinner>
+          }
+        </div>
+      }
+    
       <!-- Clear Button -->
-      <div class="selector-actions" *ngIf="showClearButton">
-        <button nbButton ghost status="basic" size="small" (click)="clearSelection()">
-          <nb-icon icon="refresh-outline"></nb-icon>
-          清空选择
-        </button>
-      </div>
+      @if (showClearButton) {
+        <div class="selector-actions">
+          <button nbButton ghost status="basic" size="small" (click)="clearSelection()">
+            <nb-icon icon="refresh-outline"></nb-icon>
+            清空选择
+          </button>
+        </div>
+      }
     </div>
-  `,
-  styles: [`
+    `,
+    styles: [`
     .cascade-selector-container {
       display: flex;
       flex-direction: column;
@@ -114,8 +134,18 @@ import { NbToastrService } from '@nebular/theme';
       }
     }
   `],
+    imports: [
+    NbSelectModule,
+    NbOptionModule,
+    NbSpinnerModule,
+    NbButtonModule,
+    NbIconModule
+],
 })
 export class CascadeSelectorComponent implements OnInit, OnDestroy {
+  private cacheService = inject(CascadeSelectorCacheService);
+  private toastr = inject(NbToastrService);
+
   @Input() clusterId: number;
   @Input() showCatalog: boolean = true;
   @Input() showDatabase: boolean = true;
@@ -147,11 +177,6 @@ export class CascadeSelectorComponent implements OnInit, OnDestroy {
   tableLoading = false;
 
   private destroy$ = new Subject<void>();
-
-  constructor(
-    private cacheService: CascadeSelectorCacheService,
-    private toastr: NbToastrService,
-  ) {}
 
   ngOnInit(): void {
     if (this.autoLoadCatalogs && this.clusterId) {

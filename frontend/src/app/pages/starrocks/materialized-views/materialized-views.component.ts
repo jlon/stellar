@@ -1,8 +1,8 @@
-import { Component, OnInit, OnDestroy, TemplateRef, ViewChild } from '@angular/core';
+import { Component, OnInit, OnDestroy, TemplateRef, ViewChild, inject } from '@angular/core';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
-import { NbToastrService, NbDialogService } from '@nebular/theme';
-import { LocalDataSource } from 'angular2-smart-table';
+import { NbToastrService, NbDialogService, NbCardModule, NbButtonModule, NbIconModule, NbInputModule, NbSelectModule, NbOptionModule, NbBadgeModule, NbSpinnerModule, NbAccordionModule, NbTabsetModule, NbAlertModule, NbCheckboxModule } from '@nebular/theme';
+import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import {
   MaterializedViewService,
   MaterializedView,
@@ -13,15 +13,39 @@ import { ErrorHandler } from '../../../@core/utils/error-handler';
 import { withTableRow } from '../../../@core/utils/smart-table';
 import { ConfirmDialogService } from '../../../@core/services/confirm-dialog.service';
 import { ActiveToggleRenderComponent } from './active-toggle-render.component';
+import { FormsModule } from '@angular/forms';
+
 
 @Component({
-  standalone: false,
-  selector: 'ngx-materialized-views',
-  templateUrl: './materialized-views.component.html',
-  styleUrls: ['./materialized-views.component.scss'],
-  providers: [MaterializedViewService],
+    selector: 'ngx-materialized-views',
+    templateUrl: './materialized-views.component.html',
+    styleUrls: ['./materialized-views.component.scss'],
+    providers: [MaterializedViewService],
+    imports: [
+    NbCardModule,
+    NbButtonModule,
+    NbIconModule,
+    NbInputModule,
+    FormsModule,
+    NbSelectModule,
+    NbOptionModule,
+    NbBadgeModule,
+    NbSpinnerModule,
+    Angular2SmartTableModule,
+    NbAccordionModule,
+    NbTabsetModule,
+    NbAlertModule,
+    NbCheckboxModule
+],
 })
 export class MaterializedViewsComponent implements OnInit, OnDestroy {
+  private mvService = inject(MaterializedViewService);
+  private clusterService = inject(ClusterService);
+  private clusterContextService = inject(ClusterContextService);
+  private toastrService = inject(NbToastrService);
+  private confirmDialogService = inject(ConfirmDialogService);
+  private dialogService = inject(NbDialogService);
+
   @ViewChild('createDialog', { static: false }) createDialogTemplate: TemplateRef<any>;
   @ViewChild('detailDialog', { static: false }) detailDialogTemplate: TemplateRef<any>;
   @ViewChild('refreshDialog', { static: false }) refreshDialogTemplate: TemplateRef<any>;
@@ -181,7 +205,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
         width: '12%',
         renderComponent: ActiveToggleRenderComponent,
         componentInitFunction: (instance: any) => {
-          instance.toggle.subscribe((rowData: any) => {
+          instance.toggleActive.subscribe((rowData: any) => {
             this.toggleActiveState(rowData);
           });
         },
@@ -233,15 +257,6 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
       },
     },
   };
-
-  constructor(
-    private mvService: MaterializedViewService,
-    private clusterService: ClusterService,
-    private clusterContextService: ClusterContextService,
-    private toastrService: NbToastrService,
-    private confirmDialogService: ConfirmDialogService,
-    private dialogService: NbDialogService,
-  ) {}
 
   ngOnInit() {
     // Get clusterId from ClusterContextService

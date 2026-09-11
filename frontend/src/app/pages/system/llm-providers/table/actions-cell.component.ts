@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Input, Output, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
+import { Component, EventEmitter, Input, Output, OnInit, OnDestroy, ChangeDetectorRef, inject } from '@angular/core';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
@@ -6,99 +6,101 @@ import { LLMProvider } from '../../../../@core/data/llm-provider.service';
 import { AuthService } from '../../../../@core/data/auth.service';
 import { PermissionService } from '../../../../@core/data/permission.service';
 
+import { NbButtonModule, NbTooltipModule, NbIconModule } from '@nebular/theme';
+
 @Component({
-  standalone: false,
-  selector: 'ngx-llm-providers-actions-cell',
-  template: `
+    selector: 'ngx-llm-providers-actions-cell',
+    template: `
     <div class="actions-container">
       <!-- Primary actions group -->
       <div class="actions-group actions-group--primary">
         <!-- Activate button (only show if not active and enabled) -->
-      <button
-        *ngIf="!rowData.is_active && rowData.enabled"
-        nbButton
-          outline
-        size="tiny"
-        status="success"
-          nbTooltip="设为默认提供商"
-        nbTooltipPlacement="top"
-        [disabled]="!canUpdate"
-        (click)="onActivateClick($event)"
-          class="action-btn action-btn--activate"
-      >
-          <nb-icon icon="star-outline"></nb-icon>
-          激活
-      </button>
-
-      <!-- Test connection -->
-      <button
-        nbButton
-        ghost
-        size="tiny"
-        status="info"
+        @if (!rowData.is_active && rowData.enabled) {
+          <button
+            nbButton
+            outline
+            size="tiny"
+            status="success"
+            nbTooltip="设为默认提供商"
+            nbTooltipPlacement="top"
+            [disabled]="!canUpdate"
+            (click)="onActivateClick($event)"
+            class="action-btn action-btn--activate"
+            >
+            <nb-icon icon="star-outline"></nb-icon>
+            激活
+          </button>
+        }
+    
+        <!-- Test connection -->
+        <button
+          nbButton
+          ghost
+          size="tiny"
+          status="info"
           nbTooltip="测试 API 连接"
-        nbTooltipPlacement="top"
-        [disabled]="testingId === rowData.id"
-        (click)="onTestClick($event)"
+          nbTooltipPlacement="top"
+          [disabled]="testingId === rowData.id"
+          (click)="onTestClick($event)"
           class="action-btn"
           [class.action-btn--loading]="testingId === rowData.id"
-      >
+          >
           <nb-icon [icon]="testingId === rowData.id ? 'loader-outline' : 'flash-outline'"
-                   [class.spin]="testingId === rowData.id"></nb-icon>
-      </button>
+          [class.spin]="testingId === rowData.id"></nb-icon>
+        </button>
       </div>
-
+    
       <!-- Secondary actions group -->
       <div class="actions-group actions-group--secondary">
-      <!-- Toggle enabled -->
-      <button
-        nbButton
-        ghost
-        size="tiny"
-        [status]="rowData.enabled ? 'warning' : 'success'"
+        <!-- Toggle enabled -->
+        <button
+          nbButton
+          ghost
+          size="tiny"
+          [status]="rowData.enabled ? 'warning' : 'success'"
           [nbTooltip]="rowData.enabled ? '暂停使用' : '启用服务'"
-        nbTooltipPlacement="top"
-        [disabled]="!canUpdate"
-        (click)="onToggleClick($event)"
+          nbTooltipPlacement="top"
+          [disabled]="!canUpdate"
+          (click)="onToggleClick($event)"
           class="action-btn"
-      >
-        <nb-icon [icon]="rowData.enabled ? 'pause-circle-outline' : 'play-circle-outline'"></nb-icon>
-      </button>
-
-      <!-- Edit -->
-      <button
-        nbButton
-        ghost
-        size="tiny"
-        status="primary"
+          >
+          <nb-icon [icon]="rowData.enabled ? 'pause-circle-outline' : 'play-circle-outline'"></nb-icon>
+        </button>
+    
+        <!-- Edit -->
+        <button
+          nbButton
+          ghost
+          size="tiny"
+          status="primary"
           nbTooltip="编辑配置"
-        nbTooltipPlacement="top"
-        [disabled]="!canUpdate"
-        (click)="onEditClick($event)"
+          nbTooltipPlacement="top"
+          [disabled]="!canUpdate"
+          (click)="onEditClick($event)"
           class="action-btn"
-      >
-        <nb-icon icon="edit-2-outline"></nb-icon>
-      </button>
-
-      <!-- Delete -->
-      <button
-        nbButton
-        ghost
-        size="tiny"
-        status="danger"
+          >
+          <nb-icon icon="edit-2-outline"></nb-icon>
+        </button>
+    
+        <!-- Delete -->
+        <button
+          nbButton
+          ghost
+          size="tiny"
+          status="danger"
           [nbTooltip]="rowData.is_active ? '无法删除已激活的提供商' : '删除提供商'"
-        nbTooltipPlacement="top"
-        [disabled]="!canDelete || rowData.is_active"
-        (click)="onDeleteClick($event)"
+          nbTooltipPlacement="top"
+          [disabled]="!canDelete || rowData.is_active"
+          (click)="onDeleteClick($event)"
           class="action-btn"
-      >
-        <nb-icon icon="trash-2-outline"></nb-icon>
-      </button>
+          >
+          <nb-icon icon="trash-2-outline"></nb-icon>
+        </button>
       </div>
     </div>
-  `,
-  styles: [
-    `
+    `,
+    styles: [
+        `
       .actions-container {
         display: flex;
         align-items: center;
@@ -157,9 +159,18 @@ import { PermissionService } from '../../../../@core/data/permission.service';
         }
       }
     `,
-  ],
+    ],
+    imports: [
+    NbButtonModule,
+    NbTooltipModule,
+    NbIconModule
+],
 })
 export class LLMProvidersActionsCellComponent implements OnInit, OnDestroy {
+  private authService = inject(AuthService);
+  private permissionService = inject(PermissionService);
+  private cdr = inject(ChangeDetectorRef);
+
   @Input() rowData!: LLMProvider;
   @Input() canUpdate = false;
   @Input() canDelete = false;
@@ -168,16 +179,10 @@ export class LLMProvidersActionsCellComponent implements OnInit, OnDestroy {
   @Output() edit = new EventEmitter<LLMProvider>();
   @Output() delete = new EventEmitter<LLMProvider>();
   @Output() activate = new EventEmitter<LLMProvider>();
-  @Output() toggle = new EventEmitter<LLMProvider>();
+  @Output() toggleState: EventEmitter<LLMProvider> = new EventEmitter<LLMProvider>();
   @Output() test = new EventEmitter<LLMProvider>();
 
   private destroy$ = new Subject<void>();
-
-  constructor(
-    private authService: AuthService,
-    private permissionService: PermissionService,
-    private cdr: ChangeDetectorRef,
-  ) {}
 
   ngOnInit(): void {
     this.permissionService.permissions$
@@ -213,7 +218,7 @@ export class LLMProvidersActionsCellComponent implements OnInit, OnDestroy {
   onToggleClick(event: Event): void {
     event.stopPropagation();
     if (this.canUpdate) {
-      this.toggle.emit(this.rowData);
+      this.toggleState.emit(this.rowData);
     }
   }
 

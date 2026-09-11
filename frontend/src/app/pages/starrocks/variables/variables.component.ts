@@ -1,21 +1,39 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 
-import { NbToastrService, NbDialogService } from '@nebular/theme';
-import { LocalDataSource } from 'angular2-smart-table';
+import { NbToastrService, NbDialogService, NbCardModule, NbButtonModule, NbIconModule, NbInputModule, NbSelectModule, NbOptionModule, NbSpinnerModule, NbAlertModule } from '@nebular/theme';
+import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
 import { Cluster } from '../../../@core/data/cluster.service';
 import { NodeService, Variable } from '../../../@core/data/node.service';
 import { ErrorHandler } from '../../../@core/utils/error-handler';
+import { FormsModule } from '@angular/forms';
+
 
 @Component({
-  standalone: false,
-  selector: 'ngx-variables',
-  templateUrl: './variables.component.html',
-  styleUrls: ['./variables.component.scss'],
+    selector: 'ngx-variables',
+    templateUrl: './variables.component.html',
+    styleUrls: ['./variables.component.scss'],
+    imports: [
+    NbCardModule,
+    NbButtonModule,
+    NbIconModule,
+    NbInputModule,
+    FormsModule,
+    NbSelectModule,
+    NbOptionModule,
+    NbSpinnerModule,
+    NbAlertModule,
+    Angular2SmartTableModule
+],
 })
 export class VariablesComponent implements OnInit, OnDestroy {
+  private toastrService = inject(NbToastrService);
+  private dialogService = inject(NbDialogService);
+  private clusterContext = inject(ClusterContextService);
+  private nodeService = inject(NodeService);
+
   clusterId: number;
   activeCluster: Cluster | null = null;
   variables: Variable[] = [];
@@ -59,13 +77,7 @@ export class VariablesComponent implements OnInit, OnDestroy {
     },
   };
 
-  constructor(
-    
-    private toastrService: NbToastrService,
-    private dialogService: NbDialogService,
-    private clusterContext: ClusterContextService,
-    private nodeService: NodeService,
-  ) {
+  constructor() {
     // Try to get clusterId from route first
     // Get clusterId from ClusterContextService
     this.clusterId = this.clusterContext.getActiveClusterId() || 0;
