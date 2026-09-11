@@ -8,6 +8,8 @@
 //!   SQLite / MySQL / PostgreSQL 上编译运行（PostgreSQL 占位符由 `AppQuery` 转换）。
 //!
 //! 运行时选择：由连接串协议决定（`sqlite://` / `mysql://` / `postgres://`），见 [`DatabaseKind`]。
+//! 迁移脚本在编译期通过 `sqlx::migrate!` 按方言嵌入二进制（每后端一个静态
+//! [`Migrator`]），运行时按 [`AppDb::migrations`] 选择执行，无需外置迁移目录。
 
 pub mod dialect;
 pub mod query;
@@ -17,7 +19,6 @@ mod postgres;
 mod sqlite;
 
 use std::future::Future;
-use std::path::Path;
 
 use sqlx::{Database, Pool};
 
@@ -31,7 +32,7 @@ pub use query::{query, query_as, query_scalar};
 /// - `Connection: Migrate`: 支持 sqlx 迁移
 /// - `AppDb::connect`: 创建并初始化连接池
 /// - `AppDb::Query`: 生成后端原生参数占位符的动态查询
-/// - `AppDb::migrations_dir`: 该后端的迁移脚本目录
+/// - `AppDb::migrations`: 编译期嵌入的后端迁移集
 ///
 /// where 子句把 sqlx 的各类能力 bound（Executor/IntoArguments/编解码/列索引）
 /// 集中声明一次，业务代码只需一个 `DB: AppDb`；两个后端的具体实现均满足。
@@ -57,8 +58,8 @@ pub trait AppDb:
     /// 由原始 SQL 创建该后端的动态查询。
     fn make_query<'q>(sql: &'q str) -> Self::Query<'q>;
 
-    /// 该后端对应的迁移脚本目录（migrations/<后端>/）。
-    fn migrations_dir() -> &'static str;
+    /// 该后端编译期嵌入的迁移集（`sqlx::migrate!("./migrations/<backend>")`）。
+    fn migrations() -> &'static sqlx::migrate::Migrator;
 }
 
 /// 支持的数据库后端，由连接串协议在启动时决定。
@@ -118,41 +119,14 @@ where
         e
     })?;
 
-    let migrations_dir = find_migrations_dir(DB::migrations_dir());
-    tracing::info!("Using migrations from: {}", migrations_dir);
-
     tracing::debug!("Running database migrations...");
-    sqlx::migrate::Migrator::new(Path::new(&migrations_dir))
-        .await
-        .map_err(|e| {
-            tracing::error!("Migration setup failed: {}", e);
-            e
-        })?
-        .run(&pool)
-        .await
-        .map_err(|e| {
-            tracing::error!("Migration execution failed: {}", e);
-            e
-        })?;
+    DB::migrations().run(&pool).await.map_err(|e| {
+        tracing::error!("Migration execution failed: {}", e);
+        e
+    })?;
 
     tracing::info!("Database pool created and migrations applied successfully");
     Ok(pool)
-}
-
-/// 在常见工作目录下探测迁移脚本目录（兼容从仓库根 / backend / dist 等目录启动）。
-fn find_migrations_dir(default_path: &str) -> String {
-    let possible_paths =
-        [format!("./{default_path}"), format!("../{default_path}"), default_path.to_string()];
-
-    for path in &possible_paths {
-        if Path::new(path).exists() {
-            tracing::debug!("Found migrations directory at: {}", path);
-            return path.to_string();
-        }
-    }
-
-    tracing::warn!("No migrations directory found, using default: {default_path}");
-    default_path.to_string()
 }
 
 #[cfg(test)]
@@ -182,9 +156,13 @@ mod tests {
     }
 
     #[test]
-    fn migrations_dir_follows_backend() {
-        assert_eq!(<Sqlite as AppDb>::migrations_dir(), "migrations/sqlite");
-        assert_eq!(<MySql as AppDb>::migrations_dir(), "migrations/mysql");
-        assert_eq!(<Postgres as AppDb>::migrations_dir(), "migrations/postgres");
+    fn migrations_embedded_per_backend() {
+        let sqlite = <Sqlite as AppDb>::migrations();
+        let mysql = <MySql as AppDb>::migrations();
+        let postgres = <Postgres as AppDb>::migrations();
+        // 三方言目录保持同步：迁移数量一致（编译期嵌入，数量变化即编译失败）。
+        assert!(!sqlite.migrations.is_empty());
+        assert_eq!(sqlite.migrations.len(), mysql.migrations.len());
+        assert_eq!(mysql.migrations.len(), postgres.migrations.len());
     }
 }

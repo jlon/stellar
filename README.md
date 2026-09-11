@@ -167,8 +167,8 @@ mysql -u root -p -e "CREATE DATABASE stellar CHARACTER SET utf8mb4 COLLATE utf8m
 [database]
 url = "mysql://user:pass@localhost:3306/stellar?charset=utf8mb4"
 
-# 3. Start the service. On first connect, startup runs backend/migrations/mysql/*.sql
-#    and builds the full schema; a friendly error is shown if the database is missing.
+# 3. Start the service. The MySQL migrations embedded in the binary run on first
+#    connect and build the full schema; a friendly error is shown if the database is missing.
 ```
 
 Environment variable override also works: `APP_DATABASE_URL="mysql://..."`
@@ -183,19 +183,23 @@ createdb -h localhost -U postgres stellar
 [database]
 url = "postgres://user:pass@localhost:5432/stellar"
 
-# 3. Start the service. On first connect, startup runs backend/migrations/postgres/*.sql.
-#    PostgreSQL database names must be created first; a missing database produces a clear error.
+# 3. Start the service. The PostgreSQL migrations embedded in the binary run on first
+#    connect and build the full schema. Database names must be created first; a missing
+#    database produces a clear error.
 ```
 
 `postgresql://...` is accepted as an alias. The same environment override applies: `APP_DATABASE_URL="postgres://..."`.
 
 **Schema changes (migrations)**:
 
-- Startup automatically applies every migration file in `backend/migrations/{sqlite,mysql,postgres}/`
-  that has not been applied yet; the applied set is tracked in the `_sqlmigrations` table.
+- Migrations are **embedded into the binary at compile time** (`sqlx::migrate!`, one
+  static set per backend). On startup the embedded migrations for the selected backend
+  run automatically; the applied set is tracked in the `_sqlmigrations` table.
 - To change the schema, add a NEW numbered file (e.g. `backend/migrations/mysql/20260915000000_add_foo.sql`
   and the SQLite/MySQL/PostgreSQL counterparts), containing only the change (e.g. `ALTER TABLE ...`).
-  Never edit an already-applied file — sqlx rejects it by checksum.
+  Never edit an already-applied file — sqlx rejects it by checksum. After changing a
+  migration you must **rebuild** the binary (and image/package); there are no runtime
+  migration files in the distribution.
 - All dialect directories must be kept in sync (MySQL uses `AUTO_INCREMENT`, SQLite uses `AUTOINCREMENT`,
   and PostgreSQL uses `BIGSERIAL`/`RETURNING`,
   and so on — see `docs/MYSQL_SUPPORT_DESIGN.md` for the dialect checklist).
@@ -230,7 +234,7 @@ url = "sqlite://data/stellar.db"
 # MySQL (alternative): url = "mysql://user:pass@localhost:3306/stellar?charset=utf8mb4"
 # PostgreSQL (alternative): url = "postgres://user:pass@localhost:5432/stellar"
 # The backend is selected at runtime by the URL scheme (sqlite:// / mysql:// / postgres://).
-# Migrations live in backend/migrations/{sqlite,mysql,postgres}/ and run automatically.
+# Migrations are embedded into the binary at compile time and run automatically.
 
 [auth]
 jwt_secret = "your-secret-key-change-in-production"
@@ -472,7 +476,7 @@ url = "sqlite://data/stellar.db"
 # MySQL (alternative): url = "mysql://user:pass@localhost:3306/stellar?charset=utf8mb4"
 # PostgreSQL (alternative): url = "postgres://user:pass@localhost:5432/stellar"
 # The backend is selected at runtime by the URL scheme (sqlite:// / mysql:// / postgres://).
-# Migrations live in backend/migrations/{sqlite,mysql,postgres}/ and run automatically.
+# Migrations are embedded into the binary at compile time and run automatically.
 
 [auth]
 jwt_secret = "your-secret-key-change-in-production"

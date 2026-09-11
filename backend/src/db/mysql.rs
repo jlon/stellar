@@ -11,6 +11,8 @@ use sqlx::{MySql, Pool};
 
 use super::AppDb;
 
+static MIGRATIONS: sqlx::migrate::Migrator = sqlx::migrate!("./migrations/mysql");
+
 impl AppDb for MySql {
     type Query<'q> =
         sqlx::query::Query<'q, Self, <Self as sqlx::database::HasArguments<'q>>::Arguments>;
@@ -19,8 +21,8 @@ impl AppDb for MySql {
         sqlx::query(sql)
     }
 
-    fn migrations_dir() -> &'static str {
-        "migrations/mysql"
+    fn migrations() -> &'static sqlx::migrate::Migrator {
+        &MIGRATIONS
     }
 
     async fn connect(url: &str) -> sqlx::Result<Pool<MySql>> {

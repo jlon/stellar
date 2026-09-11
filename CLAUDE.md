@@ -239,7 +239,8 @@ url = "sqlite://data/stellar.db"
 
 **数据库后端**：同一二进制运行时按 URL 协议选择 SQLite / MySQL / PostgreSQL，
 方言抽象集中在 `backend/src/db/`（`AppDb` trait + `AppQuery`/`SqlDialect`/`RowsAffected`），
-迁移脚本按方言分目录 `backend/migrations/{sqlite,mysql,postgres}/`，能力 bound 由
+迁移脚本按方言分目录 `backend/migrations/{sqlite,mysql,postgres}/` 并**在编译期嵌入二进制**
+（`sqlx::migrate!` 每后端一个静态 `Migrator`），能力 bound 由
 `backend/macros` 的 `#[app_impl]`/`#[app_db]` 属性宏注入（详见 `docs/MYSQL_SUPPORT_DESIGN.md`）。
 
 [metrics]
