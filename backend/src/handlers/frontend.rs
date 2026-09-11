@@ -1,5 +1,6 @@
 use axum::{Json, extract::State};
 use std::sync::Arc;
+use std::time::Duration;
 use stellar_macros::app_db;
 
 use crate::AppState;
@@ -33,7 +34,18 @@ pub async fn list_frontends(
             .get_active_cluster_by_org(org_ctx.organization_id)
             .await?
     };
+    let cluster_id = cluster.id;
+    if let Some(frontends) = state
+        .metrics_collector_service
+        .cached_frontends(cluster_id, Duration::from_secs(90))
+        .or_else(|| state.metrics_collector_service.stale_frontends(cluster_id))
+    {
+        return Ok(Json(frontends));
+    }
     let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
     let frontends = adapter.get_frontends().await?;
+    state
+        .metrics_collector_service
+        .store_frontends(cluster_id, frontends.clone());
     Ok(Json(frontends))
 }

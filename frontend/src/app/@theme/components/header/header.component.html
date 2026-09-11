@@ -3,20 +3,21 @@
     <a (click)="toggleSidebar()" href="#" class="sidebar-toggle">
       <nb-icon icon="menu-2-outline"></nb-icon>
     </a>
-    <a class="logo" href="#" (click)="navigateHome()">Stellar</a>
+    <a class="logo" href="#" (click)="navigateHome()">
+      <img class="logo-img" src="assets/images/stellar-logo.svg" alt="Stellar">
+      <span class="logo-text">Stellar</span>
+    </a>
   </div>
-  <nb-select [selected]="currentTheme" (selectedChange)="changeTheme($event)" status="primary">
-    @for (theme of themes; track theme) {
-      <nb-option [value]="theme.value">{{ theme.name }}</nb-option>
-    }
-  </nb-select>
   <ngx-cluster-selector></ngx-cluster-selector>
 </div>
 
 <div class="header-container">
   <nb-actions size="small">
-    <nb-action class="control-item" icon="email-outline"></nb-action>
-    <nb-action class="control-item" icon="bell-outline"></nb-action>
+    <nb-action class="control-item action-email" icon="email-outline"></nb-action>
+    <nb-action class="control-item action-bell" icon="bell-outline"></nb-action>
+    <nb-action class="control-item theme-action" (click)="cycleTheme()" [title]="currentThemeMeta.name">
+      <nb-icon [icon]="currentThemeMeta.icon"></nb-icon>
+    </nb-action>
     <nb-action class="user-action" *nbIsGranted="['view', 'user']">
       <nb-user [nbContextMenu]="userMenu"
         nbContextMenuTag="user-context-menu"

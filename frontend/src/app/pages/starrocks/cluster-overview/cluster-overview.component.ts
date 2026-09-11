@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy, AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Subject, interval } from 'rxjs';
-import { takeUntil, switchMap, skip } from 'rxjs/operators';
+import { takeUntil, skip } from 'rxjs/operators';
 import { NbToastrService, NbThemeService, NbCardModule, NbBadgeModule, NbIconModule, NbActionsModule, NbSelectModule, NbOptionModule, NbButtonModule, NbSpinnerModule, NbTooltipModule, NbAlertModule, NbProgressBarModule } from '@nebular/theme';
 import { CountUp } from 'countup.js';
 import {
@@ -15,13 +15,15 @@ import {
   TopTableBySize,
   TopTableByAccess,
   CompactionDetailStats,
+  TopPartitionByScore,
 } from '../../../@core/data/overview.service';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
 import { AuthService } from '../../../@core/data/auth.service';
+import { NodeService, Session } from '../../../@core/data/node.service';
 import { themeChartChrome, colorWithAlpha } from '../../../@core/utils/theme-color';
-import { NgClass, DatePipe } from '@angular/common';
-import { MetricCardGroupComponent } from './metric-card-group/metric-card-group.component';
+import { CommonModule } from '@angular/common';
 import { NgxEchartsDirective } from 'ngx-echarts';
+import { donutOption, horizontalBarOption } from './overview-charts';
 
 @Component({
     selector: 'ngx-cluster-overview',
@@ -38,12 +40,10 @@ import { NgxEchartsDirective } from 'ngx-echarts';
     NbButtonModule,
     NbSpinnerModule,
     NbTooltipModule,
-    MetricCardGroupComponent,
     NgxEchartsDirective,
     NbAlertModule,
-    NgClass,
-    NbProgressBarModule,
-    DatePipe
+    CommonModule,
+    NbProgressBarModule
 ],
 })
 export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewInit {
@@ -53,6 +53,7 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
   private toastr = inject(NbToastrService);
   private themeService = inject(NbThemeService);
   private authService = inject(AuthService);
+  private nodeService = inject(NodeService);
   private cdr = inject(ChangeDetectorRef);
 
   overview: ExtendedClusterOverview | null = null;
@@ -70,6 +71,8 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
   
   timeRange: string = '1h';
   loading = false;
+  sessionsReady = false;
+  statsReady = false;
   autoRefresh = false; // Default: disabled (will be enabled when interval is selected)
   refreshInterval: number | 'off' = 'off'; // Default: off (Grafana style)
 
@@ -91,18 +94,20 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
   chartColors: any = {};
   
   private destroy$ = new Subject<void>();
+  private refreshTick$ = new Subject<void>();
+  private loadSeq = 0;
 
   // Time range options
   timeRangeOptions = [
-    { label: '1 Hour', value: '1h' },
-    { label: '6 Hours', value: '6h' },
-    { label: '24 Hours', value: '24h' },
-    { label: '3 Days', value: '3d' },
+    { label: '1小时', value: '1h' },
+    { label: '6小时', value: '6h' },
+    { label: '24小时', value: '24h' },
+    { label: '3天', value: '3d' },
   ];
 
   // Refresh interval options (Grafana style)
   refreshIntervalOptions = [
-    { label: '关闭', value: 'off' },
+    { label: '手动', value: 'off' },
     { label: '15秒', value: 15 },
     { label: '30秒', value: 30 },
     { label: '1分钟', value: 60 },
@@ -127,8 +132,12 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
         skip(1), // Skip initial value
         takeUntil(this.destroy$)
       )
-      .subscribe(cluster => {
-        // Active cluster changed, reload overview
+      .subscribe(() => {
+        this.overview = null;
+        this.dataStatistics = null;
+        this.compactionDetails = null;
+        this.sessionsReady = false;
+        this.statsReady = false;
         this.loadOverview();
         this.setupAutoRefresh();
         this.cdr.markForCheck();
@@ -141,79 +150,64 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
   }
 
   ngOnDestroy() {
+    this.refreshTick$.next();
+    this.refreshTick$.complete();
     this.destroy$.next();
     this.destroy$.complete();
   }
 
   setupAutoRefresh() {
-    // Clear any existing subscription
-    this.destroy$.next();
-    
-    // Only setup if interval is a number (not 'off')
+    this.refreshTick$.next();
     if (typeof this.refreshInterval === 'number' && this.refreshInterval > 0) {
       interval(this.refreshInterval * 1000)
         .pipe(
           takeUntil(this.destroy$),
+          takeUntil(this.refreshTick$),
         )
         .subscribe(() => {
-          // Stop auto-refresh if user is not authenticated (logged out)
           if (!this.authService.isAuthenticated()) {
             this.autoRefresh = false;
             this.refreshInterval = 'off';
-            this.destroy$.next();
+            this.refreshTick$.next();
             return;
           }
           if (this.autoRefresh) {
-            this.loadOverview(false); // silent refresh
+            this.loadOverview(false, false);
           }
         });
     }
   }
 
-  loadOverview(showLoading: boolean = true) {
-    if (showLoading) {
+  loadOverview(showLoading: boolean = true, includeDeferred: boolean = true) {
+    const seq = ++this.loadSeq;
+    if (showLoading && !this.overview) {
       this.loading = true;
       this.cdr.markForCheck();
     }
+    if (includeDeferred) {
+      this.sessionsReady = false;
+      this.statsReady = false;
+    }
 
-    // Load data from real API - no clusterId needed, backend will get from active cluster
     this.overviewService.getExtendedClusterOverview(this.timeRange)
+      .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (overview) => {
-          this.overview = overview;
-          // Transform data using service methods
-          this.healthCards = this.overviewService.transformToHealthCards(overview);
-          this.performanceTrends = overview.performance_trends;
-          this.resourceTrends = overview.resource_trends;
-          this.dataStatistics = this.overviewService.transformDataStatistics(overview);
-          this.capacityPrediction = overview.capacity || null;
-          
-          // Extract session stats
-          if (overview.sessions) {
-            this.activeSessions = overview.sessions.current_connections || 0;
-            this.runningQueries = overview.sessions.running_queries?.length || 0;
-            this.activeUsers1h = overview.sessions.active_users_1h || 0;
-            this.activeUsers24h = overview.sessions.active_users_24h || 0;
+          if (seq !== this.loadSeq) {
+            return;
           }
-          
+          this.applyCore(overview);
           this.loading = false;
-          
-          // Animate numbers after data is loaded
-          setTimeout(() => this.animateNumbers(), 100);
           this.cdr.markForCheck();
+          if (includeDeferred) {
+            this.loadDeferred(seq);
+          }
         },
         error: (err) => {
-          console.error('[ClusterOverview] Failed to load cluster overview:', err);
-          console.error('[ClusterOverview] Error details:', {
-            status: err.status,
-            statusText: err.statusText,
-            message: err.message,
-            error: err.error
-          });
-          
+          if (seq !== this.loadSeq) {
+            return;
+          }
           let errorMsg = '加载集群概览失败';
-          
-          // Show backend error message directly
           if (err.error?.message) {
             errorMsg = err.error.message;
           } else if (err.status === 0) {
@@ -223,27 +217,143 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
           } else if (err.status === 401) {
             errorMsg = '没有权限执行此操作';
           }
-          
           this.toastr.danger(errorMsg, '错误');
           this.loading = false;
           this.cdr.markForCheck();
         }
       });
-    
-    // Load compaction detail stats separately
-    this.overviewService.getCompactionDetailStats(this.timeRange)
+  }
+
+  private applyCore(overview: ExtendedClusterOverview) {
+    this.overview = overview;
+    this.performanceTrends = overview.performance_trends;
+    this.resourceTrends = overview.resource_trends;
+    this.capacityPrediction = overview.capacity || null;
+    if (!this.statsReady) {
+      this.dataStatistics = null;
+    }
+    this.refreshCards();
+  }
+
+  private refreshCards() {
+    if (!this.overview) {
+      return;
+    }
+    this.healthCards = this.overviewService.transformToHealthCards(this.overview);
+  }
+
+  private loadDeferred(seq: number) {
+    this.overviewService.getActiveDataStatistics(this.timeRange)
+      .pipe(takeUntil(this.destroy$))
       .subscribe({
-        next: (details) => {
-          this.compactionDetails = details;
+        next: (raw) => {
+          if (seq !== this.loadSeq || !this.overview) {
+            return;
+          }
+          const stats = this.overviewService.mapDataStatistics(raw);
+          this.dataStatistics = stats;
+          this.overview.data_stats = raw;
+          this.overview.mv_stats = {
+            total: stats.mvTotal,
+            running: stats.mvRunning,
+            success: stats.mvSuccess,
+            failed: stats.mvFailed,
+            pending: 0,
+          };
+          this.overview.sessions = {
+            ...this.overview.sessions,
+            active_users_1h: stats.activeUsers1h,
+            active_users_24h: stats.activeUsers24h,
+          };
+          if (this.overview.capacity) {
+            this.overview.capacity.real_data_size_bytes = stats.totalDataSizeBytes;
+          }
+          this.activeUsers1h = stats.activeUsers1h;
+          this.activeUsers24h = stats.activeUsers24h;
+          this.statsReady = true;
+          this.refreshCards();
           this.cdr.markForCheck();
         },
-        error: (err) => {
-          console.warn('[ClusterOverview] Failed to load compaction details:', err);
-          // Don't show error to user - compaction details are optional
+        error: () => {
+          if (seq !== this.loadSeq) {
+            return;
+          }
+          this.statsReady = false;
+          this.cdr.markForCheck();
+        }
+      });
+
+    this.overviewService.getCompactionDetailStats(this.timeRange)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (details) => {
+          if (seq !== this.loadSeq || !this.overview) {
+            return;
+          }
+          this.compactionDetails = details;
+          const running = details.taskStats?.runningCount
+            ?? (details as any).task_stats?.running_count
+            ?? 0;
+          this.overview.compaction = {
+            ...this.overview.compaction,
+            cumulativeCompactionRunning: running,
+          };
+          this.refreshCards();
+          this.cdr.markForCheck();
+        },
+        error: () => {
+          if (seq !== this.loadSeq) {
+            return;
+          }
           this.compactionDetails = null;
           this.cdr.markForCheck();
         }
       });
+
+    this.nodeService.getSessions()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (sessions) => {
+          if (seq !== this.loadSeq || !this.overview) {
+            return;
+          }
+          const running = sessions.filter(session => this.isRunningQuery(session));
+          this.overview.sessions = {
+            ...this.overview.sessions,
+            current_connections: sessions.length,
+            running_queries: running.map(session => ({
+              queryId: session.id,
+              user: session.user,
+              database: session.db || '',
+              startTime: '',
+              durationMs: (parseInt(session.time, 10) || 0) * 1000,
+              state: session.state,
+              queryPreview: (session.info || '').slice(0, 200),
+            })),
+          };
+          this.activeSessions = sessions.length;
+          this.runningQueries = running.length;
+          this.sessionsReady = true;
+          this.refreshCards();
+          this.cdr.markForCheck();
+        },
+        error: () => {
+          if (seq !== this.loadSeq) {
+            return;
+          }
+          this.sessionsReady = false;
+          this.cdr.markForCheck();
+        }
+      });
+  }
+
+  private isRunningQuery(session: Session): boolean {
+    const info = session.info || '';
+    const timeSecs = parseInt(session.time, 10) || 0;
+    return (session.command === 'Query' || session.state === 'Query')
+      && info.length > 0
+      && timeSecs > 1
+      && !info.startsWith('SHOW');
   }
 
   onTimeRangeChange(range: string) {
@@ -271,21 +381,116 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
     this.loadOverview();
   }
 
-  // Navigation methods
-  handleCardClick(card: HealthCard) {
-    if (card.cardId === 'latency_percentile') {
-      this.cycleLatencyPercentile();
-    } else if (card.cardId === 'disk_cache_metric') {
-      this.cycleDiskMetric();
-    } else if (card.cardId === 'load_jobs') {
-      this.navigateToLoadJobs();
-    } else if (card.cardId === 'sessions') {
-      this.navigateToSessions();
-    } else if (card.cardId === 'compactions' || card.cardId === 'compaction_score') {
-      this.navigateToCompactions();
-    } else {
-      this.navigateToCard(card);
+  get overviewAlerts() {
+    return this.overview?.alerts || [];
+  }
+
+  get capacityPercent(): number {
+    return Math.max(0, Math.min(100, Number((this.capacityPrediction?.disk_usage_pct || 0).toFixed(1))));
+  }
+
+  get capacityTone(): string {
+    if (this.capacityPercent >= 90) {
+      return 'danger';
     }
+    if (this.capacityPercent >= 70) {
+      return 'warning';
+    }
+    return '';
+  }
+
+  get taskRows(): Array<{ label: string; value: string; tone: string }> {
+    if (!this.overview) {
+      return [];
+    }
+    const loadFailed = this.overview.load_jobs?.failed || 0;
+    const mvFailed = this.dataStatistics?.mvFailed ?? this.overview.mv_stats?.failed ?? 0;
+    const schemaFailed = this.dataStatistics?.schemaChangeFailed ?? this.overview.schema_changes?.failed ?? 0;
+    const unfinished = this.overview.unfinished_query ?? this.overview.sessions?.running_queries?.length ?? 0;
+    const rows = [
+      { label: '导入失败', value: String(loadFailed), tone: loadFailed > 0 ? 'danger' : '' },
+      { label: 'MV失败', value: String(mvFailed), tone: mvFailed > 0 ? 'danger' : '' },
+      { label: 'Schema失败', value: String(schemaFailed), tone: schemaFailed > 0 ? 'danger' : '' },
+      { label: '未完成查询', value: String(unfinished), tone: unfinished > 50 ? 'warning' : '' },
+      { label: '会话', value: String(this.overview.sessions?.current_connections || 0), tone: '' },
+    ];
+    if (this.isSharedData) {
+      const running = this.overview.compaction?.cumulativeCompactionRunning || 0;
+      rows.unshift({ label: '压缩运行', value: String(running), tone: running > 0 ? 'warning' : '' });
+    }
+    return rows;
+  }
+
+  get taskChartOptions(): Record<string, unknown> | null {
+    if (!this.overview) {
+      return null;
+    }
+    const items = [
+      {
+        name: '导入',
+        value: this.overview.load_jobs?.running || 0,
+        color: this.chartColors.info,
+      },
+      {
+        name: 'MV',
+        value: this.dataStatistics?.mvRunning ?? this.overview.mv_stats?.running ?? 0,
+        color: this.chartColors.warning,
+      },
+      {
+        name: 'Schema',
+        value: this.dataStatistics?.schemaChangeRunning ?? this.overview.schema_changes?.running ?? 0,
+        color: this.chartColors.primary,
+      },
+    ];
+    if (this.isSharedData) {
+      items.push({
+        name: '压缩',
+        value: this.overview.compaction?.cumulativeCompactionRunning || 0,
+        color: this.chartColors.danger,
+      });
+    }
+    const total = items.reduce((sum, item) => sum + item.value, 0);
+    if (total <= 0) {
+      return null;
+    }
+    return donutOption(this.chartColors, items, { value: String(total), name: '运行中' });
+  }
+
+  cardTitle(card: HealthCard): string {
+    return card.title;
+  }
+
+  cardValue(card: HealthCard): string {
+    return this.joinValueUnit(String(card.value ?? ''), card.unit);
+  }
+
+  private joinValueUnit(value: string, unit?: string): string {
+    if (!unit) {
+      return value;
+    }
+    if (unit === '%' || unit.startsWith('%')) {
+      return `${value}%`;
+    }
+    if (unit === '个' || unit === '人') {
+      return `${value}${unit}`;
+    }
+    return `${value} ${unit}`;
+  }
+
+  cardStatus(card: HealthCard): string {
+    return card.status;
+  }
+
+  cardTooltip(card: HealthCard): string {
+    return card.description || '';
+  }
+
+  handleCardClick(card: HealthCard) {
+    if (card.cardId === 'compaction_score') {
+      this.navigateToCompactions();
+      return;
+    }
+    this.navigateToCard(card);
   }
 
   navigateToCard(card: HealthCard) {
@@ -313,6 +518,162 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
 
   get topTablesByAccess(): any[] {
     return (this.dataStatistics?.topTablesByAccess || []).slice(0, 10);
+  }
+
+  get accessEmptyText(): string {
+    if (!this.dataStatistics) {
+      return '暂无数据';
+    }
+    return this.dataStatistics.accessError || '暂无访问记录';
+  }
+
+  get isSharedData(): boolean {
+    const mode = this.overview?.deployment_mode || this.clusterContext.getActiveCluster()?.deployment_mode;
+    return mode === 'shared_data';
+  }
+
+  get storagePanelTitle(): string {
+    return this.isSharedData ? 'Compaction' : 'BE磁盘';
+  }
+
+  get compactionPartitions(): TopPartitionByScore[] {
+    return this.compactionDetails?.topPartitions || [];
+  }
+
+  get nodeDisks(): Array<{ host: string; usedPct: number }> {
+    return this.compactionDetails?.nodeDisks || [];
+  }
+
+  get compactionDurationFacts(): string[] {
+    const duration = this.compactionDetails?.durationStats;
+    if (!duration || ((duration.minDurationMs ?? 0) <= 0 && (duration.maxDurationMs ?? 0) <= 0)) {
+      return [];
+    }
+    return [
+      `最小 ${this.formatDurationString(duration.minDurationMs)}`,
+      `最大 ${this.formatDurationString(duration.maxDurationMs)}`,
+      `平均 ${this.formatDurationString(duration.avgDurationMs)}`,
+    ];
+  }
+
+  get compactionChartOptions(): Record<string, unknown> | null {
+    if (this.compactionPartitions.length) {
+      return this.getCompactionScoreChartOptions();
+    }
+    const tasks = this.compactionDetails?.taskStats;
+    const running = tasks?.runningCount ?? 0;
+    const finished = tasks?.finishedCount ?? 0;
+    if (running + finished <= 0) {
+      return null;
+    }
+    return donutOption(
+      this.chartColors,
+      [
+        { name: '运行中', value: running, color: this.chartColors.warning },
+        { name: '已完成', value: finished, color: this.chartColors.info },
+      ],
+      running > 0
+        ? { value: String(running), name: '运行中' }
+        : { value: String(finished), name: '已完成' },
+    );
+  }
+
+  get storageChartOptions(): Record<string, unknown> | null {
+    if (this.isSharedData) {
+      return this.compactionChartOptions;
+    }
+    if (!this.nodeDisks.length) {
+      return null;
+    }
+    return horizontalBarOption(
+      this.chartColors,
+      this.nodeDisks.map(node => ({ name: node.host, value: node.usedPct })),
+      this.chartColors.warning,
+      value => `${value.toFixed(1)}%`,
+      100,
+    );
+  }
+
+  get trendCharts(): Array<{ title: string; options: Record<string, unknown>; hasData: boolean; facts?: string[] }> {
+    const tablet = this.resourceTrends?.tablet_count;
+    const tabletFact = tablet?.length
+      ? [`Tablet ${Math.round(tablet[tablet.length - 1].value)}`]
+      : [];
+    const charts = [
+      { title: '吞吐', options: this.getQpsChartOptions(), hasData: !!this.performanceTrends?.qps?.length },
+      { title: '延迟', options: this.getLatencyChartOptions(), hasData: !!this.performanceTrends?.latency_p99?.length },
+      { title: '错误', options: this.getErrorRateChartOptions(), hasData: !!this.performanceTrends?.error_rate?.length },
+      {
+        title: '资源',
+        options: this.getResourceChartOptions(),
+        hasData: !!this.resourceTrends?.cpu_usage?.length,
+        facts: tabletFact,
+      },
+      { title: 'JVM', options: this.getJvmHeapChartOptions(), hasData: !!this.resourceTrends?.jvm_heap_usage?.length },
+      { title: 'Score', options: this.getCompactionScoreTrendOptions(), hasData: !!this.resourceTrends?.compaction_score?.length },
+    ];
+    if (this.isSharedData) {
+      return [
+        ...charts,
+        { title: '超时', options: this.getTimeoutRateChartOptions(), hasData: !!this.performanceTrends?.timeout_rate?.length },
+        {
+          title: '事务',
+          options: this.getTxnChartOptions(),
+          hasData: !!(this.resourceTrends?.txn_success?.length || this.resourceTrends?.txn_failed?.length),
+        },
+      ];
+    }
+    return [
+      ...charts,
+      { title: '网络', options: this.getNetworkChartOptions(), hasData: !!this.resourceTrends?.network_tx?.length },
+      { title: 'IO', options: this.getIoChartOptions(), hasData: !!this.resourceTrends?.io_read?.length },
+    ];
+  }
+
+  getTopSizeChartOptions() {
+    if (!this.topTablesBySize.length) {
+      return {};
+    }
+    return horizontalBarOption(
+      this.chartColors,
+      this.topTablesBySize.map(table => ({
+        name: `${table.database}.${table.table}`,
+        value: table.sizeBytes,
+      })),
+      this.chartColors.primary,
+      value => this.formatBytes(value),
+    );
+  }
+
+  getTopAccessChartOptions() {
+    if (!this.topTablesByAccess.length) {
+      return {};
+    }
+    return horizontalBarOption(
+      this.chartColors,
+      this.topTablesByAccess.map(table => ({
+        name: `${table.database}.${table.table}`,
+        value: table.accessCount,
+      })),
+      this.chartColors.info,
+      value => this.formatNumber(value),
+    );
+  }
+
+  getCompactionScoreChartOptions() {
+    const partitions = this.compactionPartitions;
+    if (!partitions.length) {
+      return {};
+    }
+    return horizontalBarOption(
+      this.chartColors,
+      partitions.map(partition => ({
+        name: `${partition.tableName}.${partition.partitionName}`,
+        value: partition.maxScore,
+      })),
+      this.chartColors.warning,
+      value => value.toFixed(1),
+    );
   }
 
   // Helper methods
@@ -480,7 +841,7 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
   }
 
   getLatencyCardTitle(): string {
-    return `${this.selectedLatencyPercentile} 延迟`;
+    return this.selectedLatencyPercentile;
   }
   
   // Cycle through disk/cache metrics on click
@@ -511,7 +872,7 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
   }
   
   getDiskCardTitle(): string {
-    return this.selectedDiskMetric === 'percentage' ? '本地磁盘' : '缓存使用';
+    return this.selectedDiskMetric === 'percentage' ? '磁盘' : '缓存';
   }
   
   getDiskCardDescription(): string {
@@ -574,8 +935,8 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: this.hexToRgba(color, 0.15) },  // Very subtle gradient
-              { offset: 1, color: this.hexToRgba(color, 0.01) },  // Almost transparent
+              { offset: 0, color: this.hexToRgba(color, 0.12) },
+              { offset: 1, color: this.hexToRgba(color, 0.01) },
             ],
           },
         },
@@ -585,13 +946,13 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
     return baseSeries;
   }
 
-  private getBaseChartOptions(color: string): any {
+  private getBaseChartOptions(_color: string): any {
     return {
       grid: {
-        left: '3%',
-        right: '4%',
-        bottom: '3%',
-        top: '12%',
+        left: 8,
+        right: 12,
+        bottom: 4,
+        top: 28,
         containLabel: true,
       },
       tooltip: {
@@ -601,7 +962,6 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
           lineStyle: {
             color: this.chartColors.border,
             width: 1,
-            type: 'solid',
           },
         },
         backgroundColor: this.chartColors.cardBg,
@@ -613,61 +973,189 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
         },
         padding: [8, 12],
       },
+      legend: {
+        top: 0,
+        left: 0,
+        icon: 'circle',
+        itemWidth: 8,
+        itemHeight: 8,
+        textStyle: {
+          color: this.chartColors.textHint,
+          fontSize: 11,
+        },
+      },
       xAxis: {
         type: 'category',
         boundaryGap: false,
-        show: true,
         axisLabel: {
-          show: true,
           color: this.chartColors.textHint,
           fontSize: 11,
-          margin: 8,
         },
-        axisLine: {
-          show: true,
-          lineStyle: {
-            color: this.chartColors.border,
-            width: 1,
-          },
-        },
-        axisTick: {
-          show: true,
-          lineStyle: {
-            color: this.chartColors.border,
-          },
-        },
+        axisLine: { show: false },
+        axisTick: { show: false },
       },
       yAxis: {
         type: 'value',
-        show: true,
+        splitNumber: 3,
         axisLabel: {
-          show: true,
           color: this.chartColors.textHint,
           fontSize: 11,
-          margin: 8,
         },
-        axisLine: {
-          show: true,
-          lineStyle: {
-            color: this.chartColors.border,
-            width: 1,
-          },
-        },
-        axisTick: {
-          show: true,
-          lineStyle: {
-            color: this.chartColors.border,
-          },
-        },
+        axisLine: { show: false },
+        axisTick: { show: false },
         splitLine: {
-          show: true,
           lineStyle: {
             color: this.chartColors.border,
             width: 1,
-            type: 'solid',
           },
         },
       },
+    };
+  }
+
+  getErrorRateChartOptions(): any {
+    const points = this.performanceTrends?.error_rate;
+    if (!points?.length) {
+      return {};
+    }
+    const color = this.chartColors.danger || '#ff3d71';
+    return {
+      ...this.getBaseChartOptions(color),
+      legend: {
+        ...this.getBaseChartOptions(color).legend,
+        data: ['错误率'],
+      },
+      tooltip: {
+        ...this.getBaseChartOptions(color).tooltip,
+        formatter: (params: any) => {
+          const point = params[0];
+          return `${point.axisValue}<br/>${point.marker} 错误率: ${point.value.toFixed(2)}%`;
+        },
+      },
+      xAxis: {
+        ...this.getBaseChartOptions(color).xAxis,
+        data: points.map(d => new Date(d.timestamp).toLocaleTimeString()),
+      },
+      yAxis: {
+        ...this.getBaseChartOptions(color).yAxis,
+        axisLabel: {
+          ...this.getBaseChartOptions(color).yAxis.axisLabel,
+          formatter: (value: number) => `${value}%`,
+        },
+      },
+      series: [
+        this.getLineSeries('错误率', points.map(d => d.value), color),
+      ],
+    };
+  }
+
+  getTimeoutRateChartOptions(): any {
+    const points = this.performanceTrends?.timeout_rate;
+    if (!points?.length) {
+      return {};
+    }
+    const color = this.chartColors.warning || '#ffaa00';
+    return {
+      ...this.getBaseChartOptions(color),
+      legend: {
+        ...this.getBaseChartOptions(color).legend,
+        data: ['超时率'],
+      },
+      tooltip: {
+        ...this.getBaseChartOptions(color).tooltip,
+        formatter: (params: any) => {
+          const point = params[0];
+          return `${point.axisValue}<br/>${point.marker} 超时率: ${point.value.toFixed(2)}%`;
+        },
+      },
+      xAxis: {
+        ...this.getBaseChartOptions(color).xAxis,
+        data: points.map(d => new Date(d.timestamp).toLocaleTimeString()),
+      },
+      yAxis: {
+        ...this.getBaseChartOptions(color).yAxis,
+        axisLabel: {
+          ...this.getBaseChartOptions(color).yAxis.axisLabel,
+          formatter: (value: number) => `${value}%`,
+        },
+      },
+      series: [
+        this.getLineSeries('超时率', points.map(d => d.value), color),
+      ],
+    };
+  }
+
+  getTxnChartOptions(): any {
+    const success = this.resourceTrends?.txn_success;
+    const failed = this.resourceTrends?.txn_failed;
+    if (!success?.length && !failed?.length) {
+      return {};
+    }
+    const axis = success?.length ? success : failed;
+    const successColor = this.chartColors.success || '#00d68f';
+    const failedColor = this.chartColors.danger || '#ff3d71';
+    return {
+      ...this.getBaseChartOptions(successColor),
+      legend: {
+        ...this.getBaseChartOptions(successColor).legend,
+        data: ['成功', '失败'],
+      },
+      tooltip: {
+        ...this.getBaseChartOptions(successColor).tooltip,
+        formatter: (params: any) => {
+          let result = `${params[0].axisValue}<br/>`;
+          params.forEach((param: any) => {
+            result += `${param.marker} ${param.seriesName}: ${Math.round(param.value)}<br/>`;
+          });
+          return result;
+        },
+      },
+      xAxis: {
+        ...this.getBaseChartOptions(successColor).xAxis,
+        data: axis.map(d => new Date(d.timestamp).toLocaleTimeString()),
+      },
+      series: [
+        this.getLineSeries('成功', (success || []).map(d => d.value), successColor),
+        this.getLineSeries('失败', (failed || []).map(d => d.value), failedColor, false),
+      ],
+    };
+  }
+
+  getCompactionScoreTrendOptions(): any {
+    const points = this.resourceTrends?.compaction_score;
+    if (!points?.length) {
+      return {};
+    }
+    const color = this.chartColors.warning || '#ffaa00';
+    const series = this.getLineSeries('Score', points.map(d => d.value), color);
+    return {
+      ...this.getBaseChartOptions(color),
+      legend: {
+        ...this.getBaseChartOptions(color).legend,
+        data: ['Score'],
+      },
+      tooltip: {
+        ...this.getBaseChartOptions(color).tooltip,
+        formatter: (params: any) => {
+          const point = params[0];
+          return `${point.axisValue}<br/>${point.marker} Score: ${point.value.toFixed(1)}`;
+        },
+      },
+      xAxis: {
+        ...this.getBaseChartOptions(color).xAxis,
+        data: points.map(d => new Date(d.timestamp).toLocaleTimeString()),
+      },
+      series: [
+        {
+          ...series,
+          markLine: {
+            silent: true,
+            symbol: 'none',
+            lineStyle: { color: this.chartColors.danger, type: 'dashed', width: 1 },
+            data: [{ yAxis: 100, label: { formatter: '100', color: this.chartColors.danger } }],
+          },
+        },
+      ],
     };
   }
 
@@ -687,28 +1175,16 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
     return {
       ...this.getBaseChartOptions(qpsColor),
       legend: {
-        data: ['QPS (查询/秒)', 'RPS (请求/秒)'],
-        textStyle: { color: this.chartColors.textBasic },
-        top: 0,
-      },
-      tooltip: {
-        trigger: 'axis',
-        backgroundColor: this.chartColors.cardBg,
-        borderColor: qpsColor,
-        textStyle: { color: this.chartColors.textBasic },
+        ...this.getBaseChartOptions(qpsColor).legend,
+        data: ['QPS', 'RPS'],
       },
       xAxis: {
         ...this.getBaseChartOptions(qpsColor).xAxis,
         data: times,
       },
-      yAxis: {
-        ...this.getBaseChartOptions(qpsColor).yAxis,
-        name: '次数/秒',
-        nameTextStyle: { color: this.chartColors.textHint },
-      },
       series: [
-        this.getLineSeries('QPS (查询/秒)', qpsValues, qpsColor),
-        this.getLineSeries('RPS (请求/秒)', rpsValues, rpsColor),
+        this.getLineSeries('QPS', qpsValues, qpsColor),
+        this.getLineSeries('RPS', rpsValues, rpsColor),
       ],
     };
   }
@@ -733,19 +1209,15 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
     return {
       ...this.getBaseChartOptions(p99Color),
       legend: {
-        data: ['P50 (中位数)', 'P95', 'P99 (最差)'],
-        textStyle: { color: this.chartColors.textBasic },
-        top: 0,
+        ...this.getBaseChartOptions(p99Color).legend,
+        data: ['P50', 'P95', 'P99'],
       },
       tooltip: {
-        trigger: 'axis',
-        backgroundColor: this.chartColors.cardBg,
-        borderColor: p99Color,
-        textStyle: { color: this.chartColors.textBasic },
+        ...this.getBaseChartOptions(p99Color).tooltip,
         formatter: (params: any) => {
           let result = params[0].axisValue + '<br/>';
           params.forEach((item: any) => {
-            result += `${item.marker} ${item.seriesName}: ${item.value.toFixed(2)} ms<br/>`;
+            result += `${item.marker} ${item.seriesName}: ${item.value.toFixed(0)} ms<br/>`;
           });
           return result;
         },
@@ -756,17 +1228,15 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
       },
       yAxis: {
         ...this.getBaseChartOptions(p99Color).yAxis,
-        name: '延迟 (ms)',
-        nameTextStyle: { color: this.chartColors.textHint },
-        axisLabel: { 
+        axisLabel: {
           ...this.getBaseChartOptions(p99Color).yAxis.axisLabel,
           formatter: (value: number) => value.toFixed(0),
         },
       },
       series: [
-        this.getLineSeries('P50 (中位数)', p50Values, p50Color, false),  // No area fill
-        this.getLineSeries('P95', p95Values, p95Color, false),  // No area fill
-        this.getLineSeries('P99 (最差)', p99Values, p99Color, true),  // With area fill
+        this.getLineSeries('P50', p50Values, p50Color, false),
+        this.getLineSeries('P95', p95Values, p95Color, false),
+        this.getLineSeries('P99', p99Values, p99Color, true),
       ],
     };
   }
@@ -867,105 +1337,104 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
     };
   }
 
-  // JVM Heap Memory Usage Chart (FE JVM堆内存使用率)
   getJvmHeapChartOptions(): any {
     if (!this.resourceTrends || !this.resourceTrends.jvm_heap_usage) {
       return {};
     }
-    
+
     const data = this.resourceTrends.jvm_heap_usage;
     const times = data.map(d => new Date(d.timestamp).toLocaleTimeString());
     const values = data.map(d => d.value);
     const color = this.chartColors.info || '#0095ff';
+    const threadColor = this.chartColors.warning || '#ffaa00';
+    const threads = this.resourceTrends.jvm_thread_count || [];
+    const series = this.getLineSeries('JVM', values, color, true);
+    const threadSeries = threads.length
+      ? {
+          ...this.getLineSeries('线程', threads.map(point => point.value), threadColor, false),
+          yAxisIndex: 1,
+        }
+      : null;
 
     return {
       ...this.getBaseChartOptions(color),
+      legend: {
+        ...this.getBaseChartOptions(color).legend,
+        data: threadSeries ? ['JVM', '线程'] : ['JVM'],
+      },
       tooltip: {
-        trigger: 'axis',
-        backgroundColor: this.chartColors.cardBg,
-        borderColor: color,
-        textStyle: { color: this.chartColors.textBasic },
+        ...this.getBaseChartOptions(color).tooltip,
         formatter: (params: any) => {
-          const value = params[0].value;
-          return `${params[0].axisValue}<br/>${params[0].marker} JVM 堆内存: ${value.toFixed(1)}%`;
+          let result = `${params[0].axisValue}<br/>`;
+          params.forEach((param: any) => {
+            const suffix = param.seriesName === 'JVM' ? '%' : '';
+            result += `${param.marker} ${param.seriesName}: ${Number(param.value).toFixed(1)}${suffix}<br/>`;
+          });
+          return result;
         },
       },
       xAxis: {
         ...this.getBaseChartOptions(color).xAxis,
         data: times,
       },
-      yAxis: {
-        ...this.getBaseChartOptions(color).yAxis,
-        max: 100,
-        name: '使用率 (%)',
-        nameTextStyle: { color: this.chartColors.textHint },
-        axisLabel: { 
-          ...this.getBaseChartOptions(color).yAxis.axisLabel,
-          formatter: (value: number) => `${value}%`,
+      yAxis: [
+        {
+          ...this.getBaseChartOptions(color).yAxis,
+          max: 100,
+          axisLabel: {
+            ...this.getBaseChartOptions(color).yAxis.axisLabel,
+            formatter: (value: number) => `${value}%`,
+          },
         },
-      },
+        {
+          ...this.getBaseChartOptions(color).yAxis,
+          splitLine: { show: false },
+        },
+      ],
       series: [
         {
-          name: 'JVM Heap Usage (%)',
-          type: 'line',
-          smooth: true,
-          symbol: 'circle',
-          symbolSize: 6,
-          sampling: 'lttb',
-          itemStyle: {
-            color: color,
-            borderWidth: 2,
-            borderColor: this.chartColors.cardBg,
-          },
-          lineStyle: { width: 3 },
-          areaStyle: {
-            color: {
-              type: 'linear',
-              x: 0,
-              y: 0,
-              x2: 0,
-              y2: 1,
-              colorStops: [
-                { offset: 0, color: this.hexToRgba(color, 0.5) },
-                { offset: 1, color: this.hexToRgba(color, 0.05) },
-              ],
-            },
-          },
-          data: values,
+          ...series,
           markLine: {
             silent: true,
-            lineStyle: { color: this.chartColors.danger, type: 'dashed', width: 2 },
-            data: [{ yAxis: 80, label: { formatter: '警戒线 80%', color: this.chartColors.danger } }],
+            symbol: 'none',
+            lineStyle: { color: this.chartColors.danger, type: 'dashed', width: 1 },
+            data: [{ yAxis: 80, label: { formatter: '80%', color: this.chartColors.danger } }],
           },
         },
+        ...(threadSeries ? [threadSeries] : []),
       ],
     };
   }
 
-  // Combined CPU/Memory/Disk Chart (三合一资源图表)
   getResourceChartOptions(): any {
-    if (!this.resourceTrends || 
-        !this.resourceTrends.cpu_usage || 
-        !this.resourceTrends.memory_usage || 
+    if (!this.resourceTrends ||
+        !this.resourceTrends.cpu_usage ||
+        !this.resourceTrends.memory_usage ||
         !this.resourceTrends.disk_usage) {
       return {};
     }
 
-    const cpuData = this.resourceTrends.cpu_usage;
-    const memoryData = this.resourceTrends.memory_usage;
-    const diskData = this.resourceTrends.disk_usage;
-    
-    const times = cpuData.map(d => new Date(d.timestamp).toLocaleTimeString());
-    const cpuValues = cpuData.map(d => d.value);
-    const memoryValues = memoryData.map(d => d.value);
-    const diskValues = diskData.map(d => d.value);
-    
+    const times = this.resourceTrends.cpu_usage.map(d => new Date(d.timestamp).toLocaleTimeString());
     const cpuColor = this.chartColors.primary || '#3366ff';
     const memoryColor = this.chartColors.danger || '#ff3d71';
     const diskColor = this.chartColors.success || '#00d68f';
 
     return {
       ...this.getBaseChartOptions(cpuColor),
+      legend: {
+        ...this.getBaseChartOptions(cpuColor).legend,
+        data: ['CPU', '内存', '磁盘'],
+      },
+      tooltip: {
+        ...this.getBaseChartOptions(cpuColor).tooltip,
+        formatter: (params: any) => {
+          let result = params[0].axisValue + '<br/>';
+          params.forEach((param: any) => {
+            result += `${param.marker} ${param.seriesName}: ${param.value.toFixed(1)}%<br/>`;
+          });
+          return result;
+        },
+      },
       xAxis: {
         ...this.getBaseChartOptions(cpuColor).xAxis,
         data: times,
@@ -978,117 +1447,16 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
           formatter: '{value}%',
         },
       },
-      legend: {
-        data: ['CPU', 'Memory', 'Disk'],
-        top: 0,
-        textStyle: { color: this.chartColors.textBasic },
-      },
-      tooltip: {
-        trigger: 'axis',
-        backgroundColor: this.chartColors.cardBg,
-        textStyle: { color: this.chartColors.textBasic },
-        axisPointer: {
-          type: 'cross',
-        },
-        formatter: (params: any) => {
-          let result = params[0].axisValue + '<br/>';
-          params.forEach((param: any) => {
-            result += `${param.marker} ${param.seriesName}: ${param.value.toFixed(1)}%<br/>`;
-          });
-          return result;
-        },
-      },
       series: [
-        {
-          name: 'CPU',
-          type: 'line',
-          smooth: true,
-          symbol: 'circle',
-          symbolSize: 6,
-          sampling: 'lttb',
-          itemStyle: {
-            color: cpuColor,
-          },
-          lineStyle: {
-            width: 2,
-          },
-          areaStyle: {
-            color: {
-              type: 'linear',
-              x: 0,
-              y: 0,
-              x2: 0,
-              y2: 1,
-              colorStops: [
-                { offset: 0, color: this.hexToRgba(cpuColor, 0.2) },
-                { offset: 1, color: this.hexToRgba(cpuColor, 0.02) },
-              ],
-            },
-          },
-          data: cpuValues,
-        },
-        {
-          name: 'Memory',
-          type: 'line',
-          smooth: true,
-          symbol: 'circle',
-          symbolSize: 6,
-          sampling: 'lttb',
-          itemStyle: {
-            color: memoryColor,
-          },
-          lineStyle: {
-            width: 2,
-          },
-          areaStyle: {
-            color: {
-              type: 'linear',
-              x: 0,
-              y: 0,
-              x2: 0,
-              y2: 1,
-              colorStops: [
-                { offset: 0, color: this.hexToRgba(memoryColor, 0.2) },
-                { offset: 1, color: this.hexToRgba(memoryColor, 0.02) },
-              ],
-            },
-          },
-          data: memoryValues,
-        },
-        {
-          name: 'Disk',
-          type: 'line',
-          smooth: true,
-          symbol: 'circle',
-          symbolSize: 6,
-          sampling: 'lttb',
-          itemStyle: {
-            color: diskColor,
-          },
-          lineStyle: {
-            width: 2,
-          },
-          areaStyle: {
-            color: {
-              type: 'linear',
-              x: 0,
-              y: 0,
-              x2: 0,
-              y2: 1,
-              colorStops: [
-                { offset: 0, color: this.hexToRgba(diskColor, 0.2) },
-                { offset: 1, color: this.hexToRgba(diskColor, 0.02) },
-              ],
-            },
-          },
-          data: diskValues,
-        },
+        this.getLineSeries('CPU', this.resourceTrends.cpu_usage.map(d => d.value), cpuColor),
+        this.getLineSeries('内存', this.resourceTrends.memory_usage.map(d => d.value), memoryColor),
+        this.getLineSeries('磁盘', this.resourceTrends.disk_usage.map(d => d.value), diskColor),
       ],
     };
   }
 
   getNetworkChartOptions(): any {
-    if (!this.resourceTrends || !this.resourceTrends.network_tx || !this.resourceTrends.network_rx) {
+    if (!this.resourceTrends?.network_tx?.length || !this.resourceTrends?.network_rx?.length) {
       return {};
     }
 
@@ -1175,7 +1543,7 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
   }
 
   getIoChartOptions(): any {
-    if (!this.resourceTrends || !this.resourceTrends.io_read || !this.resourceTrends.io_write) {
+    if (!this.resourceTrends?.io_read?.length || !this.resourceTrends?.io_write?.length) {
       return {};
     }
 

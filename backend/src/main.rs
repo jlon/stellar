@@ -219,6 +219,7 @@ use stellar::{AppState, handlers, middleware, services};
             services::PerformanceTrends,
             services::ResourceTrends,
             services::MetricsSnapshot,
+            services::ClusterResourceSummary,
             services::DataStatistics,
             services::TopTableBySize,
             services::TopTableByAccess,
@@ -470,6 +471,12 @@ where
         let executor = ScheduledExecutor::new("metrics-collector", interval);
         let service = Arc::clone(&metrics_collector_service);
         tokio::spawn(async move {
+            let warmup = Arc::clone(&service);
+            tokio::spawn(async move {
+                if let Err(e) = warmup.collect_once().await {
+                    tracing::error!("Initial metrics collection failed: {}", e);
+                }
+            });
             executor.start(service).await;
         });
     } else {

@@ -40,6 +40,8 @@ pub struct DataStatistics {
 
     pub top_tables_by_size: Vec<TopTableBySize>,
     pub top_tables_by_access: Vec<TopTableByAccess>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access_error: Option<String>,
 
     pub mv_total: i32,
     pub mv_running: i32,
@@ -99,17 +101,21 @@ impl<DB: AppDb> DataStatisticsService<DB> {
         let time_range_start =
             time_range_start.unwrap_or_else(|| chrono::Utc::now() - chrono::Duration::days(3));
         let hours = (chrono::Utc::now() - time_range_start).num_hours().max(1) as i32;
-        let top_tables_by_access = self
-            .audit_log_service
-            .get_top_tables_by_access(&cluster, hours, 20)
-            .await
-            .unwrap_or_else(|e| {
-                tracing::warn!(
-                    "Failed to get top tables by access from audit logs: {}. Returning empty list.",
-                    e
-                );
-                Vec::new()
-            });
+        let audit_table = self.audit_log_service.audit_table_name(&cluster);
+        let (top_tables_by_access, access_error) =
+            match self.audit_log_service.get_top_tables_by_access(&cluster, hours, 20).await {
+                Ok(tables) => (tables, None),
+                Err(e) => {
+                    let reason =
+                        crate::services::audit_log_service::audit_query_user_message(&e, &audit_table);
+                    tracing::warn!(
+                        "Failed to get top tables by access for cluster {}: {}",
+                        cluster.name,
+                        e
+                    );
+                    (Vec::new(), Some(reason))
+                },
+            };
 
         let total_data_size = self.get_total_data_size_mysql(&mysql_client).await?;
         let total_index_size: i64 = 0;
@@ -139,6 +145,7 @@ impl<DB: AppDb> DataStatisticsService<DB> {
             total_index_size,
             top_tables_by_size,
             top_tables_by_access,
+            access_error,
             mv_total,
             mv_running,
             mv_failed,
@@ -187,6 +194,7 @@ impl<DB: AppDb> DataStatisticsService<DB> {
             active_users_1h: i64,
             active_users_24h: i64,
             unique_users: Option<String>,
+            access_error: Option<String>,
         }
 
         let row: Option<DataStatisticsRow> = db_query::query_as(
@@ -227,6 +235,7 @@ impl<DB: AppDb> DataStatisticsService<DB> {
                 total_index_size: r.total_index_size,
                 top_tables_by_size,
                 top_tables_by_access,
+                access_error: r.access_error,
                 mv_total: r.mv_total as i32,
                 mv_running: r.mv_running as i32,
                 mv_failed: r.mv_failed as i32,
@@ -358,12 +367,12 @@ impl<DB: AppDb> DataStatisticsService<DB> {
             "INSERT INTO data_statistics (\n\
               \x20   cluster_id, updated_at,\n\
               \x20   database_count, table_count, total_data_size, total_index_size,\n\
-              \x20   top_tables_by_size, top_tables_by_access,\n\
+              \x20   top_tables_by_size, top_tables_by_access, access_error,\n\
               \x20   mv_total, mv_running, mv_failed, mv_success,\n\
               \x20   schema_change_running, schema_change_pending, \n\
               \x20   schema_change_finished, schema_change_failed,\n\
               \x20   active_users_1h, active_users_24h, unique_users\n\
-              \x20) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) {}",
+              \x20) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) {}",
             <DB as SqlDialect>::upsert_suffix(
                 &["cluster_id"],
                 &[
@@ -374,6 +383,7 @@ impl<DB: AppDb> DataStatisticsService<DB> {
                     "total_index_size",
                     "top_tables_by_size",
                     "top_tables_by_access",
+                    "access_error",
                     "mv_total",
                     "mv_running",
                     "mv_failed",
@@ -399,6 +409,7 @@ impl<DB: AppDb> DataStatisticsService<DB> {
             .bind(stats.total_index_size)
             .bind(top_tables_by_size_json)
             .bind(top_tables_by_access_json)
+            .bind(stats.access_error.as_deref())
             .bind(stats.mv_total)
             .bind(stats.mv_running)
             .bind(stats.mv_failed)

@@ -43,12 +43,53 @@
     }
 
     .logo {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
       padding: 0 1.25rem;
-      font-size: 1.75rem;
+      font-size: 1.5rem;
+      font-weight: 600;
       @include nb-ltr(border-left, 1px solid nb-theme(divider-color));
       @include nb-rtl(border-right, 1px solid nb-theme(divider-color));
       white-space: nowrap;
       text-decoration: none;
+      color: nb-theme(text-basic-color);
+
+      .logo-img {
+        width: 1.75rem;
+        height: 1.75rem;
+        display: block;
+      }
+
+      .logo-text {
+        letter-spacing: 0.02em;
+      }
+    }
+
+    .header-select {
+      min-width: auto;
+      max-width: 12rem;
+
+      ::ng-deep button {
+        padding: 0.25rem 2rem 0.25rem 0.75rem !important;
+        border-color: transparent !important;
+        background: transparent !important;
+        box-shadow: none !important;
+      }
+
+      ::ng-deep button:hover {
+        background: transparent !important;
+      }
+    }
+
+    .header-select-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+
+      nb-icon {
+        font-size: 1rem;
+      }
     }
   }
 
@@ -66,5 +107,22 @@
     nb-select {
       display: none;
     }
+  }
+}
+
+ngx-header .action-email nb-icon {
+  color: nb-theme(color-info-default) !important;
+}
+
+ngx-header .action-bell nb-icon {
+  color: nb-theme(color-warning-default) !important;
+}
+
+ngx-header .theme-action {
+  cursor: pointer;
+
+  nb-icon {
+    font-size: 1.25rem;
+    color: nb-theme(color-primary-default) !important;
   }
 }

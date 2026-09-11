@@ -3,20 +3,20 @@ import { NbMenuItem } from '@nebular/theme';
 export const MENU_ITEMS: NbMenuItem[] = [
   {
     title: '集群列表',
-    icon: 'list-outline',
+    icon: { icon: 'list-outline', status: 'info' },
     link: '/pages/starrocks/dashboard',
     home: true,
     data: { permission: 'menu:dashboard' },
   } as NbMenuItem & { data?: { permission: string } },
   {
     title: '集群概览',
-    icon: 'activity-outline',
+    icon: { icon: 'activity-outline', status: 'success' },
     link: '/pages/starrocks/overview',
     data: { permission: 'menu:overview' },
   } as NbMenuItem & { data?: { permission: string } },
   {
     title: '节点管理',
-    icon: 'hard-drive-outline',
+    icon: { icon: 'hard-drive-outline', status: 'warning' },
     data: { permission: 'menu:nodes' },
     children: [
       {
@@ -33,7 +33,7 @@ export const MENU_ITEMS: NbMenuItem[] = [
   } as NbMenuItem & { data?: { permission: string } },
   {
     title: '查询管理',
-    icon: 'search-outline',
+    icon: { icon: 'search-outline', status: 'primary' },
     data: { permission: 'menu:queries' },
     children: [
       {
@@ -60,31 +60,31 @@ export const MENU_ITEMS: NbMenuItem[] = [
   } as NbMenuItem & { data?: { permission: string } },
   {
     title: '物化视图',
-    icon: 'cube-outline',
+    icon: { icon: 'cube-outline', status: 'info' },
     link: '/pages/starrocks/materialized-views',
     data: { permission: 'menu:materialized-views' },
   } as NbMenuItem & { data?: { permission: string } },
   {
     title: '功能卡片',
-    icon: 'grid-outline',
+    icon: { icon: 'grid-outline', status: 'warning' },
     link: '/pages/starrocks/system',
     data: { permission: 'menu:system-functions' },
   } as NbMenuItem & { data?: { permission: string } },
   {
     title: '会话管理',
-    icon: 'person-outline',
+    icon: { icon: 'person-outline', status: 'success' },
     link: '/pages/starrocks/sessions',
     data: { permission: 'menu:sessions' },
   } as NbMenuItem & { data?: { permission: string } },
   {
     title: '变量管理',
-    icon: 'options-2-outline',
+    icon: { icon: 'options-2-outline', status: 'primary' },
     link: '/pages/starrocks/variables',
     data: { permission: 'menu:variables' },
   } as NbMenuItem & { data?: { permission: string } },
   {
     title: '集群运维',
-    icon: 'shield-outline',
+    icon: { icon: 'shield-outline', status: 'danger' },
     data: { permission: 'menu:cluster-ops' },
     children: [
       {
@@ -101,7 +101,7 @@ export const MENU_ITEMS: NbMenuItem[] = [
   } as NbMenuItem & { data?: { permission: string } },
   {
     title: '系统管理',
-    icon: 'people-outline',
+    icon: { icon: 'people-outline', status: 'info' },
     data: { permission: 'menu:system' }, // Parent menu permission
     children: [
       {

@@ -4,6 +4,22 @@
 
 @include nb-install-component() {
   .menu-sidebar ::ng-deep .scrollable {
-    padding-top: nb-theme(layout-padding-top);
+    padding-top: 0;
+  }
+
+  ::ng-deep .layout .layout-container .columns nb-layout-column.main-column {
+    padding: 0;
+  }
+
+  .main-column__body {
+    padding: 0.75rem 2.25rem 0.75rem;
+
+    @include media-breakpoint-down(md) {
+      padding: 0.75rem 1.5rem 0.5rem;
+    }
+
+    @include media-breakpoint-down(sm) {
+      padding: 0.75rem 1rem 0;
+    }
   }
 }

@@ -1,14 +1,15 @@
 import { Component, OnInit, OnDestroy, inject } from '@angular/core';
-import { interval, Subject } from 'rxjs';
-import { takeUntil, switchMap } from 'rxjs/operators';
+import { Subject } from 'rxjs';
+import { takeUntil, timeout } from 'rxjs/operators';
 import { NbToastrService, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule } from '@nebular/theme';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { NodeService, Backend } from '../../../@core/data/node.service';
-import { ClusterService, Cluster } from '../../../@core/data/cluster.service';
+import { Cluster, ClusterService } from '../../../@core/data/cluster.service';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
 import { ErrorHandler } from '../../../@core/utils/error-handler';
 import { ConfirmDialogService } from '../../../@core/services/confirm-dialog.service';
 import { MetricThresholds, renderMetricBadge } from '../../../@core/utils/metric-badge';
+import { assignTableRows } from '../../../@core/utils/table-rows';
 
 
 @Component({
@@ -31,25 +32,22 @@ export class BackendsComponent implements OnInit, OnDestroy {
   private confirmDialogService = inject(ConfirmDialogService);
 
   source: LocalDataSource = new LocalDataSource();
-  clusterId: number;
+  clusterId = 0;
   activeCluster: Cluster | null = null;
-  clusterName: string = '';
-  deploymentMode: string = '';
-  pageTitle: string = 'Backend 节点';
-  deploymentModeText: string = '';
-  deploymentModeBadgeClass: string = '';
+  clusterName = '';
+  deploymentMode = '';
+  pageTitle = 'Backend 节点';
   loading = true;
   private destroy$ = new Subject<void>();
+  private loadSeq = 0;
   private readonly diskThresholds: MetricThresholds = { warn: 70, danger: 85 };
   private readonly cpuThresholds: MetricThresholds = { warn: 60, danger: 85 };
   private readonly memoryThresholds: MetricThresholds = { warn: 65, danger: 85 };
 
   settings = {
-    mode: 'external',
-    hideSubHeader: false, // Enable search
+    hideSubHeader: false,
     noDataMessage: '暂无计算节点数据',
     actions: {
-      columnTitle: '操作',
       add: false,
       edit: false,
       delete: true,
@@ -57,146 +55,57 @@ export class BackendsComponent implements OnInit, OnDestroy {
     },
     delete: {
       deleteButtonContent: '<i class="nb-trash"></i>',
-      confirmDelete: true,  // Enable custom confirmation via deleteConfirm event
+      confirmDelete: true,
     },
     pager: {
       display: true,
       perPage: 15,
     },
     columns: {
-      BackendId: {
-        title: '节点 ID',
-        type: 'string',
-        width: '8%',
-      },
-      IP: {
-        title: '主机',
-        type: 'string',
-        width: '12%',
-      },
-      HeartbeatPort: {
-        title: '心跳端口',
-        type: 'string',
-        width: '8%',
-      },
-      BePort: {
-        title: '服务端口',
-        type: 'string',
-        width: '8%',
-      },
-      HttpPort: {
-        title: 'HTTP端口',
-        type: 'string',
-        width: '8%',
-      },
+      BackendId: { title: '节点ID', type: 'string' },
+      IP: { title: '主机地址', type: 'string' },
+      HeartbeatPort: { title: '心跳端口', type: 'string' },
+      BePort: { title: '服务端口', type: 'string' },
+      HttpPort: { title: 'HTTP端口', type: 'string' },
       Alive: {
         title: '状态',
         type: 'html',
         sanitizer: { bypassHtml: true },
-        width: '8%',
         valuePrepareFunction: (value: string) => {
-          const status = value === 'true' ? 'success' : 'danger';
-          const text = value === 'true' ? '在线' : '离线';
+          const online = value === 'true';
+          const status = online ? 'success' : 'danger';
+          const text = online ? '在线' : '离线';
           return `<span class="badge badge-${status}">${text}</span>`;
         },
       },
-      Version: {
-        title: '版本',
-        type: 'string',
-        width: '10%',
-      },
-      TabletNum: {
-        title: 'Tablet 数',
-        type: 'string',
-        width: '8%',
-      },
-      DataUsedCapacity: {
-        title: '已用存储',
-        type: 'string',
-        width: '10%',
-      },
-      TotalCapacity: {
-        title: '总存储',
-        type: 'string',
-        width: '10%',
-      },
+      Version: { title: '版本', type: 'string' },
+      TabletNum: { title: 'Tablet数', type: 'string' },
+      DataUsedCapacity: { title: '已用容量', type: 'string' },
+      TotalCapacity: { title: '总容量', type: 'string' },
       UsedPct: {
-        title: '磁盘使用率',
+        title: '使用率',
         type: 'html',
         sanitizer: { bypassHtml: true },
-        width: '10%',
-        valuePrepareFunction: (value: string) => renderMetricBadge(value, this.diskThresholds),
+        valuePrepareFunction: (value: string | number) => renderMetricBadge(value, this.diskThresholds),
       },
-      CpuCores: {
-        title: 'CPU核数',
-        type: 'string',
-        width: '8%',
-      },
+      CpuCores: { title: 'CPU核数', type: 'string' },
       CpuUsedPct: {
-        title: 'CPU 使用率',
+        title: 'CPU使用率',
         type: 'html',
         sanitizer: { bypassHtml: true },
-        width: '10%',
-        valuePrepareFunction: (value: string) => renderMetricBadge(value, this.cpuThresholds),
+        valuePrepareFunction: (value: string | number) => renderMetricBadge(value, this.cpuThresholds),
       },
-      MemLimit: {
-        title: '内存限制',
-        type: 'string',
-        width: '10%',
-      },
+      MemLimit: { title: '内存限制', type: 'string' },
       MemUsedPct: {
         title: '内存使用率',
         type: 'html',
         sanitizer: { bypassHtml: true },
-        width: '10%',
-        valuePrepareFunction: (value: string) => renderMetricBadge(value, this.memoryThresholds),
+        valuePrepareFunction: (value: string | number) => renderMetricBadge(value, this.memoryThresholds),
       },
-      NumRunningQueries: {
-        title: '运行查询数',
-        type: 'string',
-        width: '8%',
-      },
-      LastHeartbeat: {
-        title: '最后心跳',
-        type: 'string',
-        width: '12%',
-      },
+      NumRunningQueries: { title: '运行查询', type: 'string' },
+      LastHeartbeat: { title: '最后心跳', type: 'string' },
     },
   };
-
-  onDeleteConfirm(event: any): void {
-    const backend = event.data;
-    const itemName = `${backend.IP}:${backend.HeartbeatPort}`;
-    const nodeType = this.deploymentMode === 'shared_data' ? 'CN (Compute Node)' : 'BE (Backend)';
-    const additionalWarning = `⚠️ 警告: 删除${nodeType}节点是危险操作，请确保：\n1. 节点数据已迁移完成\n2. 集群有足够的副本数\n3. 该节点已停止服务`;
-    
-    this.confirmDialogService.confirmDelete(itemName, additionalWarning)
-      .subscribe(confirmed => {
-        if (!confirmed) {
-          event.confirm.reject();
-          return;
-        }
-
-        this.nodeService.deleteBackend(backend.IP, backend.HeartbeatPort)
-          .subscribe({
-            next: () => {
-              this.toastrService.success(
-                `${nodeType} 节点 ${itemName} 已删除`,
-                '成功'
-              );
-              event.confirm.resolve();
-              this.loadBackends();
-            },
-            error: (error) => {
-              this.toastrService.danger(
-                ErrorHandler.extractErrorMessage(error),
-                '删除失败',
-              );
-              event.confirm.reject();
-            },
-          });
-      });
-  }
 
   constructor() {
     // Get clusterId from ClusterContextService
@@ -204,28 +113,20 @@ export class BackendsComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
-    // Subscribe to active cluster changes
-    // activeCluster$ is a BehaviorSubject, so it emits immediately on subscribe
     this.clusterContext.activeCluster$
       .pipe(takeUntil(this.destroy$))
       .subscribe(cluster => {
         this.activeCluster = cluster;
-        if (cluster) {
-          // Always use the active cluster (override route parameter)
-          const newClusterId = cluster.id;
-          if (this.clusterId !== newClusterId) {
-            this.clusterId = newClusterId;
-            this.loadClusterInfo();
-            this.loadBackends();
-          }
+        if (!cluster) {
+          return;
         }
-        // Backend will handle "no active cluster" case
-        
+        this.applyCluster(cluster);
+        const switched = this.clusterId !== 0 && this.clusterId !== cluster.id;
+        this.clusterId = cluster.id;
+        if (switched) {
+          this.loadBackends();
+        }
       });
-
-    // Load data - backend will get active cluster automatically
-    // This ensures data loads even if activeCluster$ hasn't emitted yet
-    this.loadClusterInfo();
     this.loadBackends();
   }
 
@@ -234,46 +135,68 @@ export class BackendsComponent implements OnInit, OnDestroy {
     this.destroy$.complete();
   }
 
-  loadClusterInfo(): void {
-    this.clusterService.getCluster(this.clusterId)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: (cluster) => {
-          this.clusterName = cluster.name;
-          this.deploymentMode = cluster.deployment_mode || 'shared_nothing';
-          
-          // Update page title and badge based on deployment mode
-          if (this.deploymentMode === 'shared_data') {
-            this.pageTitle = 'Compute Nodes (CN)';
-            this.deploymentModeText = '存算分离';
-            this.deploymentModeBadgeClass = 'badge-info';
-          } else {
-            this.pageTitle = 'Backend Nodes (BE)';
-            this.deploymentModeText = '存算一体';
-            this.deploymentModeBadgeClass = 'badge-success';
-          }
-        },
-      });
+  applyCluster(cluster: Cluster): void {
+    this.clusterName = cluster.name;
+    this.deploymentMode = cluster.deployment_mode || 'shared_nothing';
+    this.pageTitle = this.deploymentMode === 'shared_data'
+      ? 'Compute Nodes (CN)'
+      : 'Backend Nodes (BE)';
   }
 
   loadBackends(): void {
+    const seq = ++this.loadSeq;
     this.loading = true;
-    
     this.nodeService.listBackends()
-      .pipe(takeUntil(this.destroy$))
+      .pipe(takeUntil(this.destroy$), timeout(20000))
       .subscribe({
         next: (backends) => {
-          this.source.load(backends);
+          if (seq !== this.loadSeq) {
+            return;
+          }
+          void assignTableRows(this.source, backends);
           this.loading = false;
         },
         error: (error) => {
+          if (seq !== this.loadSeq) {
+            return;
+          }
           this.toastrService.danger(
             ErrorHandler.handleClusterError(error),
             '错误',
           );
-          this.source.load([]);
+          void assignTableRows(this.source, []);
           this.loading = false;
         },
       });
+  }
+
+  onDeleteConfirm(event: { data: Backend; confirm: { resolve: () => void; reject: () => void } }): void {
+    const backend = event.data;
+    const itemName = `${backend.IP}:${backend.HeartbeatPort}`;
+    const nodeType = this.deploymentMode === 'shared_data' ? 'CN' : 'BE';
+    this.confirmDialogService.confirmDelete(
+      itemName,
+      `删除${nodeType}节点前请确认数据已迁移、副本足够、节点已停服务`,
+    ).subscribe(confirmed => {
+      if (!confirmed) {
+        event.confirm.reject();
+        return;
+      }
+      this.nodeService.deleteBackend(backend.IP, backend.HeartbeatPort)
+        .subscribe({
+          next: () => {
+            this.toastrService.success(`${nodeType} ${itemName} 已删除`, '成功');
+            event.confirm.resolve();
+            this.loadBackends();
+          },
+          error: (error) => {
+            event.confirm.reject();
+            this.toastrService.danger(
+              ErrorHandler.extractErrorMessage(error),
+              '删除失败',
+            );
+          },
+        });
+    });
   }
 }

@@ -1,12 +1,45 @@
 @import './themes';
+@import './smart-table';
 
 @mixin nb-overrides() {
+  @include ngx-smart-table-theme();
+
   nb-select.size-medium button {
     padding: 0.4375rem 2.2rem 0.4375rem 1.125rem !important;
 
     nb-icon {
       right: 0.41rem !important;
     }
+  }
+
+  nb-menu .menu-item {
+    @each $status in primary, success, info, warning, danger {
+      .menu-icon.status-#{$status} {
+        color: nb-theme(color-#{$status}-default);
+        opacity: 0.7;
+      }
+
+      a:hover .menu-icon.status-#{$status},
+      a.active .menu-icon.status-#{$status} {
+        color: nb-theme(color-#{$status}-default);
+        opacity: 1;
+      }
+    }
+
+    > a {
+      position: relative;
+    }
+  }
+
+  nb-sidebar:not(.compacted) nb-menu .menu-item > a.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.45rem;
+    bottom: 0.45rem;
+    width: 3px;
+    border-radius: 0 2px 2px 0;
+    background: nb-theme(color-primary-default);
   }
 
   nb-card-footer .cancel {

@@ -12,6 +12,7 @@ import { ClusterContextService } from '../../../@core/data/cluster-context.servi
 import { ErrorHandler } from '../../../@core/utils/error-handler';
 import { withTableRow } from '../../../@core/utils/smart-table';
 import { ConfirmDialogService } from '../../../@core/services/confirm-dialog.service';
+import { assignTableRows } from '../../../@core/utils/table-rows';
 import { ActiveToggleRenderComponent } from './active-toggle-render.component';
 import { FormsModule } from '@angular/forms';
 
@@ -315,8 +316,9 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
           this.allMaterializedViews = data;
           this.extractDatabases();
           this.calculateStatistics();
-          this.applyFilters();
-          this.loading = false;
+          this.applyFilters().then(() => {
+            this.loading = false;
+          });
         },
         error: (error) => {
           this.toastrService.danger(
@@ -416,7 +418,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
 
     this.filteredMaterializedViews = filtered;
     this.filteredCount = filtered.length;
-    this.source.load(filtered);
+    return assignTableRows(this.source, filtered);
   }
 
   onSearch() {

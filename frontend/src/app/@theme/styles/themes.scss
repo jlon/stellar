@@ -1,7 +1,54 @@
 @import '@nebular/theme/styles/theming';
 @import '@nebular/theme/styles/themes';
 
-$nb-themes: nb-register-theme((
+// ---- Stellar auth (login) custom theme variables ----
+// These are registered into every Nebular theme so the login page stays
+// inside the theme system instead of hardcoding colors in the component.
+$stellar-auth-vars: (
+  // Brand accent (StarRocks yellow)
+  stellar-auth-accent: #fabf00,
+  stellar-auth-accent-text: #0b0d25,
+
+  // Deep space backgrounds
+  stellar-auth-bg-deep: #0b0d25,
+  stellar-auth-bg-mid: #131736,
+  stellar-auth-bg-panel: #10131f,
+
+  // Text on dark
+  stellar-auth-text-strong: #ffffff,
+  stellar-auth-text-medium: rgba(255, 255, 255, 0.7),
+  stellar-auth-text-hint: rgba(255, 255, 255, 0.5),
+  stellar-auth-text-faint: rgba(255, 255, 255, 0.3),
+
+  // Glass surfaces
+  stellar-auth-glass-bg: rgba(255, 255, 255, 0.06),
+  stellar-auth-glass-border: rgba(255, 255, 255, 0.1),
+  stellar-auth-glass-input-bg: rgba(255, 255, 255, 0.05),
+  stellar-auth-glass-input-border: rgba(255, 255, 255, 0.12),
+  stellar-auth-glass-input-focus-bg: rgba(255, 255, 255, 0.08),
+
+  // Accent glows
+  stellar-auth-accent-glow: rgba(250, 191, 0, 0.5),
+  stellar-auth-accent-glow-soft: rgba(250, 191, 0, 0.12),
+  stellar-auth-accent-glow-border: rgba(250, 191, 0, 0.6),
+  stellar-auth-accent-orb: rgba(250, 191, 0, 0.28),
+  stellar-auth-accent-orb-soft: rgba(250, 191, 0, 0.14),
+  stellar-auth-accent-orb-faint: rgba(250, 191, 0, 0.05),
+
+  // Secondary accent (purple)
+  stellar-auth-secondary-orb: rgba(161, 110, 255, 0.32),
+  stellar-auth-secondary-orb-soft: rgba(161, 110, 255, 0.2),
+
+  // Status
+  stellar-auth-danger: #ff4d6d,
+  stellar-auth-danger-border: rgba(255, 77, 109, 0.6),
+  stellar-auth-success-border: rgba(0, 214, 143, 0.6),
+
+  // Grid overlay
+  stellar-auth-grid-line: rgba(255, 255, 255, 0.05),
+);
+
+$nb-themes: nb-register-theme(map-merge((
   layout-padding-top: 2.25rem,
 
   menu-item-icon-margin: 0 0.5rem 0 0,
@@ -16,13 +63,14 @@ $nb-themes: nb-register-theme((
   card-header-with-select-padding-bottom: 0.5rem,
 
   select-min-width: 6rem,
+  menu-item-divider-width: 0,
 
   slide-out-background: #f7f9fc,
   slide-out-shadow-color: 0 4px 14px 0 #8f9bb3,
   slide-out-shadow-color-rtl: 0 4px 14px 0 #8f9bb3,
-), default, default);
+), $stellar-auth-vars), default, default);
 
-$nb-themes: nb-register-theme((
+$nb-themes: nb-register-theme(map-merge((
   layout-padding-top: 2.25rem,
 
   menu-item-icon-margin: 0 0.5rem 0 0,
@@ -37,13 +85,14 @@ $nb-themes: nb-register-theme((
   card-header-with-select-padding-bottom: 0.5rem,
 
   select-min-width: 6rem,
+  menu-item-divider-width: 0,
 
   slide-out-background: #252547,
   slide-out-shadow-color: 2px 0 3px #29157a,
   slide-out-shadow-color-rtl: -2px 0 3px #29157a,
-), cosmic, cosmic);
+), $stellar-auth-vars), cosmic, cosmic);
 
-$nb-themes: nb-register-theme((
+$nb-themes: nb-register-theme(map-merge((
   layout-padding-top: 2.25rem,
 
   menu-item-icon-margin: 0 0.5rem 0 0,
@@ -58,13 +107,14 @@ $nb-themes: nb-register-theme((
   card-header-with-select-padding-bottom: 0.5rem,
 
   select-min-width: 6rem,
+  menu-item-divider-width: 0,
 
   slide-out-background: linear-gradient(270deg, #edf1f7 0%, #e4e9f2 100%),
   slide-out-shadow-color: 0 4px 14px 0 #8f9bb3,
   slide-out-shadow-color-rtl: 0 4px 14px 0 #8f9bb3,
-), corporate, corporate);
+), $stellar-auth-vars), corporate, corporate);
 
-$nb-themes: nb-register-theme((
+$nb-themes: nb-register-theme(map-merge((
   layout-padding-top: 2.25rem,
 
   menu-item-icon-margin: 0 0.5rem 0 0,
@@ -79,8 +129,9 @@ $nb-themes: nb-register-theme((
   card-header-with-select-padding-bottom: 0.5rem,
 
   select-min-width: 6rem,
+  menu-item-divider-width: 0,
 
   slide-out-background: linear-gradient(270deg, #222b45 0%, #151a30 100%),
   slide-out-shadow-color: 0 4px 14px 0 #8f9bb3,
   slide-out-shadow-color-rtl: 0 4px 14px 0 #8f9bb3,
-), dark, dark);
+), $stellar-auth-vars), dark, dark);

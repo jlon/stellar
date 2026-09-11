@@ -1,6 +1,6 @@
 <div class="row">
   <div class="col-12">
-    <nb-card>
+    <nb-card [nbSpinner]="loading" nbSpinnerStatus="primary" nbSpinnerMessage="加载中">
       <nb-card-header>
         <div class="d-flex justify-content-between align-items-center">
           <span>SQL 黑名单管理</span>
@@ -18,12 +18,7 @@
       </nb-card-header>
       <nb-card-body>
         <p class="text-hint mb-3">匹配黑名单正则表达式的 SQL 将被拒绝执行</p>
-        @if (loading) {
-          <div class="text-center mt-3"><nb-spinner status="primary" [message]="''"></nb-spinner></div>
-        }
-        @if (!loading) {
-          <angular2-smart-table [settings]="blacklistSettings" [source]="blacklistSource" (delete)="onDeleteConfirm($event)"></angular2-smart-table>
-        }
+        <angular2-smart-table [settings]="blacklistSettings" [source]="blacklistSource" (delete)="onDeleteConfirm($event)"></angular2-smart-table>
       </nb-card-body>
     </nb-card>
   </div>

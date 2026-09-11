@@ -56,28 +56,52 @@ impl StarRocksAdapter {
         format!("SHOW PROC \"{}\"", escaped)
     }
 
+    fn deserialize_rows<T>(source: &str, rows: Vec<Value>) -> Vec<T>
+    where
+        T: DeserializeOwned,
+    {
+        let mut entities = Vec::with_capacity(rows.len());
+        for row in rows {
+            match serde_json::from_value::<T>(row) {
+                Ok(value) => entities.push(value),
+                Err(e) => {
+                    tracing::warn!("Failed to deserialize '{}' row: {}", source, e);
+                },
+            }
+        }
+        entities
+    }
+
     async fn show_proc_entities<T>(&self, path: &str) -> ApiResult<Vec<T>>
     where
         T: DeserializeOwned,
     {
         let rows = self.show_proc_raw(path).await?;
-        let mut entities = Vec::with_capacity(rows.len());
+        Ok(Self::deserialize_rows(&format!("SHOW PROC '{}'", path), rows))
+    }
 
-        for row in rows {
-            match serde_json::from_value::<T>(row) {
-                Ok(value) => entities.push(value),
-                Err(e) => {
-                    tracing::warn!("Failed to deserialize SHOW PROC '{}' row: {}", path, e);
-                },
-            }
-        }
-
-        Ok(entities)
+    async fn query_sql_entities<T>(&self, sql: &str) -> ApiResult<Vec<T>>
+    where
+        T: DeserializeOwned,
+    {
+        let mysql_client = self.mysql_client().await?;
+        let rows = mysql_client.query(sql).await?;
+        Ok(Self::deserialize_rows(sql, rows))
     }
 
     /// Get compute nodes for shared-data architecture
     async fn get_compute_nodes(&self) -> ApiResult<Vec<Backend>> {
-        let compute_nodes = self.show_proc_entities::<Backend>("/compute_nodes").await?;
+        let compute_nodes = match self.query_sql_entities::<Backend>("SHOW COMPUTE NODES").await {
+            Ok(nodes) => nodes,
+            Err(e) => {
+                tracing::warn!(
+                    "SHOW COMPUTE NODES failed for cluster {}: {}. Falling back to SHOW PROC /compute_nodes",
+                    self.cluster.name,
+                    e
+                );
+                self.show_proc_entities::<Backend>("/compute_nodes").await?
+            },
+        };
         tracing::info!("Retrieved {} compute nodes (shared-data mode)", compute_nodes.len());
         Ok(compute_nodes)
     }

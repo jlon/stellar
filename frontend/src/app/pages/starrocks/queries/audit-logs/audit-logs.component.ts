@@ -11,6 +11,7 @@ import { ErrorHandler } from '../../../../@core/utils/error-handler';
 import { MetricThresholds, renderMetricBadge } from '../../../../@core/utils/metric-badge';
 import { renderLongText } from '../../../../@core/utils/text-truncate';
 import { AuthService } from '../../../../@core/data/auth.service';
+import { assignTableRows } from '../../../../@core/utils/table-rows';
 
 import { FormsModule } from '@angular/forms';
 
@@ -219,17 +220,19 @@ export class AuditLogsComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (data) => {
-          this.historySource.load(data.data);
           this.historyTotalCount = data.total;
-          this.loading = false;
+          assignTableRows(this.historySource, data.data).then(() => {
+            this.loading = false;
+          });
         },
         error: (error) => {
           this.toastrService.danger(
             ErrorHandler.handleClusterError(error),
             '加载失败'
           );
-          this.historySource.load([]);
-          this.loading = false;
+          assignTableRows(this.historySource, []).then(() => {
+            this.loading = false;
+          });
         },
       });
   }

@@ -1,6 +1,6 @@
 <div class="row">
   <div class="col-12">
-    <nb-card>
+    <nb-card [nbSpinner]="loading" nbSpinnerStatus="primary" nbSpinnerMessage="加载中">
       <nb-card-header>
         <div class="d-flex justify-content-between align-items-center">
           <h5>集群列表</h5>
@@ -11,24 +11,14 @@
         </div>
       </nb-card-header>
       <nb-card-body>
-        @if (loading) {
-          <div class="text-center">
-            <nb-spinner status="primary"></nb-spinner>
-          </div>
-        }
-
-        @if (!loading) {
-          <angular2-smart-table
-            [settings]="settings"
-            [source]="source"
-            (edit)="onEdit($event)"
-            (delete)="onDelete($event)"
-            (userRowSelect)="onRowSelect($event)"
-            >
-          </angular2-smart-table>
-        }
+        <angular2-smart-table
+          [settings]="settings"
+          [source]="source"
+          (edit)="onEdit($event)"
+          (delete)="onDelete($event)"
+          (userRowSelect)="onRowSelect($event)">
+        </angular2-smart-table>
       </nb-card-body>
     </nb-card>
   </div>
 </div>
-

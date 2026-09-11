@@ -113,11 +113,24 @@ pub async fn list_clusters(
     let clusters = state.cluster_service.list_clusters().await?;
 
     // 使用 lambda 表达式进行过滤和转换
-    let responses: Vec<ClusterResponse> = clusters
+    let mut responses: Vec<ClusterResponse> = clusters
         .into_iter()
         .filter(|c| org_ctx.is_super_admin || c.organization_id == org_ctx.organization_id)
         .map(Into::into)
         .collect();
+
+    let cluster_ids: Vec<i64> = responses.iter().map(|cluster| cluster.id).collect();
+    let summaries = state
+        .metrics_collector_service
+        .get_latest_resource_summaries(&cluster_ids)
+        .await?;
+    for response in &mut responses {
+        if let Some(summary) = summaries.iter().find(|item| item.cluster_id == response.id) {
+            response.cpu_usage_pct = Some(summary.cpu_usage_pct);
+            response.memory_usage_pct = Some(summary.memory_usage_pct);
+            response.disk_usage_pct = summary.disk_usage_pct;
+        }
+    }
 
     tracing::debug!("Retrieved {} clusters for user {}", responses.len(), org_ctx.user_id);
     Ok(Json(responses))

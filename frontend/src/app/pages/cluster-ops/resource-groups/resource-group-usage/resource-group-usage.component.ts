@@ -7,6 +7,7 @@ import { takeUntil, startWith, switchMap } from 'rxjs/operators';
 
 import { ResourceGroupService } from '../resource-group.service';
 import { ResourceGroupUsage } from '../models/resource-group.model';
+import { assignTableRows } from '../../../../@core/utils/table-rows';
 
 
 @Component({
@@ -31,7 +32,7 @@ export class ResourceGroupUsageComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
 
   source: LocalDataSource = new LocalDataSource();
-  loading = false;
+  loading = true;
   autoRefresh = true;
   refreshInterval = 30; // seconds
 
@@ -81,8 +82,9 @@ export class ResourceGroupUsageComponent implements OnInit, OnDestroy {
       )
       .subscribe({
         next: (usage) => {
-          this.source.load(usage);
-          this.loading = false;
+          assignTableRows(this.source, usage).then(() => {
+            this.loading = false;
+          });
         },
         error: (error) => {
           console.error('Failed to load resource group usage:', error);
@@ -98,8 +100,9 @@ export class ResourceGroupUsageComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (usage) => {
-          this.source.load(usage);
-          this.loading = false;
+          assignTableRows(this.source, usage).then(() => {
+            this.loading = false;
+          });
         },
         error: (error) => {
           console.error('Failed to load resource group usage:', error);

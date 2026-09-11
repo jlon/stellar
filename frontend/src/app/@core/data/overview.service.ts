@@ -23,6 +23,7 @@ export interface HealthCard {
   navigateTo?: string;
   description?: string; // Tooltip description for the metric
   cardId?: string; // Unique identifier for special cards (latency, disk, etc.)
+  tier?: 'hero' | 'aux';
 }
 
 export interface PerformanceTrends {
@@ -32,6 +33,7 @@ export interface PerformanceTrends {
   latency_p95: TimeSeriesPoint[];
   latency_p99: TimeSeriesPoint[];
   error_rate: TimeSeriesPoint[];
+  timeout_rate?: TimeSeriesPoint[];
 }
 
 export interface ResourceTrends {
@@ -43,6 +45,13 @@ export interface ResourceTrends {
   network_rx: TimeSeriesPoint[];
   io_read: TimeSeriesPoint[];
   io_write: TimeSeriesPoint[];
+  compaction_score: TimeSeriesPoint[];
+  backend_alive?: TimeSeriesPoint[];
+  frontend_alive?: TimeSeriesPoint[];
+  tablet_count?: TimeSeriesPoint[];
+  jvm_thread_count?: TimeSeriesPoint[];
+  txn_success?: TimeSeriesPoint[];
+  txn_failed?: TimeSeriesPoint[];
 }
 
 export interface TimeSeriesPoint {
@@ -56,6 +65,7 @@ export interface DataStatistics {
   totalDataSizeBytes: number;
   topTablesBySize: TopTableBySize[];
   topTablesByAccess: TopTableByAccess[];
+  accessError?: string;
   mvTotal: number;
   mvRunning: number;
   mvFailed: number;
@@ -98,6 +108,7 @@ export interface CapacityPrediction {
 export interface ExtendedClusterOverview {
   cluster_id: number;
   cluster_name: string;
+  deployment_mode?: 'shared_nothing' | 'shared_data';
   timestamp: string;
   health: ClusterHealth;
   kpi: KeyPerformanceIndicators;
@@ -114,6 +125,9 @@ export interface ExtendedClusterOverview {
   network_io: NetworkIOStats;
   capacity?: CapacityPrediction;
   alerts: Alert[];
+  meta_log_count?: number;
+  unfinished_query?: number;
+  safe_mode?: boolean;
 }
 
 export interface ClusterHealth {
@@ -208,6 +222,12 @@ export interface CompactionDetailStats {
   topPartitions: TopPartitionByScore[];
   taskStats: CompactionTaskStats;
   durationStats: CompactionDurationStats;
+  nodeDisks?: NodeDiskUsage[];
+}
+
+export interface NodeDiskUsage {
+  host: string;
+  usedPct: number;
 }
 
 export interface TopPartitionByScore {
@@ -318,6 +338,10 @@ export class OverviewService {
     return this.api.get(`/clusters/${clusterId}/overview/data-stats`);
   }
 
+  getActiveDataStatistics(timeRange: string = '1h'): Observable<DataStatistics> {
+    return this.api.get(`/clusters/overview/data-stats`, { time_range: timeRange });
+  }
+
   getCapacityPrediction(clusterId: number): Observable<CapacityPrediction> {
     return this.api.get(`/clusters/${clusterId}/overview/capacity-prediction`);
   }
@@ -344,204 +368,85 @@ export class OverviewService {
    * Converts backend data structure to frontend card format
    */
   transformToHealthCards(overview: ExtendedClusterOverview): HealthCard[] {
+    const sharedData = overview.deployment_mode === 'shared_data';
+    const diskPct = overview.capacity?.disk_usage_pct ?? overview.resources.disk_usage_pct ?? 0;
+    const days = overview.capacity?.days_until_full;
+    const diskFull = diskPct >= 99.5 || days === 0;
+    const daysValue = diskFull ? '0' : days == null ? '稳定' : String(days);
+    const daysUnit = diskFull || days != null ? '天' : '';
+    const daysStatus = diskFull || (days != null && days < 30)
+      ? 'danger'
+      : days != null && days < 90
+        ? 'warning'
+        : 'success';
+    const metaLog = overview.meta_log_count ?? 0;
+    const healthStatus = overview.health.status === 'critical'
+      ? 'danger'
+      : overview.health.status === 'warning'
+        ? 'warning'
+        : 'success';
     return [
-      // ========== 核心健康指标 (P0, 7个) ==========
-      // 1. StarRocks 版本
       {
-        title: 'SR 版本',
-        value: overview.health.starrocks_version || 'Unknown',
-        unit: '',
-        trend: 0,
-        status: 'info',
-        icon: 'info-outline',
-        description: 'StarRocks集群版本号',
-        cardId: 'sr_version'
+        title: '状态',
+        value: Math.round(overview.health.score).toString(),
+        status: healthStatus,
+        cardId: 'health',
       },
-      // 2. BE 节点状态
       {
-        title: 'BE 节点',
-        value: `${overview.health.be_nodes_online}/${overview.health.be_nodes_total}`,
-        unit: '',
-        trend: 0,
-        status: overview.health.be_nodes_online === overview.health.be_nodes_total ? 'success' : 'danger',
-        icon: 'radio-outline',
-        navigateTo: '/pages/starrocks/backends',
-        description: 'Backend节点存活状态，负责数据存储和查询执行'
-      },
-      // 2. FE 节点状态
-      {
-        title: 'FE 节点',
+        title: 'FE',
         value: `${overview.health.fe_nodes_online}/${overview.health.fe_nodes_total}`,
-        unit: '',
-        trend: 0,
-        status: overview.health.fe_nodes_online === overview.health.fe_nodes_total ? 'success' : 'danger',
-        icon: 'monitor-outline',
+        status: this.nodePairStatus(overview.health.fe_nodes_online, overview.health.fe_nodes_total),
         navigateTo: '/pages/starrocks/frontends',
-        description: 'Frontend节点存活状态，负责元数据管理和SQL解析'
+        cardId: 'fe',
       },
-      // 3. Compaction Score
       {
-        title: 'Compaction Score',
+        title: sharedData ? 'CN' : 'BE',
+        value: `${overview.health.be_nodes_online}/${overview.health.be_nodes_total}`,
+        status: this.nodePairStatus(overview.health.be_nodes_online, overview.health.be_nodes_total),
+        navigateTo: '/pages/starrocks/backends',
+        cardId: 'be',
+      },
+      {
+        title: 'Score',
         value: Math.round(overview.resources.compaction_score).toString(),
-        unit: '',
-        trend: overview.resources.compaction_score > 100 ? -5 : 0,
-        status: overview.resources.compaction_score > 1000 ? 'danger' :   // 🔴 紧急
-                overview.resources.compaction_score > 500 ? 'warning' :   // 🟠 严重
-                overview.resources.compaction_score > 100 ? 'warning' :   // 🟡 警告
-                'success',
-        icon: 'layers-outline',
-        navigateTo: '/pages/starrocks/system',
-        description: 'Partition压缩评分 (>1000紧急 >500严重 >100警告)（点击查看详情）',
-        cardId: 'compaction_score'
+        status: overview.resources.compaction_score > 100 ? 'warning' : 'success',
+        cardId: 'compaction_score',
       },
-      // 4. P99 延迟
       {
-        title: 'P99 延迟',
+        title: 'P99',
         value: Math.round(overview.kpi.p99_latency_ms).toString(),
         unit: 'ms',
-        trend: overview.kpi.p99_latency_trend || 0,
-        status: overview.kpi.p99_latency_ms < 1000 ? 'success' : 
+        status: overview.kpi.p99_latency_ms < 1000 ? 'success' :
                 overview.kpi.p99_latency_ms < 5000 ? 'warning' : 'danger',
-        icon: 'clock-outline',
-        description: '99%查询的响应时间，OLAP典型值100ms-5s',
-        cardId: 'latency_percentile'
+        cardId: 'p99',
       },
-      // 5. 并发查询
       {
-        title: '并发查询',
-        value: overview.sessions.running_queries?.length.toString() || '0',
-        unit: '个',
-        trend: 0,
-        status: 'info',
-        icon: 'activity-outline',
-        navigateTo: '/pages/starrocks/queries/execution',
-        description: '当前正在执行的查询数，OLAP典型值1-50'
-      },
-      // 6. Session连接数
-      {
-        title: 'Session',
-        value: (overview.sessions?.current_connections || 0).toString(),
-        unit: '个',
-        trend: 0,
-        status: 'info',
-        icon: 'people-outline',
-        navigateTo: '/pages/starrocks/sessions',
-        description: '当前活跃的Session连接数（点击查看详情）',
-        cardId: 'sessions'
-      },
-      // 7. 数据库/表数量
-      {
-        title: '数据库/表',
-        value: `${(overview.data_stats as any)?.database_count || 0}/${(overview.data_stats as any)?.table_count || 0}`,
-        unit: '',
-        trend: 0,
-        status: 'info',
-        icon: 'inbox-outline',
-        description: '集群中数据库和表的总数量',
-        cardId: 'database_table_count'
-      },
-      
-      // ========== 资源状态 (P0, 2个) ==========
-      // 8. CPU 使用
-      {
-        title: 'CPU 使用',
-        value: Math.round(overview.resources.cpu_usage_pct).toString(),
+        title: '错误率',
+        value: (overview.kpi.error_rate || 0).toFixed(1),
         unit: '%',
-        trend: overview.resources.cpu_trend || 0,
-        status: 'info',
-        icon: 'flash-outline',
-        description: '集群平均CPU使用率'
+        status: overview.kpi.error_rate > 5 ? 'warning' : 'success',
+        cardId: 'error_rate',
       },
-      // 9. 内存使用
       {
-        title: '内存使用',
-        value: Math.round(overview.resources.memory_usage_pct).toString(),
+        title: sharedData ? '缓存' : '磁盘',
+        value: Math.round(diskPct).toString(),
         unit: '%',
-        trend: overview.resources.memory_trend || 0,
-        status: 'info',
-        icon: 'inbox-outline',
-        description: '集群平均内存使用率'
+        status: diskPct > 90 ? 'danger' : diskPct > 80 ? 'warning' : 'success',
+        cardId: 'disk',
       },
-      
-      // ========== 节点与任务 (P1, 2个) ==========
-      // 10. 导入任务
       {
-        title: '导入任务',
-        value: (overview.load_jobs?.running || 0).toString(),
-        unit: '个',
-        trend: 0,
-        status: 'info',
-        icon: 'upload-outline',
-        navigateTo: '/pages/starrocks/system',
-        description: '正在运行的数据导入任务（点击查看详情）',
-        cardId: 'load_jobs'
+        title: '距存满',
+        value: daysValue,
+        unit: daysUnit,
+        status: daysStatus,
+        cardId: 'days_full',
       },
-      // 11. Compaction 任务
       {
-        title: 'Compaction 任务',
-        value: (overview.compaction?.cumulativeCompactionRunning || 0).toString(),
-        unit: '个',
-        trend: 0,
-        status: 'info',
-        icon: 'sync-outline',
-        navigateTo: '/pages/starrocks/system',
-        description: '正在运行的 Compaction 任务（点击查看详情）',
-        cardId: 'compactions'
+        title: 'Meta Log',
+        value: String(metaLog),
+        status: metaLog > 100000 ? 'danger' : metaLog > 50000 ? 'warning' : 'success',
+        cardId: 'meta_log',
       },
-      // 12. 物化视图
-      {
-        title: '物化视图',
-        value: (overview.mv_stats?.total || 0).toString(),
-        unit: '个',
-        trend: 0,
-        status: 'success',
-        icon: 'cube-outline',
-        navigateTo: '/pages/starrocks/materialized-views',
-        description: '物化视图总数量'
-      },
-      
-      // ========== 数据与容量 (P1, 3个) ==========
-      // 12. 缓存增量
-      (() => {
-        const formatted = overview.capacity 
-          ? this.formatBytes(Math.abs(overview.capacity.daily_growth_bytes))
-          : { value: '0', unit: 'B' };
-        return {
-          title: '缓存增量',
-          value: formatted.value,
-          unit: `${formatted.unit}/天`,
-          trend: 0,
-          status: 'info',
-          icon: 'trending-up-outline',
-          description: 'BE本地缓存数据的每日平均增长量（基于线性回归）'
-        };
-      })(),
-      // 13. 本地磁盘/缓存使用 (switchable) - 点击切换显示使用率%或使用量TB
-      {
-        title: '本地磁盘',
-        value: overview.capacity ? Math.round(overview.capacity.disk_usage_pct).toString() : '0',
-        unit: '%',
-        trend: 0,
-        status: overview.capacity && overview.capacity.disk_usage_pct > 80 ? 'warning' : 'info',
-        icon: 'hard-drive-outline',
-        description: 'BE节点本地磁盘最大使用率（点击切换到缓存使用）',
-        cardId: 'disk_cache_metric'
-      },
-      // 14. 真实数据
-      (() => {
-        const formatted = overview.capacity 
-          ? this.formatBytes(overview.capacity.real_data_size_bytes)
-          : { value: '0', unit: 'B' };
-        return {
-          title: '数据总量',
-          value: formatted.value,
-          unit: formatted.unit,
-          trend: 0,
-          status: 'success',
-          icon: 'archive-outline',
-          description: '对象存储中的实际数据总量（从information_schema统计）'
-        };
-      })()
     ];
   }
 
@@ -549,34 +454,46 @@ export class OverviewService {
    * Transform ExtendedClusterOverview to DataStatistics
    */
   transformDataStatistics(overview: ExtendedClusterOverview): DataStatistics {
-    const dataStats = overview.data_stats as any; // Use 'any' to access snake_case fields from backend
+    return this.mapDataStatistics(overview.data_stats);
+  }
+
+  mapDataStatistics(raw: any): DataStatistics {
     return {
-      databaseCount: dataStats?.database_count || 0,
-      tableCount: dataStats?.table_count || 0,
-      totalDataSizeBytes: dataStats?.total_data_size || 0,
-      mvTotal: dataStats?.mv_total || 0,
-      mvRunning: dataStats?.mv_running || 0,
-      mvSuccess: dataStats?.mv_success || 0,
-      mvFailed: dataStats?.mv_failed || 0,
-      schemaChangeRunning: dataStats?.schema_change_running || 0,
-      schemaChangePending: dataStats?.schema_change_pending || 0,
-      schemaChangeFinished: dataStats?.schema_change_finished || 0,
-      schemaChangeFailed: dataStats?.schema_change_failed || 0,
-      activeUsers1h: dataStats?.active_users_1h || 0,
-      activeUsers24h: dataStats?.active_users_24h || 0,
-      topTablesBySize: (dataStats?.top_tables_by_size || []).map((t: any) => ({
+      databaseCount: raw?.database_count ?? raw?.databaseCount ?? 0,
+      tableCount: raw?.table_count ?? raw?.tableCount ?? 0,
+      totalDataSizeBytes: raw?.total_data_size ?? raw?.totalDataSizeBytes ?? 0,
+      mvTotal: raw?.mv_total ?? raw?.mvTotal ?? 0,
+      mvRunning: raw?.mv_running ?? raw?.mvRunning ?? 0,
+      mvSuccess: raw?.mv_success ?? raw?.mvSuccess ?? 0,
+      mvFailed: raw?.mv_failed ?? raw?.mvFailed ?? 0,
+      schemaChangeRunning: raw?.schema_change_running ?? raw?.schemaChangeRunning ?? 0,
+      schemaChangePending: raw?.schema_change_pending ?? raw?.schemaChangePending ?? 0,
+      schemaChangeFinished: raw?.schema_change_finished ?? raw?.schemaChangeFinished ?? 0,
+      schemaChangeFailed: raw?.schema_change_failed ?? raw?.schemaChangeFailed ?? 0,
+      activeUsers1h: raw?.active_users_1h ?? raw?.activeUsers1h ?? 0,
+      activeUsers24h: raw?.active_users_24h ?? raw?.activeUsers24h ?? 0,
+      topTablesBySize: (raw?.top_tables_by_size || raw?.topTablesBySize || []).map((t: any) => ({
         database: t.database,
         table: t.table,
-        sizeBytes: t.size_bytes,
-        rowCount: t.rows
+        sizeBytes: t.size_bytes ?? t.sizeBytes,
+        rowCount: t.rows ?? t.rowCount
       })),
-      topTablesByAccess: (dataStats?.top_tables_by_access || []).map((t: any) => ({
+      topTablesByAccess: (raw?.top_tables_by_access || raw?.topTablesByAccess || []).map((t: any) => ({
         database: t.database,
         table: t.table,
-        accessCount: t.access_count,
-        lastAccess: t.last_access
-      }))
+        accessCount: t.access_count ?? t.accessCount,
+        lastAccess: t.last_access ?? t.lastAccess,
+        uniqueUsers: t.unique_users ?? t.uniqueUsers ?? 0
+      })),
+      accessError: raw?.access_error || raw?.accessError || undefined
     };
+  }
+
+  private nodePairStatus(online: number, total: number): HealthCard['status'] {
+    if (total <= 0) {
+      return 'warning';
+    }
+    return online === total ? 'success' : 'danger';
   }
 }
 

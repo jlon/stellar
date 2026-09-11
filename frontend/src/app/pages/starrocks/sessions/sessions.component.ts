@@ -12,6 +12,7 @@ import { withTableRow } from '../../../@core/utils/smart-table';
 import { MetricThresholds, renderMetricBadge } from '../../../@core/utils/metric-badge';
 import { renderLongText } from '../../../@core/utils/text-truncate';
 import { ConfirmDialogService } from '../../../@core/services/confirm-dialog.service';
+import { assignTableRows } from '../../../@core/utils/table-rows';
 import { AuthService } from '../../../@core/data/auth.service';
 
 import { FormsModule } from '@angular/forms';
@@ -45,7 +46,7 @@ export class SessionsComponent implements OnInit, OnDestroy {
   activeCluster: Cluster | null = null;
   sessions: Session[] = [];
   source: LocalDataSource = new LocalDataSource();
-  loading = false;
+  loading = true;
   autoRefresh = false; // Default: disabled
   refreshInterval: any;
   selectedRefreshInterval: number | 'off' = 'off'; // Default: off (Grafana style)
@@ -182,8 +183,9 @@ export class SessionsComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.nodeService.getSessions().subscribe({
       next: (allSessions) => {
-        this.updateSessionsData(allSessions);
-        this.loading = false;
+        this.updateSessionsData(allSessions).then(() => {
+          this.loading = false;
+        });
       },
       error: (error) => {
         console.error('[Sessions] Error loading sessions:', error);
@@ -192,8 +194,9 @@ export class SessionsComponent implements OnInit, OnDestroy {
           '错误'
         );
         this.sessions = [];
-        this.source.load([]);
-        this.loading = false;
+        assignTableRows(this.source, []).then(() => {
+          this.loading = false;
+        });
       },
     });
   }
@@ -213,7 +216,7 @@ export class SessionsComponent implements OnInit, OnDestroy {
   }
 
   // Update sessions data (shared logic)
-  private updateSessionsData(allSessions: Session[]): void {
+  private updateSessionsData(allSessions: Session[]): Promise<void> {
     // Apply filters
     let filteredSessions = allSessions;
     
@@ -235,7 +238,7 @@ export class SessionsComponent implements OnInit, OnDestroy {
     }
     
     this.sessions = filteredSessions;
-    this.source.load(filteredSessions);
+    return assignTableRows(this.source, filteredSessions);
   }
 
   onDeleteConfirm(event: any): void {

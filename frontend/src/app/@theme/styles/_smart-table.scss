@@ -1,0 +1,293 @@
+@import './themes';
+
+@mixin ngx-smart-table-theme() {
+  angular2-smart-table {
+    scrollbar-color: nb-theme(border-basic-color-4) nb-theme(background-basic-color-2);
+    scrollbar-width: thin;
+
+    table tr th,
+    table tr th a {
+      font-family: nb-theme(smart-table-header-font-family);
+      font-size: nb-theme(smart-table-header-font-size);
+      font-weight: nb-theme(smart-table-header-font-weight);
+      line-height: nb-theme(smart-table-header-line-height);
+      color: nb-theme(smart-table-header-fg);
+    }
+
+    table tr td {
+      font-family: nb-theme(smart-table-font-family);
+      font-size: nb-theme(smart-table-font-size);
+      font-weight: nb-theme(smart-table-font-weight);
+      line-height: nb-theme(smart-table-line-height);
+      color: nb-theme(smart-table-fg);
+    }
+
+    table tr th,
+    table tr td {
+      position: relative;
+      padding: nb-theme(smart-table-padding);
+      border: 1px solid nb-theme(smart-table-separator);
+      vertical-align: middle;
+    }
+
+    table tr.angular2-smart-titles {
+      th {
+        padding: nb-theme(smart-table-padding);
+        @include nb-ltr(padding-right, 1.75rem);
+        @include nb-rtl(padding-left, 1.75rem);
+      }
+
+      th a {
+        &:hover,
+        &:active,
+        &:visited {
+          color: nb-theme(smart-table-header-fg);
+          text-decoration: none;
+        }
+
+        &.sort::after {
+          color: nb-theme(smart-table-fg-secondary);
+        }
+      }
+    }
+
+    thead tr {
+      background: nb-theme(smart-table-header-bg);
+
+      th {
+        background-color: nb-theme(smart-table-header-bg);
+        color: nb-theme(smart-table-header-fg);
+      }
+
+      &.angular2-smart-filters th {
+        padding: nb-theme(smart-table-filter-padding);
+
+        .angular2-smart-filter input,
+        .angular2-smart-filter select {
+          line-height: nb-theme(smart-table-line-height);
+          color: nb-theme(input-basic-text-color);
+          background-color: nb-theme(input-basic-background-color);
+          border: 1px solid nb-theme(input-basic-border-color);
+          border-radius: nb-theme(border-radius);
+
+          &::placeholder {
+            color: nb-theme(input-basic-placeholder-text-color);
+          }
+
+          &:focus {
+            background-color: nb-theme(input-basic-focus-background-color);
+            border-color: nb-theme(input-basic-focus-border-color);
+            outline: none;
+          }
+        }
+      }
+    }
+
+    tbody tr {
+      background-color: nb-theme(smart-table-bg);
+
+      &.selected,
+      &:hover {
+        background: nb-theme(smart-table-bg-active) !important;
+      }
+
+      &:nth-child(2n) {
+        background-color: nb-theme(smart-table-bg-even);
+      }
+    }
+
+    th.angular2-smart-actions-title-add {
+      a {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.75rem !important;
+        padding: nb-theme(smart-table-filter-padding);
+        border-color: nb-theme(smart-table-add-button-border-color);
+        background-color: nb-theme(smart-table-add-button-background-color);
+        color: nb-theme(smart-table-add-button-text-color);
+        border-radius: 0.375rem;
+
+        &:focus {
+          border-color: nb-theme(smart-table-add-button-focus-border-color);
+        }
+
+        &:hover {
+          text-decoration: none;
+          background-color: nb-theme(smart-table-add-button-hover-background-color);
+          border-color: nb-theme(smart-table-add-button-hover-border-color);
+        }
+
+        &:active {
+          background-color: nb-theme(smart-table-add-button-active-background-color);
+          border-color: nb-theme(smart-table-add-button-active-border-color);
+        }
+      }
+    }
+
+    .angular2-smart-actions {
+      padding: 0;
+      height: 1px;
+
+      angular2-st-tbody-edit-delete,
+      angular2-st-tbody-create-cancel,
+      angular2-st-actions {
+        display: flex;
+        height: 100%;
+      }
+
+      a.angular2-smart-action {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        width: 100%;
+        font-size: 2rem !important;
+        color: nb-theme(smart-table-fg-secondary);
+
+        &:not(:last-child) {
+          border-right: 1px solid nb-theme(smart-table-separator);
+        }
+
+        &:hover {
+          text-decoration: none;
+        }
+      }
+
+      .angular2-smart-action-add-create:hover,
+      .angular2-smart-action-edit-edit:hover,
+      .angular2-smart-action-edit-save:hover {
+        color: nb-theme(smart-table-action-add-edit-hover-text-color);
+      }
+
+      .angular2-smart-action-add-cancel:hover,
+      .angular2-smart-action-delete-delete:hover,
+      .angular2-smart-action-edit-cancel:hover {
+        color: nb-theme(smart-table-action-cancel-delete-hover-text-color);
+      }
+    }
+
+    table-cell-edit-mode {
+      display: block;
+      margin: -7.5px -12px;
+    }
+
+    angular2-smart-table-pager {
+      display: block;
+      color: nb-theme(text-hint-color);
+    }
+
+    nav.angular2-smart-pagination-nav {
+      display: flex;
+      justify-content: center;
+      margin-top: 1.25rem;
+
+      .angular2-smart-pagination {
+        display: flex;
+        padding: 0;
+
+        .page-item.disabled .page-link,
+        .page-item.disabled .page-link:focus,
+        .page-item.disabled .page-link:hover {
+          background-color: nb-theme(smart-table-paging-hover);
+          color: nb-theme(smart-table-paging-disabled-text-color);
+        }
+      }
+
+      .pagination {
+        font-family: nb-theme(smart-table-paging-font-family);
+        font-size: nb-theme(smart-table-paging-font-size);
+        line-height: nb-theme(smart-table-paging-line-height);
+        border: nb-theme(smart-table-paging-border-color) solid nb-theme(smart-table-paging-border-width);
+        border-radius: nb-theme(smart-table-border-radius);
+
+        li {
+          overflow: hidden;
+
+          &:not(:last-child) {
+            @include nb-ltr(border-right, 1px solid nb-theme(smart-table-separator));
+            @include nb-rtl(border-left, 1px solid nb-theme(smart-table-separator));
+          }
+
+          a.page-link-prev,
+          a.page-link-next {
+            font-size: nb-theme(smart-table-paging-font-size);
+            line-height: nb-theme(smart-table-paging-line-height);
+          }
+
+          a,
+          a.page-link,
+          > span {
+            font-size: nb-theme(smart-table-paging-font-size);
+            line-height: nb-theme(smart-table-paging-line-height);
+            background-color: transparent;
+            color: nb-theme(smart-table-paging-page-text-color);
+            padding: 0.75rem 1.25rem;
+            border: none;
+            box-shadow: none;
+
+            &:focus {
+              border-color: nb-theme(smart-table-paging-page-focus-border-color);
+              color: nb-theme(smart-table-paging-page-focus-text-color);
+            }
+
+            &:hover {
+              background-color: nb-theme(smart-table-paging-hover);
+              border-color: nb-theme(smart-table-paging-hover-border-color);
+              color: nb-theme(smart-table-paging-hover-text-color);
+              text-decoration: none;
+            }
+          }
+
+          &:first-child {
+            a,
+            > span {
+              @include nb-ltr() {
+                border-top-left-radius: nb-theme(smart-table-border-radius);
+                border-bottom-left-radius: nb-theme(smart-table-border-radius);
+              }
+              @include nb-rtl() {
+                border-top-right-radius: nb-theme(smart-table-border-radius);
+                border-bottom-right-radius: nb-theme(smart-table-border-radius);
+              }
+            }
+          }
+
+          &:last-child {
+            a,
+            > span {
+              @include nb-ltr() {
+                border-top-right-radius: nb-theme(smart-table-border-radius);
+                border-bottom-right-radius: nb-theme(smart-table-border-radius);
+              }
+              @include nb-rtl() {
+                border-top-left-radius: nb-theme(smart-table-border-radius);
+                border-bottom-left-radius: nb-theme(smart-table-border-radius);
+              }
+            }
+          }
+
+          &.active {
+            a,
+            a.page-link,
+            a:hover,
+            a:focus,
+            > span,
+            > span:hover,
+            > span:focus {
+              color: nb-theme(smart-table-paging-fg-active);
+              background-color: nb-theme(smart-table-paging-bg-active);
+            }
+          }
+        }
+      }
+    }
+
+    .angular2-smart-pagination-per-page select {
+      color: nb-theme(input-basic-text-color);
+      background-color: nb-theme(input-basic-background-color);
+      border: 1px solid nb-theme(input-basic-border-color);
+      border-radius: nb-theme(border-radius);
+    }
+  }
+}

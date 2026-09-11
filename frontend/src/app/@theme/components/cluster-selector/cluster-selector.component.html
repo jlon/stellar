@@ -1,11 +1,18 @@
 @if (!loading && clusters.length > 0) {
   <nb-select
+    class="header-select"
     [(selected)]="activeCluster"
     [compareWith]="compareById"
     (selectedChange)="onClusterChange($event)"
     placeholder="选择集群"
-    status="primary"
-    >
+    size="small"
+    status="basic">
+    <nb-select-label>
+      <span class="header-select-label">
+        <nb-icon icon="cube-outline"></nb-icon>
+        <span>{{ activeCluster?.name || '选择集群' }}</span>
+      </span>
+    </nb-select-label>
     @for (cluster of clusters; track cluster) {
       <nb-option [value]="cluster">{{ cluster.name }}</nb-option>
     }
@@ -15,9 +22,9 @@
   <button
     nbButton
     size="small"
-    status="primary"
-    (click)="goToClusterManagement()"
-    >
+    status="basic"
+    (click)="goToClusterManagement()">
+    <nb-icon icon="plus-outline"></nb-icon>
     添加集群
   </button>
 }

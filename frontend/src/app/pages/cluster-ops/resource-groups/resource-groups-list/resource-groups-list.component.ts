@@ -11,6 +11,7 @@ import { withTableRow } from '../../../../@core/utils/smart-table';
 import { ClusterContextService } from '../../../../@core/data/cluster-context.service';
 import { Cluster } from '../../../../@core/data/cluster.service';
 import { ConfirmDialogService } from '../../../../@core/services/confirm-dialog.service';
+import { assignTableRows } from '../../../../@core/utils/table-rows';
 
 
 @Component({
@@ -35,7 +36,7 @@ export class ResourceGroupsListComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
 
   source: LocalDataSource = new LocalDataSource();
-  loading = false;
+  loading = true;
   activeCluster: Cluster | null = null;
 
   settings = {
@@ -137,13 +138,16 @@ export class ResourceGroupsListComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (groups) => {
-          this.source.load(groups);
-          this.loading = false;
+          assignTableRows(this.source, groups).then(() => {
+            this.loading = false;
+          });
         },
         error: (error) => {
           console.error('Failed to load resource groups:', error);
           this.toastrService.danger('加载资源组列表失败', '错误');
-          this.loading = false;
+          assignTableRows(this.source, []).then(() => {
+            this.loading = false;
+          });
         },
       });
   }

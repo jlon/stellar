@@ -1,6 +1,6 @@
 <div class="row">
   <div class="col-12">
-    <nb-card>
+    <nb-card [nbSpinner]="loading" nbSpinnerStatus="primary" nbSpinnerMessage="加载中">
       <nb-card-header>
         <div class="d-flex justify-content-between align-items-center">
           <div class="d-flex align-items-center gap-2">
@@ -35,16 +35,11 @@
       </nb-card-header>
       <nb-card-body>
         <div class="profile-container">
-          @if (loading) {
-            <div class="text-center mt-3"><nb-spinner status="primary"></nb-spinner></div>
-          }
-          @if (!loading) {
-            <angular2-smart-table
+          <angular2-smart-table
               [settings]="profileSettings"
               [source]="profileSource"
               (edit)="onProfileEdit($event)">
             </angular2-smart-table>
-          }
         </div>
       </nb-card-body>
     </nb-card>

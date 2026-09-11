@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
-import { NbToastrService, NbSelectModule, NbOptionModule, NbButtonModule } from '@nebular/theme';
+import { NbToastrService, NbSelectModule, NbOptionModule, NbButtonModule, NbIconModule } from '@nebular/theme';
 import { ClusterService, Cluster } from '../../../@core/data/cluster.service';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
 
@@ -14,7 +14,8 @@ import { ClusterContextService } from '../../../@core/data/cluster-context.servi
     imports: [
     NbSelectModule,
     NbOptionModule,
-    NbButtonModule
+    NbButtonModule,
+    NbIconModule,
 ],
 })
 export class ClusterSelectorComponent implements OnInit, OnDestroy {
@@ -89,4 +90,3 @@ export class ClusterSelectorComponent implements OnInit, OnDestroy {
     this.loadClusters();
   }
 }
-

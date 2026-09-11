@@ -42,22 +42,10 @@ export class HeaderComponent implements OnInit, OnDestroy {
   user: any;
 
   themes = [
-    {
-      value: 'default',
-      name: '浅色',
-    },
-    {
-      value: 'dark',
-      name: '深色',
-    },
-    {
-      value: 'cosmic',
-      name: '星空',
-    },
-    {
-      value: 'corporate',
-      name: '企业',
-    },
+    { value: 'default', name: '浅色', icon: 'sun-outline' },
+    { value: 'dark', name: '深色', icon: 'moon-outline' },
+    { value: 'cosmic', name: '星空', icon: 'star-outline' },
+    { value: 'corporate', name: '企业', icon: 'briefcase-outline' },
   ];
 
   currentTheme = 'cosmic';
@@ -129,9 +117,19 @@ export class HeaderComponent implements OnInit, OnDestroy {
     this.destroy$.complete();
   }
 
+  get currentThemeMeta() {
+    return this.themes.find(theme => theme.value === this.currentTheme) ?? this.themes[0];
+  }
+
   changeTheme(themeName: string) {
     persistTheme(themeName);
     this.themeService.changeTheme(themeName);
+  }
+
+  cycleTheme() {
+    const index = this.themes.findIndex(theme => theme.value === this.currentTheme);
+    const next = this.themes[(index + 1) % this.themes.length];
+    this.changeTheme(next.value);
   }
 
   toggleSidebar(): boolean {

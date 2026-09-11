@@ -5,6 +5,7 @@ import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table'
 import { ClusterService, Cluster } from '../../../../@core/data/cluster.service';
 import { ErrorHandler } from '../../../../@core/utils/error-handler';
 import { ConfirmDialogService } from '../../../../@core/services/confirm-dialog.service';
+import { assignTableRows } from '../../../../@core/utils/table-rows';
 
 
 @Component({
@@ -102,15 +103,18 @@ export class ClusterListComponent implements OnInit {
     this.loading = true;
     this.clusterService.listClusters().subscribe({
       next: (clusters) => {
-        this.source.load(clusters);
-        this.loading = false;
+        assignTableRows(this.source, clusters).then(() => {
+          this.loading = false;
+        });
       },
       error: (error) => {
         this.toastrService.danger(
           ErrorHandler.extractErrorMessage(error),
           '错误',
         );
-        this.loading = false;
+        assignTableRows(this.source, []).then(() => {
+          this.loading = false;
+        });
       },
     });
   }

@@ -8,9 +8,123 @@ use crate::config::AuditLogConfig;
 use crate::models::Cluster;
 use crate::services::{MySQLClient, MySQLPoolManager};
 use crate::utils::ApiResult;
+use once_cell::sync::Lazy;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use utoipa::ToSchema;
+
+static TABLE_REF_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)\b(?:from|join|into)\s+((?:`?[A-Za-z_][\w$]*`?\.){0,2}`?[A-Za-z_][\w$]*`?)")
+        .unwrap_or_else(|_| Regex::new(r"from\s+(\w+)").expect("fallback table regex"))
+});
+
+fn row_field<'a>(idx: &HashMap<String, usize>, row: &'a [String], name: &str) -> &'a str {
+    idx.get(name)
+        .and_then(|&i| row.get(i))
+        .map(String::as_str)
+        .unwrap_or("")
+}
+
+fn is_ignored_table(database: &str, table: &str) -> bool {
+    let db = database.to_ascii_lowercase();
+    let tbl = table.to_ascii_lowercase();
+    matches!(
+        db.as_str(),
+        "information_schema"
+            | "_statistics_"
+            | "__internal_schema"
+            | "mysql"
+            | "starrocks_audit_db__"
+    ) || db.ends_with(".information_schema")
+        || matches!(
+            tbl.as_str(),
+            "starrocks_audit_tbl__"
+                | "audit_log"
+                | "select"
+                | "where"
+                | "dual"
+                | "unnest"
+                | "values"
+        )
+}
+
+pub fn audit_query_user_message(err: &crate::utils::ApiError, audit_table: &str) -> String {
+    let raw = err.to_string();
+    let msg = raw.to_ascii_lowercase();
+    if is_missing_audit_relation(&msg) {
+        format!("集群未配置审计日志表 {audit_table}")
+    } else if is_audit_permission_denied(&msg) {
+        format!("监控账号无权读取审计日志表 {audit_table}")
+    } else if msg.contains("timeout") || msg.contains("timed out") {
+        "查询审计日志超时".to_string()
+    } else if msg.contains("connect") || msg.contains("connection") {
+        "无法连接集群查询审计日志".to_string()
+    } else {
+        "查询审计日志失败".to_string()
+    }
+}
+
+fn is_missing_audit_relation(msg: &str) -> bool {
+    msg.contains("unknown table")
+        || msg.contains("unknown database")
+        || msg.contains("doesn't exist")
+        || msg.contains("does not exist")
+        || msg.contains("no matching table")
+        || msg.contains("no such table")
+        || msg.contains("1146")
+        || msg.contains("1049")
+}
+
+fn is_audit_permission_denied(msg: &str) -> bool {
+    msg.contains("access denied") || msg.contains("1142") || msg.contains("1227")
+}
+
+fn extract_table_refs(stmt: &str, fallback_db: &str, catalog: &str) -> Vec<(String, String)> {
+    let mut seen = HashSet::new();
+    let mut tables = Vec::new();
+    for caps in TABLE_REF_RE.captures_iter(stmt) {
+        let Some(raw) = caps.get(1) else {
+            continue;
+        };
+        let cleaned = raw.as_str().replace('`', "");
+        if cleaned.is_empty() || cleaned.contains('(') {
+            continue;
+        }
+        let parts: Vec<&str> = cleaned.split('.').filter(|part| !part.is_empty()).collect();
+        let (database, table) = match parts.as_slice() {
+            [catalog_name, db_name, table_name] => {
+                (format!("{catalog_name}.{db_name}"), (*table_name).to_string())
+            },
+            [db_name, table_name] => {
+                if !catalog.is_empty() && catalog != "default_catalog" {
+                    (format!("{catalog}.{db_name}"), (*table_name).to_string())
+                } else {
+                    ((*db_name).to_string(), (*table_name).to_string())
+                }
+            },
+            [table_name] => {
+                let database = if fallback_db.is_empty() {
+                    String::new()
+                } else if !catalog.is_empty() && catalog != "default_catalog" {
+                    format!("{catalog}.{fallback_db}")
+                } else {
+                    fallback_db.to_string()
+                };
+                (database, (*table_name).to_string())
+            },
+            _ => continue,
+        };
+        if is_ignored_table(&database, &table) {
+            continue;
+        }
+        if seen.insert((database.clone(), table.clone())) {
+            tables.push((database, table));
+        }
+    }
+    tables
+}
 
 /// Top table by access count (from audit logs)
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
@@ -50,6 +164,10 @@ impl AuditLogService {
     }
 
     /// Get audit table name and field mappings based on cluster type
+    pub fn audit_table_name(&self, cluster: &Cluster) -> String {
+        self.get_audit_config(cluster).0
+    }
+
     fn get_audit_config(
         &self,
         cluster: &Cluster,
@@ -90,172 +208,78 @@ impl AuditLogService {
     ) -> ApiResult<Vec<TopTableByAccess>> {
         let pool = self.mysql_pool_manager.get_pool(cluster).await?;
         let mysql_client = MySQLClient::from_pool(pool);
-        let (audit_table, time_field, _query_time_field, is_query_field, stmt_type_field) =
+        let (audit_table, time_field, _query_time_field, is_query_field, _stmt_type_field) =
             self.get_audit_config(cluster);
         let audit_table_filter = &self.audit_config.table;
+        let hours = hours.max(1);
+        let limit = limit.max(1);
 
-        use crate::models::cluster::ClusterType;
-
-        let query = match cluster.cluster_type {
-            ClusterType::StarRocks => format!(
-                r#"
-            SELECT 
-                COALESCE(NULLIF(`catalog`, 'default_catalog'), '') as catalog,
-                    COALESCE(NULLIF(`db`, ''), '') as db_name,
-                -- Extract full table reference from stmt (handles catalog.db.table format)
-                TRIM(BOTH '`' FROM 
-                    REGEXP_REPLACE(
-                        REGEXP_REPLACE(
-                            `stmt`, 
-                            '.*\\b(?:FROM|JOIN|INTO|TABLE)\\s+(`?[a-zA-Z0-9_]+`?(?:\\.[a-zA-Z0-9_]+){{1,2}}|`?[a-zA-Z0-9_]+`?).*', 
-                            '$1'
-                        ),
-                        '`', ''
-                    )
-                ) as full_table_name,
-                COUNT(*) as access_count,
-                    MAX(`{time_field}`) as last_access,
-                COUNT(DISTINCT `user`) as unique_users
+        let query = format!(
+            r#"
+            SELECT
+                COALESCE(`catalog`, '') as catalog,
+                COALESCE(`db`, '') as db_name,
+                `stmt`,
+                `user`,
+                `{time_field}` as last_access
             FROM {audit_table}
-                WHERE `{time_field}` >= DATE_SUB(NOW(), INTERVAL {hours} HOUR)
-                    AND {is_query_field} = 1
-                AND `state` = 'EOF'
-                    AND `{stmt_type_field}` IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE', 'Query')
-                AND `catalog` != ''
-                AND (`db` != 'information_schema' OR `db` IS NULL)
-                AND (`db` != '_statistics_' OR `db` IS NULL)
-                    AND (`db` != '__internal_schema' OR `db` IS NULL)
-                AND LOWER(`stmt`) NOT LIKE '%{audit_table_filter}%'
-                GROUP BY catalog, db_name, full_table_name
-            HAVING full_table_name != ''
-                AND full_table_name NOT LIKE '%(%'
-                AND full_table_name NOT LIKE '%SELECT%'
-                AND full_table_name NOT LIKE '%WHERE%'
-                AND full_table_name NOT LIKE '%GROUP%'
-            ORDER BY access_count DESC
-            LIMIT {limit}
-            "#,
-            ),
-            ClusterType::Doris => format!(
-                r#"
-                SELECT 
-                    COALESCE(NULLIF(`catalog`, 'default_catalog'), '') as catalog,
-                    COALESCE(NULLIF(`db`, ''), '') as db_name,
-                    -- Simplified table extraction for Doris (no REGEXP_REPLACE)
-                    -- Extract table name after FROM keyword using SUBSTRING_INDEX
-                    LOWER(
-                        REPLACE(
-                            REPLACE(
-                                REPLACE(
-                                    TRIM(
-                                        SUBSTRING_INDEX(
-                                            SUBSTRING_INDEX(
-                                                UPPER(`stmt`), 
-                                                'FROM ', 
-                                                -1
-                                            ),
-                                            ' ',
-                                            1
-                                        )
-                                    ),
-                                    '`', ''
-                                ),
-                                ')', ''
-                            ),
-                            '\n', ''
-                        )
-                    ) as full_table_name,
-                    COUNT(*) as access_count,
-                    MAX(`{time_field}`) as last_access,
-                    COUNT(DISTINCT `user`) as unique_users
-                FROM {audit_table}
-                WHERE `{time_field}` >= DATE_SUB(NOW(), INTERVAL {hours} HOUR)
-                    AND {is_query_field} = 1
-                    AND `state` = 'EOF'
-                    AND `{stmt_type_field}` IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE', 'Query')
-                    AND (`catalog` != '' OR `catalog` IS NOT NULL)
-                    AND `db` NOT IN ('information_schema', '_statistics_', '__internal_schema', 'mysql')
-                    AND UPPER(`stmt`) LIKE '%FROM %'
-                    AND LOWER(`stmt`) NOT LIKE '%audit_log%'
-                GROUP BY catalog, db_name, full_table_name
-                HAVING full_table_name != ''
-                    AND full_table_name NOT LIKE '%(%'
-                    AND full_table_name NOT LIKE '%select%'
-                    AND full_table_name NOT LIKE '%where%'
-                    AND full_table_name NOT LIKE '%group%'
-                    AND full_table_name NOT LIKE '%information_schema%'
-                    AND full_table_name NOT LIKE '%__internal_schema%'
-                    AND full_table_name NOT LIKE '%audit_log%'
-                    AND LENGTH(full_table_name) > 0
-                    AND LENGTH(full_table_name) < 100
-                ORDER BY access_count DESC
-                LIMIT {limit}
-                "#,
-            ),
-        };
+            WHERE `{time_field}` >= DATE_SUB(NOW(), INTERVAL {hours} HOUR)
+              AND {is_query_field} = 1
+              AND `state` = 'EOF'
+              AND LOWER(`stmt`) LIKE '% from %'
+              AND LOWER(`stmt`) NOT LIKE '%{audit_table_filter}%'
+            "#
+        );
 
         tracing::debug!("Querying top tables by access: hours={}, limit={}", hours, limit);
 
         let (columns, rows) = mysql_client.query_raw(&query).await?;
-
-        let mut col_idx = std::collections::HashMap::new();
+        let mut col_idx = HashMap::new();
         for (i, col) in columns.iter().enumerate() {
-            col_idx.insert(col.clone(), i);
+            col_idx.insert(col.to_ascii_lowercase(), i);
         }
 
-        let mut tables = Vec::new();
+        let mut aggregated: HashMap<(String, String), (i64, Option<String>, HashSet<String>)> =
+            HashMap::new();
         for row in rows {
-            if let (Some(full_table_name), Some(access_count_str)) = (
-                col_idx.get("full_table_name").and_then(|&i| row.get(i)),
-                col_idx.get("access_count").and_then(|&i| row.get(i)),
-            ) {
-                let access_count = access_count_str.parse::<i64>().unwrap_or(0);
-                let last_access = col_idx
-                    .get("last_access")
-                    .and_then(|&i| row.get(i))
-                    .cloned();
-
-                let unique_users = col_idx
-                    .get("unique_users")
-                    .and_then(|&i| row.get(i))
-                    .and_then(|s| s.parse::<i32>().ok())
-                    .unwrap_or(0);
-
-                let catalog = col_idx
-                    .get("catalog")
-                    .and_then(|&i| row.get(i))
-                    .map(|s| s.as_str())
-                    .unwrap_or("");
-
-                let db_field = col_idx
-                    .get("db_name")
-                    .and_then(|&i| row.get(i))
-                    .map(|s| s.as_str())
-                    .unwrap_or("");
-
-                let parts: Vec<&str> = full_table_name.split('.').collect();
-                let (final_db, final_table) = match parts.len() {
-                    3 => (format!("{}.{}", parts[0], parts[1]), parts[2].to_string()),
-                    2 => {
-                        if !catalog.is_empty() {
-                            (format!("{}.{}", catalog, parts[0]), parts[1].to_string())
-                        } else {
-                            (parts[0].to_string(), parts[1].to_string())
-                        }
-                    },
-                    1 => (db_field.to_string(), parts[0].to_string()),
-                    _ => continue,
-                };
-
-                tables.push(TopTableByAccess {
-                    database: final_db,
-                    table: final_table,
-                    access_count,
-                    last_access,
-                    unique_users,
+            let stmt = row_field(&col_idx, &row, "stmt");
+            if stmt.is_empty() {
+                continue;
+            }
+            let catalog = row_field(&col_idx, &row, "catalog");
+            let db_name = row_field(&col_idx, &row, "db_name");
+            let user = row_field(&col_idx, &row, "user");
+            let last_access = row_field(&col_idx, &row, "last_access");
+            for (database, table) in extract_table_refs(stmt, db_name, catalog) {
+                let entry = aggregated.entry((database, table)).or_insert_with(|| {
+                    (0, None, HashSet::new())
                 });
+                entry.0 += 1;
+                if !last_access.is_empty()
+                    && entry.1.as_deref().map(|prev| last_access > prev).unwrap_or(true)
+                {
+                    entry.1 = Some(last_access.to_string());
+                }
+                if !user.is_empty() {
+                    entry.2.insert(user.to_string());
+                }
             }
         }
+
+        let mut tables: Vec<TopTableByAccess> = aggregated
+            .into_iter()
+            .map(|((database, table), (access_count, last_access, users))| {
+                TopTableByAccess {
+                    database,
+                    table,
+                    access_count,
+                    last_access,
+                    unique_users: users.len() as i32,
+                }
+            })
+            .collect();
+        tables.sort_by(|a, b| b.access_count.cmp(&a.access_count));
+        tables.truncate(limit);
 
         tracing::info!("Found {} top tables by access ({}h window)", tables.len(), hours);
 
@@ -428,5 +452,102 @@ impl AuditLogService {
         );
 
         Ok(slow_queries)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{extract_table_refs, is_ignored_table};
+
+    #[test]
+    fn extract_two_part_table() {
+        let tables = extract_table_refs(
+            "select * from ieg_dwd.st_game_detail_assess order by update_time desc limit 1000",
+            "",
+            "default_catalog",
+        );
+        assert_eq!(tables, vec![("ieg_dwd".to_string(), "st_game_detail_assess".to_string())]);
+    }
+
+    #[test]
+    fn extract_quoted_three_part_table() {
+        let tables = extract_table_refs(
+            "select * from `iceberg`.`ad_gl`.`dwd_ads_dw_all_cnvt_bjht_rt_inc_h` where dayno >= 20260907",
+            "",
+            "hive",
+        );
+        assert_eq!(
+            tables,
+            vec![("iceberg.ad_gl".to_string(), "dwd_ads_dw_all_cnvt_bjht_rt_inc_h".to_string())]
+        );
+    }
+
+    #[test]
+    fn extract_quoted_db_table_and_join() {
+        let tables = extract_table_refs(
+            "SELECT COUNT(*) FROM `ib_nebula`.`dwd_meituan_launch_from_all_version_inc_d` JOIN other_db.dim_user u",
+            "ib_nebula",
+            "default_catalog",
+        );
+        assert_eq!(
+            tables,
+            vec![
+                (
+                    "ib_nebula".to_string(),
+                    "dwd_meituan_launch_from_all_version_inc_d".to_string()
+                ),
+                ("other_db".to_string(), "dim_user".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn extract_skips_heartbeat_and_information_schema() {
+        assert!(extract_table_refs("select @@version_comment limit 1", "", "").is_empty());
+        assert!(
+            extract_table_refs("select * from information_schema.tables", "", "").is_empty()
+        );
+        assert!(is_ignored_table("information_schema", "tables"));
+    }
+
+    #[test]
+    fn extract_uses_fallback_db_for_single_name() {
+        let tables = extract_table_refs("select * from fact_orders where dt=1", "sales", "");
+        assert_eq!(tables, vec![("sales".to_string(), "fact_orders".to_string())]);
+    }
+
+    #[test]
+    fn audit_error_missing_table_is_explicit() {
+        let err = crate::utils::ApiError::internal_error(
+            "SQL execution failed: Getting analyzing error. Detail message: Unknown table 'starrocks_audit_db__.definitely_missing_audit_tbl'.",
+        );
+        assert_eq!(
+            super::audit_query_user_message(&err, "starrocks_audit_db__.starrocks_audit_tbl__"),
+            "集群未配置审计日志表 starrocks_audit_db__.starrocks_audit_tbl__"
+        );
+    }
+
+    #[test]
+    fn audit_error_unknown_database_is_explicit() {
+        let err = crate::utils::ApiError::internal_error(
+            "Getting analyzing error. Detail message: Unknown database 'starrocks_audit_db__'",
+        );
+        assert_eq!(
+            super::audit_query_user_message(&err, "starrocks_audit_db__.starrocks_audit_tbl__"),
+            "集群未配置审计日志表 starrocks_audit_db__.starrocks_audit_tbl__"
+        );
+    }
+
+    #[test]
+    fn audit_error_denied_and_timeout() {
+        let denied = crate::utils::ApiError::internal_error(
+            "Access denied; you need the SELECT privilege(s)",
+        );
+        assert_eq!(
+            super::audit_query_user_message(&denied, "t"),
+            "监控账号无权读取审计日志表 t"
+        );
+        let timeout = crate::utils::ApiError::cluster_connection_failed("connection timed out");
+        assert_eq!(super::audit_query_user_message(&timeout, "t"), "查询审计日志超时");
     }
 }

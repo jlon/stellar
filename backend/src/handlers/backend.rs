@@ -3,12 +3,20 @@ use axum::{
     extract::{Path, State},
 };
 use std::sync::Arc;
+use std::time::Duration;
 use stellar_macros::app_db;
 
 use crate::AppState;
 use crate::models::Backend;
 use crate::services::create_adapter;
+use crate::services::metrics_collector_service::fill_backend_cache_capacity;
 use crate::utils::ApiResult;
+
+fn fill_storage(backends: &mut [Backend]) {
+    for backend in backends {
+        fill_backend_cache_capacity(backend);
+    }
+}
 
 // Get all backends for a cluster (BE nodes in shared-nothing, CN nodes in shared-data)
 #[utoipa::path(
@@ -36,8 +44,19 @@ pub async fn list_backends(
             .get_active_cluster_by_org(org_ctx.organization_id)
             .await?
     };
+    let cluster_id = cluster.id;
+    if let Some(mut backends) = state
+        .metrics_collector_service
+        .cached_backends(cluster_id, Duration::from_secs(90))
+        .or_else(|| state.metrics_collector_service.stale_backends(cluster_id))
+    {
+        fill_storage(&mut backends);
+        return Ok(Json(backends));
+    }
     let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
-    let backends = adapter.get_backends().await?;
+    let mut backends = adapter.get_backends().await?;
+    state.metrics_collector_service.store_backends(cluster_id, backends.clone());
+    fill_storage(&mut backends);
     Ok(Json(backends))
 }
 
@@ -75,8 +94,10 @@ pub async fn delete_backend(
     };
     tracing::info!("Deleting backend {}:{} from cluster {}", host, port, cluster.id);
 
+    let cluster_id = cluster.id;
     let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
     adapter.drop_backend(&host, &port).await?;
+    state.metrics_collector_service.invalidate_backends(cluster_id);
 
     Ok(Json(serde_json::json!({
         "message": format!("Backend {}:{} deleted successfully", host, port)

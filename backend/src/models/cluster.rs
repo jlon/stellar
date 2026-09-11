@@ -181,6 +181,12 @@ pub struct ClusterResponse {
     /// Admin user for permission execution (optional)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub admin_user: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpu_usage_pct: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_usage_pct: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub disk_usage_pct: Option<f64>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -248,6 +254,9 @@ impl From<Cluster> for ClusterResponse {
             deployment_mode: cluster.deployment_mode,
             cluster_type: cluster.cluster_type,
             admin_user: cluster.admin_user,
+            cpu_usage_pct: None,
+            memory_usage_pct: None,
+            disk_usage_pct: None,
         }
     }
 }

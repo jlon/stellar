@@ -16,9 +16,11 @@ import { TabBarComponent } from '../../components/tab-bar/tab-bar.component';
         <ng-content select="nb-menu"></ng-content>
       </nb-sidebar>
 
-      <nb-layout-column>
+      <nb-layout-column class="main-column">
         <ngx-tab-bar></ngx-tab-bar>
-        <ng-content select="router-outlet"></ng-content>
+        <div class="main-column__body">
+          <ng-content select="router-outlet"></ng-content>
+        </div>
       </nb-layout-column>
     </nb-layout>
   `,

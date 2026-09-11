@@ -13,6 +13,7 @@ import { MetricThresholds, renderMetricBadge, parseStarRocksDuration } from '../
 import { renderLongText } from '../../../../@core/utils/text-truncate';
 import { AuthService } from '../../../../@core/data/auth.service';
 import { themeColor } from '../../../../@core/utils/theme-color';
+import { assignTableRows } from '../../../../@core/utils/table-rows';
 import * as dagre from 'dagre';
 
 @Component({
@@ -679,9 +680,10 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.nodeService.listProfiles().subscribe(
       data => {
-        this.profileSource.load(data);
         this.updateDynamicThresholds(data);
-        this.loading = false;
+        assignTableRows(this.profileSource, data).then(() => {
+          this.loading = false;
+        });
       },
       error => {
         this.toastrService.danger(ErrorHandler.handleClusterError(error), '加载失败');

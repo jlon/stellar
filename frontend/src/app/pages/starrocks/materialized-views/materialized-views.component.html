@@ -1,6 +1,6 @@
 <div class="row">
   <div class="col-12">
-    <nb-card>
+    <nb-card [nbSpinner]="loading" nbSpinnerStatus="primary" nbSpinnerMessage="加载中">
       <nb-card-header>
         <div class="d-flex justify-content-between align-items-center">
           <div class="d-flex align-items-center gap-2">
@@ -252,12 +252,6 @@
         </div>
 
         <!-- Loading Indicator -->
-        @if (loading) {
-          <div class="text-center mt-3">
-            <nb-spinner status="primary"></nb-spinner>
-          </div>
-        }
-
         <!-- Data Table -->
         @if (!loading) {
           <angular2-smart-table

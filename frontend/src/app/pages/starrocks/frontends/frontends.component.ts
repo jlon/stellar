@@ -7,6 +7,7 @@ import { NodeService } from '../../../@core/data/node.service';
 import { ClusterService, Cluster } from '../../../@core/data/cluster.service';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
 import { ErrorHandler } from '../../../@core/utils/error-handler';
+import { assignTableRows } from '../../../@core/utils/table-rows';
 
 
 @Component({
@@ -33,6 +34,7 @@ export class FrontendsComponent implements OnInit, OnDestroy {
   clusterName: string = '';
   loading = true;
   private destroy$ = new Subject<void>();
+  private loadSeq = 0;
 
   settings = {
     mode: 'external',
@@ -151,15 +153,29 @@ export class FrontendsComponent implements OnInit, OnDestroy {
   }
 
   loadFrontends(): void {
+    const seq = ++this.loadSeq;
     this.loading = true;
     this.nodeService.listFrontends().subscribe({
       next: (frontends) => {
-        this.source.load(frontends);
-        this.loading = false;
+        if (seq !== this.loadSeq) {
+          return;
+        }
+        assignTableRows(this.source, frontends).then(() => {
+          if (seq === this.loadSeq) {
+            this.loading = false;
+          }
+        });
       },
       error: (error) => {
+        if (seq !== this.loadSeq) {
+          return;
+        }
         this.toastrService.danger(ErrorHandler.handleClusterError(error), '加载失败');
-        this.loading = false;
+        assignTableRows(this.source, []).then(() => {
+          if (seq === this.loadSeq) {
+            this.loading = false;
+          }
+        });
       },
     });
   }

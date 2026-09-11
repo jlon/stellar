@@ -35,7 +35,7 @@ where
 
 // Helper function for default empty string
 fn default_empty_string() -> String {
-    "0".to_string()
+    String::new()
 }
 
 // Backend node information (also used for Compute Nodes in shared-data architecture)
@@ -58,7 +58,7 @@ fn default_empty_string() -> String {
 //   DataCacheMetrics, HasStoragePath, StatusCode
 //   + Shared-Data: StarletPort, WorkerId, WarehouseName, TabletNum
 //
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Backend {
     #[serde(rename = "BackendId", alias = "ComputeNodeId", default = "default_empty_string")]
     pub backend_id: String,
@@ -164,7 +164,7 @@ pub struct Backend {
 }
 
 // Frontend node information
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Frontend {
     #[serde(rename = "Name")]
     pub name: String,

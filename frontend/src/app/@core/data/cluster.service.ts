@@ -24,6 +24,9 @@ export interface Cluster {
   admin_user?: string;  // Admin user for permission execution (optional, only visible to org admins and super admins)
   created_at: string;
   updated_at: string;
+  cpu_usage_pct?: number;
+  memory_usage_pct?: number;
+  disk_usage_pct?: number;
 }
 
 export interface CreateClusterRequest {
@@ -55,6 +58,13 @@ export interface HealthCheck {
   name: string;
   status: string;
   message: string;
+}
+
+export interface ClusterResourceSummary {
+  cluster_id: number;
+  cpu_usage_pct?: number;
+  memory_usage_pct?: number;
+  disk_usage_pct?: number;
 }
 
 @Injectable({

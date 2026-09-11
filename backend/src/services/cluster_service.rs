@@ -8,13 +8,14 @@ use crate::services::{MySQLPoolManager, create_adapter};
 use crate::utils::{ApiError, ApiResult};
 use chrono::Utc;
 use sqlx::Pool;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use stellar_macros::app_impl;
 
 #[derive(Clone)]
 pub struct ClusterService<DB: AppDb> {
     pool: Pool<DB>,
     mysql_pool_manager: Arc<MySQLPoolManager>,
+    active_cluster: Arc<RwLock<Option<Cluster>>>,
 }
 
 /// Convert raw error messages into user-friendly messages for health checks
@@ -56,7 +57,23 @@ fn simplify_health_check_error(error: &str) -> String {
 #[app_impl]
 impl<DB: AppDb> ClusterService<DB> {
     pub fn new(pool: Pool<DB>, mysql_pool_manager: Arc<MySQLPoolManager>) -> Self {
-        Self { pool, mysql_pool_manager }
+        Self { pool, mysql_pool_manager, active_cluster: Arc::new(RwLock::new(None)) }
+    }
+
+    pub fn cached_active_cluster(&self) -> Option<Cluster> {
+        self.active_cluster.read().ok()?.clone()
+    }
+
+    fn remember_active(&self, cluster: &Cluster) {
+        if let Ok(mut guard) = self.active_cluster.write() {
+            *guard = Some(cluster.clone());
+        }
+    }
+
+    fn clear_active(&self) {
+        if let Ok(mut guard) = self.active_cluster.write() {
+            *guard = None;
+        }
     }
 
     pub async fn create_cluster(
@@ -193,17 +210,27 @@ impl<DB: AppDb> ClusterService<DB> {
     }
 
     pub async fn get_active_cluster(&self) -> ApiResult<Cluster> {
+        if let Some(cluster) = self.cached_active_cluster() {
+            return Ok(cluster);
+        }
         let cluster: Option<Cluster> =
             db_query::query_as("SELECT * FROM clusters WHERE is_active = TRUE LIMIT 1")
                 .fetch_optional(&self.pool)
                 .await?;
 
-        cluster.ok_or_else(|| {
+        let cluster = cluster.ok_or_else(|| {
             ApiError::not_found("No active cluster found. Please activate a cluster first.")
-        })
+        })?;
+        self.remember_active(&cluster);
+        Ok(cluster)
     }
 
     pub async fn get_active_cluster_by_org(&self, org_id: Option<i64>) -> ApiResult<Cluster> {
+        if let Some(cluster) = self.cached_active_cluster() {
+            if org_id.is_some() && cluster.organization_id == org_id {
+                return Ok(cluster);
+            }
+        }
         let cluster: Option<Cluster> = if let Some(org) = org_id {
             db_query::query_as(
                 "SELECT * FROM clusters WHERE is_active = TRUE AND organization_id = ? LIMIT 1",
@@ -215,11 +242,13 @@ impl<DB: AppDb> ClusterService<DB> {
             None
         };
 
-        cluster.ok_or_else(|| {
+        let cluster = cluster.ok_or_else(|| {
             ApiError::not_found(
                 "No active cluster found for your organization. Please activate a cluster first.",
             )
-        })
+        })?;
+        self.remember_active(&cluster);
+        Ok(cluster)
     }
 
     pub async fn set_active_cluster(&self, cluster_id: i64) -> ApiResult<Cluster> {
@@ -250,7 +279,9 @@ impl<DB: AppDb> ClusterService<DB> {
 
         tracing::info!("Cluster activated: ID {} (org: {:?})", cluster_id, org_id);
 
-        self.get_cluster(cluster_id).await
+        let cluster = self.get_cluster(cluster_id).await?;
+        self.remember_active(&cluster);
+        Ok(cluster)
     }
 
     pub async fn update_cluster(
@@ -358,19 +389,35 @@ impl<DB: AppDb> ClusterService<DB> {
                 .fetch_optional(&self.pool)
                 .await?;
 
-        let is_active = cluster_record.map(|r| r.0).unwrap_or(false);
-        let cluster_org_id = cluster_record.and_then(|r| r.1);
+        let Some((is_active, cluster_org_id)) = cluster_record else {
+            return Err(ApiError::cluster_not_found(cluster_id));
+        };
 
+        let mut tx = self.pool.begin().await?;
+        db_query::query("DELETE FROM permission_requests WHERE cluster_id = ?")
+            .bind(cluster_id)
+            .execute(&mut *tx)
+            .await?;
         let result = db_query::query("DELETE FROM clusters WHERE id = ?")
             .bind(cluster_id)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
-
         if result.rows_affected() == 0 {
             return Err(ApiError::cluster_not_found(cluster_id));
         }
+        tx.commit().await?;
 
         tracing::info!("Cluster deleted: ID {}", cluster_id);
+
+        let cached_is_deleted = self
+            .active_cluster
+            .read()
+            .ok()
+            .and_then(|guard| guard.as_ref().map(|cluster| cluster.id == cluster_id))
+            .unwrap_or(false);
+        if cached_is_deleted {
+            self.clear_active();
+        }
 
         if is_active {
             let next_cluster: Option<(i64,)> = if let Some(org_id) = cluster_org_id {
@@ -394,6 +441,8 @@ impl<DB: AppDb> ClusterService<DB> {
                     .execute(&self.pool)
                     .await?;
                 tracing::info!("Automatically activated cluster ID {} after deletion", next_id);
+                let next = self.get_cluster(next_id).await?;
+                self.remember_active(&next);
             }
         }
 
@@ -667,5 +716,73 @@ impl<DB: AppDb> ClusterService<DB> {
         }
 
         Ok(ClusterHealth { status: overall_status, checks, last_check_time: Utc::now() })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+    use std::time::Duration;
+
+    async fn test_pool() -> SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .acquire_timeout(Duration::from_secs(5))
+            .connect("sqlite::memory:")
+            .await
+            .expect("test db");
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .expect("enable foreign keys");
+        sqlx::migrate!().run(&pool).await.expect("migrations");
+        pool
+    }
+
+    #[tokio::test]
+    async fn delete_cluster_with_permission_request_succeeds() {
+        let pool = test_pool().await;
+        sqlx::query(
+            "INSERT INTO organizations (code, name, description, is_system) VALUES ('org', 'Org', '', 0)",
+        )
+        .execute(&pool)
+        .await
+        .expect("org");
+        sqlx::query(
+            "INSERT INTO users (username, password_hash, email, organization_id) VALUES ('u1', 'x', 'u1@t.com', 1)",
+        )
+        .execute(&pool)
+        .await
+        .expect("user");
+        sqlx::query(
+            "INSERT INTO clusters (name, fe_host, fe_http_port, fe_query_port, username, password_encrypted, catalog, deployment_mode, cluster_type, is_active, organization_id)
+             VALUES ('c1', '127.0.0.1', 8030, 9030, 'root', 'p', 'default_catalog', 'shared_nothing', 'starrocks', 0, 1)",
+        )
+        .execute(&pool)
+        .await
+        .expect("cluster");
+        sqlx::query(
+            "INSERT INTO permission_requests (cluster_id, applicant_id, applicant_org_id, request_type, request_details, reason, status)
+             VALUES (1, 1, 1, 'grant_permission', '{}', 'test', 'failed')",
+        )
+        .execute(&pool)
+        .await
+        .expect("permission request");
+
+        let service = ClusterService::new(pool.clone(), Arc::new(MySQLPoolManager::new()));
+        service.delete_cluster(1).await.expect("delete should succeed");
+
+        let clusters: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM clusters WHERE id = 1")
+            .fetch_one(&pool)
+            .await
+            .expect("count clusters");
+        let requests: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM permission_requests WHERE cluster_id = 1")
+                .fetch_one(&pool)
+                .await
+                .expect("count requests");
+        assert_eq!(clusters.0, 0);
+        assert_eq!(requests.0, 0);
     }
 }

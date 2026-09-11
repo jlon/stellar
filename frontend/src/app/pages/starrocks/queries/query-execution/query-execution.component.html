@@ -602,8 +602,7 @@
               <!-- Running Queries Tab -->
               <nb-tab tabTitle="运行中" tabId="running" [active]="selectedTab === 'running'">
                 <!-- Filter and Actions Bar -->
-                @if (!loading) {
-                  <div class="running-query-filters mb-3">
+                <div class="running-query-filters mb-3">
                     <div class="filter-content">
                       <div class="filter-options">
                         <nb-checkbox
@@ -643,19 +642,15 @@
                       </div>
                     </div>
                   </div>
-                }
 
-                @if (loading) {
-                  <div class="text-center mt-3"><nb-spinner status="primary" [message]="''"></nb-spinner></div>
-                }
-                @if (!loading) {
+                <div [nbSpinner]="loading" nbSpinnerStatus="primary" nbSpinnerMessage="加载中">
                   <angular2-smart-table
                     [settings]="runningSettings"
                     [source]="runningSource"
                     (delete)="onQueryDeleteConfirm($event)"
                     (edit)="onQueryEdit($event)">
                   </angular2-smart-table>
-                }
+                </div>
               </nb-tab>
             </nb-tabset>
           </div>

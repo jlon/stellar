@@ -1,9 +1,10 @@
+import { CommonModule } from '@angular/common';
 import { Component, OnInit, OnDestroy, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { interval, Subject } from 'rxjs';
-import { takeUntil, switchMap } from 'rxjs/operators';
+import { Subject } from 'rxjs';
+import { takeUntil } from 'rxjs/operators';
 import { NbToastrService, NbIconModule, NbButtonModule, NbSpinnerModule, NbCardModule, NbTooltipModule, NbTagModule } from '@nebular/theme';
-import { ClusterService, Cluster, ClusterHealth } from '../../../@core/data/cluster.service';
+import { ClusterService, Cluster, ClusterHealth, ClusterResourceSummary } from '../../../@core/data/cluster.service';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
 import { OrganizationService, Organization } from '../../../@core/data/organization.service';
 import { ErrorHandler } from '../../../@core/utils/error-handler';
@@ -11,22 +12,14 @@ import { PermissionService } from '../../../@core/data/permission.service';
 import { ConfirmDialogService } from '../../../@core/services/confirm-dialog.service';
 import { AuthService } from '../../../@core/data/auth.service';
 
-import { StatusCardComponent } from './status-card/status-card.component';
-
 interface ClusterCard {
   cluster: Cluster;
   health?: ClusterHealth;
+  resources?: ClusterResourceSummary;
   loading: boolean;
   isActive: boolean;
   organization?: Organization;
   showHealthDetails?: boolean;
-}
-
-interface StatusCard {
-  title: string;
-  value: string;
-  type: string;
-  icon: string;
 }
 
 @Component({
@@ -35,7 +28,7 @@ interface StatusCard {
     styleUrls: ['./dashboard.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
-    StatusCardComponent,
+    CommonModule,
     NbIconModule,
     NbButtonModule,
     NbSpinnerModule,
@@ -131,6 +124,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
           loading: false,
           isActive: cluster.is_active,
           organization: cluster.organization_id ? this.organizationsMap.get(cluster.organization_id) : undefined,
+          resources: this.toResourceSummary(cluster),
         }));
         
         // Refresh active cluster from backend
@@ -146,16 +140,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.cdr.markForCheck();
       },
     });
-  }
-
-  updateClusters(clusters: Cluster[]): void {
-    // Update clusters, setting isActive based on backend is_active field
-    this.clusters = clusters.map((cluster) => ({
-      cluster,
-      loading: false,
-      isActive: cluster.is_active,
-    }));
-    this.cdr.markForCheck();
   }
 
   updateActiveStatus(): void {
@@ -184,6 +168,49 @@ export class DashboardComponent implements OnInit, OnDestroy {
       setTimeout(() => this.loadClusters(), 500);
   }
 
+  toResourceSummary(cluster: Cluster): ClusterResourceSummary | undefined {
+    if (
+      cluster.cpu_usage_pct == null &&
+      cluster.memory_usage_pct == null &&
+      cluster.disk_usage_pct == null
+    ) {
+      return undefined;
+    }
+    return {
+      cluster_id: cluster.id,
+      cpu_usage_pct: cluster.cpu_usage_pct,
+      memory_usage_pct: cluster.memory_usage_pct,
+      disk_usage_pct: cluster.disk_usage_pct,
+    };
+  }
+
+  usageTone(pct?: number): '' | 'warning' | 'danger' {
+    if (pct == null || !Number.isFinite(pct)) {
+      return '';
+    }
+    if (pct >= 90) {
+      return 'danger';
+    }
+    if (pct >= 80) {
+      return 'warning';
+    }
+    return '';
+  }
+
+  formatPct(pct?: number): string {
+    if (pct == null || !Number.isFinite(pct)) {
+      return '—';
+    }
+    return `${Math.round(pct)}%`;
+  }
+
+  clampPct(pct?: number): number {
+    if (pct == null || !Number.isFinite(pct)) {
+      return 0;
+    }
+    return Math.min(100, Math.max(0, pct));
+  }
+
   loadHealthStatus(): void {
     if (!this.hasClusterAccess) {
       return;
@@ -206,35 +233,19 @@ export class DashboardComponent implements OnInit, OnDestroy {
     });
   }
 
-  getStatusColor(status?: string): string {
-    switch (status) {
-      case 'healthy':
-        return 'success';  // 绿色 - 健康
-      case 'warning':
-        return 'warning';  // 黄色 - 警告
-      case 'critical':
-        return 'danger';   // 红色 - 危险/不健康
-      default:
-        return 'basic';    // 默认 - 未知状态
-    }
-  }
-
-  // Get health badge status for nb-badge component
-  getHealthBadgeStatus(clusterCard: ClusterCard): string {
-    if (!clusterCard.health) {
-      return 'basic';
-    }
-    const status = clusterCard.health.status;
+  statusTone(status?: string): '' | 'ok' | 'warning' | 'danger' {
     if (status === 'healthy') {
-      return 'success';
+      return 'ok';
     }
     if (status === 'warning') {
       return 'warning';
     }
-    return 'danger';
+    if (status === 'critical') {
+      return 'danger';
+    }
+    return '';
   }
 
-  // Get health badge text for nb-badge component
   getHealthBadgeText(clusterCard: ClusterCard): string {
     if (!clusterCard.health) {
       return '未知';
@@ -249,54 +260,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return '异常';
   }
 
-  // Get health badge text with last check time
-  getHealthBadgeTextWithTime(clusterCard: ClusterCard): string {
-    const statusText = this.getHealthBadgeText(clusterCard);
-    if (!clusterCard.health?.last_check_time) {
-      return statusText;
-    }
-    
-    try {
-      const checkTime = new Date(clusterCard.health.last_check_time);
-      const now = new Date();
-      const diffMs = now.getTime() - checkTime.getTime();
-      const diffMins = Math.floor(diffMs / 60000);
-      
-      if (diffMins < 1) {
-        return `${statusText} · 刚刚`;
-      } else if (diffMins < 60) {
-        return `${statusText} · ${diffMins}分钟前`;
-      } else {
-        const diffHours = Math.floor(diffMins / 60);
-        return `${statusText} · ${diffHours}小时前`;
-      }
-    } catch (e) {
-      return statusText;
-    }
-  }
-
-  // Toggle health check details visibility
   toggleHealthDetails(clusterCard: ClusterCard): void {
     clusterCard.showHealthDetails = !clusterCard.showHealthDetails;
     this.cdr.markForCheck();
   }
 
-  // Get health icon based on cluster health status
-  getHealthIcon(clusterCard: ClusterCard): string {
-    if (!clusterCard.health) {
-      return 'question-mark-circle-outline';
-    }
-    const status = clusterCard.health.status;
-    if (status === 'healthy') {
-      return 'checkmark-circle-2-outline';
-    }
-    if (status === 'warning') {
-      return 'alert-triangle-outline';
-    }
-    return 'close-circle-outline';
-  }
-
-  // Get failed health checks count
   getFailedChecksCount(clusterCard: ClusterCard): number {
     if (!clusterCard.health?.checks) {
       return 0;
@@ -347,28 +315,21 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return clusterCard.cluster.deployment_mode === 'shared_data';
   }
 
-  // Get compute node label based on deployment mode
-  getComputeNodeLabel(clusterCard: ClusterCard): string {
-    return this.isSharedData(clusterCard) ? 'CN 节点' : 'BE 节点';
+  computeNodeShort(clusterCard: ClusterCard): string {
+    return this.isSharedData(clusterCard) ? 'CN' : 'BE';
   }
 
-  get statusCards(): StatusCard[] {
-    return [
-      { title: '集群', value: `${this.clusters.length}`, type: 'primary', icon: 'layers-outline' },
-      { title: '健康', value: `${this.countByStatus('healthy')}`, type: 'success', icon: 'checkmark-circle-2-outline' },
-      { title: '告警', value: `${this.countByStatus('warning') + this.countByStatus('critical')}`, type: 'warning', icon: 'alert-triangle-outline' },
-      { title: '节点', value: `${this.totalNodeCount()}`, type: 'info', icon: 'hard-drive-outline' },
-    ];
+  get alertCount(): number {
+    return this.countByStatus('warning') + this.countByStatus('critical');
   }
 
-  getHealthScore(clusterCard: ClusterCard): string {
-    if (!clusterCard.health?.checks || clusterCard.health.checks.length === 0) {
-      return '—';
-    }
-    const totalChecks = clusterCard.health.checks.length;
-    const passedChecks = clusterCard.health.checks.filter(c => c.status === 'ok').length;
-    const score = Math.round((passedChecks / totalChecks) * 100);
-    return `${score}`;
+  failedCountLabel(clusterCard: ClusterCard): string {
+    const failed = this.getFailedChecksCount(clusterCard);
+    return failed > 0 ? `${failed} 异常` : '';
+  }
+
+  trackByClusterId(_: number, clusterCard: ClusterCard): number {
+    return clusterCard.cluster.id;
   }
 
   navigateToCluster(clusterId?: number): void {
@@ -428,15 +389,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.router.navigate(['/pages/starrocks/frontends']);
   }
 
-  navigateToQueries(clusterId?: number): void {
-    if (!this.canViewQueries) {
-      this.toastrService.warning('您没有查看查询信息的权限', '提示');
-      return;
-    }
-    // 查询执行页不接收 ID，组件内部会使用 ActiveCluster 或自己解析
-    this.router.navigate(['/pages/starrocks/queries/execution']);
-  }
-
   addCluster(): void {
     if (!this.canCreateCluster) {
       this.toastrService.warning('您没有创建集群的权限', '提示');
@@ -480,17 +432,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   private countByStatus(status: string): number {
     return this.clusters.filter(card => card.health?.status === status).length;
-  }
-
-  private totalNodeCount(): number {
-    return this.clusters.reduce((sum, card) => {
-      return sum + this.parseNodeCount(this.getFeCount(card)) + this.parseNodeCount(this.getComputeNodeCount(card));
-    }, 0);
-  }
-
-  private parseNodeCount(value: string): number {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : 0;
   }
 
   private handleError(error: any): void {
@@ -556,4 +497,3 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.cdr.markForCheck();
   }
 }
-

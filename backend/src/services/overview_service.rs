@@ -5,7 +5,7 @@ use crate::db::query as db_query;
 
 use crate::db::AppDb;
 use crate::services::{
-    ClusterService, DataStatistics, DataStatisticsService, MetricsSnapshot, MySQLClient,
+    ClusterService, DataStatistics, DataStatisticsService, MetricsSnapshot,
 };
 use crate::utils::{ApiError, ApiResult};
 use chrono::{DateTime, Utc};
@@ -71,6 +71,8 @@ pub struct PerformanceTrends {
     pub latency_p50: Vec<TimeSeriesPoint>,
     pub latency_p95: Vec<TimeSeriesPoint>,
     pub latency_p99: Vec<TimeSeriesPoint>,
+    pub error_rate: Vec<TimeSeriesPoint>,
+    pub timeout_rate: Vec<TimeSeriesPoint>,
 }
 
 /// Resource trends over time
@@ -80,6 +82,17 @@ pub struct ResourceTrends {
     pub memory_usage: Vec<TimeSeriesPoint>,
     pub disk_usage: Vec<TimeSeriesPoint>,
     pub jvm_heap_usage: Vec<TimeSeriesPoint>,
+    pub network_tx: Vec<TimeSeriesPoint>,
+    pub network_rx: Vec<TimeSeriesPoint>,
+    pub io_read: Vec<TimeSeriesPoint>,
+    pub io_write: Vec<TimeSeriesPoint>,
+    pub compaction_score: Vec<TimeSeriesPoint>,
+    pub backend_alive: Vec<TimeSeriesPoint>,
+    pub frontend_alive: Vec<TimeSeriesPoint>,
+    pub tablet_count: Vec<TimeSeriesPoint>,
+    pub jvm_thread_count: Vec<TimeSeriesPoint>,
+    pub txn_success: Vec<TimeSeriesPoint>,
+    pub txn_failed: Vec<TimeSeriesPoint>,
 }
 
 /// Time series data point
@@ -171,7 +184,7 @@ pub struct ResourceMetrics {
 }
 
 /// Materialized view statistics
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Default, Serialize, ToSchema)]
 pub struct MaterializedViewStats {
     pub total: i32,
     pub running: i32,
@@ -181,7 +194,7 @@ pub struct MaterializedViewStats {
 }
 
 /// Load job statistics
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Default, Serialize, ToSchema)]
 pub struct LoadJobStats {
     pub running: i32,
     pub pending: i32,
@@ -199,7 +212,7 @@ pub struct TransactionStats {
 }
 
 /// Schema change statistics
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Default, Serialize, ToSchema)]
 pub struct SchemaChangeStats {
     pub running: i32,
     pub pending: i32,
@@ -209,7 +222,7 @@ pub struct SchemaChangeStats {
 }
 
 /// Compaction statistics
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Default, Serialize, ToSchema)]
 pub struct CompactionStats {
     pub base_compaction_running: i32,
     pub cumulative_compaction_running: i32,
@@ -233,6 +246,15 @@ pub struct CompactionDetailStats {
     pub top_partitions: Vec<TopPartitionByScore>,
     pub task_stats: CompactionTaskStats,
     pub duration_stats: CompactionDurationStats,
+    #[serde(default)]
+    pub node_disks: Vec<NodeDiskUsage>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeDiskUsage {
+    pub host: String,
+    pub used_pct: f64,
 }
 
 /// Top partition by compaction score
@@ -266,7 +288,7 @@ pub struct CompactionDurationStats {
 }
 
 /// Session statistics
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Default, Serialize, ToSchema)]
 pub struct SessionStats {
     pub active_users_1h: i32,
     pub active_users_24h: i32,
@@ -319,6 +341,7 @@ pub enum AlertLevel {
 pub struct ExtendedClusterOverview {
     pub cluster_id: i64,
     pub cluster_name: String,
+    pub deployment_mode: crate::models::cluster::DeploymentMode,
     pub timestamp: DateTime<Utc>,
 
     pub health: ClusterHealth,
@@ -349,6 +372,52 @@ pub struct ExtendedClusterOverview {
     pub capacity: Option<CapacityPrediction>,
 
     pub alerts: Vec<Alert>,
+
+    pub meta_log_count: i64,
+    pub unfinished_query: i64,
+    pub safe_mode: bool,
+}
+
+fn empty_compaction_detail_stats() -> CompactionDetailStats {
+    CompactionDetailStats {
+        top_partitions: Vec::new(),
+        task_stats: CompactionTaskStats {
+            running_count: 0,
+            finished_count: 0,
+            total_count: 0,
+        },
+        duration_stats: CompactionDurationStats {
+            min_duration_ms: 0,
+            max_duration_ms: 0,
+            avg_duration_ms: 0,
+        },
+        node_disks: Vec::new(),
+    }
+}
+
+fn counter_delta_vs_last_positive(values: impl IntoIterator<Item = i64>) -> Vec<f64> {
+    let mut last_positive: Option<i64> = None;
+    values
+        .into_iter()
+        .map(|current| {
+            let delta = match last_positive {
+                Some(previous) if current >= previous && previous > 0 => (current - previous) as f64,
+                _ => 0.0,
+            };
+            if current > 0 {
+                last_positive = Some(current);
+            }
+            delta
+        })
+        .collect()
+}
+
+fn parse_usage_pct(raw: &str) -> Option<f64> {
+    let trimmed = raw.trim().trim_end_matches('%').trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    trimmed.parse().ok().filter(|value: &f64| value.is_finite() && *value >= 0.0)
 }
 
 #[derive(Clone)]
@@ -582,14 +651,22 @@ impl<DB: AppDb> OverviewService<DB> {
             ));
         }
 
-        let latest = snapshots.last().unwrap();
+        let latest = snapshots.last().ok_or_else(|| {
+            ApiError::internal_error("No historical data available for capacity prediction")
+        })?;
         let disk_total_bytes = latest.0;
         let disk_usage_pct = latest.2;
 
         let disk_used_bytes = ((disk_total_bytes as f64) * disk_usage_pct / 100.0) as i64;
 
-        let first_time = snapshots.first().unwrap().3.timestamp();
-        let last_time = snapshots.last().unwrap().3.timestamp();
+        let first_time = snapshots
+            .first()
+            .ok_or_else(|| {
+                ApiError::internal_error("No historical data available for capacity prediction")
+            })?
+            .3
+            .timestamp();
+        let last_time = latest.3.timestamp();
         let time_span_days = (last_time - first_time) as f64 / 86400.0;
 
         let mut sum_x = 0.0;
@@ -648,14 +725,14 @@ impl<DB: AppDb> OverviewService<DB> {
             "decreasing"
         };
 
-        let (days_until_full, predicted_full_date) = if daily_growth_bytes > 0 {
-            let remaining_bytes = disk_total_bytes - disk_used_bytes;
+        let remaining_bytes = disk_total_bytes.saturating_sub(disk_used_bytes);
+        let (days_until_full, predicted_full_date) = if disk_usage_pct >= 99.5 || remaining_bytes == 0
+        {
+            (Some(0), Some(Utc::now().format("%Y-%m-%d").to_string()))
+        } else if daily_growth_bytes > 0 {
             let days = (remaining_bytes as f64 / daily_growth_bytes as f64).ceil() as i32;
-
             let full_date = Utc::now() + chrono::Duration::days(days as i64);
-            let full_date_str = full_date.format("%Y-%m-%d").to_string();
-
-            (Some(days), Some(full_date_str))
+            (Some(days), Some(full_date.format("%Y-%m-%d").to_string()))
         } else {
             (None, None)
         };
@@ -717,6 +794,9 @@ impl<DB: AppDb> OverviewService<DB> {
             io_write_bytes_total: i64,
             io_read_rate: f64,
             io_write_rate: f64,
+            meta_log_count: i64,
+            unfinished_query: i64,
+            safe_mode: i64,
         }
 
         let row: Option<SnapshotRow> = db_query::query_as(
@@ -774,6 +854,9 @@ impl<DB: AppDb> OverviewService<DB> {
                 io_write_bytes_total: r.io_write_bytes_total,
                 io_read_rate: r.io_read_rate,
                 io_write_rate: r.io_write_rate,
+                meta_log_count: r.meta_log_count,
+                unfinished_query: r.unfinished_query,
+                safe_mode: r.safe_mode as i32,
             }))
         } else {
             Ok(None)
@@ -829,6 +912,9 @@ impl<DB: AppDb> OverviewService<DB> {
             io_write_bytes_total: i64,
             io_read_rate: f64,
             io_write_rate: f64,
+            meta_log_count: i64,
+            unfinished_query: i64,
+            safe_mode: i64,
         }
 
         let start_time = time_range.start_time();
@@ -892,65 +978,108 @@ impl<DB: AppDb> OverviewService<DB> {
                 io_write_bytes_total: r.io_write_bytes_total,
                 io_read_rate: r.io_read_rate,
                 io_write_rate: r.io_write_rate,
+                meta_log_count: r.meta_log_count,
+                unfinished_query: r.unfinished_query,
+                safe_mode: r.safe_mode as i32,
             })
             .collect();
 
         Ok(snapshots)
     }
 
-    /// Calculate performance trends from snapshots
-    fn calculate_performance_trends(&self, snapshots: &[MetricsSnapshot]) -> PerformanceTrends {
-        let qps: Vec<TimeSeriesPoint> = snapshots
+    fn snapshot_points(
+        snapshots: &[MetricsSnapshot],
+        value: impl Fn(&MetricsSnapshot) -> f64,
+    ) -> Vec<TimeSeriesPoint> {
+        snapshots
             .iter()
-            .map(|s| TimeSeriesPoint { timestamp: s.collected_at, value: s.qps })
-            .collect();
-
-        let rps: Vec<TimeSeriesPoint> = snapshots
-            .iter()
-            .map(|s| TimeSeriesPoint { timestamp: s.collected_at, value: s.rps })
-            .collect();
-
-        let latency_p50: Vec<TimeSeriesPoint> = snapshots
-            .iter()
-            .map(|s| TimeSeriesPoint { timestamp: s.collected_at, value: s.query_latency_p50 })
-            .collect();
-
-        let latency_p95: Vec<TimeSeriesPoint> = snapshots
-            .iter()
-            .map(|s| TimeSeriesPoint { timestamp: s.collected_at, value: s.query_latency_p95 })
-            .collect();
-
-        let latency_p99: Vec<TimeSeriesPoint> = snapshots
-            .iter()
-            .map(|s| TimeSeriesPoint { timestamp: s.collected_at, value: s.query_latency_p99 })
-            .collect();
-
-        PerformanceTrends { qps, rps, latency_p50, latency_p95, latency_p99 }
+            .map(|snapshot| TimeSeriesPoint { timestamp: snapshot.collected_at, value: value(snapshot) })
+            .collect()
     }
 
-    /// Calculate resource trends from snapshots
+    fn snapshot_ratio_pct(curr_part: i64, curr_total: i64, prev: Option<(i64, i64)>) -> f64 {
+        if let Some((prev_part, prev_total)) = prev {
+            let delta_total = curr_total.saturating_sub(prev_total);
+            let delta_part = curr_part.saturating_sub(prev_part);
+            if delta_total > 0 {
+                return (delta_part as f64 / delta_total as f64) * 100.0;
+            }
+        }
+        if curr_total > 0 {
+            curr_part as f64 / curr_total as f64 * 100.0
+        } else {
+            0.0
+        }
+    }
+
+    fn snapshot_delta_vs_last_positive(
+        snapshots: &[MetricsSnapshot],
+        value: impl Fn(&MetricsSnapshot) -> i64,
+    ) -> Vec<TimeSeriesPoint> {
+        let deltas = counter_delta_vs_last_positive(snapshots.iter().map(&value));
+        snapshots
+            .iter()
+            .zip(deltas)
+            .map(|(snapshot, value)| TimeSeriesPoint { timestamp: snapshot.collected_at, value })
+            .collect()
+    }
+
+    fn snapshot_ratio_series(
+        snapshots: &[MetricsSnapshot],
+        part: impl Fn(&MetricsSnapshot) -> i64,
+        total: impl Fn(&MetricsSnapshot) -> i64,
+    ) -> Vec<TimeSeriesPoint> {
+        snapshots
+            .iter()
+            .enumerate()
+            .map(|(index, snapshot)| TimeSeriesPoint {
+                timestamp: snapshot.collected_at,
+                value: Self::snapshot_ratio_pct(
+                    part(snapshot),
+                    total(snapshot),
+                    index
+                        .checked_sub(1)
+                        .and_then(|i| snapshots.get(i))
+                        .map(|prev| (part(prev), total(prev))),
+                ),
+            })
+            .collect()
+    }
+
+    fn calculate_performance_trends(&self, snapshots: &[MetricsSnapshot]) -> PerformanceTrends {
+        PerformanceTrends {
+            qps: Self::snapshot_points(snapshots, |s| s.qps),
+            rps: Self::snapshot_points(snapshots, |s| s.rps),
+            latency_p50: Self::snapshot_points(snapshots, |s| s.query_latency_p50),
+            latency_p95: Self::snapshot_points(snapshots, |s| s.query_latency_p95),
+            latency_p99: Self::snapshot_points(snapshots, |s| s.query_latency_p99),
+            error_rate: Self::snapshot_ratio_series(snapshots, |s| s.query_error, |s| s.query_total),
+            timeout_rate: Self::snapshot_ratio_series(
+                snapshots,
+                |s| s.query_timeout,
+                |s| s.query_total,
+            ),
+        }
+    }
+
     fn calculate_resource_trends(&self, snapshots: &[MetricsSnapshot]) -> ResourceTrends {
-        let cpu_usage: Vec<TimeSeriesPoint> = snapshots
-            .iter()
-            .map(|s| TimeSeriesPoint { timestamp: s.collected_at, value: s.avg_cpu_usage })
-            .collect();
-
-        let memory_usage: Vec<TimeSeriesPoint> = snapshots
-            .iter()
-            .map(|s| TimeSeriesPoint { timestamp: s.collected_at, value: s.avg_memory_usage })
-            .collect();
-
-        let disk_usage: Vec<TimeSeriesPoint> = snapshots
-            .iter()
-            .map(|s| TimeSeriesPoint { timestamp: s.collected_at, value: s.disk_usage_pct })
-            .collect();
-
-        let jvm_heap_usage: Vec<TimeSeriesPoint> = snapshots
-            .iter()
-            .map(|s| TimeSeriesPoint { timestamp: s.collected_at, value: s.jvm_heap_usage_pct })
-            .collect();
-
-        ResourceTrends { cpu_usage, memory_usage, disk_usage, jvm_heap_usage }
+        ResourceTrends {
+            cpu_usage: Self::snapshot_points(snapshots, |s| s.avg_cpu_usage),
+            memory_usage: Self::snapshot_points(snapshots, |s| s.avg_memory_usage),
+            disk_usage: Self::snapshot_points(snapshots, |s| s.disk_usage_pct),
+            jvm_heap_usage: Self::snapshot_points(snapshots, |s| s.jvm_heap_usage_pct),
+            network_tx: Self::snapshot_points(snapshots, |s| s.network_send_rate),
+            network_rx: Self::snapshot_points(snapshots, |s| s.network_receive_rate),
+            io_read: Self::snapshot_points(snapshots, |s| s.io_read_rate),
+            io_write: Self::snapshot_points(snapshots, |s| s.io_write_rate),
+            compaction_score: Self::snapshot_points(snapshots, |s| s.max_compaction_score),
+            backend_alive: Self::snapshot_points(snapshots, |s| f64::from(s.backend_alive)),
+            frontend_alive: Self::snapshot_points(snapshots, |s| f64::from(s.frontend_alive)),
+            tablet_count: Self::snapshot_points(snapshots, |s| s.tablet_count as f64),
+            jvm_thread_count: Self::snapshot_points(snapshots, |s| f64::from(s.jvm_thread_count)),
+            txn_success: Self::snapshot_delta_vs_last_positive(snapshots, |s| s.txn_success_total),
+            txn_failed: Self::snapshot_delta_vs_last_positive(snapshots, |s| s.txn_failed_total),
+        }
     }
 
     /// Calculate aggregated statistics from snapshots
@@ -1001,107 +1130,80 @@ impl<DB: AppDb> OverviewService<DB> {
             self.get_history_snapshots(cluster_id, &time_range)
         )?;
 
-        let (
-            data_stats_result,
-            mv_stats_result,
-            load_jobs_result,
-            schema_changes_result,
-            compaction_result,
-            sessions_result,
-            capacity_result,
-            starrocks_version_result,
-        ) = tokio::join!(
-            async {
-                self.get_data_statistics(cluster_id, Some(&time_range))
-                    .await
-                    .ok()
+        let capacity = match self.predict_capacity(cluster_id).await {
+            Ok(cap) => Some(cap),
+            Err(e) => {
+                tracing::debug!(
+                    "Capacity prediction skipped for cluster {}: {}",
+                    cluster_id,
+                    e
+                );
+                None
             },
-            self.get_mv_stats(cluster_id),
-            self.get_load_job_stats(cluster_id, &time_range),
-            self.get_schema_change_stats(cluster_id, &time_range),
-            self.get_compaction_stats(cluster_id),
-            self.get_session_stats(cluster_id),
-            async {
-                match self.predict_capacity(cluster_id).await {
-                    Ok(cap) => Some(cap),
-                    Err(e) => {
-                        tracing::warn!(
-                            "Failed to predict capacity for cluster {}: {}",
-                            cluster_id,
-                            e
-                        );
-                        None
-                    },
-                }
-            },
-            async {
-                self.get_starrocks_version(cluster_id)
-                    .await
-                    .unwrap_or_else(|_| "Unknown".to_string())
-            },
-        );
-
-        let data_stats = data_stats_result;
-        let mv_stats = mv_stats_result?;
-        let load_jobs = load_jobs_result?;
-        let schema_changes = schema_changes_result?;
-        let compaction = compaction_result?;
-        let sessions = sessions_result?;
-        let mut capacity = capacity_result;
-        let starrocks_version = starrocks_version_result;
-
-        let health = if let Some(ref latest_snapshot) = latest {
-            self.calculate_cluster_health(cluster_id, latest_snapshot, &starrocks_version)
-                .await?
-        } else {
-            return Err(ApiError::internal_error("No metrics snapshot available"));
         };
 
+        let health = latest
+            .as_ref()
+            .map(Self::cluster_health_from_snapshot)
+            .unwrap_or_else(Self::empty_cluster_health);
         let kpi = self.calculate_kpi(&latest, &snapshots);
-
         let resources = self.calculate_resource_metrics(&latest, &snapshots);
-
         let performance_trends = self.calculate_performance_trends(&snapshots);
         let resource_trends = self.calculate_resource_trends(&snapshots);
-
         let transactions = self.get_transaction_stats(&latest);
-
         let network_io = self.calculate_network_io_stats(&latest);
-
-        if let (Some(cap), Some(stats)) = (&mut capacity, &data_stats) {
-            cap.real_data_size_bytes = stats.total_data_size;
-        }
-
-        let alerts = self.generate_alerts(&health, &resources, &compaction);
+        let compaction = Self::compaction_from_snapshot(&latest);
+        let load_jobs = LoadJobStats {
+            running: latest.as_ref().map(|s| s.load_running).unwrap_or(0),
+            finished: latest
+                .as_ref()
+                .map(|s| s.load_finished_total as i32)
+                .unwrap_or(0),
+            ..LoadJobStats::default()
+        };
+        let alerts = self.generate_alerts(&health, &resources, &latest);
 
         Ok(ExtendedClusterOverview {
             cluster_id,
             cluster_name: cluster.name,
+            deployment_mode: cluster.deployment_mode,
             timestamp: Utc::now(),
             health,
             kpi,
             resources,
             performance_trends,
             resource_trends,
-            data_stats,
-            mv_stats,
+            data_stats: None,
+            mv_stats: MaterializedViewStats::default(),
             load_jobs,
             transactions,
-            schema_changes,
+            schema_changes: SchemaChangeStats::default(),
             compaction,
-            sessions,
+            sessions: SessionStats::default(),
             network_io,
             capacity,
             alerts,
+            meta_log_count: latest.as_ref().map(|s| s.meta_log_count).unwrap_or(0),
+            unfinished_query: latest.as_ref().map(|s| s.unfinished_query).unwrap_or(0),
+            safe_mode: latest.as_ref().is_some_and(|s| s.safe_mode > 0),
         })
     }
 
-    async fn calculate_cluster_health(
-        &self,
-        _cluster_id: i64,
-        snapshot: &MetricsSnapshot,
-        starrocks_version: &str,
-    ) -> ApiResult<ClusterHealth> {
+    fn empty_cluster_health() -> ClusterHealth {
+        ClusterHealth {
+            status: HealthStatus::Warning,
+            score: 0.0,
+            starrocks_version: "Unknown".to_string(),
+            be_nodes_online: 0,
+            be_nodes_total: 0,
+            fe_nodes_online: 0,
+            fe_nodes_total: 0,
+            compaction_score: 0.0,
+            alerts: vec!["暂无采集数据".to_string()],
+        }
+    }
+
+    fn cluster_health_from_snapshot(snapshot: &MetricsSnapshot) -> ClusterHealth {
         let be_nodes_online = snapshot.backend_alive;
         let be_nodes_total = snapshot.backend_total;
         let fe_nodes_online = snapshot.frontend_alive;
@@ -1109,7 +1211,10 @@ impl<DB: AppDb> OverviewService<DB> {
         let compaction_score = snapshot.max_compaction_score;
 
         let mut alerts = Vec::new();
-        let status = if be_nodes_online < be_nodes_total {
+        let status = if be_nodes_total == 0 && fe_nodes_total == 0 {
+            alerts.push("暂无节点采集数据".to_string());
+            HealthStatus::Warning
+        } else if be_nodes_online < be_nodes_total {
             alerts.push(format!("{} 计算节点离线", be_nodes_total - be_nodes_online));
             HealthStatus::Critical
         } else if compaction_score > 100.0 {
@@ -1145,17 +1250,25 @@ impl<DB: AppDb> OverviewService<DB> {
             })
             - (if snapshot.avg_cpu_usage > 90.0 { 10.0 } else { 0.0 });
 
-        Ok(ClusterHealth {
+        ClusterHealth {
             status,
             score: score.max(0.0),
-            starrocks_version: starrocks_version.to_string(),
+            starrocks_version: "Unknown".to_string(),
             be_nodes_online,
             be_nodes_total,
             fe_nodes_online,
             fe_nodes_total,
             compaction_score,
             alerts,
-        })
+        }
+    }
+
+    fn compaction_from_snapshot(snapshot: &Option<MetricsSnapshot>) -> CompactionStats {
+        let max_score = snapshot
+            .as_ref()
+            .map(|s| s.max_compaction_score)
+            .unwrap_or(0.0);
+        CompactionStats { max_score, avg_score: max_score, ..CompactionStats::default() }
     }
 
     fn calculate_kpi(
@@ -1259,171 +1372,6 @@ impl<DB: AppDb> OverviewService<DB> {
         }
     }
 
-    /// Module 7: Get MV stats from information_schema
-    async fn get_mv_stats(&self, cluster_id: i64) -> ApiResult<MaterializedViewStats> {
-        let cluster = self.cluster_service.get_cluster(cluster_id).await?;
-
-        let adapter =
-            crate::services::create_adapter(cluster.clone(), self.mysql_pool_manager.clone());
-
-        let mvs = match adapter.list_materialized_views(None).await {
-            Ok(mvs) => mvs,
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to list materialized views for cluster {}: {}. Returning zero stats.",
-                    cluster.name,
-                    e
-                );
-
-                return Ok(MaterializedViewStats {
-                    total: 0,
-                    running: 0,
-                    success: 0,
-                    failed: 0,
-                    pending: 0,
-                });
-            },
-        };
-
-        let total = mvs.len() as i32;
-        let active = mvs.iter().filter(|mv| mv.is_active).count() as i32;
-        let inactive = mvs.iter().filter(|mv| !mv.is_active).count() as i32;
-
-        Ok(MaterializedViewStats {
-            total,
-            running: 0,
-            success: active,
-            failed: inactive,
-            pending: 0,
-        })
-    }
-
-    /// Module 8: Get load job stats from SHOW LOAD
-    async fn get_load_job_stats(
-        &self,
-        cluster_id: i64,
-        time_range: &TimeRange,
-    ) -> ApiResult<LoadJobStats> {
-        use crate::models::cluster::ClusterType;
-
-        let cluster = self.cluster_service.get_cluster(cluster_id).await?;
-
-        let pool = self.mysql_pool_manager.get_pool(&cluster).await?;
-        let mysql_client = MySQLClient::from_pool(pool);
-
-        let start_time = time_range.start_time();
-
-        let (columns, rows) = match cluster.cluster_type {
-            ClusterType::StarRocks => {
-                let query = format!(
-                    r#"
-            SELECT 
-                State,
-                COUNT(*) as count
-            FROM information_schema.loads
-            WHERE CREATE_TIME >= '{}'
-            GROUP BY State
-            "#,
-                    start_time.format("%Y-%m-%d %H:%M:%S")
-                );
-                mysql_client.query_raw(&query).await?
-            },
-            ClusterType::Doris => {
-                tracing::debug!("[Doris] Aggregating load jobs from all databases");
-
-                let (_, db_rows) = mysql_client.query_raw("SHOW DATABASES").await?;
-                let mut all_states = std::collections::HashMap::new();
-
-                for db_row in db_rows {
-                    if let Some(db_name) = db_row.first() {
-                        if db_name.starts_with("__")
-                            || db_name == "information_schema"
-                            || db_name == "mysql"
-                            || db_name == "sys"
-                        {
-                            continue;
-                        }
-
-                        let show_load_sql = format!("USE {}; SHOW LOAD", db_name);
-                        if let Ok((cols, load_rows)) = mysql_client.query_raw(&show_load_sql).await
-                        {
-                            let state_idx =
-                                cols.iter().position(|c| c.eq_ignore_ascii_case("State"));
-                            let create_time_idx = cols
-                                .iter()
-                                .position(|c| c.eq_ignore_ascii_case("CreateTime"));
-
-                            if let (Some(s_idx), Some(t_idx)) = (state_idx, create_time_idx) {
-                                for load_row in load_rows {
-                                    if let Some(create_time_str) = load_row.get(t_idx) {
-                                        if let Ok(create_time) =
-                                            chrono::NaiveDateTime::parse_from_str(
-                                                create_time_str,
-                                                "%Y-%m-%d %H:%M:%S",
-                                            )
-                                        {
-                                            let start_naive = start_time.naive_utc();
-                                            if create_time >= start_naive {
-                                                if let Some(state) = load_row.get(s_idx) {
-                                                    *all_states
-                                                        .entry(state.clone())
-                                                        .or_insert(0) += 1;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                let state_rows: Vec<Vec<String>> = all_states
-                    .into_iter()
-                    .map(|(state, count)| vec![state, count.to_string()])
-                    .collect();
-
-                (vec!["State".to_string(), "count".to_string()], state_rows)
-            },
-        };
-
-        let mut col_idx = std::collections::HashMap::new();
-        for (i, col) in columns.iter().enumerate() {
-            col_idx.insert(col.clone(), i);
-        }
-
-        let mut stats =
-            LoadJobStats { running: 0, pending: 0, finished: 0, failed: 0, cancelled: 0 };
-
-        for row in rows {
-            let state = col_idx
-                .get("State")
-                .or_else(|| col_idx.get("state"))
-                .and_then(|&i| row.get(i))
-                .cloned()
-                .unwrap_or_default();
-
-            let count = col_idx
-                .get("count")
-                .and_then(|&i| row.get(i))
-                .and_then(|s| s.parse::<i64>().ok())
-                .unwrap_or(0);
-
-            match state.to_uppercase().as_str() {
-                "LOADING" => stats.running += count as i32,
-                "ETL" => stats.running += count as i32,
-                "COMMITTED" => stats.running += count as i32,
-                "PENDING" | "QUEUEING" => stats.pending += count as i32,
-                "RETRY" => stats.pending += count as i32,
-                "FINISHED" => stats.finished += count as i32,
-                "CANCELLED" => stats.cancelled += count as i32,
-                _ => stats.failed += count as i32,
-            }
-        }
-
-        Ok(stats)
-    }
-
     /// Module 9: Get transaction stats
     fn get_transaction_stats(&self, snapshot: &Option<MetricsSnapshot>) -> TransactionStats {
         let snapshot = snapshot.as_ref();
@@ -1432,128 +1380,6 @@ impl<DB: AppDb> OverviewService<DB> {
             committed: snapshot.map(|s| s.txn_success_total as i32).unwrap_or(0),
             aborted: snapshot.map(|s| s.txn_failed_total as i32).unwrap_or(0),
         }
-    }
-
-    /// Module 10: Get schema change stats by querying audit logs
-    /// Tracks ALTER TABLE operations and their status from StarRocks audit logs
-    async fn get_schema_change_stats(
-        &self,
-        cluster_id: i64,
-        time_range: &TimeRange,
-    ) -> ApiResult<SchemaChangeStats> {
-        use crate::models::cluster::ClusterType;
-        use crate::services::MySQLClient;
-
-        let cluster = self.cluster_service.get_cluster(cluster_id).await?;
-        let pool = self.mysql_pool_manager.get_pool(&cluster).await?;
-        let mysql_client = MySQLClient::from_pool(pool);
-
-        let start_time = time_range.start_time();
-
-        let (audit_table, time_field, is_query_field, stmt_type_field) = match cluster.cluster_type
-        {
-            ClusterType::StarRocks => {
-                ("starrocks_audit_db__.starrocks_audit_tbl__", "timestamp", "isQuery", "queryType")
-            },
-            ClusterType::Doris => ("__internal_schema.audit_log", "time", "is_query", "stmt_type"),
-        };
-
-        let query = format!(
-            r#"
-            SELECT 
-                `{stmt_type_field}` as queryType,
-                state,
-                COUNT(*) as count
-            FROM {audit_table}
-            WHERE 
-                `{time_field}` >= '{}'
-                AND `{stmt_type_field}` LIKE '%ALTER%'
-                AND {is_query_field} = 0
-            GROUP BY `{stmt_type_field}`, state
-            "#,
-            start_time.format("%Y-%m-%d %H:%M:%S")
-        );
-
-        let (columns, rows) = mysql_client.query_raw(&query).await?;
-
-        let mut col_idx = std::collections::HashMap::new();
-        for (i, col) in columns.iter().enumerate() {
-            col_idx.insert(col.clone(), i);
-        }
-
-        let mut stats =
-            SchemaChangeStats { running: 0, pending: 0, finished: 0, failed: 0, cancelled: 0 };
-
-        for row in rows {
-            let state = col_idx
-                .get("state")
-                .and_then(|&i| row.get(i))
-                .map(|s| s.to_uppercase())
-                .unwrap_or_default();
-
-            let count = col_idx
-                .get("count")
-                .and_then(|&i| row.get(i))
-                .and_then(|s| s.parse::<i32>().ok())
-                .unwrap_or(0);
-
-            match state.as_str() {
-                "RUNNING" | "EXECUTING" => stats.running += count,
-                "PENDING" | "QUEUEING" => stats.pending += count,
-                "FINISHED" | "OK" | "EOF" => stats.finished += count,
-                "CANCELLED" | "CANCEL" => stats.cancelled += count,
-                "FAILED" | "ERROR" => stats.failed += count,
-                _ => {},
-            }
-        }
-
-        Ok(stats)
-    }
-
-    /// Module 11: Get compaction stats from FE's SHOW PROC '/compactions'
-    ///
-    /// Note: Compaction Score is calculated at FE level per Partition, not per BE.
-    /// Reference: https://forum.mirrorship.cn/t/topic/13256
-    async fn get_compaction_stats(&self, cluster_id: i64) -> ApiResult<CompactionStats> {
-        use crate::models::cluster::ClusterType;
-        use crate::services::MySQLClient;
-
-        let cluster = self.cluster_service.get_cluster(cluster_id).await?;
-
-        let (base_compaction_running, cumulative_compaction_running) = match cluster.cluster_type {
-            ClusterType::StarRocks => {
-                let pool = self.mysql_pool_manager.get_pool(&cluster).await?;
-                let client = MySQLClient::from_pool(pool);
-
-                let query = "SHOW PROC '/compactions'";
-                let (_headers, rows) = client.query_raw(query).await.unwrap_or((vec![], vec![]));
-
-                let total_running = rows.len() as i32;
-                (0, total_running)
-            },
-            ClusterType::Doris => {
-                tracing::debug!(
-                    "[Doris] Compaction running task count not available (tablet-level API only)"
-                );
-                (0, 0)
-            },
-        };
-
-        let total_running = base_compaction_running + cumulative_compaction_running;
-
-        let latest_snapshot = self.get_latest_snapshot(cluster_id).await?;
-        let max_score = latest_snapshot
-            .as_ref()
-            .map(|s| s.max_compaction_score)
-            .unwrap_or(0.0);
-
-        Ok(CompactionStats {
-            base_compaction_running: 0,
-            cumulative_compaction_running: total_running,
-            max_score,
-            avg_score: max_score,
-            be_scores: Vec::new(),
-        })
     }
 
     /// Get detailed compaction statistics for storage-compute separation architecture
@@ -1577,19 +1403,11 @@ impl<DB: AppDb> OverviewService<DB> {
                 "[Doris] Compaction detail stats via HTTP API not fully implemented yet"
             );
 
-            return Ok(CompactionDetailStats {
-                top_partitions: vec![],
-                task_stats: CompactionTaskStats {
-                    running_count: 0,
-                    finished_count: 0,
-                    total_count: 0,
-                },
-                duration_stats: CompactionDurationStats {
-                    min_duration_ms: 0,
-                    max_duration_ms: 0,
-                    avg_duration_ms: 0,
-                },
-            });
+            return Ok(empty_compaction_detail_stats());
+        }
+
+        if cluster.is_shared_nothing() {
+            return self.shared_nothing_disk_stats(cluster).await;
         }
 
         let pool = self.mysql_pool_manager.get_pool(&cluster).await?;
@@ -1756,68 +1574,44 @@ impl<DB: AppDb> OverviewService<DB> {
             duration_stats.avg_duration_ms
         );
 
-        Ok(CompactionDetailStats { top_partitions, task_stats, duration_stats })
+        Ok(CompactionDetailStats {
+            top_partitions,
+            task_stats,
+            duration_stats,
+            node_disks: Vec::new(),
+        })
     }
 
-    /// Module 12: Get session stats from SHOW PROCESSLIST
-    async fn get_session_stats(&self, cluster_id: i64) -> ApiResult<SessionStats> {
-        use crate::services::MySQLClient;
-        use chrono::Utc;
-
-        let cluster = self.cluster_service.get_cluster(cluster_id).await?;
-
-        let pool = self.mysql_pool_manager.get_pool(&cluster).await?;
-        let client = MySQLClient::from_pool(pool);
-
-        let query = "SHOW FULL PROCESSLIST";
-        let (_headers, rows) = client.query_raw(query).await?;
-
-        let current_connections = rows.len() as i32;
-
-        let mut running_queries = Vec::new();
-
-        for row in &rows {
-            if row.len() >= 8 {
-                let state = row.get(4).map(|s| s.as_str()).unwrap_or("");
-                let time_str = row.get(5).map(|s| s.as_str()).unwrap_or("0");
-                let info = row.get(7).map(|s| s.as_str()).unwrap_or("");
-
-                if state == "Query" && !info.is_empty() {
-                    let time_secs = time_str.parse::<i64>().unwrap_or(0);
-
-                    if time_secs > 1 && !info.starts_with("SHOW") {
-                        let query_id = row.first().map(|s| s.to_string()).unwrap_or_default();
-                        let user = row.get(1).map(|s| s.to_string()).unwrap_or_default();
-                        let db = row.get(3).map(|s| s.to_string()).unwrap_or_default();
-
-                        running_queries.push(RunningQuery {
-                            query_id,
-                            user,
-                            database: db,
-                            start_time: Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
-                            duration_ms: time_secs * 1000,
-                            state: state.to_string(),
-                            query_preview: info.chars().take(200).collect(),
-                        });
-                    }
-                }
-            }
-        }
-
-        running_queries.sort_by(|a, b| b.duration_ms.cmp(&a.duration_ms));
-        running_queries.truncate(10);
-
-        let (active_users_1h, active_users_24h) =
-            if let Some(service) = &self.data_statistics_service {
-                match service.get_statistics(cluster_id).await {
-                    Ok(Some(stats)) => (stats.active_users_1h, stats.active_users_24h),
-                    _ => (0, 0),
-                }
-            } else {
-                (0, 0)
-            };
-
-        Ok(SessionStats { active_users_1h, active_users_24h, current_connections, running_queries })
+    async fn shared_nothing_disk_stats(
+        &self,
+        cluster: crate::models::Cluster,
+    ) -> ApiResult<CompactionDetailStats> {
+        let adapter =
+            crate::services::create_adapter(cluster, self.mysql_pool_manager.clone());
+        let backends = match adapter.get_backends().await {
+            Ok(nodes) => nodes,
+            Err(error) => {
+                tracing::warn!("Failed to list backends for shared-nothing disk panel: {}", error);
+                Vec::new()
+            },
+        };
+        let mut node_disks: Vec<NodeDiskUsage> = backends
+            .iter()
+            .filter_map(|node| {
+                let used_pct = parse_usage_pct(&node.max_disk_used_pct)
+                    .or_else(|| parse_usage_pct(&node.used_pct))
+                    .or_else(|| parse_usage_pct(&node.data_used_pct))?;
+                let host = if node.host.is_empty() {
+                    node.backend_id.clone()
+                } else {
+                    node.host.clone()
+                };
+                Some(NodeDiskUsage { host, used_pct })
+            })
+            .collect();
+        node_disks.sort_by(|left, right| right.used_pct.total_cmp(&left.used_pct));
+        node_disks.truncate(10);
+        Ok(CompactionDetailStats { node_disks, ..empty_compaction_detail_stats() })
     }
 
     /// Module 13: Calculate network & IO stats
@@ -1836,9 +1630,20 @@ impl<DB: AppDb> OverviewService<DB> {
         &self,
         health: &ClusterHealth,
         resources: &ResourceMetrics,
-        _compaction: &CompactionStats,
+        snapshot: &Option<MetricsSnapshot>,
     ) -> Vec<Alert> {
         let mut alerts = Vec::new();
+
+        if snapshot.is_none() {
+            alerts.push(Alert {
+                level: AlertLevel::Warning,
+                category: "采集".to_string(),
+                message: "暂无采集数据".to_string(),
+                timestamp: Utc::now(),
+                action: None,
+            });
+            return alerts;
+        }
 
         if health.be_nodes_online < health.be_nodes_total {
             alerts.push(Alert {
@@ -1885,18 +1690,231 @@ impl<DB: AppDb> OverviewService<DB> {
             });
         }
 
+        if let Some(snapshot) = snapshot {
+            if snapshot.safe_mode > 0 {
+                alerts.push(Alert {
+                    level: AlertLevel::Critical,
+                    category: "FE".to_string(),
+                    message: "集群处于 Safe Mode".to_string(),
+                    timestamp: Utc::now(),
+                    action: Some("检查磁盘和元数据 Checkpoint".to_string()),
+                });
+            }
+            if snapshot.meta_log_count > 100_000 {
+                alerts.push(Alert {
+                    level: AlertLevel::Critical,
+                    category: "FE".to_string(),
+                    message: format!("Meta Log 未 Checkpoint: {}", snapshot.meta_log_count),
+                    timestamp: Utc::now(),
+                    action: Some("检查 FE JVM 与 Checkpoint".to_string()),
+                });
+            } else if snapshot.meta_log_count > 50_000 {
+                alerts.push(Alert {
+                    level: AlertLevel::Warning,
+                    category: "FE".to_string(),
+                    message: format!("Meta Log 堆积: {}", snapshot.meta_log_count),
+                    timestamp: Utc::now(),
+                    action: Some("关注 FE Checkpoint 是否停滞".to_string()),
+                });
+            }
+        }
+
         alerts
     }
+}
 
-    async fn get_starrocks_version(&self, cluster_id: i64) -> ApiResult<String> {
-        use crate::services::StarRocksClient;
-        let cluster = self.cluster_service.get_cluster(cluster_id).await?;
-        let starrocks_client = StarRocksClient::new(cluster, self.mysql_pool_manager.clone());
-        let frontends = starrocks_client.get_frontends().await?;
-        if let Some(fe) = frontends.first() {
-            Ok(fe.version.clone())
-        } else {
-            Ok("Unknown".to_string())
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::MySQLPoolManager;
+    use sqlx::sqlite::SqlitePoolOptions;
+    use std::time::Duration;
+
+    async fn test_pool() -> SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .acquire_timeout(Duration::from_secs(5))
+            .connect("sqlite::memory:")
+            .await
+            .expect("test db");
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .expect("enable foreign keys");
+        sqlx::migrate!().run(&pool).await.expect("migrations");
+        pool
+    }
+
+    async fn seed_cluster(pool: &SqlitePool) {
+        sqlx::query(
+            "INSERT INTO organizations (code, name, description, is_system) VALUES ('org', 'Org', '', 0)",
+        )
+        .execute(pool)
+        .await
+        .expect("org");
+        sqlx::query(
+            "INSERT INTO clusters (name, fe_host, fe_http_port, fe_query_port, username, password_encrypted, catalog, deployment_mode, cluster_type, is_active, organization_id)
+             VALUES ('c1', '127.0.0.1', 8030, 9030, 'root', 'p', 'default_catalog', 'shared_data', 'starrocks', 1, 1)",
+        )
+        .execute(pool)
+        .await
+        .expect("cluster");
+    }
+
+    fn service(pool: SqlitePool) -> OverviewService {
+        let mysql = Arc::new(MySQLPoolManager::new());
+        let cluster_service = Arc::new(ClusterService::new(pool.clone(), mysql.clone()));
+        OverviewService::new(pool, cluster_service, mysql)
+    }
+
+    #[tokio::test]
+    async fn extended_overview_without_snapshot_succeeds() {
+        let pool = test_pool().await;
+        seed_cluster(&pool).await;
+        let overview = service(pool)
+            .get_extended_overview(1, TimeRange::Hours1)
+            .await
+            .expect("overview");
+
+        assert_eq!(overview.cluster_name, "c1");
+        assert_eq!(
+            overview.deployment_mode,
+            crate::models::cluster::DeploymentMode::SharedData
+        );
+        assert!(matches!(overview.health.status, HealthStatus::Warning));
+        assert!(overview.health.alerts.iter().any(|a| a.contains("暂无采集数据")));
+        assert!(overview.alerts.iter().any(|alert| alert.message.contains("暂无采集数据")));
+        assert!(overview.performance_trends.qps.is_empty());
+        assert!(overview.data_stats.is_none());
+        assert_eq!(overview.sessions.current_connections, 0);
+        assert!(overview.capacity.is_none());
+    }
+
+    #[tokio::test]
+    async fn extended_overview_reads_snapshot_only() {
+        let pool = test_pool().await;
+        seed_cluster(&pool).await;
+        sqlx::query(
+            r#"
+            INSERT INTO metrics_snapshots (
+                cluster_id, collected_at, qps, query_latency_p99,
+                backend_total, backend_alive, frontend_total, frontend_alive,
+                avg_cpu_usage, disk_total_bytes, disk_used_bytes, disk_usage_pct,
+                max_compaction_score, load_running
+            ) VALUES (1, ?, 12.5, 320.0, 3, 3, 1, 1, 22.0, 1000, 410, 41.0, 8.0, 2)
+            "#,
+        )
+        .bind(Utc::now())
+        .execute(&pool)
+        .await
+        .expect("snapshot");
+
+        let overview = service(pool)
+            .get_extended_overview(1, TimeRange::Hours1)
+            .await
+            .expect("overview");
+
+        assert!(matches!(overview.health.status, HealthStatus::Healthy));
+        assert_eq!(overview.health.be_nodes_online, 3);
+        assert_eq!(overview.health.be_nodes_total, 3);
+        assert!((overview.kpi.qps - 12.5).abs() < f64::EPSILON);
+        assert!((overview.kpi.p99_latency_ms - 320.0).abs() < f64::EPSILON);
+        assert_eq!(overview.load_jobs.running, 2);
+        assert_eq!(overview.compaction.max_score, 8.0);
+        assert_eq!(overview.performance_trends.timeout_rate.len(), 1);
+        assert_eq!(overview.resource_trends.backend_alive.len(), 1);
+        assert!((overview.resource_trends.backend_alive[0].value - 3.0).abs() < f64::EPSILON);
+        assert!(overview.data_stats.is_none());
+        assert_eq!(overview.mv_stats.total, 0);
+        assert!(overview.sessions.running_queries.is_empty());
+        assert_eq!(overview.performance_trends.qps.len(), 1);
+        assert_eq!(overview.performance_trends.error_rate.len(), 1);
+        assert_eq!(overview.resource_trends.compaction_score.len(), 1);
+        assert!((overview.resource_trends.compaction_score[0].value - 8.0).abs() < f64::EPSILON);
+        assert_eq!(overview.resource_trends.tablet_count.len(), 1);
+        assert_eq!(overview.resource_trends.jvm_thread_count.len(), 1);
+        assert_eq!(overview.resource_trends.txn_success.len(), 1);
+        assert_eq!(overview.meta_log_count, 0);
+        assert!(!overview.safe_mode);
+        assert!(overview.capacity.is_some());
+        assert_eq!(overview.capacity.as_ref().and_then(|c| c.days_until_full), None);
+    }
+
+    #[tokio::test]
+    async fn capacity_days_until_full_is_zero_when_disk_is_full() {
+        let pool = test_pool().await;
+        seed_cluster(&pool).await;
+        sqlx::query(
+            r#"
+            INSERT INTO metrics_snapshots (
+                cluster_id, collected_at, qps, query_latency_p99,
+                backend_total, backend_alive, frontend_total, frontend_alive,
+                avg_cpu_usage, disk_total_bytes, disk_used_bytes, disk_usage_pct,
+                max_compaction_score, load_running
+            ) VALUES (1, ?, 1.0, 10.0, 1, 1, 1, 1, 10.0, 1000, 1000, 100.0, 1.0, 0)
+            "#,
+        )
+        .bind(Utc::now())
+        .execute(&pool)
+        .await
+        .expect("snapshot");
+
+        let overview = service(pool)
+            .get_extended_overview(1, TimeRange::Hours1)
+            .await
+            .expect("overview");
+
+        assert_eq!(overview.capacity.as_ref().and_then(|c| c.days_until_full), Some(0));
+    }
+
+    #[tokio::test]
+    async fn extended_overview_alerts_on_meta_log_and_safe_mode() {
+        let pool = test_pool().await;
+        seed_cluster(&pool).await;
+        sqlx::query(
+            r#"
+            INSERT INTO metrics_snapshots (
+                cluster_id, collected_at, backend_total, backend_alive, frontend_total, frontend_alive,
+                meta_log_count, safe_mode
+            ) VALUES (1, ?, 3, 3, 1, 1, 60000, 1)
+            "#,
+        )
+        .bind(Utc::now())
+        .execute(&pool)
+        .await
+        .expect("snapshot");
+
+        let overview = service(pool)
+            .get_extended_overview(1, TimeRange::Hours1)
+            .await
+            .expect("overview");
+
+        assert_eq!(overview.meta_log_count, 60_000);
+        assert!(overview.safe_mode);
+        assert!(overview.alerts.iter().any(|alert| alert.message.contains("Safe Mode")));
+        assert!(overview.alerts.iter().any(|alert| alert.message.contains("Meta Log")));
+    }
+
+    #[test]
+    fn parse_usage_pct_reads_starrocks_backend_format() {
+        assert_eq!(super::parse_usage_pct("85.20 %"), Some(85.2));
+        assert_eq!(super::parse_usage_pct("12.5%"), Some(12.5));
+        assert_eq!(super::parse_usage_pct(""), None);
+        assert_eq!(super::parse_usage_pct("N/A"), None);
+    }
+
+    #[test]
+    fn snapshot_ratio_pct_uses_increment_then_falls_back() {
+        assert!((super::OverviewService::snapshot_ratio_pct(8, 100, Some((5, 80)) ) - 15.0).abs() < f64::EPSILON);
+        assert!((super::OverviewService::snapshot_ratio_pct(8, 100, None) - 8.0).abs() < f64::EPSILON);
+        assert_eq!(super::OverviewService::snapshot_ratio_pct(0, 0, None), 0.0);
+    }
+
+    #[test]
+    fn counter_delta_skips_zero_and_fe_switch() {
+        assert_eq!(
+            super::counter_delta_vs_last_positive([0, 100, 0, 130, 80, 95]),
+            vec![0.0, 0.0, 0.0, 30.0, 0.0, 15.0]
+        );
     }
 }

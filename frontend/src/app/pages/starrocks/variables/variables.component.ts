@@ -9,7 +9,7 @@ import { Cluster } from '../../../@core/data/cluster.service';
 import { NodeService, Variable } from '../../../@core/data/node.service';
 import { ErrorHandler } from '../../../@core/utils/error-handler';
 import { FormsModule } from '@angular/forms';
-
+import { assignTableRows } from '../../../@core/utils/table-rows';
 
 @Component({
     selector: 'ngx-variables',
@@ -38,7 +38,7 @@ export class VariablesComponent implements OnInit, OnDestroy {
   activeCluster: Cluster | null = null;
   variables: Variable[] = [];
   source: LocalDataSource = new LocalDataSource();
-  loading = false;
+  loading = true;
   searchText = '';
   variableType = 'global'; // 'global' or 'session'
   private destroy$ = new Subject<void>();
@@ -118,8 +118,9 @@ export class VariablesComponent implements OnInit, OnDestroy {
     ).subscribe({
       next: (variables) => {
         this.variables = variables;
-        this.source.load(variables);
-        this.loading = false;
+        assignTableRows(this.source, variables).then(() => {
+          this.loading = false;
+        });
       },
       error: (error) => {
         console.error('[Variables] Error loading variables:', error);
@@ -128,8 +129,9 @@ export class VariablesComponent implements OnInit, OnDestroy {
           '错误'
         );
         this.variables = [];
-        this.source.load([]);
-        this.loading = false;
+        assignTableRows(this.source, []).then(() => {
+          this.loading = false;
+        });
       },
     });
   }
@@ -173,4 +175,3 @@ export class VariablesComponent implements OnInit, OnDestroy {
     this.loadVariables();
   }
 }
-

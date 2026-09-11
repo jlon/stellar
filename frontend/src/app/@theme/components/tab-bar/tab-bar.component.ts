@@ -4,7 +4,6 @@ import { takeUntil } from 'rxjs/operators';
 import { TabService, TabItem } from '../../../@core/services/tab.service';
 import { NgClass } from '@angular/common';
 import { NbIconModule } from '@nebular/theme';
-import { HeaderComponent } from '../header/header.component';
 
 type TabContextMenuAction = 'refresh' | 'close-left' | 'close-right' | 'close-others' | 'toggle-pin';
 
@@ -20,7 +19,7 @@ interface TabContextMenuItem {
     templateUrl: './tab-bar.component.html',
     styleUrls: ['./tab-bar.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [NbIconModule, NgClass, HeaderComponent]
+    imports: [NbIconModule, NgClass]
 })
 export class TabBarComponent implements OnInit, OnDestroy {
   private tabService = inject(TabService);

@@ -6,18 +6,25 @@ use crate::db::query as db_query;
 use crate::db::AppDb;
 use crate::db::SqlDialect;
 use crate::db::dialect::RowsAffected;
-use crate::models::Cluster;
+use crate::models::{Backend, Cluster, Frontend, RuntimeInfo};
 use crate::services::mysql_pool_manager::MySQLPoolManager;
 use crate::services::{ClusterService, StarRocksClient};
-use crate::utils::{ApiResult, ScheduledTask};
+use crate::utils::{ApiError, ApiResult, ScheduledTask};
 use chrono::Utc;
+use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use sqlx::Pool;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use stellar_macros::app_impl;
 use utoipa::ToSchema;
+
+struct CachedNodeList<T> {
+    nodes: Vec<T>,
+    fetched_at: Instant,
+}
 
 /// Aggregated metrics from database queries
 #[derive(Debug, sqlx::FromRow)]
@@ -91,6 +98,18 @@ pub struct MetricsSnapshot {
     pub io_write_bytes_total: i64,
     pub io_read_rate: f64,
     pub io_write_rate: f64,
+
+    pub meta_log_count: i64,
+    pub unfinished_query: i64,
+    pub safe_mode: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
+pub struct ClusterResourceSummary {
+    pub cluster_id: i64,
+    pub cpu_usage_pct: f64,
+    pub memory_usage_pct: f64,
+    pub disk_usage_pct: Option<f64>,
 }
 
 #[derive(Clone)]
@@ -99,6 +118,8 @@ pub struct MetricsCollectorService<DB: AppDb> {
     cluster_service: Arc<ClusterService<DB>>,
     mysql_pool_manager: Arc<MySQLPoolManager>,
     retention_days: i64,
+    backend_list_cache: Arc<DashMap<i64, CachedNodeList<Backend>>>,
+    frontend_list_cache: Arc<DashMap<i64, CachedNodeList<Frontend>>>,
 }
 
 #[app_impl]
@@ -110,7 +131,58 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
         mysql_pool_manager: Arc<MySQLPoolManager>,
         retention_days: i64,
     ) -> Self {
-        Self { db, cluster_service, mysql_pool_manager, retention_days }
+        Self {
+            db,
+            cluster_service,
+            mysql_pool_manager,
+            retention_days,
+            backend_list_cache: Arc::new(DashMap::new()),
+            frontend_list_cache: Arc::new(DashMap::new()),
+        }
+    }
+
+    pub fn cached_backends(&self, cluster_id: i64, max_age: Duration) -> Option<Vec<Backend>> {
+        let entry = self.backend_list_cache.get(&cluster_id)?;
+        if entry.fetched_at.elapsed() <= max_age {
+            Some(entry.nodes.clone())
+        } else {
+            None
+        }
+    }
+
+    pub fn stale_backends(&self, cluster_id: i64) -> Option<Vec<Backend>> {
+        self.backend_list_cache
+            .get(&cluster_id)
+            .map(|entry| entry.nodes.clone())
+    }
+
+    pub fn store_backends(&self, cluster_id: i64, nodes: Vec<Backend>) {
+        self.backend_list_cache
+            .insert(cluster_id, CachedNodeList { nodes, fetched_at: Instant::now() });
+    }
+
+    pub fn cached_frontends(&self, cluster_id: i64, max_age: Duration) -> Option<Vec<Frontend>> {
+        let entry = self.frontend_list_cache.get(&cluster_id)?;
+        if entry.fetched_at.elapsed() <= max_age {
+            Some(entry.nodes.clone())
+        } else {
+            None
+        }
+    }
+
+    pub fn stale_frontends(&self, cluster_id: i64) -> Option<Vec<Frontend>> {
+        self.frontend_list_cache
+            .get(&cluster_id)
+            .map(|entry| entry.nodes.clone())
+    }
+
+    pub fn store_frontends(&self, cluster_id: i64, nodes: Vec<Frontend>) {
+        self.frontend_list_cache
+            .insert(cluster_id, CachedNodeList { nodes, fetched_at: Instant::now() });
+    }
+
+    pub fn invalidate_backends(&self, cluster_id: i64) {
+        self.backend_list_cache.remove(&cluster_id);
     }
 
     /// Execute one collection cycle
@@ -173,12 +245,71 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
 
         let client = StarRocksClient::new(cluster.clone(), self.mysql_pool_manager.clone());
 
-        let (metrics_text, backends, frontends, runtime_info) = tokio::try_join!(
+        let mysql_timeout = Duration::from_secs(cluster.connection_timeout.max(1) as u64);
+        let (metrics_result, backends_result, frontends_result, runtime_result) = tokio::join!(
             client.get_metrics(),
-            client.get_backends(),
-            client.get_frontends(),
+            tokio::time::timeout(mysql_timeout, client.get_backends()),
+            tokio::time::timeout(mysql_timeout, client.get_frontends()),
             client.get_runtime_info(),
-        )?;
+        );
+
+        let backends = match backends_result {
+            Ok(result) => result?,
+            Err(_) => {
+                return Err(ApiError::cluster_connection_failed(format!(
+                    "Timed out collecting node list for cluster {}",
+                    cluster.name
+                )));
+            },
+        };
+        self.store_backends(cluster.id, backends.clone());
+        let frontends = match frontends_result {
+            Ok(Ok(value)) => {
+                self.store_frontends(cluster.id, value.clone());
+                value
+            },
+            Ok(Err(e)) => {
+                tracing::warn!(
+                    "Failed to collect frontends for cluster {} ({}): {}",
+                    cluster.id,
+                    cluster.name,
+                    e
+                );
+                Vec::new()
+            },
+            Err(_) => {
+                tracing::warn!(
+                    "Timed out collecting frontends for cluster {} ({})",
+                    cluster.id,
+                    cluster.name
+                );
+                Vec::new()
+            },
+        };
+        let metrics_text = match metrics_result {
+            Ok(value) => value,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to collect HTTP metrics for cluster {} ({}): {}",
+                    cluster.id,
+                    cluster.name,
+                    e
+                );
+                String::new()
+            },
+        };
+        let runtime_info = match runtime_result {
+            Ok(value) => value,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to collect runtime info for cluster {} ({}): {}",
+                    cluster.id,
+                    cluster.name,
+                    e
+                );
+                RuntimeInfo::default()
+            },
+        };
 
         let metrics_map = client.parse_prometheus_metrics(&metrics_text)?;
 
@@ -193,27 +324,12 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
             .filter_map(|b| b.tablet_num.parse::<i64>().ok())
             .sum();
 
-        let cpu_values: Vec<f64> = backends
-            .iter()
-            .filter_map(|b| {
-                let trimmed = b.cpu_used_pct.trim().trim_end_matches('%').trim();
-                match trimmed.parse::<f64>() {
-                    Ok(v) => Some(v),
-                    Err(_e) => {
-                        tracing::warn!(
-                            "Failed to parse CPU: '{}' from '{}'",
-                            trimmed,
-                            b.cpu_used_pct
-                        );
-                        None
-                    },
-                }
-            })
-            .collect();
+        let cpu_values: Vec<f64> =
+            backends.iter().filter_map(|b| parse_pct(&b.cpu_used_pct)).collect();
 
         let total_cpu_usage: f64 = cpu_values.iter().sum();
 
-        let avg_cpu_usage = if backend_total > 0 && !cpu_values.is_empty() {
+        let avg_cpu_usage = if !cpu_values.is_empty() {
             total_cpu_usage / cpu_values.len() as f64
         } else {
             0.0
@@ -227,43 +343,37 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
             avg_cpu_usage
         );
 
-        let total_memory_usage: f64 = backends
+        let memory_values: Vec<f64> =
+            backends.iter().filter_map(|b| parse_pct(&b.mem_used_pct)).collect();
+        let total_memory_usage: f64 = memory_values.iter().sum();
+        let avg_memory_usage = if !memory_values.is_empty() {
+            total_memory_usage / memory_values.len() as f64
+        } else {
+            0.0
+        };
+
+        let capacity_samples: Vec<(f64, i64, i64)> = backends
             .iter()
             .filter_map(|b| {
-                b.mem_used_pct
-                    .trim()
-                    .trim_end_matches('%')
-                    .trim()
-                    .parse::<f64>()
-                    .ok()
-            })
-            .sum();
-
-        let avg_memory_usage =
-            if backend_total > 0 { total_memory_usage / backend_total as f64 } else { 0.0 };
-
-        let disk_total_bytes: i64 = backends
-            .iter()
-            .filter_map(|b| parse_storage_size(&b.total_capacity))
-            .sum();
-
-        let (max_disk_usage_pct, _max_node_total, max_node_used) = backends
-            .iter()
-            .filter_map(|b| {
-                let pct_str = b.max_disk_used_pct.trim().trim_end_matches('%').trim();
-                let pct = pct_str.parse::<f64>().ok()?;
                 let total = parse_storage_size(&b.total_capacity)?;
+                let pct = parse_pct(&b.max_disk_used_pct)?;
                 let used = (total as f64 * pct / 100.0) as i64;
                 Some((pct, total, used))
             })
-            .max_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal))
-            .unwrap_or((0.0, 0, 0));
-
-        let disk_used_bytes = max_node_used;
-        let disk_usage_pct = max_disk_usage_pct;
+            .collect();
+        let cache_samples: Vec<(f64, i64, i64)> = backends
+            .iter()
+            .filter_map(|b| {
+                let (used, total, pct) = parse_data_cache_disk(&b.data_cache_metrics)?;
+                Some((pct, total, used))
+            })
+            .collect();
+        let disk_samples = if capacity_samples.is_empty() { cache_samples } else { capacity_samples };
+        let (disk_usage_pct, disk_used_bytes, disk_total_bytes) =
+            cluster_disk_usage(&disk_samples);
 
         tracing::debug!(
-            "Disk usage (MAX node): {}% ({} bytes), total capacity: {} bytes (cluster mode: {})",
+            "Disk usage (cluster): {}% ({} / {} bytes, cluster mode: {})",
             disk_usage_pct,
             disk_used_bytes,
             disk_total_bytes,
@@ -412,6 +522,20 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
             io_write_bytes_total,
             io_read_rate,
             io_write_rate,
+
+            meta_log_count: metrics_map
+                .get("starrocks_fe_meta_log_count")
+                .copied()
+                .unwrap_or(0.0) as i64,
+            unfinished_query: metrics_map
+                .get("starrocks_fe_unfinished_query")
+                .copied()
+                .unwrap_or(0.0) as i64,
+            safe_mode: if metrics_map.get("starrocks_fe_safe_mode").copied().unwrap_or(0.0) > 0.0 {
+                1
+            } else {
+                0
+            },
         };
 
         self.save_snapshot(&snapshot).await?;
@@ -445,6 +569,7 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
                 jvm_heap_total, jvm_heap_used, jvm_heap_usage_pct, jvm_thread_count,
                 network_bytes_sent_total, network_bytes_received_total, network_send_rate, network_receive_rate,
                 io_read_bytes_total, io_write_bytes_total, io_read_rate, io_write_rate,
+                meta_log_count, unfinished_query, safe_mode,
                 raw_metrics
             ) VALUES (
                 ?, ?,
@@ -459,6 +584,7 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
                 ?, ?, ?, ?,
                 ?, ?, ?, ?,
                 ?, ?, ?, ?,
+                ?, ?, ?,
                 ?
             )
             "#
@@ -504,6 +630,9 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
         .bind(snapshot.io_write_bytes_total)
         .bind(snapshot.io_read_rate)
         .bind(snapshot.io_write_rate)
+        .bind(snapshot.meta_log_count)
+        .bind(snapshot.unfinished_query)
+        .bind(snapshot.safe_mode)
         .bind(None::<String>)
         .execute(&self.db)
         .await?;
@@ -576,6 +705,9 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
             io_write_bytes_total: i64,
             io_read_rate: f64,
             io_write_rate: f64,
+            meta_log_count: i64,
+            unfinished_query: i64,
+            safe_mode: i64,
         }
 
         let row: Option<SnapshotRow> = db_query::query_as(
@@ -633,34 +765,133 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
                 io_write_bytes_total: r.io_write_bytes_total,
                 io_read_rate: r.io_read_rate,
                 io_write_rate: r.io_write_rate,
+                meta_log_count: r.meta_log_count,
+                unfinished_query: r.unfinished_query,
+                safe_mode: r.safe_mode as i32,
             }))
         } else {
             Ok(None)
         }
     }
+
+    pub async fn get_latest_resource_summaries(
+        &self,
+        cluster_ids: &[i64],
+    ) -> ApiResult<Vec<ClusterResourceSummary>> {
+        let mut summaries = Vec::with_capacity(cluster_ids.len());
+        for cluster_id in cluster_ids {
+            let Some(snapshot) = self.get_latest_snapshot(*cluster_id).await? else {
+                continue;
+            };
+            summaries.push(ClusterResourceSummary {
+                cluster_id: snapshot.cluster_id,
+                cpu_usage_pct: snapshot.avg_cpu_usage,
+                memory_usage_pct: snapshot.avg_memory_usage,
+                disk_usage_pct: if snapshot.disk_total_bytes > 0 {
+                    Some(snapshot.disk_usage_pct)
+                } else {
+                    None
+                },
+            });
+        }
+        Ok(summaries)
+    }
 }
 
-// Helper function to parse storage size strings like "1.5 TB", "500 GB", etc.
-fn parse_storage_size(size_str: &str) -> Option<i64> {
-    let parts: Vec<&str> = size_str.split_whitespace().collect();
-    if parts.len() != 2 {
+fn parse_pct(raw: &str) -> Option<f64> {
+    let trimmed = raw.trim().trim_end_matches('%').trim();
+    if trimmed.is_empty() {
         return None;
     }
+    trimmed.parse().ok()
+}
 
-    let value: f64 = parts[0].parse().ok()?;
-    let unit = parts[1].to_uppercase();
-
-    let bytes = match unit.as_str() {
-        "B" | "BYTES" => value,
-        "KB" => value * 1024.0,
-        "MB" => value * 1024.0 * 1024.0,
-        "GB" => value * 1024.0 * 1024.0 * 1024.0,
-        "TB" => value * 1024.0 * 1024.0 * 1024.0 * 1024.0,
-        "PB" => value * 1024.0 * 1024.0 * 1024.0 * 1024.0 * 1024.0,
+fn parse_storage_size(size_str: &str) -> Option<i64> {
+    let s = size_str.trim();
+    if s.is_empty() {
+        return None;
+    }
+    let unit_at = s.find(|c: char| c.is_ascii_alphabetic())?;
+    let (num, unit) = s.split_at(unit_at);
+    let value: f64 = num.trim().parse().ok()?;
+    if !value.is_finite() || value < 0.0 {
+        return None;
+    }
+    let multiplier = match unit.trim().to_ascii_uppercase().as_str() {
+        "B" | "BYTES" => 1.0,
+        "KB" => 1024.0,
+        "MB" => 1024.0 * 1024.0,
+        "GB" => 1024.0 * 1024.0 * 1024.0,
+        "TB" => 1024.0_f64.powi(4),
+        "PB" => 1024.0_f64.powi(5),
         _ => return None,
     };
+    Some((value * multiplier) as i64)
+}
 
-    Some(bytes as i64)
+fn parse_data_cache_disk(metrics: &str) -> Option<(i64, i64, f64)> {
+    let rest = metrics.split("DiskUsage:").nth(1)?;
+    let disk_part = rest.split("MemUsage:").next().unwrap_or(rest);
+    let mut used_sum = 0_i64;
+    let mut total_sum = 0_i64;
+    let mut found = false;
+    for token in disk_part.split(',') {
+        let Some((used_s, total_s)) = token.split_once('/') else {
+            continue;
+        };
+        let Some(used) = parse_storage_size(used_s) else {
+            continue;
+        };
+        let Some(total) = parse_storage_size(total_s) else {
+            continue;
+        };
+        if total <= 0 {
+            continue;
+        }
+        used_sum += used;
+        total_sum += total;
+        found = true;
+    }
+    if !found || total_sum <= 0 {
+        return None;
+    }
+    Some((used_sum, total_sum, used_sum as f64 / total_sum as f64 * 100.0))
+}
+
+fn cluster_disk_usage(samples: &[(f64, i64, i64)]) -> (f64, i64, i64) {
+    let disk_total_bytes: i64 = samples.iter().map(|sample| sample.1).sum();
+    let disk_used_bytes: i64 = samples.iter().map(|sample| sample.2).sum();
+    let disk_usage_pct = if disk_total_bytes > 0 {
+        disk_used_bytes as f64 / disk_total_bytes as f64 * 100.0
+    } else {
+        0.0
+    };
+    (disk_usage_pct, disk_used_bytes, disk_total_bytes)
+}
+
+fn format_storage_size(bytes: i64) -> String {
+    let tb = 1024.0_f64.powi(4);
+    let gb = 1024.0_f64.powi(3);
+    let value = bytes as f64;
+    if value >= tb {
+        format!("{:.1} TB", value / tb)
+    } else if value >= gb {
+        format!("{:.1} GB", value / gb)
+    } else {
+        format!("{} B", bytes)
+    }
+}
+
+pub(crate) fn fill_backend_cache_capacity(backend: &mut crate::models::Backend) {
+    if !backend.data_used_capacity.trim().is_empty() || !backend.total_capacity.trim().is_empty() {
+        return;
+    }
+    let Some((used, total, pct)) = parse_data_cache_disk(&backend.data_cache_metrics) else {
+        return;
+    };
+    backend.data_used_capacity = format_storage_size(used);
+    backend.total_capacity = format_storage_size(total);
+    backend.used_pct = format!("{:.1}%", pct);
 }
 
 #[app_impl]
@@ -1013,5 +1244,205 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
 impl<DB: AppDb> ScheduledTask for MetricsCollectorService<DB> {
     fn run(&self) -> Pin<Box<dyn Future<Output = Result<(), anyhow::Error>> + Send + '_>> {
         Box::pin(async move { self.collect_once().await })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_data_cache_disk, parse_pct, parse_storage_size};
+    use crate::models::{Backend, Frontend};
+
+    #[test]
+    fn parse_pct_accepts_space_before_percent() {
+        assert_eq!(parse_pct("26.4 %"), Some(26.4));
+        assert_eq!(parse_pct("0.5 %"), Some(0.5));
+        assert_eq!(parse_pct("9.30 %"), Some(9.3));
+        assert_eq!(parse_pct(""), None);
+        assert_eq!(parse_pct("N/A"), None);
+    }
+
+    #[test]
+    fn parse_storage_size_accepts_spaced_and_compact_units() {
+        assert_eq!(parse_storage_size("1.5 TB"), Some((1.5 * 1024.0_f64.powi(4)) as i64));
+        assert_eq!(parse_storage_size("6.1TB"), Some((6.1 * 1024.0_f64.powi(4)) as i64));
+        assert_eq!(parse_storage_size("0"), None);
+        assert_eq!(parse_storage_size(""), None);
+    }
+
+    #[test]
+    fn parse_data_cache_disk_reads_used_and_total() {
+        let parsed = parse_data_cache_disk(
+            "Status: Normal, DiskUsage: 6.1TB/12.6TB, MemUsage: 0B/0B",
+        );
+        let (used, total, pct) = parsed.expect("disk usage should parse");
+        assert!(used > 0);
+        assert!(total > used);
+        assert!((pct - (used as f64 / total as f64 * 100.0)).abs() < 0.0001);
+        assert_eq!(parse_data_cache_disk("N/A"), None);
+        let two_disks = parse_data_cache_disk(
+            "Status: Normal, DiskUsage: 7.94TB/7.94TB, 0.79TB/7.94TB, MemUsage: 0B/0B",
+        )
+        .expect("two disks should sum");
+        assert!(two_disks.2 > 50.0 && two_disks.2 < 60.0);
+        let full_quota = parse_data_cache_disk(
+            "Status: Normal, DiskUsage: 8.8TB/8.8TB, MemUsage: 0B/0B",
+        )
+        .expect("full cache quota should parse");
+        assert!((full_quota.2 - 100.0).abs() < 0.0001);
+    }
+
+    #[test]
+    fn cluster_disk_usage_is_weighted_not_hottest_node() {
+        let tb = 1024.0_f64.powi(4);
+        let samples = [
+            (100.0, (8.8 * tb) as i64, (8.8 * tb) as i64),
+            (50.0, (12.6 * tb) as i64, (6.3 * tb) as i64),
+        ];
+        let (pct, used, total) = super::cluster_disk_usage(&samples);
+        assert!(pct > 70.0 && pct < 72.0, "pct={pct}");
+        assert_eq!(used, samples[0].2 + samples[1].2);
+        assert_eq!(total, samples[0].1 + samples[1].1);
+    }
+
+    #[test]
+    fn fill_backend_cache_capacity_only_when_storage_empty() {
+        let mut cn: Backend = serde_json::from_value(serde_json::json!({
+            "ComputeNodeId": "1",
+            "IP": "cn-0",
+            "DataCacheMetrics": "Status: Normal, DiskUsage: 7.5TB/12.6TB, MemUsage: 0B/0B"
+        }))
+        .expect("cn");
+        super::fill_backend_cache_capacity(&mut cn);
+        assert_eq!(cn.data_used_capacity, "7.5 TB");
+        assert_eq!(cn.total_capacity, "12.6 TB");
+        assert_eq!(cn.used_pct, "59.5%");
+
+        cn.data_used_capacity = "1.0 TB".to_string();
+        cn.total_capacity = "2.0 TB".to_string();
+        cn.used_pct = "50.0%".to_string();
+        super::fill_backend_cache_capacity(&mut cn);
+        assert_eq!(cn.data_used_capacity, "1.0 TB");
+        assert_eq!(cn.used_pct, "50.0%");
+    }
+
+    #[test]
+    fn backend_deserializes_compute_node_row() {
+        let row = serde_json::json!({
+            "ComputeNodeId": "322320",
+            "IP": "cn-0",
+            "Alive": "true",
+            "CpuUsedPct": "26.4 %",
+            "MemUsedPct": "9.30 %",
+            "DataCacheMetrics": "Status: Normal, DiskUsage: 6.1TB/12.6TB, MemUsage: 0B/0B",
+            "HasStoragePath": "true"
+        });
+        let backend: Backend = serde_json::from_value(row).expect("backend should deserialize");
+        assert_eq!(backend.backend_id, "322320");
+        assert_eq!(backend.cpu_used_pct, "26.4 %");
+        assert_eq!(backend.mem_used_pct, "9.30 %");
+        assert!(backend.total_capacity.is_empty());
+    }
+
+    #[tokio::test]
+    async fn backend_list_cache_hits_then_invalidates() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .connect("sqlite::memory:")
+            .await
+            .expect("db");
+        let mysql = std::sync::Arc::new(crate::services::MySQLPoolManager::new());
+        let clusters = std::sync::Arc::new(crate::services::ClusterService::new(
+            pool.clone(),
+            mysql.clone(),
+        ));
+        let service = super::MetricsCollectorService::new(pool, clusters, mysql, 7);
+        let node: Backend = serde_json::from_value(serde_json::json!({
+            "ComputeNodeId": "1",
+            "IP": "cn-0"
+        }))
+        .expect("node");
+        service.store_backends(3, vec![node]);
+        assert_eq!(
+            service
+                .cached_backends(3, std::time::Duration::from_secs(90))
+                .expect("cache hit")
+                .len(),
+            1
+        );
+        service.invalidate_backends(3);
+        assert!(service.cached_backends(3, std::time::Duration::from_secs(90)).is_none());
+        assert!(service.stale_backends(3).is_none());
+    }
+
+    #[tokio::test]
+    async fn backend_list_stale_cache_survives_ttl() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .connect("sqlite::memory:")
+            .await
+            .expect("db");
+        let mysql = std::sync::Arc::new(crate::services::MySQLPoolManager::new());
+        let clusters = std::sync::Arc::new(crate::services::ClusterService::new(
+            pool.clone(),
+            mysql.clone(),
+        ));
+        let service = super::MetricsCollectorService::new(pool, clusters, mysql, 7);
+        let node: Backend = serde_json::from_value(serde_json::json!({
+            "ComputeNodeId": "1",
+            "IP": "cn-0"
+        }))
+        .expect("node");
+        service.store_backends(3, vec![node]);
+        tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+        assert!(
+            service
+                .cached_backends(3, std::time::Duration::from_millis(1))
+                .is_none()
+        );
+        assert_eq!(service.stale_backends(3).expect("stale hit").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn frontend_list_cache_returns_stale_after_ttl() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .connect("sqlite::memory:")
+            .await
+            .expect("db");
+        let mysql = std::sync::Arc::new(crate::services::MySQLPoolManager::new());
+        let clusters = std::sync::Arc::new(crate::services::ClusterService::new(
+            pool.clone(),
+            mysql.clone(),
+        ));
+        let service = super::MetricsCollectorService::new(pool, clusters, mysql, 7);
+        let node: Frontend = serde_json::from_value(serde_json::json!({
+            "Name": "fe-0",
+            "IP": "10.0.0.1",
+            "EditLogPort": "9010",
+            "HttpPort": "8030",
+            "QueryPort": "9030",
+            "RpcPort": "9020",
+            "Role": "LEADER",
+            "ClusterId": "1",
+            "Join": "true",
+            "Alive": "true",
+            "ReplayedJournalId": "1",
+            "LastHeartbeat": "2026-09-10",
+            "ErrMsg": "",
+            "Version": "3.5"
+        }))
+        .expect("frontend");
+        service.store_frontends(3, vec![node]);
+        assert_eq!(
+            service
+                .cached_frontends(3, std::time::Duration::from_secs(90))
+                .expect("cache hit")
+                .len(),
+            1
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+        assert!(
+            service
+                .cached_frontends(3, std::time::Duration::from_millis(1))
+                .is_none()
+        );
+        assert_eq!(service.stale_frontends(3).expect("stale hit").len(), 1);
     }
 }

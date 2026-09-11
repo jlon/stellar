@@ -21,6 +21,7 @@ import { sql, MySQL, type SQLNamespace } from '@codemirror/lang-sql';
 import { format } from 'sql-formatter';
 import { trigger, transition, style, animate, state } from '@angular/animations';
 import { renderMetricBadge, MetricThresholds } from '../../../../@core/utils/metric-badge';
+import { assignTableRows } from '../../../../@core/utils/table-rows';
 import { renderLongText } from '../../../../@core/utils/text-truncate';
 import { ConfirmDialogService } from '../../../../@core/services/confirm-dialog.service';
 import { AuthService } from '../../../../@core/data/auth.service';
@@ -28,7 +29,6 @@ import { themeColor, themeColorAlpha, themeChartChrome } from '../../../../@core
 import { NgTemplateOutlet, NgClass, SlicePipe, DecimalPipe, DatePipe } from '@angular/common';
 import { NgxEchartsDirective } from 'ngx-echarts';
 import { FormsModule } from '@angular/forms';
-import { DashboardComponent } from '../../dashboard/dashboard.component';
 
 // Chart 相关类型定义
 type FieldType = 'numeric' | 'text';
@@ -143,7 +143,6 @@ interface NavTreeNode {
     FormsModule,
     NbInputModule,
     NbBadgeModule,
-    DashboardComponent,
     SlicePipe,
     DecimalPipe,
     DatePipe
@@ -4920,34 +4919,32 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   loadRunningQueries(): void {
     this.loading = true;
     this.cdr.markForCheck();
-    this.nodeService.listQueries().pipe(
-      finalize(() => {
-        this.loading = false;
-        this.cdr.markForCheck();
-      })
-    ).subscribe({
+    this.nodeService.listQueries().subscribe({
       next: (queries) => {
-        // Apply filters
         let filteredQueries = queries;
-        
         if (this.runningQueryFilter.slowQueryOnly) {
           filteredQueries = filteredQueries.filter(q => {
             const execTime = this.parseExecTime(q.ExecTime);
-            return execTime >= 300000; // 5 minutes
+            return execTime >= 300000;
           });
         }
-        
         if (this.runningQueryFilter.highCostOnly) {
           filteredQueries = filteredQueries.filter(q => {
             const scanBytes = this.parseBytes(q.ScanBytes);
-            return scanBytes >= 1073741824; // 1GB
+            return scanBytes >= 1073741824;
           });
         }
-        
-        this.runningSource.load(filteredQueries);
+        assignTableRows(this.runningSource, filteredQueries).then(() => {
+          this.loading = false;
+          this.cdr.markForCheck();
+        });
       },
       error: (error) => {
         this.toastrService.danger(ErrorHandler.extractErrorMessage(error), '加载失败');
+        assignTableRows(this.runningSource, []).then(() => {
+          this.loading = false;
+          this.cdr.markForCheck();
+        });
       },
     });
   }

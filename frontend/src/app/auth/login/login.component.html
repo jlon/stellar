@@ -1,85 +1,126 @@
-<h1 id="title" class="title">Login</h1>
-<p class="sub-title">Hello! Log in with your username.</p>
-
-@if (errors?.length && !submitted) {
-  <nb-alert outline="danger" role="alert">
-    <ul class="alert-message-list">
-      @for (error of errors; track error) {
-        <li class="alert-message">{{ error }}</li>
-      }
-    </ul>
-  </nb-alert>
-}
-
-@if (messages?.length && !submitted) {
-  <nb-alert outline="success" role="alert">
-    <ul class="alert-message-list">
-      @for (message of messages; track message) {
-        <li class="alert-message">{{ message }}</li>
-      }
-    </ul>
-  </nb-alert>
-}
-
-<form (ngSubmit)="login()" #form="ngForm" aria-labelledby="title">
-  <div class="form-control-group">
-    <label class="label" for="input-username">Username:</label>
-    <input nbInput
-      fullWidth
-      [(ngModel)]="user.username"
-      #username="ngModel"
-      name="username"
-      id="input-username"
-      placeholder="Username"
-      autofocus
-      [status]="username.dirty ? (username.invalid ? 'danger' : 'success') : 'basic'"
-      [required]="true"
-      [attr.aria-invalid]="username.invalid && username.touched ? true : null">
-    @if (username.invalid && username.touched) {
-      @if (username.errors?.['required']) {
-        <p class="caption status-danger">
-          Username is required!
-        </p>
-      }
-    }
+<div class="login-shell" [class.resizing]="isResizing">
+  <div class="login-visual" aria-hidden="true">
+    <div class="visual-grid"></div>
+    <div class="visual-orb visual-orb--1"></div>
+    <div class="visual-orb visual-orb--2"></div>
+    <div class="visual-hero-bg" aria-hidden="true">
+      <img class="visual-hero-img" src="assets/images/starrocks-hero.png" alt="">
+    </div>
+    <div class="visual-content">
+      <div class="brand-row">
+        <div class="brand-ring">
+          <div class="brand-ring__pulse"></div>
+          <nb-icon icon="database-outline"></nb-icon>
+        </div>
+        <h1 class="brand-name">Stellar</h1>
+      </div>
+      <p class="brand-tagline">查看集群状态，继续手头的工作</p>
+      <div class="visual-metrics">
+        <div class="metric">
+          <span class="metric__value">&lt;1s</span>
+          <span class="metric__label">查询响应</span>
+        </div>
+        <div class="metric">
+          <span class="metric__value">MPP</span>
+          <span class="metric__label">并行处理</span>
+        </div>
+        <div class="metric">
+          <span class="metric__value">2</span>
+          <span class="metric__label">分析引擎</span>
+        </div>
+      </div>
+    </div>
   </div>
 
-  <div class="form-control-group">
-    <label class="label" for="input-password">Password:</label>
-    <input nbInput
-      fullWidth
-      [(ngModel)]="user.password"
-      #password="ngModel"
-      name="password"
-      type="password"
-      id="input-password"
-      placeholder="Password"
-      [status]="password.dirty ? (password.invalid ? 'danger' : 'success') : 'basic'"
-      [required]="true"
-      [attr.aria-invalid]="password.invalid && password.touched ? true : null">
-    @if (password.invalid && password.touched) {
-      @if (password.errors?.['required']) {
-        <p class="caption status-danger">
-          Password is required!
-        </p>
-      }
-    }
+  <div class="login-panel"
+       [style.flex-basis.px]="panelWidth"
+       [class.resizing]="isResizing">
+    <div class="panel-resize-handle"
+         role="separator"
+         aria-orientation="vertical"
+         aria-label="调整登录面板宽度">
+      <span class="panel-resize-handle__grip"></span>
+    </div>
+    <div class="panel-glow" aria-hidden="true"></div>
+    <div class="panel-header">
+      <div class="panel-badge">
+        <nb-icon icon="activity-outline"></nb-icon>
+        <span>STELLAR 控制台</span>
+      </div>
+      <h2 id="title" class="title">欢迎回来</h2>
+      <p class="sub-title">登录后继续管理你的集群</p>
+    </div>
+
+    <nb-alert *ngIf="errors?.length && !submitted" outline="danger" role="alert">
+      <ul class="alert-message-list">
+        <li *ngFor="let error of errors" class="alert-message">{{ error }}</li>
+      </ul>
+    </nb-alert>
+
+    <nb-alert *ngIf="messages?.length && !submitted" outline="success" role="alert">
+      <ul class="alert-message-list">
+        <li *ngFor="let message of messages" class="alert-message">{{ message }}</li>
+      </ul>
+    </nb-alert>
+
+    <form (ngSubmit)="login()" #form="ngForm" aria-labelledby="title">
+      <div class="form-control-group">
+        <label class="label" for="input-username">用户名</label>
+        <input nbInput
+               fullWidth
+               [(ngModel)]="user.username"
+               #username="ngModel"
+               name="username"
+               id="input-username"
+               placeholder="请输入用户名"
+               autofocus
+               [status]="username.dirty ? (username.invalid ? 'danger' : 'success') : 'basic'"
+               [required]="true"
+               [attr.aria-invalid]="username.invalid && username.touched ? true : null">
+        <ng-container *ngIf="username.invalid && username.touched">
+          <p class="caption status-danger" *ngIf="username.errors?.['required']">
+            请填写用户名
+          </p>
+        </ng-container>
+      </div>
+
+      <div class="form-control-group">
+        <label class="label" for="input-password">密码</label>
+        <input nbInput
+               fullWidth
+               [(ngModel)]="user.password"
+               #password="ngModel"
+               name="password"
+               type="password"
+               id="input-password"
+               placeholder="请输入密码"
+               [status]="password.dirty ? (password.invalid ? 'danger' : 'success') : 'basic'"
+               [required]="true"
+               [attr.aria-invalid]="password.invalid && password.touched ? true : null">
+        <ng-container *ngIf="password.invalid && password.touched">
+          <p class="caption status-danger" *ngIf="password.errors?.['required']">
+            请填写密码
+          </p>
+        </ng-container>
+      </div>
+
+      <div class="form-control-group accept-group">
+        <nb-checkbox name="rememberMe" [(ngModel)]="rememberMe">记住用户名</nb-checkbox>
+      </div>
+
+      <button nbButton
+              fullWidth
+              status="primary"
+              size="large"
+              [disabled]="submitted || !form.valid"
+              [class.btn-pulse]="submitted">
+        <nb-icon *ngIf="!submitted" icon="log-in-outline"></nb-icon>
+        {{ submitted ? '正在登录...' : '登录' }}
+      </button>
+    </form>
+
+    <section class="another-action">
+      还没有账号？<a class="text-link" routerLink="../register">注册账号</a>
+    </section>
   </div>
-
-  <div class="form-control-group accept-group">
-    <nb-checkbox name="rememberMe" [(ngModel)]="rememberMe">Remember me</nb-checkbox>
-  </div>
-
-  <button nbButton
-    fullWidth
-    status="primary"
-    size="large"
-    [disabled]="submitted || !form.valid"
-    [class.btn-pulse]="submitted">
-    Log In
-  </button>
-</form>
-
-<section class="another-action">
-  Don't have an account? <a class="text-link" routerLink="../register">Register</a>
-</section>
+</div>

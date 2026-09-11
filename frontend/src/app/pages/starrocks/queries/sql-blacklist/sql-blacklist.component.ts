@@ -8,6 +8,7 @@ import { ClusterContextService } from '../../../../@core/data/cluster-context.se
 import { Cluster } from '../../../../@core/data/cluster.service';
 import { ErrorHandler } from '../../../../@core/utils/error-handler';
 import { ConfirmDialogService } from '../../../../@core/services/confirm-dialog.service';
+import { assignTableRows } from '../../../../@core/utils/table-rows';
 
 import { FormsModule } from '@angular/forms';
 
@@ -37,7 +38,7 @@ export class SqlBlacklistComponent implements OnInit, OnDestroy {
 
   blacklistSource: LocalDataSource = new LocalDataSource();
   activeCluster: Cluster | null = null;
-  loading = false;
+  loading = true;
   private destroy$ = new Subject<void>();
 
   @ViewChild('blacklistDialog', { static: false }) blacklistDialogTemplate!: TemplateRef<any>;
@@ -99,15 +100,9 @@ export class SqlBlacklistComponent implements OnInit, OnDestroy {
     this.clusterContext.activeCluster$.pipe(takeUntil(this.destroy$)).subscribe(cluster => {
       this.activeCluster = cluster;
       if (cluster) {
-        this.loadBlacklistIfNotLoading();
+        this.loadBlacklist();
       }
     });
-  }
-
-  private loadBlacklistIfNotLoading(): void {
-    if (!this.loading) {
-      this.loadBlacklist();
-    }
   }
 
   ngOnDestroy(): void {
@@ -121,14 +116,16 @@ export class SqlBlacklistComponent implements OnInit, OnDestroy {
       next: items => {
         console.log('SQL Blacklist loaded:', items);
         console.log('Loading into table source...');
-        this.blacklistSource.load(items);
-        console.log('Table source count after load:', this.blacklistSource.count());
-        this.loading = false;
+        assignTableRows(this.blacklistSource, items).then(() => {
+          this.loading = false;
+        });
       },
       error: error => {
         console.error('SQL Blacklist load error:', error);
         this.toastrService.danger(ErrorHandler.extractErrorMessage(error), '加载失败');
-        this.loading = false;
+        assignTableRows(this.blacklistSource, []).then(() => {
+          this.loading = false;
+        });
       },
     });
   }

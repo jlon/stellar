@@ -38,13 +38,16 @@ pub use llm::{
     RootCauseAnalysisResponse as LLMAnalysisResponse,
 };
 pub use materialized_view_service::MaterializedViewService;
-pub use metrics_collector_service::{MetricsCollectorService, MetricsSnapshot};
+pub use metrics_collector_service::{
+    ClusterResourceSummary, MetricsCollectorService, MetricsSnapshot,
+};
 pub use mysql_client::MySQLClient;
 pub use mysql_pool_manager::MySQLPoolManager;
 pub use organization_service::OrganizationService;
 pub use overview_service::{
     Alert, AlertLevel, BECompactionScore, CapacityPrediction, ClusterHealth, ClusterOverview,
     CompactionDetailStats, CompactionDurationStats, CompactionStats, CompactionTaskStats,
+    NodeDiskUsage,
     ExtendedClusterOverview, HealthCard, HealthStatus, KeyPerformanceIndicators, LoadJobStats,
     MaterializedViewStats, NetworkIOStats, OverviewService, PerformanceTrends, ResourceMetrics,
     ResourceTrends, RunningQuery, SchemaChangeStats, SessionStats, TimeRange, TopPartitionByScore,
