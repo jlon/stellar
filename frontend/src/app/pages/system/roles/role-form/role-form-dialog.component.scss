@@ -179,7 +179,7 @@
     }
 
     &::-webkit-scrollbar-thumb {
-      background: nb-theme(border-basic-color-4);
+      background: var(--scrollbar-color);
       border-radius: 3px;
       
       &:hover {

@@ -1019,12 +1019,12 @@
 }
 
 .schema-scroll::-webkit-scrollbar-thumb {
-  background: nb-theme(scrollbar-color);
+  background: var(--scrollbar-color);
   border-radius: 4px;
 }
 
 .schema-scroll::-webkit-scrollbar-thumb:hover {
-  background: nb-theme(text-disabled-color);
+  background: var(--color-basic-600);
 }
 
 .empty-schema {
@@ -1449,11 +1449,11 @@ pre {
     height: 4px;
   }
   &::-webkit-scrollbar-thumb {
-    background: rgba(143, 150, 170, 0.3);
+    background: var(--scrollbar-color);
     border-radius: 2px;
   }
   &::-webkit-scrollbar-thumb:hover {
-    background: rgba(143, 150, 170, 0.45);
+    background: var(--color-basic-600);
   }
   
   pre {

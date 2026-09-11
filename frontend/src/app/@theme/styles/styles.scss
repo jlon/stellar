@@ -54,6 +54,34 @@ nb-dialog-container.modal-lg,
   width: 1200px !important;
 }
 
+// Global scrollbar theming: every scrolled surface follows the active theme.
+// Nebular only defines scrollbar-color on the light default theme, leaving
+// dark/cosmic with a light thumb; themes.scss overrides the variables there.
+// Component-level rules (e.g. .schema-scroll) keep their finer sizes via
+// specificity while sharing these same colors.
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-color) var(--scrollbar-background-color);
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-background-color);
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-color);
+  border-radius: 4px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--color-basic-600);
+}
+
 nb-dialog-container.modal-xl,
 .modal-xl nb-dialog-container,
 .cdk-overlay-pane.modal-xl {
