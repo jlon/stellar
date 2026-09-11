@@ -163,6 +163,33 @@ export class SrDeploymentService {
     return this.api.post<DeploymentTask>(`/sr-ops/clusters/${id}/import`, {});
   }
 
+  cancelTask(id: number): Observable<void> {
+    return this.api.post<void>(`/sr-ops/tasks/${id}/cancel`, {});
+  }
+
+  refreshCluster(id: number): Observable<{ nodes: { node_id: number; role: string; port: number; status: string }[] }> {
+    return this.api.post(`/sr-ops/clusters/${id}/refresh`, {});
+  }
+
+  decommissionCluster(
+    id: number,
+    request: { confirm: string; remove_remote_files: boolean; deregister: boolean },
+  ): Observable<DeploymentTask> {
+    return this.api.post<DeploymentTask>(`/sr-ops/clusters/${id}/decommission`, request);
+  }
+
+  scaleOut(id: number, request: { frontends: DeploymentNode[]; backends: DeploymentNode[] }): Observable<DeploymentTask> {
+    return this.api.post<DeploymentTask>(`/sr-ops/clusters/${id}/nodes`, request);
+  }
+
+  updateNodeConfig(
+    clusterId: number,
+    nodeId: number,
+    request: { content: string; restart: boolean },
+  ): Observable<DeploymentTask> {
+    return this.api.post<DeploymentTask>(`/sr-ops/clusters/${clusterId}/nodes/${nodeId}/config`, request);
+  }
+
   submitNodeCommand(
     clusterId: number,
     nodeId: number,

@@ -71,6 +71,23 @@ fn extract_sr_ops_action(segments: &[&str], method: &str) -> String {
         (Some(&"clusters"), 4, "POST") if segments.get(3) == Some(&"import") => {
             "clusters:manage".to_string()
         },
+        (Some(&"clusters"), 4, "POST") if segments.get(3) == Some(&"refresh") => {
+            "clusters:get".to_string()
+        },
+        (Some(&"clusters"), 4, "POST") if segments.get(3) == Some(&"decommission") => {
+            "clusters:delete".to_string()
+        },
+        (Some(&"clusters"), 4, "POST") if segments.get(3) == Some(&"nodes") => {
+            "clusters:manage".to_string()
+        },
+        (Some(&"clusters"), 5, "POST") if segments.get(3) == Some(&"configs") => {
+            "clusters:manage".to_string()
+        },
+        (Some(&"clusters"), 6, "POST")
+            if segments.get(3) == Some(&"nodes") && segments.get(5) == Some(&"config") =>
+        {
+            "clusters:manage".to_string()
+        },
         (Some(&"clusters"), 6, "GET")
             if segments.get(3) == Some(&"nodes") && segments.get(5) == Some(&"logs") =>
         {
@@ -451,6 +468,22 @@ mod tests {
         assert_eq!(
             extract_permission("GET", "/api/sr-ops/clusters/7/configs/3/diff"),
             Some(("sr-ops".to_string(), "configs:read".to_string()))
+        );
+        assert_eq!(
+            extract_permission("POST", "/api/sr-ops/clusters/7/decommission"),
+            Some(("sr-ops".to_string(), "clusters:delete".to_string()))
+        );
+        assert_eq!(
+            extract_permission("POST", "/api/sr-ops/clusters/7/refresh"),
+            Some(("sr-ops".to_string(), "clusters:get".to_string()))
+        );
+        assert_eq!(
+            extract_permission("POST", "/api/sr-ops/clusters/7/nodes"),
+            Some(("sr-ops".to_string(), "clusters:manage".to_string()))
+        );
+        assert_eq!(
+            extract_permission("POST", "/api/sr-ops/clusters/7/nodes/3/config"),
+            Some(("sr-ops".to_string(), "clusters:manage".to_string()))
         );
     }
 }

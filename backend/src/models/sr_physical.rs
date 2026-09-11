@@ -479,11 +479,115 @@ pub struct CreateDeploymentRequest {
     pub package_id: i64,
     pub ssh_credential_id: i64,
     pub operator_credential_id: i64,
+    /// Encrypted credential for ALTER SYSTEM / CREATE USER on clusters whose
+    /// root account already has a password. Falls back to root with no password
+    /// for freshly initialized clusters.
+    pub bootstrap_credential_id: Option<i64>,
     pub install_dir: String,
     #[serde(default)]
     pub confirm_non_ha: bool,
     pub frontends: Vec<FrontendDeploymentNode>,
     pub backends: Vec<BackendDeploymentNode>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct DecommissionRequest {
+    pub organization_id: Option<i64>,
+    /// The managed cluster name, echoed for destructive confirmation.
+    pub confirm: String,
+    /// Stop nodes and remove install/meta/storage directories from the hosts.
+    #[serde(default)]
+    pub remove_remote_files: bool,
+    /// Also delete the imported clusters row (loses monitoring history).
+    #[serde(default)]
+    pub deregister: bool,
+}
+
+impl DecommissionRequest {
+    pub fn normalize(mut self) -> ApiResult<Self> {
+        self.confirm = self.confirm.trim().to_owned();
+        if self.confirm.is_empty() {
+            return Err(ApiError::validation_error("confirm must echo the managed cluster name"));
+        }
+        Ok(self)
+    }
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct NodeScaleRequest {
+    pub organization_id: Option<i64>,
+    pub frontends: Vec<FrontendDeploymentNode>,
+    pub backends: Vec<BackendDeploymentNode>,
+}
+
+impl NodeScaleRequest {
+    pub fn normalize(mut self) -> ApiResult<Self> {
+        if self.frontends.is_empty() && self.backends.is_empty() {
+            return Err(ApiError::validation_error("scale-out requires at least one new FE or BE"));
+        }
+        let mut seen = std::collections::HashSet::new();
+        for frontend in &mut self.frontends {
+            validate_advertise_host(&frontend.advertise_host)?;
+            if frontend.host_id <= 0
+                || frontend.edit_log_port == 0
+                || frontend.http_port == 0
+                || frontend.query_port == 0
+                || frontend.rpc_port == 0
+            {
+                return Err(ApiError::validation_error("FE node host and ports must be valid"));
+            }
+            frontend.meta_dir =
+                Some(normalize_absolute_path(frontend.meta_dir.as_deref().unwrap_or(""))?);
+            if !seen.insert((frontend.host_id, frontend.meta_dir.clone().unwrap_or_default())) {
+                return Err(ApiError::validation_error(
+                    "scale-out FE nodes must not reuse hosts or meta directories",
+                ));
+            }
+        }
+        let mut seen_dirs = std::collections::HashSet::new();
+        for backend in &mut self.backends {
+            validate_advertise_host(&backend.advertise_host)?;
+            if backend.host_id <= 0
+                || backend.heartbeat_port == 0
+                || backend.be_port == 0
+                || backend.webserver_port == 0
+                || backend.brpc_port == 0
+                || backend.starlet_port == 0
+            {
+                return Err(ApiError::validation_error("BE node host and ports must be valid"));
+            }
+            backend.storage_dir =
+                Some(normalize_absolute_path(backend.storage_dir.as_deref().unwrap_or(""))?);
+            if !seen_dirs.insert((backend.host_id, backend.storage_dir.clone().unwrap_or_default()))
+            {
+                return Err(ApiError::validation_error(
+                    "scale-out BE nodes must not reuse hosts or storage directories",
+                ));
+            }
+        }
+        Ok(self)
+    }
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct NodeConfigUpdateRequest {
+    pub organization_id: Option<i64>,
+    /// Full fe.conf / be.conf replacement; managed topology keys must not change.
+    pub content: String,
+    #[serde(default)]
+    pub restart: bool,
+}
+
+impl NodeConfigUpdateRequest {
+    pub fn normalize(mut self) -> ApiResult<Self> {
+        self.content = self.content.replace("\r\n", "\n");
+        if self.content.is_empty() || self.content.len() > 512 * 1_024 {
+            return Err(ApiError::validation_error(
+                "content must contain 1 byte to 512 KiB of configuration",
+            ));
+        }
+        Ok(self)
+    }
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -526,6 +630,11 @@ impl CreateDeploymentRequest {
         }
         if self.package_id <= 0 || self.ssh_credential_id <= 0 || self.operator_credential_id <= 0 {
             return Err(ApiError::validation_error("package and credential IDs must be positive"));
+        }
+        if self.bootstrap_credential_id.is_some_and(|id| id <= 0) {
+            return Err(ApiError::validation_error(
+                "bootstrap_credential_id must be positive",
+            ));
         }
         if self.frontends.is_empty() || self.backends.is_empty() {
             return Err(ApiError::validation_error(
@@ -810,6 +919,7 @@ mod tests {
     fn rejects_root_as_an_installation_path() {
         let request = CreateDeploymentRequest {
             organization_id: Some(1),
+            bootstrap_credential_id: None,
             name: "sr".to_string(),
             package_id: 1,
             ssh_credential_id: 1,
@@ -827,6 +937,7 @@ mod tests {
     fn rejects_duplicate_ports_on_a_co_located_host() {
         let request = CreateDeploymentRequest {
             organization_id: Some(1),
+            bootstrap_credential_id: None,
             name: "sr".to_string(),
             package_id: 1,
             ssh_credential_id: 1,

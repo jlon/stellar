@@ -22,5 +22,10 @@
 .diff-added { color: var(--color-success-500); }
 .diff-removed { color: var(--color-danger-500); }
 .diff-context { color: var(--text-hint-color); }
+.extra-rows { display: grid; grid-template-columns: 1fr 1fr auto; gap: .75rem; align-items: end; }
+.task-link { all: unset; display: grid; grid-template-columns: 1.2fr 1fr .8fr 1fr; gap: 1rem; width: 100%; cursor: pointer; }
+.scale-out { display: grid; gap: .5rem; padding: .5rem 0; border-top: 1px dashed var(--separator); }
+.config-edit { display: grid; gap: .5rem; padding: .5rem 0; border-top: 1px dashed var(--separator); }
+.config-edit textarea { font-family: var(--font-monospace); }
 nb-list-item { display: grid; grid-template-columns: 6rem 7rem 1fr auto; gap: .75rem; }
 @media (max-width: 768px) { .deployment-form, .metrics { grid-template-columns: 1fr; }.table-row { grid-template-columns: 1fr 1fr; }.table-row time { display: none; } nb-list-item { grid-template-columns: 1fr; } }

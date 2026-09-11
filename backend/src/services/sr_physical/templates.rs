@@ -47,6 +47,20 @@ pub struct FeConfig<'a> {
     pub single_be: bool,
 }
 
+/// Managed keys are topology facts controlled by the deployment model; a
+/// configuration change must not alter them, only add or tune other lines.
+pub const FE_MANAGED_KEYS: [&str; 6] =
+    ["meta_dir", "priority_networks", "edit_log_port", "http_port", "query_port", "rpc_port"];
+pub const BE_MANAGED_KEYS: [&str; 7] = [
+    "storage_root_path",
+    "priority_networks",
+    "heartbeat_service_port",
+    "be_port",
+    "be_http_port",
+    "brpc_port",
+    "starlet_port",
+];
+
 pub fn fe_config(existing: &str, input: FeConfig<'_>) -> String {
     let mut values = vec![
         ("meta_dir", input.meta_dir.to_owned()),
@@ -91,6 +105,23 @@ fn is_managed_key(line: &str, managed_keys: &HashSet<&str>) -> bool {
         return false;
     };
     managed_keys.contains(key.trim())
+}
+
+/// Extracts `key = value` pairs (comments and blank lines ignored) for the
+/// managed-key comparison performed before any configuration write.
+pub fn extract_config_values(content: &str) -> Vec<(String, String)> {
+    content
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            let line = line.split('#').next()?.trim();
+            if line.is_empty() {
+                return None;
+            }
+            let (key, value) = line.split_once('=')?;
+            Some((key.trim().to_string(), value.trim().to_string()))
+        })
+        .collect()
 }
 
 #[cfg(test)]

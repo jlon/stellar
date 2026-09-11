@@ -410,14 +410,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("PermissionRequestService initialized");
 
     let physical_host_service = Arc::new(PhysicalHostService::new(pool.clone()));
-    let package_service = Arc::new(PackageService::new(
-        pool.clone(),
-        config.sr_physical.supported_versions.clone(),
-    ));
-    let credential_service = Arc::new(CredentialService::new(
-        pool.clone(),
-        &config.sr_physical.encryption_key,
-    ));
+    let package_service =
+        Arc::new(PackageService::new(pool.clone(), config.sr_physical.supported_versions.clone()));
+    let credential_service =
+        Arc::new(CredentialService::new(pool.clone(), &config.sr_physical.encryption_key));
     let physical_cache_dir = std::env::var("APP_SR_PHYSICAL_CACHE_DIR")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|_| std::path::PathBuf::from("data/sr-physical"));
@@ -688,18 +684,51 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/llm/providers/:id/test", post(handlers::llm::test_provider_connection))
         .route("/api/llm/analyze/root-cause", post(handlers::llm::analyze_root_cause))
         .route("/api/permission-requests/my", get(handlers::permission_request::list_my_requests))
-        .route("/api/permission-requests/pending", get(handlers::permission_request::list_pending_approvals))
+        .route(
+            "/api/permission-requests/pending",
+            get(handlers::permission_request::list_pending_approvals),
+        )
         .route("/api/permission-requests", post(handlers::permission_request::submit_request))
-        .route("/api/permission-requests/:request_id", get(handlers::permission_request::get_request))
-        .route("/api/permission-requests/:request_id/approve", post(handlers::permission_request::approve_request))
-        .route("/api/permission-requests/:request_id/reject", post(handlers::permission_request::reject_request))
-        .route("/api/permission-requests/:request_id/cancel", post(handlers::permission_request::cancel_request))
-        .route("/api/clusters/:cluster_id/db-auth/accounts", get(handlers::permission_request::list_db_accounts))
-        .route("/api/clusters/:cluster_id/db-auth/roles", get(handlers::permission_request::list_db_roles))
-        .route("/api/clusters/db-auth/accounts", get(handlers::permission_request::list_db_accounts_active))
-        .route("/api/clusters/db-auth/roles", get(handlers::permission_request::list_db_roles_active))
-        .route("/api/clusters/db-auth/my-permissions", get(handlers::permission_request::list_my_db_permissions))
-        .route("/api/clusters/db-auth/role-permissions/:role_name", get(handlers::permission_request::list_role_permissions))
+        .route(
+            "/api/permission-requests/:request_id",
+            get(handlers::permission_request::get_request),
+        )
+        .route(
+            "/api/permission-requests/:request_id/approve",
+            post(handlers::permission_request::approve_request),
+        )
+        .route(
+            "/api/permission-requests/:request_id/reject",
+            post(handlers::permission_request::reject_request),
+        )
+        .route(
+            "/api/permission-requests/:request_id/cancel",
+            post(handlers::permission_request::cancel_request),
+        )
+        .route(
+            "/api/clusters/:cluster_id/db-auth/accounts",
+            get(handlers::permission_request::list_db_accounts),
+        )
+        .route(
+            "/api/clusters/:cluster_id/db-auth/roles",
+            get(handlers::permission_request::list_db_roles),
+        )
+        .route(
+            "/api/clusters/db-auth/accounts",
+            get(handlers::permission_request::list_db_accounts_active),
+        )
+        .route(
+            "/api/clusters/db-auth/roles",
+            get(handlers::permission_request::list_db_roles_active),
+        )
+        .route(
+            "/api/clusters/db-auth/my-permissions",
+            get(handlers::permission_request::list_my_db_permissions),
+        )
+        .route(
+            "/api/clusters/db-auth/role-permissions/:role_name",
+            get(handlers::permission_request::list_role_permissions),
+        )
         .route("/api/db-auth/preview-sql", post(handlers::permission_request::preview_sql))
         .route(
             "/api/sr-ops/hosts",
@@ -707,18 +736,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .route(
             "/api/sr-ops/packages",
-            get(handlers::sr_physical::list_packages)
-                .post(handlers::sr_physical::create_package),
+            get(handlers::sr_physical::list_packages).post(handlers::sr_physical::create_package),
         )
         .route(
             "/api/sr-ops/credentials",
             get(handlers::sr_physical::list_ssh_credentials)
                 .post(handlers::sr_physical::create_ssh_credential),
         )
-        .route(
-            "/api/sr-ops/credentials/:id",
-            delete(handlers::sr_physical::delete_ssh_credential),
-        )
+        .route("/api/sr-ops/credentials/:id", delete(handlers::sr_physical::delete_ssh_credential))
         .route(
             "/api/sr-ops/database-credentials",
             get(handlers::sr_physical::list_database_credentials)
@@ -728,35 +753,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/api/sr-ops/database-credentials/:id",
             delete(handlers::sr_physical::delete_database_credential),
         )
-        .route(
-            "/api/sr-ops/deployments",
-            post(handlers::sr_physical::create_deployment),
-        )
-        .route(
-            "/api/sr-ops/adoptions",
-            post(handlers::sr_physical::create_adoption),
-        )
+        .route("/api/sr-ops/deployments", post(handlers::sr_physical::create_deployment))
+        .route("/api/sr-ops/adoptions", post(handlers::sr_physical::create_adoption))
         .route("/api/sr-ops/tasks", get(handlers::sr_physical::list_tasks))
+        .route("/api/sr-ops/tasks/:id", get(handlers::sr_physical::get_task))
+        .route("/api/sr-ops/tasks/:id/cancel", post(handlers::sr_physical::cancel_task))
+        .route("/api/sr-ops/clusters", get(handlers::sr_physical::list_managed_clusters))
+        .route("/api/sr-ops/clusters/:id", get(handlers::sr_physical::get_managed_cluster))
+        .route("/api/sr-ops/clusters/:id/import", post(handlers::sr_physical::submit_import))
         .route(
-            "/api/sr-ops/tasks/:id",
-            get(handlers::sr_physical::get_task),
+            "/api/sr-ops/clusters/:id/refresh",
+            post(handlers::sr_physical::refresh_cluster_status),
         )
         .route(
-            "/api/sr-ops/tasks/:id/cancel",
-            post(handlers::sr_physical::cancel_task),
+            "/api/sr-ops/clusters/:id/decommission",
+            post(handlers::sr_physical::submit_decommission),
         )
-        .route(
-            "/api/sr-ops/clusters",
-            get(handlers::sr_physical::list_managed_clusters),
-        )
-        .route(
-            "/api/sr-ops/clusters/:id",
-            get(handlers::sr_physical::get_managed_cluster),
-        )
-        .route(
-            "/api/sr-ops/clusters/:id/import",
-            post(handlers::sr_physical::submit_import),
-        )
+        .route("/api/sr-ops/clusters/:id/nodes", post(handlers::sr_physical::submit_scale_out))
         .route(
             "/api/sr-ops/clusters/:id/nodes/:node_id/logs",
             get(handlers::sr_physical::read_node_logs),
@@ -764,6 +777,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route(
             "/api/sr-ops/clusters/:id/nodes/:node_id/commands",
             post(handlers::sr_physical::submit_node_command),
+        )
+        .route(
+            "/api/sr-ops/clusters/:id/nodes/:node_id/config",
+            post(handlers::sr_physical::submit_node_config_change),
         )
         .route(
             "/api/sr-ops/clusters/:id/configs/:node_id",
@@ -777,10 +794,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/api/sr-ops/clusters/:id/configs/:node_id/diff",
             get(handlers::sr_physical::diff_config_revisions),
         )
-        .route("/api/clusters/resource-groups", get(handlers::resource_group::list_resource_groups).post(handlers::resource_group::create_resource_group))
-        .route("/api/clusters/resource-groups/usage", get(handlers::resource_group::get_resource_group_usage))
-        .route("/api/clusters/resource-groups/analysis", get(handlers::resource_group::analyze_resource_usage))
-        .route("/api/clusters/resource-groups/:name", get(handlers::resource_group::get_resource_group).put(handlers::resource_group::update_resource_group).delete(handlers::resource_group::delete_resource_group))
+        .route(
+            "/api/clusters/resource-groups",
+            get(handlers::resource_group::list_resource_groups)
+                .post(handlers::resource_group::create_resource_group),
+        )
+        .route(
+            "/api/clusters/resource-groups/usage",
+            get(handlers::resource_group::get_resource_group_usage),
+        )
+        .route(
+            "/api/clusters/resource-groups/analysis",
+            get(handlers::resource_group::analyze_resource_usage),
+        )
+        .route(
+            "/api/clusters/resource-groups/:name",
+            get(handlers::resource_group::get_resource_group)
+                .put(handlers::resource_group::update_resource_group)
+                .delete(handlers::resource_group::delete_resource_group),
+        )
         .with_state(Arc::clone(&app_state_arc))
         .layer(axum_middleware::from_fn_with_state(auth_state, middleware::auth_middleware));
 

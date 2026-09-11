@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormsModule, FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Subscription, forkJoin, timer } from 'rxjs';
 import {
   NbAlertModule, NbButtonModule, NbCardModule, NbCheckboxModule, NbIconModule,
@@ -17,10 +17,16 @@ import { ErrorHandler } from '../../../@core/utils/error-handler';
 
 type ConsoleMode = 'overview' | 'deploy' | 'tasks' | 'clusters';
 
+interface DeployNodeRow {
+  host_id: number | null;
+  advertise_host: string;
+  meta_dir?: string;
+  storage_dir?: string;
+}
 @Component({
   selector: 'ngx-deployment-console',
   imports: [
-    CommonModule, ReactiveFormsModule, NbAlertModule, NbButtonModule, NbCardModule, NbCheckboxModule,
+    CommonModule, FormsModule, ReactiveFormsModule, NbAlertModule, NbButtonModule, NbCardModule, NbCheckboxModule,
     NbIconModule, NbInputModule, NbListModule, NbSelectModule, NbSpinnerModule,
   ],
   templateUrl: './deployment-console.component.html',
@@ -48,6 +54,8 @@ export class DeploymentConsoleComponent implements OnInit, OnDestroy {
   revisions: ConfigRevisionSummary[] = [];
   revisionContent: ConfigRevision | null = null;
   diffLines: ConfigDiffLine[] | null = null;
+  extraFrontends: DeployNodeRow[] = [];
+  extraBackends: DeployNodeRow[] = [];
   selectedTask?: DeploymentTaskDetail;
   error = '';
 
@@ -78,35 +86,55 @@ export class DeploymentConsoleComponent implements OnInit, OnDestroy {
   }
 
   submitDeployment(): void {
-    if (this.deployForm.invalid) {
+    if (this.deployForm.invalid || !this.extraFrontends.every((row) => row.host_id && row.advertise_host)
+      || !this.extraBackends.every((row) => row.host_id && row.advertise_host)) {
       this.deployForm.markAllAsTouched();
       return;
     }
     const value = this.deployForm.getRawValue();
-    // Optional port group: FE binds base..base+3, BE binds base+4..base+8
+    // Optional port group: node i binds FE base+i*10..+3 and BE base+i*10+4..+8
     // (heartbeat, thrift, http, brpc, starlet). Unset uses server defaults.
     const portBase = value.port_base || 0;
-    const fePorts = portBase
-      ? { edit_log_port: portBase, http_port: portBase + 1, query_port: portBase + 2, rpc_port: portBase + 3 }
-      : {};
-    const bePorts = portBase
-      ? {
-          heartbeat_port: portBase + 4,
-          be_port: portBase + 5,
-          webserver_port: portBase + 6,
-          brpc_port: portBase + 7,
-          starlet_port: portBase + 8,
-        }
-      : {};
+    const frontends = [
+      { host_id: value.leader_host_id || 0, advertise_host: value.leader_advertise_host || '' },
+      ...this.extraFrontends.map((row) => ({ host_id: row.host_id || 0, advertise_host: row.advertise_host })),
+    ].map((node, index) => ({
+      ...node,
+      ...(portBase
+        ? {
+            edit_log_port: portBase + index * 10,
+            http_port: portBase + index * 10 + 1,
+            query_port: portBase + index * 10 + 2,
+            rpc_port: portBase + index * 10 + 3,
+          }
+        : {}),
+      meta_dir: `${value.install_dir}/host${node.host_id}/fe`,
+    }));
+    const backends = [
+      { host_id: value.backend_host_id || 0, advertise_host: value.backend_advertise_host || '' },
+      ...this.extraBackends.map((row) => ({ host_id: row.host_id || 0, advertise_host: row.advertise_host })),
+    ].map((node, index) => ({
+      ...node,
+      ...(portBase
+        ? {
+            heartbeat_port: portBase + index * 10 + 4,
+            be_port: portBase + index * 10 + 5,
+            webserver_port: portBase + index * 10 + 6,
+            brpc_port: portBase + index * 10 + 7,
+            starlet_port: portBase + index * 10 + 8,
+          }
+        : {}),
+      storage_dir: `${value.install_dir}/host${node.host_id}/be`,
+    }));
     this.submitting = true;
     this.error = '';
     this.deploymentService.createDeployment({
       name: value.name || '', package_id: value.package_id || 0,
       ssh_credential_id: value.ssh_credential_id || 0,
       operator_credential_id: value.operator_credential_id || 0,
-      install_dir: value.install_dir || '', confirm_non_ha: true,
-      frontends: [{ host_id: value.leader_host_id || 0, advertise_host: value.leader_advertise_host || '', ...fePorts }],
-      backends: [{ host_id: value.backend_host_id || 0, advertise_host: value.backend_advertise_host || '', ...bePorts }],
+      install_dir: value.install_dir || '', confirm_non_ha: !!value.confirm_non_ha,
+      frontends,
+      backends,
     }).subscribe({
       next: (task) => {
         this.submitting = false;
@@ -116,6 +144,22 @@ export class DeploymentConsoleComponent implements OnInit, OnDestroy {
       },
       error: (error) => { this.submitting = false; ErrorHandler.handleHttpError(error, this.toastr); },
     });
+  }
+
+  addExtraFrontend(): void {
+    this.extraFrontends.push({ host_id: null, advertise_host: '' });
+  }
+
+  removeExtraFrontend(index: number): void {
+    this.extraFrontends.splice(index, 1);
+  }
+
+  addExtraBackend(): void {
+    this.extraBackends.push({ host_id: null, advertise_host: '' });
+  }
+
+  removeExtraBackend(index: number): void {
+    this.extraBackends.splice(index, 1);
   }
 
   selectTask(task: DeploymentTask): void {
@@ -221,6 +265,151 @@ export class DeploymentConsoleComponent implements OnInit, OnDestroy {
         next: (lines) => { this.diffLines = lines; },
         error: (error) => ErrorHandler.handleHttpError(error, this.toastr),
       });
+  }
+
+  refreshCluster(): void {
+    if (!this.clusterDetail) {
+      return;
+    }
+    this.deploymentService.refreshCluster(this.clusterDetail.id).subscribe({
+      next: () => {
+        this.toastr.success('节点状态已刷新。', '状态刷新');
+        this.toggleCluster({ ...this.clusterDetail, id: this.clusterDetail.id });
+      },
+      error: (error) => ErrorHandler.handleHttpError(error, this.toastr),
+    });
+  }
+
+  decommissionCluster(): void {
+    if (!this.clusterDetail) {
+      return;
+    }
+    const name = window.prompt(`输入集群名 ${this.clusterDetail.name} 以确认退役：`);
+    if (!name || name !== this.clusterDetail.name) {
+      return;
+    }
+    const removeFiles = window.confirm('是否同时删除远端安装与数据目录？');
+    this.deploymentService
+      .decommissionCluster(this.clusterDetail.id, {
+        confirm: name,
+        remove_remote_files: removeFiles,
+        deregister: false,
+      })
+      .subscribe({
+        next: (task) => {
+          this.toastr.success(`退役任务 #${task.id} 已提交。`, '集群退役');
+          this.mode = 'tasks';
+          this.loadTasks();
+        },
+        error: (error) => ErrorHandler.handleHttpError(error, this.toastr),
+      });
+  }
+
+  scaleFes: DeployNodeRow[] = [];
+  scaleBes: DeployNodeRow[] = [];
+  scalePortBase: number | null = null;
+
+  addScaleFe(): void {
+    this.scaleFes.push({ host_id: null, advertise_host: '' });
+  }
+
+  addScaleBe(): void {
+    this.scaleBes.push({ host_id: null, advertise_host: '' });
+  }
+
+  submitScaleOut(): void {
+    if (!this.clusterDetail) {
+      return;
+    }
+    const base = this.scalePortBase || 0;
+    const frontends = this.scaleFes
+      .filter((row) => row.host_id && row.advertise_host)
+      .map((row, index) => ({
+        host_id: row.host_id || 0,
+        advertise_host: row.advertise_host,
+        ...(base
+          ? {
+              edit_log_port: base + index * 10,
+              http_port: base + index * 10 + 1,
+              query_port: base + index * 10 + 2,
+              rpc_port: base + index * 10 + 3,
+            }
+          : {}),
+        meta_dir: `${this.clusterDetail.install_dir}-host${row.host_id}/fe`,
+      }));
+    const backends = this.scaleBes
+      .filter((row) => row.host_id && row.advertise_host)
+      .map((row, index) => ({
+        host_id: row.host_id || 0,
+        advertise_host: row.advertise_host,
+        ...(base
+          ? {
+              heartbeat_port: base + index * 10 + 4,
+              be_port: base + index * 10 + 5,
+              webserver_port: base + index * 10 + 6,
+              brpc_port: base + index * 10 + 7,
+              starlet_port: base + index * 10 + 8,
+            }
+          : {}),
+        storage_dir: `${this.clusterDetail.install_dir}-host${row.host_id}/be`,
+      }));
+    this.deploymentService.scaleOut(this.clusterDetail.id, { frontends, backends }).subscribe({
+      next: (task) => {
+        this.toastr.success(`扩容任务 #${task.id} 已提交。`, '集群扩容');
+        this.mode = 'tasks';
+        this.loadTasks();
+      },
+      error: (error) => ErrorHandler.handleHttpError(error, this.toastr),
+    });
+  }
+
+  editingNode?: ManagedClusterNode;
+  configEdit = '';
+  configRestart = false;
+
+  startNodeConfigEdit(node: ManagedClusterNode): void {
+    if (!this.clusterDetail) {
+      return;
+    }
+    this.deploymentService
+      .getConfigRevision(this.clusterDetail.id, node.id, 1)
+      .subscribe({
+        next: (revision) => {
+          this.editingNode = node;
+          this.configEdit = revision.content;
+        },
+        error: (error) => ErrorHandler.handleHttpError(error, this.toastr),
+      });
+  }
+
+  submitNodeConfig(): void {
+    if (!this.clusterDetail || !this.editingNode) {
+      return;
+    }
+    this.deploymentService
+      .updateNodeConfig(this.clusterDetail.id, this.editingNode.id, {
+        content: this.configEdit,
+        restart: this.configRestart,
+      })
+      .subscribe({
+        next: (task) => {
+          this.toastr.success(`配置变更任务 #${task.id} 已提交。`, '配置变更');
+          this.editingNode = undefined;
+          this.mode = 'tasks';
+          this.loadTasks();
+        },
+        error: (error) => ErrorHandler.handleHttpError(error, this.toastr),
+      });
+  }
+
+  cancelTask(task: DeploymentTask): void {
+    this.deploymentService.cancelTask(task.id).subscribe({
+      next: () => {
+        this.toastr.success(`任务 #${task.id} 已请求取消。`, '任务取消');
+        this.loadTasks();
+      },
+      error: (error) => ErrorHandler.handleHttpError(error, this.toastr),
+    });
   }
 
   get runningTaskCount(): number {

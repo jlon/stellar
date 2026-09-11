@@ -13,9 +13,10 @@ use crate::{
     models::{
         AdoptClusterRequest, CreateDeploymentRequest, CreatePhysicalHostRequest,
         CreateSrDatabaseCredentialRequest, CreateSrPackageRequest, CreateSshCredentialRequest,
-        NodeCommandRequest, PhysicalHost, SrConfigDiffLine, SrConfigRevision,
-        SrConfigRevisionSummary, SrDatabaseCredential, SrManagedCluster, SrManagedClusterDetail,
-        SrOperationTask, SrOperationTaskDetail, SrPackage, SshCredential,
+        DecommissionRequest, NodeCommandRequest, NodeConfigUpdateRequest, NodeScaleRequest,
+        PhysicalHost, SrConfigDiffLine, SrConfigRevision, SrConfigRevisionSummary,
+        SrDatabaseCredential, SrManagedCluster, SrManagedClusterDetail, SrOperationTask,
+        SrOperationTaskDetail, SrPackage, SshCredential,
     },
     utils::{ApiError, ApiResult},
 };
@@ -163,13 +164,82 @@ pub async fn create_adoption(
 pub async fn list_tasks(
     State(state): State<Arc<AppState>>,
     Extension(org_ctx): Extension<OrgContext>,
+    Query(params): Query<TaskListQuery>,
 ) -> ApiResult<Json<Vec<SrOperationTask>>> {
     Ok(Json(
         state
             .sr_deployment_service
-            .list_tasks(scoped_organization_id(&org_ctx)?)
+            .list_tasks(
+                scoped_organization_id(&org_ctx)?,
+                params.limit.unwrap_or(50),
+                params.offset.unwrap_or(0),
+            )
             .await?,
     ))
+}
+
+pub async fn refresh_cluster_status(
+    State(state): State<Arc<AppState>>,
+    Extension(org_ctx): Extension<OrgContext>,
+    Path(id): Path<i64>,
+) -> ApiResult<Json<serde_json::Value>> {
+    Ok(Json(
+        state
+            .sr_deployment_service
+            .refresh_cluster_status(id, scoped_organization_id(&org_ctx)?)
+            .await?,
+    ))
+}
+
+pub async fn submit_decommission(
+    State(state): State<Arc<AppState>>,
+    Extension(org_ctx): Extension<OrgContext>,
+    Path(id): Path<i64>,
+    Json(request): Json<DecommissionRequest>,
+) -> ApiResult<(StatusCode, Json<SrOperationTask>)> {
+    let organization_id = resolve_organization_id(&org_ctx, request.organization_id)?;
+    ensure_organization_admin(&state, &org_ctx, organization_id).await?;
+    let task = state
+        .sr_deployment_service
+        .submit_decommission(id, request, Some(organization_id), org_ctx.user_id)
+        .await?;
+    Ok((StatusCode::ACCEPTED, Json(task)))
+}
+
+pub async fn submit_scale_out(
+    State(state): State<Arc<AppState>>,
+    Extension(org_ctx): Extension<OrgContext>,
+    Path(id): Path<i64>,
+    Json(request): Json<NodeScaleRequest>,
+) -> ApiResult<(StatusCode, Json<SrOperationTask>)> {
+    let organization_id = resolve_organization_id(&org_ctx, request.organization_id)?;
+    ensure_organization_admin(&state, &org_ctx, organization_id).await?;
+    let task = state
+        .sr_deployment_service
+        .submit_scale_out(id, request, Some(organization_id), org_ctx.user_id)
+        .await?;
+    Ok((StatusCode::ACCEPTED, Json(task)))
+}
+
+pub async fn submit_node_config_change(
+    State(state): State<Arc<AppState>>,
+    Extension(org_ctx): Extension<OrgContext>,
+    Path((managed_cluster_id, node_id)): Path<(i64, i64)>,
+    Json(request): Json<NodeConfigUpdateRequest>,
+) -> ApiResult<(StatusCode, Json<SrOperationTask>)> {
+    let organization_id = resolve_organization_id(&org_ctx, request.organization_id)?;
+    ensure_organization_admin(&state, &org_ctx, organization_id).await?;
+    let task = state
+        .sr_deployment_service
+        .submit_node_config_change(
+            managed_cluster_id,
+            node_id,
+            request,
+            Some(organization_id),
+            org_ctx.user_id,
+        )
+        .await?;
+    Ok((StatusCode::ACCEPTED, Json(task)))
 }
 
 pub async fn get_task(
@@ -226,6 +296,12 @@ pub async fn get_managed_cluster(
 pub struct NodeLogsQuery {
     pub file: Option<String>,
     pub lines: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TaskListQuery {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
 }
 
 pub async fn read_node_logs(
