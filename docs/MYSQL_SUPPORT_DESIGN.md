@@ -46,7 +46,7 @@
 
 ```
 db/
-├── mod.rs       # AppDb trait、DatabaseKind、create_pool::<DB>()、find_migrations_dir
+├── mod.rs       # AppDb trait、DatabaseKind、create_pool::<DB>()（迁移编译期嵌入）
 ├── query.rs     # AppQuery；PostgreSQL 的 ? → $N 绑定与 INSERT ... RETURNING id
 ├── dialect.rs   # SqlDialect + RowsAffected（方言 SQL 片段，静态分发）
 ├── sqlite.rs    # impl AppDb for Sqlite（建文件 + PRAGMA×4）
@@ -61,7 +61,7 @@ pub trait AppDb: Database<Connection: sqlx::migrate::Migrate> + SqlDialect + Sen
     fn connect(url: &str) -> impl Future<Output = sqlx::Result<Pool<Self>>> + Send;
     type Query<'q>: AppQuery<'q, Self> + Send + 'q;
     fn make_query<'q>(sql: &'q str) -> Self::Query<'q>;
-    fn migrations_dir() -> &'static str;
+    fn migrations() -> &'static Migrator;   // sqlx::migrate!("./migrations/<后端>") 静态
 }
 // impl AppDb for Sqlite / MySql / Postgres
 ```
@@ -131,6 +131,12 @@ match DatabaseKind::from_url(&config.database.url)? {
 - middleware/auth.rs：`AuthState` 泛型化 + `fetch_org_from_user_organizations(db: &Pool<DB>)`
 
 ### F. migrations 三方言目录（`migrations/sqlite` / `migrations/mysql` / `migrations/postgres`）
+
+迁移在**编译期嵌入二进制**：每个后端在 `db/{sqlite,mysql,postgres}.rs` 声明一个
+`static MIGRATIONS: Migrator = sqlx::migrate!("./migrations/<后端>")`，运行时由
+`AppDb::migrations()` 按 URL 协议选择执行；发行包不再携带迁移文件，
+schema 变更后必须重新构建二进制（见 README「Schema changes」）。
+
 MySQL 改写要点：
 - `INTEGER PRIMARY KEY AUTOINCREMENT` → `BIGINT AUTO_INCREMENT PRIMARY KEY`（**i64 decode 要求 BIGINT**，所有会读成 i64 的 INTEGER 列都建 BIGINT）
 - `CREATE INDEX IF NOT EXISTS` → 去掉 IF NOT EXISTS（MySQL 8.0 不支持索引条件创建）

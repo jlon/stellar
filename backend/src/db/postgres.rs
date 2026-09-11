@@ -11,6 +11,8 @@ use sqlx::{
 
 use super::{AppDb, query::PostgresQuery};
 
+static MIGRATIONS: sqlx::migrate::Migrator = sqlx::migrate!("./migrations/postgres");
+
 impl AppDb for Postgres {
     type Query<'q> = PostgresQuery<'q>;
 
@@ -18,8 +20,8 @@ impl AppDb for Postgres {
         PostgresQuery::new(sql)
     }
 
-    fn migrations_dir() -> &'static str {
-        "migrations/postgres"
+    fn migrations() -> &'static sqlx::migrate::Migrator {
+        &MIGRATIONS
     }
 
     async fn connect(url: &str) -> sqlx::Result<Pool<Postgres>> {

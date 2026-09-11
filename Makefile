@@ -37,8 +37,8 @@ build:
 	PACKAGE_NAME="stellar-$$TIMESTAMP.tar.gz"; \
 	PACKAGE_PATH="$(DIST_DIR)/$$PACKAGE_NAME"; \
 	echo "Package name: $$PACKAGE_NAME"; \
-	cd $(DIST_DIR) && tar -czf "$$PACKAGE_NAME" --transform 's,^,stellar/,' bin conf lib data logs migrations 2>/dev/null || \
-	cd $(DIST_DIR) && tar -czf "$$PACKAGE_NAME" --transform 's,^,stellar/,' bin conf lib data logs migrations; \
+	cd $(DIST_DIR) && tar -czf "$$PACKAGE_NAME" --transform 's,^,stellar/,' bin conf lib data logs 2>/dev/null || \
+	cd $(DIST_DIR) && tar -czf "$$PACKAGE_NAME" --transform 's,^,stellar/,' bin conf lib data logs; \
 	echo "Package created: $$PACKAGE_PATH"; \
 	echo "To extract: tar -xzf $$PACKAGE_NAME"
 
