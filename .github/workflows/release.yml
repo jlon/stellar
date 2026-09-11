@@ -113,8 +113,8 @@ jobs:
           #### Quick Start (Recommended)
           ```bash
           # Download and extract
-          wget https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/stellar-${{ needs.verify-version.outputs.version }}-linux-amd64.tar.gz
-          tar -xzf stellar-${{ needs.verify-version.outputs.version }}-linux-amd64.tar.gz
+          wget https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/stellar-${{ needs.verify-version.outputs.version }}-linux-amd64-musl.tar.gz
+          tar -xzf stellar-${{ needs.verify-version.outputs.version }}-linux-amd64-musl.tar.gz
           cd stellar
           
           # Start the service
@@ -163,7 +163,17 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Setup Rust
-      uses: dtolnay/rust-toolchain@stable
+      uses: dtolnay/rust-toolchain@1.90.0
+      with:
+        targets: x86_64-unknown-linux-musl
+
+    - name: Setup Zig and cargo-zigbuild
+      run: |
+        curl -fsSL https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz -o /tmp/zig.tar.xz
+        sudo tar -xf /tmp/zig.tar.xz -C /opt
+        /opt/zig-linux-x86_64-0.13.0/zig version
+        echo "/opt/zig-linux-x86_64-0.13.0" >> "$GITHUB_PATH"
+        cargo install cargo-zigbuild --locked
 
     - name: Setup Node.js
       uses: actions/setup-node@v4
@@ -185,8 +195,8 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-cargo-
 
-    - name: Build application
-      run: make build
+    - name: Build application (fully static musl release)
+      run: SKIP_FRONTEND=0 make build-static
 
     - name: Verify build artifacts
       run: |
@@ -204,39 +214,33 @@ jobs:
           exit 1
         fi
         
-        # Check if required directories exist
-        for dir in conf data logs migrations; do
+        # Check if required directories exist (migrations are embedded in the binary)
+        for dir in conf data logs; do
           if [ ! -d "build/dist/$dir" ]; then
             echo "❌ Directory $dir not found"
             exit 1
           fi
         done
+
+        # Verify the binary is a fully static ELF (musl release artifact)
+        file build/dist/bin/stellar
+        if ! file build/dist/bin/stellar | grep -q 'statically linked'; then
+          echo "❌ Binary is not statically linked"
+          exit 1
+        fi
         
         echo "✅ Build artifacts verified"
 
     - name: Create release package
       run: |
-        VERSION="${{ needs.create-release.outputs.version }}"
-        ARTIFACT_NAME="stellar-${VERSION}-linux-amd64"
-        
-        cd build/dist
-        tar -czf ${ARTIFACT_NAME}.tar.gz \
-          --transform 's,^,stellar/,' \
-          bin conf lib data logs migrations
-        
-        # Verify tar package
-        echo "Verifying tar package..."
-        echo "Package name: ${ARTIFACT_NAME}.tar.gz"
-        tar -tzf ${ARTIFACT_NAME}.tar.gz | head -20
-        
-        # Check package size
-        SIZE=$(du -h ${ARTIFACT_NAME}.tar.gz | cut -f1)
-        echo "Package size: $SIZE"
+        bash build/package.sh stellar-${{ needs.create-release.outputs.version }}-linux-amd64-musl
 
-    - name: Upload Release Asset
+    - name: Upload Release Assets
       uses: softprops/action-gh-release@v1
       with:
-        files: build/dist/stellar-${{ needs.create-release.outputs.version }}-linux-amd64.tar.gz
+        files: |
+          build/dist/stellar-${{ needs.create-release.outputs.version }}-linux-amd64-musl.tar.gz
+          build/dist/SHA256SUMS
 
   publish-helm-chart:
     name: Publish Helm Chart

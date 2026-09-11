@@ -22,6 +22,15 @@ echo -e "${GREEN}Building Stellar Frontend${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 
+# Skip switch for dev loops / fast backend-only verification:
+#   SKIP_FRONTEND=1 bash build/build-frontend.sh
+# The previous frontend/dist is reused as-is (embedded by the backend build).
+if [ "${SKIP_FRONTEND:-0}" = "1" ]; then
+    echo -e "${YELLOW}[skip]${NC} SKIP_FRONTEND=1: reusing existing frontend/dist
+"
+    exit 0
+fi
+
 echo -e "${YELLOW}[1/2]${NC} Installing frontend dependencies..."
 cd "$FRONTEND_DIR"
 npm install
