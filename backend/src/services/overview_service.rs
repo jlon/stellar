@@ -1727,7 +1727,7 @@ impl<DB: AppDb> OverviewService<DB> {
 mod tests {
     use super::*;
     use crate::services::MySQLPoolManager;
-    use sqlx::sqlite::SqlitePoolOptions;
+    use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
     use std::time::Duration;
 
     async fn test_pool() -> SqlitePool {
@@ -1741,7 +1741,7 @@ mod tests {
             .execute(&pool)
             .await
             .expect("enable foreign keys");
-        sqlx::migrate!().run(&pool).await.expect("migrations");
+        sqlx::migrate!("./migrations/sqlite").run(&pool).await.expect("migrations");
         pool
     }
 
@@ -1761,7 +1761,7 @@ mod tests {
         .expect("cluster");
     }
 
-    fn service(pool: SqlitePool) -> OverviewService {
+    fn service(pool: SqlitePool) -> OverviewService<sqlx::Sqlite> {
         let mysql = Arc::new(MySQLPoolManager::new());
         let cluster_service = Arc::new(ClusterService::new(pool.clone(), mysql.clone()));
         OverviewService::new(pool, cluster_service, mysql)
@@ -1905,9 +1905,9 @@ mod tests {
 
     #[test]
     fn snapshot_ratio_pct_uses_increment_then_falls_back() {
-        assert!((super::OverviewService::snapshot_ratio_pct(8, 100, Some((5, 80)) ) - 15.0).abs() < f64::EPSILON);
-        assert!((super::OverviewService::snapshot_ratio_pct(8, 100, None) - 8.0).abs() < f64::EPSILON);
-        assert_eq!(super::OverviewService::snapshot_ratio_pct(0, 0, None), 0.0);
+        assert!((super::OverviewService::<sqlx::Sqlite>::snapshot_ratio_pct(8, 100, Some((5, 80)) ) - 15.0).abs() < f64::EPSILON);
+        assert!((super::OverviewService::<sqlx::Sqlite>::snapshot_ratio_pct(8, 100, None) - 8.0).abs() < f64::EPSILON);
+        assert_eq!(super::OverviewService::<sqlx::Sqlite>::snapshot_ratio_pct(0, 0, None), 0.0);
     }
 
     #[test]

@@ -239,8 +239,9 @@ impl AuditLogService {
             col_idx.insert(col.to_ascii_lowercase(), i);
         }
 
-        let mut aggregated: HashMap<(String, String), (i64, Option<String>, HashSet<String>)> =
-            HashMap::new();
+        // (digest, sample stmt) -> (count, first seen time, user set)
+        type AggregatedRows = HashMap<(String, String), (i64, Option<String>, HashSet<String>)>;
+        let mut aggregated: AggregatedRows = HashMap::new();
         for row in rows {
             let stmt = row_field(&col_idx, &row, "stmt");
             if stmt.is_empty() {

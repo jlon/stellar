@@ -722,7 +722,7 @@ impl<DB: AppDb> ClusterService<DB> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sqlx::sqlite::SqlitePoolOptions;
+    use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
     use std::time::Duration;
 
     async fn test_pool() -> SqlitePool {
@@ -736,7 +736,7 @@ mod tests {
             .execute(&pool)
             .await
             .expect("enable foreign keys");
-        sqlx::migrate!().run(&pool).await.expect("migrations");
+        sqlx::migrate!("./migrations/sqlite").run(&pool).await.expect("migrations");
         pool
     }
 
