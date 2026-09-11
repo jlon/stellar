@@ -112,8 +112,7 @@
               fullWidth
               status="primary"
               size="large"
-              [disabled]="submitted || !form.valid"
-              [class.btn-pulse]="submitted">
+              [disabled]="submitted || !form.valid">
         <nb-icon *ngIf="!submitted" icon="log-in-outline"></nb-icon>
         {{ submitted ? '正在登录...' : '登录' }}
       </button>

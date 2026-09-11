@@ -1,4 +1,5 @@
 import { Component, OnInit, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { NbToastrService, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule, NbAlertModule, NbInputModule } from '@nebular/theme';
 import { AuthService, User } from '../../@core/data/auth.service';
@@ -11,7 +12,7 @@ import { FormsModule } from '@angular/forms';
     selector: 'ngx-user-settings',
     templateUrl: './user-settings.component.html',
     styleUrls: ['./user-settings.component.scss'],
-    imports: [NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule, NbAlertModule, FormsModule, NbInputModule]
+    imports: [CommonModule, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule, NbAlertModule, FormsModule, NbInputModule]
 })
 export class UserSettingsComponent implements OnInit {
   private authService = inject(AuthService);
@@ -223,4 +224,3 @@ export class UserSettingsComponent implements OnInit {
     this.router.navigate(['/pages/starrocks/dashboard']);
   }
 }
-

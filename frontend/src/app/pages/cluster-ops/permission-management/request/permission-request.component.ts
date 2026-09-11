@@ -1,4 +1,5 @@
 import { Component, OnInit, OnDestroy, Input, Output, EventEmitter, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { Subject, forkJoin } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
@@ -43,7 +44,8 @@ import { NbToastrService, NbCardModule, NbSelectModule, NbOptionModule, NbInputM
     NbIconModule,
     NbButtonModule,
     NbSpinnerModule,
-    Angular2SmartTableModule
+    Angular2SmartTableModule,
+    CommonModule
 ],
 })
 export class PermissionRequestComponent implements OnInit, OnDestroy {

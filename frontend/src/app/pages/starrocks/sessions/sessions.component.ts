@@ -1,4 +1,5 @@
 import { Component, OnInit, OnDestroy, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
 
 import { NbToastrService, NbDialogService, NbCardModule, NbCheckboxModule, NbButtonModule, NbIconModule, NbSelectModule, NbOptionModule, NbSpinnerModule, NbAlertModule } from '@nebular/theme';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
@@ -31,7 +32,8 @@ import { FormsModule } from '@angular/forms';
     NbOptionModule,
     NbSpinnerModule,
     NbAlertModule,
-    Angular2SmartTableModule
+    Angular2SmartTableModule,
+    CommonModule
 ],
 })
 export class SessionsComponent implements OnInit, OnDestroy {
@@ -506,4 +508,3 @@ export class SessionsComponent implements OnInit, OnDestroy {
     });
   }
 }
-

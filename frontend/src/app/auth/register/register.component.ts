@@ -1,4 +1,5 @@
 import { Component, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
 import { NbToastrService, NbAlertModule, NbInputModule, NbButtonModule } from '@nebular/theme';
 import { AuthService } from '../../@core/data/auth.service';
@@ -10,7 +11,7 @@ import { FormsModule } from '@angular/forms';
     selector: 'ngx-register',
     templateUrl: './register.component.html',
     styleUrls: ['./register.component.scss'],
-    imports: [NbAlertModule, FormsModule, NbInputModule, NbButtonModule, RouterLink]
+    imports: [CommonModule, NbAlertModule, FormsModule, NbInputModule, NbButtonModule, RouterLink]
 })
 export class RegisterComponent {
   protected router = inject(Router);

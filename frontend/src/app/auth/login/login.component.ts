@@ -70,9 +70,6 @@ export class LoginComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
-    this.panelWidth = panel.getBoundingClientRect().width;
-    this.cdr.detectChanges();
-
     const onPointerDown = (event: PointerEvent) => {
       event.preventDefault();
       this.isResizing = true;

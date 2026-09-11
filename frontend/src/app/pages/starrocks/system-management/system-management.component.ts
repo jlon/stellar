@@ -1,4 +1,5 @@
 import { Component, OnInit, OnDestroy, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { CdkDragDrop, moveItemInArray, transferArrayItem, CdkDropList, CdkDrag } from '@angular/cdk/drag-drop';
 
@@ -49,7 +50,7 @@ interface NavigationHistoryItem {
     selector: 'ngx-system-management',
     templateUrl: './system-management.component.html',
     styleUrls: ['./system-management.component.scss'],
-    imports: [NbCardModule, NbSpinnerModule, NbButtonModule, NbIconModule, CdkDropList, CdkDrag, Angular2SmartTableModule]
+    imports: [CommonModule, NbCardModule, NbSpinnerModule, NbButtonModule, NbIconModule, CdkDropList, CdkDrag, Angular2SmartTableModule]
 })
 export class SystemManagementComponent implements OnInit, OnDestroy {
   private nodeService = inject(NodeService);

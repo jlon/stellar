@@ -1,143 +1,120 @@
 <h1 id="title" class="title">Register</h1>
 <p class="sub-title">Create a Stellar account.</p>
 
-@if (errors?.length && !submitted) {
-  <nb-alert outline="danger" role="alert">
-    <ul class="alert-message-list">
-      @for (error of errors; track error) {
-        <li class="alert-message">{{ error }}</li>
-      }
-    </ul>
-  </nb-alert>
-}
+<nb-alert *ngIf="errors?.length && !submitted" outline="danger" role="alert">
+  <ul class="alert-message-list">
+    <li *ngFor="let error of errors" class="alert-message">{{ error }}</li>
+  </ul>
+</nb-alert>
 
-@if (messages?.length && !submitted) {
-  <nb-alert outline="success" role="alert">
-    <ul class="alert-message-list">
-      @for (message of messages; track message) {
-        <li class="alert-message">{{ message }}</li>
-      }
-    </ul>
-  </nb-alert>
-}
+<nb-alert *ngIf="messages?.length && !submitted" outline="success" role="alert">
+  <ul class="alert-message-list">
+    <li *ngFor="let message of messages" class="alert-message">{{ message }}</li>
+  </ul>
+</nb-alert>
 
 <form (ngSubmit)="register()" #form="ngForm" aria-labelledby="title">
   <div class="form-control-group">
     <label class="label" for="input-username">Username:</label>
     <input nbInput
-      fullWidth
-      [(ngModel)]="user.username"
-      #username="ngModel"
-      name="username"
-      id="input-username"
-      placeholder="Username"
-      autofocus
-      [status]="username.dirty ? (username.invalid ? 'danger' : 'success') : 'basic'"
-      [required]="true"
-      [minlength]="3"
-      [attr.aria-invalid]="username.invalid && username.touched ? true : null">
-    @if (username.invalid && username.touched) {
-      @if (username.errors?.['required']) {
-        <p class="caption status-danger">
-          Username is required!
-        </p>
-      }
-      @if (username.errors?.['minlength']) {
-        <p class="caption status-danger">
-          Username must be at least 3 characters
-        </p>
-      }
-    }
+           fullWidth
+           [(ngModel)]="user.username"
+           #username="ngModel"
+           name="username"
+           id="input-username"
+           placeholder="Username"
+           autofocus
+           [status]="username.dirty ? (username.invalid ? 'danger' : 'success') : 'basic'"
+           [required]="true"
+           [minlength]="3"
+           [attr.aria-invalid]="username.invalid && username.touched ? true : null">
+    <ng-container *ngIf="username.invalid && username.touched">
+      <p class="caption status-danger" *ngIf="username.errors?.['required']">
+        Username is required!
+      </p>
+      <p class="caption status-danger" *ngIf="username.errors?.['minlength']">
+        Username must be at least 3 characters
+      </p>
+    </ng-container>
   </div>
 
   <div class="form-control-group">
     <label class="label" for="input-email">Email address:</label>
     <input nbInput
-      fullWidth
-      [(ngModel)]="user.email"
-      #email="ngModel"
-      name="email"
-      type="email"
-      id="input-email"
-      placeholder="Email address"
-      [status]="email.dirty ? (email.invalid ? 'danger' : 'success') : 'basic'"
-      [required]="true"
-      pattern="^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,4}$"
-      [attr.aria-invalid]="email.invalid && email.touched ? true : null">
-    @if (email.invalid && email.touched) {
-      @if (email.errors?.['required']) {
-        <p class="caption status-danger">
-          Email is required!
-        </p>
-      }
-      @if (email.errors?.['pattern']) {
-        <p class="caption status-danger">
-          Email should be the real one!
-        </p>
-      }
-    }
+           fullWidth
+           [(ngModel)]="user.email"
+           #email="ngModel"
+           name="email"
+           type="email"
+           id="input-email"
+           placeholder="Email address"
+           [status]="email.dirty ? (email.invalid ? 'danger' : 'success') : 'basic'"
+           [required]="true"
+           pattern="^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,4}$"
+           [attr.aria-invalid]="email.invalid && email.touched ? true : null">
+    <ng-container *ngIf="email.invalid && email.touched">
+      <p class="caption status-danger" *ngIf="email.errors?.['required']">
+        Email is required!
+      </p>
+      <p class="caption status-danger" *ngIf="email.errors?.['pattern']">
+        Email should be the real one!
+      </p>
+    </ng-container>
   </div>
 
   <div class="form-control-group">
     <label class="label" for="input-password">Password:</label>
     <input nbInput
-      fullWidth
-      [(ngModel)]="user.password"
-      #password="ngModel"
-      name="password"
-      type="password"
-      id="input-password"
-      placeholder="Password"
-      [status]="password.dirty ? (password.invalid ? 'danger' : 'success') : 'basic'"
-      [required]="true"
-      [minlength]="6"
-      [attr.aria-invalid]="password.invalid && password.touched ? true : null">
-    @if (password.invalid && password.touched) {
-      @if (password.errors?.['required']) {
-        <p class="caption status-danger">
-          Password is required!
-        </p>
-      }
-      @if (password.errors?.['minlength']) {
-        <p class="caption status-danger">
-          Password should contain at least 6 characters
-        </p>
-      }
-    }
+           fullWidth
+           [(ngModel)]="user.password"
+           #password="ngModel"
+           name="password"
+           type="password"
+           id="input-password"
+           placeholder="Password"
+           [status]="password.dirty ? (password.invalid ? 'danger' : 'success') : 'basic'"
+           [required]="true"
+           [minlength]="6"
+           [attr.aria-invalid]="password.invalid && password.touched ? true : null">
+    <ng-container *ngIf="password.invalid && password.touched">
+      <p class="caption status-danger" *ngIf="password.errors?.['required']">
+        Password is required!
+      </p>
+      <p class="caption status-danger" *ngIf="password.errors?.['minlength']">
+        Password should contain at least 6 characters
+      </p>
+    </ng-container>
   </div>
 
   <div class="form-control-group">
     <label class="label" for="input-confirm-password">Confirm Password:</label>
     <input nbInput
-      fullWidth
-      [(ngModel)]="user.confirmPassword"
-      #confirmPassword="ngModel"
-      name="confirmPassword"
-      type="password"
-      id="input-confirm-password"
-      placeholder="Confirm Password"
-      [status]="confirmPassword.dirty ? (confirmPassword.invalid ? 'danger' : 'success') : 'basic'"
-      [required]="true"
-      [attr.aria-invalid]="confirmPassword.invalid && confirmPassword.touched ? true : null">
-    @if (user.password !== user.confirmPassword && confirmPassword.touched) {
-      <p class="caption status-danger">
-        Password does not match the confirm password.
-      </p>
-    }
+           fullWidth
+           [(ngModel)]="user.confirmPassword"
+           #confirmPassword="ngModel"
+           name="confirmPassword"
+           type="password"
+           id="input-confirm-password"
+           placeholder="Confirm Password"
+           [status]="confirmPassword.dirty ? (confirmPassword.invalid ? 'danger' : 'success') : 'basic'"
+           [required]="true"
+           [attr.aria-invalid]="confirmPassword.invalid && confirmPassword.touched ? true : null">
+    <p class="caption status-danger" *ngIf="user.password !== user.confirmPassword && confirmPassword.touched">
+      Password does not match the confirm password.
+    </p>
   </div>
 
   <div class="form-control-group">
     <label class="label">Avatar:</label>
     <div class="avatar-options">
-      @for (avatar of availableAvatars; track avatar) {
-        <button
-          type="button"
-          class="avatar-option"
-          [class.selected]="user.avatar === avatar"
-          (click)="selectAvatar(avatar)">
-          <img [src]="avatar" alt="avatar">
-        </button>
-      }
+      <button
+        type="button"
+        class="avatar-option"
+        *ngFor="let avatar of availableAvatars"
+        [class.selected]="user.avatar === avatar"
+        (click)="selectAvatar(avatar)">
+        <img [src]="avatar" alt="avatar">
+      </button>
     </div>
     <button type="button" nbButton ghost size="small" (click)="generateAvatarOptions()">
       Generate new avatars
@@ -145,11 +122,10 @@
   </div>
 
   <button nbButton
-    fullWidth
-    status="primary"
-    size="large"
-    [disabled]="submitted || !form.valid || user.password !== user.confirmPassword"
-    [class.btn-pulse]="submitted">
+          fullWidth
+          status="primary"
+          size="large"
+          [disabled]="submitted || !form.valid || user.password !== user.confirmPassword">
     Register
   </button>
 </form>

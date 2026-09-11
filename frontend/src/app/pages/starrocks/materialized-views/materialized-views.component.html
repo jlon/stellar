@@ -13,7 +13,8 @@
           <div class="d-flex align-items-center gap-2">
             <button
               nbButton
-              status="primary"
+              ghost
+              status="info"
               size="small"
               (click)="loadMaterializedViews()"
               [disabled]="loading || !clusterId"
@@ -23,7 +24,7 @@
             </button>
             <button
               nbButton
-              status="success"
+              status="primary"
               size="small"
               (click)="openCreateDialog()"
               [disabled]="!clusterId"
