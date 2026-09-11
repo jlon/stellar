@@ -8,9 +8,28 @@ use crate::AppState;
 use crate::middleware::OrgContext;
 use crate::models::{ClusterHealth, ClusterResponse, CreateClusterRequest, UpdateClusterRequest};
 use crate::utils::{
-    check_org_access, check_org_reassignment, get_active_cluster_for_org, ApiResult, StringExt,
+    check_org_access, check_org_reassignment, get_active_cluster_for_org, ApiError, ApiResult,
+    StringExt,
 };
 use serde::Deserialize;
+
+/// Annotate whether the physical deployment module self-manages this cluster,
+/// so the UI can distinguish 自托管 (deployed by Stellar) from 外部导入.
+/// Derived from sr_managed_clusters.cluster_id; never client-writable.
+async fn annotate_managed(
+    state: &Arc<AppState>,
+    mut response: ClusterResponse,
+) -> ApiResult<ClusterResponse> {
+    let status = state
+        .sr_deployment_service
+        .managed_cluster_status(response.id)
+        .await?;
+    response.managed = matches!(
+        status.as_deref(),
+        Some("planning" | "deploying" | "running")
+    );
+    Ok(response)
+}
 
 // Create a new cluster
 #[utoipa::path(
@@ -104,13 +123,22 @@ pub async fn list_clusters(
     );
 
     let clusters = state.cluster_service.list_clusters().await?;
-    
+
     // 使用 lambda 表达式进行过滤和转换
-    let responses: Vec<ClusterResponse> = clusters
+    let mut responses: Vec<ClusterResponse> = clusters
         .into_iter()
         .filter(|c| org_ctx.is_super_admin || c.organization_id == org_ctx.organization_id)
         .map(Into::into)
         .collect();
+
+    // Batch-annotate 自托管 vs 外部导入 from the deployment module (single query)
+    let managed = state
+        .sr_deployment_service
+        .self_managed_cluster_ids(&responses.iter().map(|c| c.id).collect::<Vec<_>>())
+        .await?;
+    for response in &mut responses {
+        response.managed = managed.contains(&response.id);
+    }
 
     tracing::debug!("Retrieved {} clusters for user {}", responses.len(), org_ctx.user_id);
     Ok(Json(responses))
@@ -148,7 +176,7 @@ pub async fn get_active_cluster(
         cluster.name,
         cluster.id
     );
-    Ok(Json(cluster.into()))
+    Ok(Json(annotate_managed(&state, cluster.into()).await?))
 }
 
 // Set a cluster as active
@@ -217,7 +245,8 @@ pub async fn get_cluster(
 ) -> ApiResult<Json<ClusterResponse>> {
     let cluster = state.cluster_service.get_cluster(id).await?;
     check_org_access(&org_ctx, cluster.organization_id, "view clusters")?;
-    Ok(Json(cluster.into()))
+    // 标注 自托管 vs 外部导入 来源
+    Ok(Json(annotate_managed(&state, cluster.into()).await?))
 }
 
 // Update cluster
@@ -301,6 +330,23 @@ pub async fn delete_cluster(
 
     let existing = state.cluster_service.get_cluster(id).await?;
     check_org_access(&org_ctx, existing.organization_id, "delete clusters")?;
+
+    // 自托管/只读接管集群必须经部署模块退役：直接删除会留下状态为 running
+    // 的孤儿托管记录（节点仍在运行、物理机与端口仍被占用），且控制台的一键导入
+    // 会重新出现，导致重复注册。
+    match state.sr_deployment_service.managed_cluster_status(id).await? {
+        Some(status) if matches!(status.as_str(), "planning" | "deploying" | "running") => {
+            return Err(ApiError::validation_error(
+                "该集群由物理机部署模块自托管，请在「部署管理 → 托管集群」中执行退役后再删除",
+            ));
+        }
+        Some(status) if status == "adopted_read_only" => {
+            return Err(ApiError::validation_error(
+                "该集群已被部署模块只读接管，请在「部署管理 → 托管集群」中先执行退役",
+            ));
+        }
+        _ => {}
+    }
 
     state.cluster_service.delete_cluster(id).await?;
 

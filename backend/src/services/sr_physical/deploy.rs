@@ -569,6 +569,52 @@ impl SrDeploymentService {
         Ok(())
     }
 
+    /// Which of the given clusters are self-managed by the physical deployment
+    /// module. Batched single query; used to annotate cluster list responses.
+    /// Self-managed = deployed with SSH/lifecycle control (planning/deploying/
+    /// running); adopted-read-only and removed clusters are NOT self-managed.
+    pub async fn self_managed_cluster_ids(
+        &self,
+        cluster_ids: &[i64],
+    ) -> ApiResult<std::collections::HashSet<i64>> {
+        let mut ids = std::collections::HashSet::new();
+        for chunk in cluster_ids.chunks(400) {
+            if chunk.is_empty() {
+                continue;
+            }
+            let placeholders =
+                std::iter::repeat("?").take(chunk.len()).collect::<Vec<_>>().join(",");
+            let sql = format!(
+                "SELECT cluster_id FROM sr_managed_clusters \
+                 WHERE cluster_id IN ({placeholders}) \
+                 AND status IN ('planning', 'deploying', 'running')"
+            );
+            let mut query = sqlx::query_as::<sqlx::Sqlite, (Option<i64>,)>(&sql);
+            for id in chunk {
+                query = query.bind(id);
+            }
+            let rows = query.fetch_all(&self.pool).await?;
+            for (cluster_id,) in rows {
+                if let Some(cluster_id) = cluster_id {
+                    ids.insert(cluster_id);
+                }
+            }
+        }
+        Ok(ids)
+    }
+
+    /// Deployment-module ownership of a cluster: `None` = external import only,
+    /// `Some(status)` = linked to a managed cluster record (self-managed or
+    /// adopted read-only). Authoritative source for delete/edit guards.
+    pub async fn managed_cluster_status(&self, cluster_id: i64) -> ApiResult<Option<String>> {
+        Ok(sqlx::query_scalar(
+            "SELECT status FROM sr_managed_clusters WHERE cluster_id = ? LIMIT 1",
+        )
+        .bind(cluster_id)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
     pub async fn list_clusters(
         &self,
         organization_id: Option<i64>,
@@ -3549,6 +3595,100 @@ mod tests {
                 ("added", "mem_limit = 90%"),
             ]
         );
+    }
+
+    /// 来源区分：自托管（deploy 生命周期）与外部导入（无关联/只读接管）。
+    #[tokio::test]
+    async fn cluster_origin_classification_follows_managed_cluster_link() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::migrate!().run(&pool).await.unwrap();
+        let organization_id: i64 =
+            sqlx::query_scalar("SELECT id FROM organizations WHERE code = 'default_org'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        let user_id: i64 = sqlx::query_scalar("SELECT id FROM users LIMIT 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
+        let service = super::SrDeploymentService::new(
+            pool.clone(),
+            std::sync::Arc::new(crate::services::ClusterService::new(
+                pool.clone(),
+                std::sync::Arc::new(crate::services::MySQLPoolManager::new()),
+            )),
+            std::sync::Arc::new(crate::services::CredentialService::new(
+                pool.clone(),
+                "0123456789abcdef0123456789abcdef",
+            )),
+            std::env::temp_dir().join("stellar-sr-deploy-test-origin"),
+            vec![],
+            vec![],
+        );
+
+        // 托管集群：deploy 生命周期状态 → managed
+        let managed_cluster_id = sqlx::query("INSERT INTO sr_managed_clusters (organization_id, name, sr_version, status, created_by) VALUES (?, 'origin-managed', '3.3.0', 'planning', ?)")
+            .bind(organization_id)
+            .bind(user_id)
+            .execute(&pool)
+            .await
+            .unwrap()
+            .last_insert_rowid();
+        sqlx::query("INSERT INTO clusters (name, fe_host, fe_http_port, fe_query_port, username, password_encrypted, catalog, is_active, created_at, updated_at) VALUES ('origin-managed', '10.0.0.1', 8030, 9030, 'root', '', 'default_catalog', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let cluster_id: i64 =
+            sqlx::query_scalar("SELECT id FROM clusters WHERE name = 'origin-managed'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        sqlx::query("UPDATE sr_managed_clusters SET cluster_id = ?, status = 'running' WHERE id = ?")
+            .bind(cluster_id)
+            .bind(managed_cluster_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        // 只读接管集群：已关联但不属于 deploy 生命周期 → 非自托管
+        let adopted_id = sqlx::query("INSERT INTO sr_managed_clusters (organization_id, name, sr_version, status, created_by) VALUES (?, 'origin-adopted', 'unknown', 'adopted_read_only', ?)")
+            .bind(organization_id)
+            .bind(user_id)
+            .execute(&pool)
+            .await
+            .unwrap()
+            .last_insert_rowid();
+        sqlx::query("INSERT INTO clusters (name, fe_host, fe_http_port, fe_query_port, username, password_encrypted, catalog, is_active, created_at, updated_at) VALUES ('origin-adopted', '10.0.0.2', 8030, 9030, 'root', '', 'default_catalog', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let adopted_cluster_id: i64 =
+            sqlx::query_scalar("SELECT id FROM clusters WHERE name = 'origin-adopted'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        sqlx::query("UPDATE sr_managed_clusters SET cluster_id = ? WHERE id = ?")
+            .bind(adopted_cluster_id)
+            .bind(adopted_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let ids = vec![cluster_id, adopted_cluster_id];
+        let managed = service.self_managed_cluster_ids(&ids).await.unwrap();
+        assert!(managed.contains(&cluster_id), "deploy lifecycle must be self-managed");
+        assert!(!managed.contains(&adopted_cluster_id), "adopted_read_only must not be self-managed");
+
+        let adopted_status = service.managed_cluster_status(adopted_cluster_id).await.unwrap();
+        assert_eq!(adopted_status.as_deref(), Some("adopted_read_only"));
+
+        let external_status = service.managed_cluster_status(0).await.unwrap();
+        assert!(external_status.is_none(), "unlinked cluster must be external import");
     }
 
     #[tokio::test]

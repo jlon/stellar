@@ -95,6 +95,15 @@ export class ClusterDetailComponent implements OnInit {
   }
 
   deleteCluster(): void {
+    // 自托管/接管集群必须经「部署管理 → 托管集群」退役，直接拦截删除
+    if (this.cluster?.managed) {
+      this.toastrService.warning(
+        '该集群由物理机部署模块自托管，请在「部署管理 → 托管集群」中执行退役后再删除',
+        '无法删除',
+      );
+      return;
+    }
+
     const clusterName = this.cluster?.name || '';
 
     this.confirmDialogService.confirmDelete(clusterName)

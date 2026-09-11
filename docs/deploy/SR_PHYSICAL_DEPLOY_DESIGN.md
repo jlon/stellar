@@ -431,6 +431,17 @@ pending -> cancelled
 - `POST /api/sr-ops/clusters/:id/import` 创建 `import_cluster` 任务：使用最小权限 operator 凭据注册既有 `clusters`、写回 `cluster_id` 并触发常规健康检查。
 - 名称冲突、非待导入状态或存在其他运行中任务时拒绝，保证操作幂等可重试。
 
+### 11.6 集群来源区分（自托管 vs 外部导入）
+
+集群管理中的 `clusters` 行必须能区分“由 Stellar 物理机部署自托管”与“外部导入”：
+
+- **权威判定**：`sr_managed_clusters.cluster_id` 反查，不在 `clusters` 表冗余存储来源列（避免双写漂移）；反查走 `idx_sr_managed_clusters_cluster_id` 索引。
+- **状态语义**：`planning/deploying/running` 为自托管；`adopted_read_only`、`removed` 与无关联记录为外部导入。
+- **API**：`ClusterResponse.managed` 由 handler 派生填充，不进入 Create/Update 请求，客户端不可写。
+- **删除守卫**：自托管与只读接管集群禁止从集群管理直接删除（`DELETE /api/clusters/:id` 返回 409），必须经「部署管理 → 托管集群」执行退役；否则会留下 `running` 孤儿托管记录（节点仍在运行、主机与端口仍被占用）且一键导入会重新出现导致重复注册。
+- **UI**：集群列表“来源”列（托管/外部导入徽章）、集群详情页标题徽章；托管集群的删除入口直接拦截提示。
+- **已知缺口（P2）**：外部导入集群暂不能升级为只读接管（`submit_adoption` 要求集群名在 `clusters` 与 `sr_managed_clusters` 中均不存在）；与“只读接管转受管”同属 P2 决策。
+
 ## 12. 后续生命周期能力
 
 ### 12.1 P1：启停、重启与 scale-out

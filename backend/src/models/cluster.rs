@@ -175,6 +175,12 @@ pub struct ClusterResponse {
     /// Admin user for permission execution (optional)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub admin_user: Option<String>,
+    /// True when this cluster is self-managed by Stellar's physical deployment
+    /// module (deployed onto physical hosts with SSH/lifecycle control), in
+    /// contrast to externally imported clusters. Derived from
+    /// sr_managed_clusters.cluster_id; enriched by handlers, never client-writable.
+    #[serde(default)]
+    pub managed: bool,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -242,6 +248,7 @@ impl From<Cluster> for ClusterResponse {
             deployment_mode: cluster.deployment_mode,
             cluster_type: cluster.cluster_type,
             admin_user: cluster.admin_user,
+            managed: false,
         }
     }
 }

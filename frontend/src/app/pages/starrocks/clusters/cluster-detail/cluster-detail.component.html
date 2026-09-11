@@ -10,6 +10,7 @@
             <div class="d-flex flex-column justify-content-center">
               <div class="d-flex align-items-center gap-2">
                 <h5 class="mb-0">{{ cluster?.name }}</h5>
+                <nb-tag [text]="cluster?.managed ? '托管' : '外部导入'" [status]="cluster?.managed ? 'info' : 'basic'" size="tiny" appearance="filled"></nb-tag>
                 <nb-tag *ngIf="health?.status" [text]="health?.status" [status]="health?.status === 'healthy' ? 'success' : 'warning'" size="tiny" appearance="filled"></nb-tag>
               </div>
               <span class="text-hint caption-2 mt-1">ID: {{ cluster?.id }}</span>

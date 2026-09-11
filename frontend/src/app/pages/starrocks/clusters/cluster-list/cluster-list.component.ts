@@ -48,6 +48,15 @@ export class ClusterListComponent implements OnInit {
         title: '集群名称',
         type: 'string',
       },
+      managed: {
+        title: '来源',
+        type: 'html',
+        width: '10%',
+        filter: false,
+        valuePrepareFunction: (managed: boolean) => managed
+          ? '<span class="badge badge-success">托管</span>'
+          : '<span class="badge badge-secondary">外部导入</span>',
+      },
       fe_host: {
         title: 'FE 地址',
         type: 'string',
@@ -120,6 +129,15 @@ export class ClusterListComponent implements OnInit {
 
   onDelete(event: any): void {
     const cluster = event.data as Cluster;
+
+    // 自托管/接管集群必须经「部署管理 → 托管集群」退役，直接拦截删除
+    if (cluster.managed) {
+      this.toastrService.warning(
+        '该集群由物理机部署模块自托管，请在「部署管理 → 托管集群」中执行退役后再删除',
+        '无法删除',
+      );
+      return;
+    }
 
     this.confirmDialogService.confirmDelete(cluster.name)
       .subscribe(confirmed => {

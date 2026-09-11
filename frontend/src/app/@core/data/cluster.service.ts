@@ -22,6 +22,7 @@ export interface Cluster {
   deployment_mode: DeploymentMode;
   cluster_type: ClusterType;
   admin_user?: string;  // Admin user for permission execution (optional, only visible to org admins and super admins)
+  managed?: boolean;    // True when self-managed by Stellar physical deployment (自托管 vs 外部导入)
   created_at: string;
   updated_at: string;
 }
