@@ -48,8 +48,15 @@ npm run test:coverage          # 测试覆盖率报告
 ### 全栈构建与部署
 
 ```bash
-# 完整构建（前端 + 后端，生成发布包）
-make build                     # 构建并创建 dist/ 目录
+# 开发环境（快速反馈，不打包）
+make dev-backend                 # 启动后端（scripts/dev/start_backend.sh）
+make dev-frontend                # 启动前端 dev server（scripts/dev/start_frontend.sh）
+
+# 生产构建（前端 + 后端 + 打包，输出 build/dist/）
+make build                       # glibc release 二进制 + tar.gz + SHA256SUMS
+make build-static                # musl 全静态单二进制（cargo zigbuild，推荐发布用）
+make package                     # 仅重打包已有 build/dist（不重新编译）
+# 跳过前端重建（复用现有 frontend/dist）：SKIP_FRONTEND=1 make build-static
 
 # Docker 部署
 make docker-build              # 构建 Docker 镜像
@@ -59,6 +66,9 @@ make docker-down               # 停止容器
 # 清理
 make clean                     # 清理所有构建产物
 ```
+
+**开发 vs 生产**：开发环境使用 glibc 快速增量编译（`cargo run` / `npm start`，前端走 dev server，不嵌入、不打包）；
+发布产物为 musl 全静态单二进制（前端已嵌入，零运行时依赖，拷贝即跑）。
 
 ### 测试命令
 
