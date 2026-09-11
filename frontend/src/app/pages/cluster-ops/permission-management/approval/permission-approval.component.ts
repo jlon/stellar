@@ -1,28 +1,35 @@
-import {
-  Component,
-  OnInit,
-  OnDestroy,
-  Input,
-  Output,
-  EventEmitter,
-} from '@angular/core';
+import { Component, OnInit, OnDestroy, Input, Output, EventEmitter, inject } from '@angular/core';
 import { FormBuilder, FormGroup } from '@angular/forms';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
-import { LocalDataSource } from 'angular2-smart-table';
-import { NbDialogService, NbToastrService } from '@nebular/theme';
+import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
+import { NbDialogService, NbToastrService, NbCardModule, NbSelectModule, NbOptionModule, NbButtonModule, NbIconModule, NbSpinnerModule } from '@nebular/theme';
 import { PermissionRequestService } from '../../../../@core/data/permission-request.service';
 import { PermissionRequestResponse } from '../../../../@core/data/permission-request.model';
 import { PermissionApprovalDetailDialogComponent } from './permission-approval-detail-dialog.component';
 import { ConfirmationDialogComponent } from '../shared/confirmation-dialog.component';
 
+
 @Component({
-  standalone: false,
-  selector: 'ngx-permission-approval',
-  templateUrl: './permission-approval.component.html',
-  styleUrls: ['./permission-approval.component.scss'],
+    selector: 'ngx-permission-approval',
+    templateUrl: './permission-approval.component.html',
+    styleUrls: ['./permission-approval.component.scss'],
+    imports: [
+    NbCardModule,
+    NbSelectModule,
+    NbOptionModule,
+    NbButtonModule,
+    NbIconModule,
+    NbSpinnerModule,
+    Angular2SmartTableModule
+],
 })
 export class PermissionApprovalComponent implements OnInit, OnDestroy {
+  private fb = inject(FormBuilder);
+  private permissionService = inject(PermissionRequestService);
+  private dialogService = inject(NbDialogService);
+  private toastr = inject(NbToastrService);
+
   @Input() refresh$: Subject<void>;
   @Output() processed = new EventEmitter<void>();
 
@@ -110,12 +117,7 @@ export class PermissionApprovalComponent implements OnInit, OnDestroy {
 
   private destroy$ = new Subject<void>();
 
-  constructor(
-    private fb: FormBuilder,
-    private permissionService: PermissionRequestService,
-    private dialogService: NbDialogService,
-    private toastr: NbToastrService,
-  ) {
+  constructor() {
     this.approvalForm = this.fb.group({
       comment: [''],
     });

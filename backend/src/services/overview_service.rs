@@ -1,15 +1,18 @@
+use crate::db::query as db_query;
 // Overview Service
 // Purpose: Provide aggregated cluster overview data (real-time + historical)
 // Design Ref: ARCHITECTURE_ANALYSIS_AND_INTEGRATION.md
 
+use crate::db::AppDb;
 use crate::services::{
     ClusterService, DataStatistics, DataStatisticsService, MetricsSnapshot, MySQLClient,
 };
 use crate::utils::{ApiError, ApiResult};
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
+use sqlx::Pool;
 use std::sync::Arc;
+use stellar_macros::app_impl;
 use utoipa::ToSchema;
 
 /// Time range for querying historical data
@@ -349,25 +352,26 @@ pub struct ExtendedClusterOverview {
 }
 
 #[derive(Clone)]
-pub struct OverviewService {
-    db: SqlitePool,
-    cluster_service: Arc<ClusterService>,
-    data_statistics_service: Option<Arc<DataStatisticsService>>,
+pub struct OverviewService<DB: AppDb> {
+    db: Pool<DB>,
+    cluster_service: Arc<ClusterService<DB>>,
+    data_statistics_service: Option<Arc<DataStatisticsService<DB>>>,
     mysql_pool_manager: Arc<crate::services::mysql_pool_manager::MySQLPoolManager>,
 }
 
-impl OverviewService {
+#[app_impl]
+impl<DB: AppDb> OverviewService<DB> {
     /// Create a new OverviewService
     pub fn new(
-        db: SqlitePool,
-        cluster_service: Arc<ClusterService>,
+        db: Pool<DB>,
+        cluster_service: Arc<ClusterService<DB>>,
         mysql_pool_manager: Arc<crate::services::mysql_pool_manager::MySQLPoolManager>,
     ) -> Self {
         Self { db, cluster_service, data_statistics_service: None, mysql_pool_manager }
     }
 
     /// Set data statistics service (optional dependency)
-    pub fn with_data_statistics(mut self, service: Arc<DataStatisticsService>) -> Self {
+    pub fn with_data_statistics(mut self, service: Arc<DataStatisticsService<DB>>) -> Self {
         self.data_statistics_service = Some(service);
         self
     }
@@ -526,8 +530,20 @@ impl OverviewService {
                 if age.num_minutes() < 10 {
                     return Ok(stats);
                 }
+
+                // stale-while-revalidate：缓存过期时返回稍旧数据，后台刷新，
+                // 避免前端请求被 StarRocks 全量采集（秒级）阻塞。
+                // 已知权衡：两次快速连续的刷新可能乱序提交，最后一次胜出由 DB 层 upsert 兑底。
+                let background = Arc::clone(service);
+                tokio::spawn(async move {
+                    if let Err(e) = background.update_statistics(cluster_id, None).await {
+                        tracing::warn!("Background data statistics refresh failed: {}", e);
+                    }
+                });
+                return Ok(stats);
             }
 
+            // 首次无缓存：同步采集
             let time_range_start = time_range.map(|tr| tr.start_time());
             service
                 .update_statistics(cluster_id, time_range_start)
@@ -543,7 +559,7 @@ impl OverviewService {
     pub async fn predict_capacity(&self, cluster_id: i64) -> ApiResult<CapacityPrediction> {
         let cutoff = Utc::now() - chrono::Duration::hours(2);
 
-        let snapshots: Vec<(i64, i64, f64, NaiveDateTime)> = sqlx::query_as(
+        let snapshots: Vec<(i64, i64, f64, DateTime<Utc>)> = db_query::query_as(
             r#"
             SELECT 
                 disk_total_bytes,
@@ -572,8 +588,8 @@ impl OverviewService {
 
         let disk_used_bytes = ((disk_total_bytes as f64) * disk_usage_pct / 100.0) as i64;
 
-        let first_time = snapshots.first().unwrap().3.and_utc().timestamp();
-        let last_time = snapshots.last().unwrap().3.and_utc().timestamp();
+        let first_time = snapshots.first().unwrap().3.timestamp();
+        let last_time = snapshots.last().unwrap().3.timestamp();
         let time_span_days = (last_time - first_time) as f64 / 86400.0;
 
         let mut sum_x = 0.0;
@@ -586,7 +602,7 @@ impl OverviewService {
         let mut max_y = f64::MIN;
 
         for snapshot in &snapshots {
-            let x = (snapshot.3.and_utc().timestamp() - first_time) as f64 / 86400.0;
+            let x = (snapshot.3.timestamp() - first_time) as f64 / 86400.0;
 
             let y = (snapshot.0 as f64) * snapshot.2 / 100.0;
 
@@ -661,7 +677,7 @@ impl OverviewService {
         #[derive(sqlx::FromRow)]
         struct SnapshotRow {
             cluster_id: i64,
-            collected_at: NaiveDateTime,
+            collected_at: DateTime<Utc>,
             qps: f64,
             rps: f64,
             query_latency_p50: f64,
@@ -703,7 +719,7 @@ impl OverviewService {
             io_write_rate: f64,
         }
 
-        let row: Option<SnapshotRow> = sqlx::query_as(
+        let row: Option<SnapshotRow> = db_query::query_as(
             r#"
             SELECT * FROM metrics_snapshots
             WHERE cluster_id = ?
@@ -718,7 +734,7 @@ impl OverviewService {
         if let Some(r) = row {
             Ok(Some(MetricsSnapshot {
                 cluster_id: r.cluster_id,
-                collected_at: r.collected_at.and_utc(),
+                collected_at: r.collected_at,
                 qps: r.qps,
                 rps: r.rps,
                 query_latency_p50: r.query_latency_p50,
@@ -773,7 +789,7 @@ impl OverviewService {
         #[derive(sqlx::FromRow)]
         struct SnapshotRow {
             cluster_id: i64,
-            collected_at: NaiveDateTime,
+            collected_at: DateTime<Utc>,
             qps: f64,
             rps: f64,
             query_latency_p50: f64,
@@ -818,7 +834,7 @@ impl OverviewService {
         let start_time = time_range.start_time();
         let end_time = time_range.end_time();
 
-        let rows: Vec<SnapshotRow> = sqlx::query_as(
+        let rows: Vec<SnapshotRow> = db_query::query_as(
             r#"
             SELECT * FROM metrics_snapshots
             WHERE cluster_id = ? 
@@ -836,7 +852,7 @@ impl OverviewService {
             .into_iter()
             .map(|r| MetricsSnapshot {
                 cluster_id: r.cluster_id,
-                collected_at: r.collected_at.and_utc(),
+                collected_at: r.collected_at,
                 qps: r.qps,
                 rps: r.rps,
                 query_latency_p50: r.query_latency_p50,

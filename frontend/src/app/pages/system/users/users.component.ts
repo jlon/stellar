@@ -1,6 +1,6 @@
-import { Component, OnDestroy, OnInit } from '@angular/core';
-import { NbDialogService, NbToastrService } from '@nebular/theme';
-import { LocalDataSource } from 'angular2-smart-table';
+import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { NbDialogService, NbToastrService, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule, NbAlertModule } from '@nebular/theme';
+import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { forkJoin, of, Subject } from 'rxjs';
 import { finalize, map, switchMap, takeUntil } from 'rxjs/operators';
 
@@ -22,14 +22,33 @@ import {
   UserFormDialogResult,
 } from './user-form/user-form-dialog.component';
 import { ConfirmDialogService } from '../../../@core/services/confirm-dialog.service';
+import { HasPermissionDirective } from '../../../@core/directives/has-permission.directive';
+
 
 @Component({
-  standalone: false,
-  selector: 'ngx-users',
-  templateUrl: './users.component.html',
-  styleUrls: ['./users.component.scss'],
+    selector: 'ngx-users',
+    templateUrl: './users.component.html',
+    styleUrls: ['./users.component.scss'],
+    imports: [
+    NbCardModule,
+    NbButtonModule,
+    HasPermissionDirective,
+    NbIconModule,
+    NbSpinnerModule,
+    NbAlertModule,
+    Angular2SmartTableModule
+],
 })
 export class UsersComponent implements OnInit, OnDestroy {
+  private userService = inject(UserService);
+  private permissionService = inject(PermissionService);
+  private roleService = inject(RoleService);
+  private organizationService = inject(OrganizationService);
+  private authService = inject(AuthService);
+  private dialogService = inject(NbDialogService);
+  private confirmDialogService = inject(ConfirmDialogService);
+  private toastrService = inject(NbToastrService);
+
   source: LocalDataSource = new LocalDataSource();
   loading = false;
   roleCatalog: RoleWithPermissions[] = [];
@@ -46,17 +65,6 @@ export class UsersComponent implements OnInit, OnDestroy {
   settings: any = {};
 
   private destroy$ = new Subject<void>();
-
-  constructor(
-    private userService: UserService,
-    private permissionService: PermissionService,
-    private roleService: RoleService,
-    private organizationService: OrganizationService,
-    private authService: AuthService,
-    private dialogService: NbDialogService,
-    private confirmDialogService: ConfirmDialogService,
-    private toastrService: NbToastrService,
-  ) {}
 
   ngOnInit(): void {
     this.permissionService.permissions$

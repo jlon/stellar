@@ -1,19 +1,13 @@
-import {
-  Component,
-  OnInit,
-  OnDestroy,
-  Input,
-  Output,
-  EventEmitter,
-} from '@angular/core';
-import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { Component, OnInit, OnDestroy, Input, Output, EventEmitter, inject } from '@angular/core';
+import { FormBuilder, FormGroup, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { Subject, forkJoin } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
-import { LocalDataSource } from 'angular2-smart-table';
+import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { PermissionRequestService } from '../../../../@core/data/permission-request.service';
 import { PermissionRequestResponse, SubmitRequestDto, DbAccountDto, DbRoleDto } from '../../../../@core/data/permission-request.model';
 import { NodeService } from '../../../../@core/data/node.service';
-import { NbToastrService } from '@nebular/theme';
+import { NbToastrService, NbCardModule, NbSelectModule, NbOptionModule, NbInputModule, NbIconModule, NbButtonModule, NbSpinnerModule } from '@nebular/theme';
+
 
 /**
  * PermissionRequestComponent
@@ -36,12 +30,28 @@ import { NbToastrService } from '@nebular/theme';
  * - Cascade selection: Catalog → Database → Table
  */
 @Component({
-  standalone: false,
-  selector: 'ngx-permission-request',
-  templateUrl: './permission-request.component.html',
-  styleUrls: ['./permission-request.component.scss'],
+    selector: 'ngx-permission-request',
+    templateUrl: './permission-request.component.html',
+    styleUrls: ['./permission-request.component.scss'],
+    imports: [
+    NbCardModule,
+    FormsModule,
+    ReactiveFormsModule,
+    NbSelectModule,
+    NbOptionModule,
+    NbInputModule,
+    NbIconModule,
+    NbButtonModule,
+    NbSpinnerModule,
+    Angular2SmartTableModule
+],
 })
 export class PermissionRequestComponent implements OnInit, OnDestroy {
+  private fb = inject(FormBuilder);
+  private permissionService = inject(PermissionRequestService);
+  private nodeService = inject(NodeService);
+  private toastr = inject(NbToastrService);
+
   @Input() refresh$: Subject<void>;
   @Output() submitted = new EventEmitter<void>();
 
@@ -224,12 +234,7 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
 
   private destroy$ = new Subject<void>();
 
-  constructor(
-    private fb: FormBuilder,
-    private permissionService: PermissionRequestService,
-    private nodeService: NodeService,
-    private toastr: NbToastrService,
-  ) {
+  constructor() {
     this.initForm();
   }
 

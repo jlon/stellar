@@ -1,4 +1,4 @@
-import { Injectable, OnDestroy } from '@angular/core';
+import { Injectable, OnDestroy, inject } from '@angular/core';
 import { of as observableOf,  Observable,  BehaviorSubject } from 'rxjs';
 import { takeWhile } from 'rxjs/operators';
 
@@ -45,7 +45,9 @@ export class StateService implements OnDestroy {
 
   alive = true;
 
-  constructor(directionService: NbLayoutDirectionService) {
+  constructor() {
+    const directionService = inject(NbLayoutDirectionService);
+
     directionService.onDirectionChange()
       .pipe(takeWhile(() => this.alive))
       .subscribe(direction => this.updateSidebarIcons(direction));

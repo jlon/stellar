@@ -1,11 +1,12 @@
 use std::sync::Arc;
+use stellar_macros::app_db;
 
 use axum::{Json, extract::Path, extract::State};
 
 use crate::AppState;
 use crate::middleware::OrgContext;
 use crate::models::{AdminCreateUserRequest, AdminUpdateUserRequest, UserWithRolesResponse};
-use crate::utils::{check_org_override, check_org_reassignment, ApiResult};
+use crate::utils::{ApiResult, check_org_override, check_org_reassignment};
 
 /// List users with their roles
 #[utoipa::path(
@@ -17,8 +18,9 @@ use crate::utils::{check_org_override, check_org_reassignment, ApiResult};
     security(("bearer_auth" = [])),
     tag = "Users"
 )]
+#[app_db]
 pub async fn list_users(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<OrgContext>,
 ) -> ApiResult<Json<Vec<UserWithRolesResponse>>> {
     tracing::debug!(
@@ -46,8 +48,9 @@ pub async fn list_users(
     security(("bearer_auth" = [])),
     tag = "Users"
 )]
+#[app_db]
 pub async fn get_user(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Path(user_id): Path<i64>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<OrgContext>,
 ) -> ApiResult<Json<UserWithRolesResponse>> {
@@ -78,8 +81,9 @@ pub async fn get_user(
     security(("bearer_auth" = [])),
     tag = "Users"
 )]
+#[app_db]
 pub async fn create_user(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<OrgContext>,
     Json(payload): Json<AdminCreateUserRequest>,
 ) -> ApiResult<Json<UserWithRolesResponse>> {
@@ -118,8 +122,9 @@ pub async fn create_user(
     security(("bearer_auth" = [])),
     tag = "Users"
 )]
+#[app_db]
 pub async fn update_user(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Path(user_id): Path<i64>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<OrgContext>,
     Json(payload): Json<AdminUpdateUserRequest>,
@@ -167,8 +172,9 @@ pub async fn update_user(
     security(("bearer_auth" = [])),
     tag = "Users"
 )]
+#[app_db]
 pub async fn delete_user(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Path(user_id): Path<i64>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<OrgContext>,
 ) -> ApiResult<Json<()>> {

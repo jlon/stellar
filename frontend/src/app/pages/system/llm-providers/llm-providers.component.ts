@@ -1,6 +1,6 @@
-import { Component, OnDestroy, OnInit } from '@angular/core';
-import { NbDialogService, NbToastrService } from '@nebular/theme';
-import { LocalDataSource } from 'angular2-smart-table';
+import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { NbDialogService, NbToastrService, NbCardModule, NbButtonModule, NbIconModule, NbAlertModule, NbSpinnerModule } from '@nebular/theme';
+import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
@@ -21,13 +21,28 @@ import {
 } from './llm-provider-form/llm-provider-form-dialog.component';
 import { AuthService } from '../../../@core/data/auth.service';
 
+
 @Component({
-  standalone: false,
-  selector: 'ngx-llm-providers',
-  templateUrl: './llm-providers.component.html',
-  styleUrls: ['./llm-providers.component.scss'],
+    selector: 'ngx-llm-providers',
+    templateUrl: './llm-providers.component.html',
+    styleUrls: ['./llm-providers.component.scss'],
+    imports: [
+    NbCardModule,
+    NbButtonModule,
+    NbIconModule,
+    NbAlertModule,
+    NbSpinnerModule,
+    Angular2SmartTableModule
+],
 })
 export class LLMProvidersComponent implements OnInit, OnDestroy {
+  private llmService = inject(LLMProviderService);
+  private permissionService = inject(PermissionService);
+  private dialogService = inject(NbDialogService);
+  private confirmDialog = inject(ConfirmDialogService);
+  private toastrService = inject(NbToastrService);
+  private authService = inject(AuthService);
+
   source: LocalDataSource = new LocalDataSource();
   loading = false;
   testingId: number | null = null;
@@ -40,15 +55,6 @@ export class LLMProvidersComponent implements OnInit, OnDestroy {
   canDelete = false;
 
   settings = this.buildTableSettings();
-
-  constructor(
-    private llmService: LLMProviderService,
-    private permissionService: PermissionService,
-    private dialogService: NbDialogService,
-    private confirmDialog: ConfirmDialogService,
-    private toastrService: NbToastrService,
-    private authService: AuthService,
-  ) {}
 
   ngOnInit(): void {
     this.permissionService.permissions$
@@ -324,7 +330,7 @@ export class LLMProvidersComponent implements OnInit, OnDestroy {
             instance.edit.subscribe((provider) => this.openEditProvider(provider));
             instance.delete.subscribe((provider) => this.deleteProvider(provider));
             instance.activate.subscribe((provider) => this.activateProvider(provider));
-            instance.toggle.subscribe((provider) => this.toggleEnabled(provider));
+            instance.toggleState.subscribe((provider) => this.toggleEnabled(provider));
             instance.test.subscribe((provider) => this.testConnection(provider));
           },
         },

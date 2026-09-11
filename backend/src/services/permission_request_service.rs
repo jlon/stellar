@@ -1,28 +1,28 @@
+use crate::db::AppDb;
+use crate::db::query as db_query;
 use chrono::Utc;
 use serde_json;
-use sqlx::{SqlitePool, Row};
+use sqlx::{Pool, Row};
 use std::sync::Arc;
+use stellar_macros::app_impl;
 
 use crate::models::{
-    PermissionRequestResponse, SubmitRequestDto, ApprovalDto,
-    RequestDetails, RequestQueryFilter, PaginatedResponse, Cluster,
+    ApprovalDto, Cluster, PaginatedResponse, PermissionRequestResponse, RequestDetails,
+    RequestQueryFilter, SubmitRequestDto,
 };
 use crate::services::{ClusterService, MySQLPoolManager, create_adapter};
 use crate::utils::{ApiError, ApiResult};
 
 /// Service for managing permission request workflow (submission, approval, execution)
 #[derive(Clone)]
-pub struct PermissionRequestService {
-    pool: SqlitePool,
+pub struct PermissionRequestService<DB: AppDb> {
+    pool: Pool<DB>,
 }
 
-impl PermissionRequestService {
-    pub fn new(
-        pool: SqlitePool,
-        _cluster_service: ClusterService,
-        _mysql_pool_manager: std::sync::Arc<MySQLPoolManager>,
-    ) -> Self {
-        // NOTE: For now we only need the SQLite pool here; cluster-related logic is handled elsewhere.
+#[app_impl]
+impl<DB: AppDb> PermissionRequestService<DB> {
+    pub fn new(pool: Pool<DB>) -> Self {
+        // NOTE: cluster-related logic is handled elsewhere; only the metadata pool is needed here.
         Self { pool }
     }
 
@@ -32,35 +32,39 @@ impl PermissionRequestService {
         &self,
         applicant_id: i64,
         req: SubmitRequestDto,
-        cluster_service: &ClusterService,
+        cluster_service: &ClusterService<DB>,
         mysql_pool_manager: Arc<MySQLPoolManager>,
     ) -> ApiResult<i64> {
         // Get applicant's organization from database
-        let applicant = sqlx::query(
-            "SELECT organization_id FROM users WHERE id = ?"
-        )
-        .bind(applicant_id)
-        .fetch_one(&self.pool)
-        .await?;
+        let applicant = db_query::query("SELECT organization_id FROM users WHERE id = ?")
+            .bind(applicant_id)
+            .fetch_one(&self.pool)
+            .await?;
 
         let org_id: Option<i64> = applicant.get("organization_id");
-        let org_id = org_id
-            .ok_or_else(|| ApiError::InvalidInput("User must belong to an organization".to_string()))?;
+        let org_id = org_id.ok_or_else(|| {
+            ApiError::InvalidInput("User must belong to an organization".to_string())
+        })?;
 
         // Get cluster for SQL generation
         let cluster = cluster_service.get_cluster(req.cluster_id).await?;
 
         // Generate preview SQL using cluster-specific adapter
-        let preview_sql = Self::generate_preview_sql(&cluster, &req.request_type, &req.request_details, mysql_pool_manager).await?;
+        let preview_sql = Self::generate_preview_sql(
+            &cluster,
+            &req.request_type,
+            &req.request_details,
+            mysql_pool_manager,
+        )
+        .await?;
 
         // Insert request record
         let now = Utc::now();
-        let request_id: i64 = sqlx::query_scalar(
+        let request_id = db_query::query(
             "INSERT INTO permission_requests (
                 cluster_id, applicant_id, applicant_org_id, request_type,
                 request_details, reason, valid_until, status, executed_sql, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
-            RETURNING id"
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)",
         )
         .bind(req.cluster_id)
         .bind(applicant_id)
@@ -72,7 +76,7 @@ impl PermissionRequestService {
         .bind(&preview_sql)
         .bind(now)
         .bind(now)
-        .fetch_one(&self.pool)
+        .insert_id(&self.pool)
         .await?;
 
         Ok(request_id)
@@ -88,54 +92,73 @@ impl PermissionRequestService {
         let page_size = filter.page_size.unwrap_or(10);
         let offset = (page - 1) * page_size;
 
-        let mut query = String::from(
-            "SELECT pr.*, u.username as applicant_name, c.name as cluster_name, approver.username as approver_name
+        // Build query with parameterized filters to prevent SQL injection
+        let base_query = "SELECT pr.*, u.username as applicant_name, c.name as cluster_name, approver.username as approver_name
             FROM permission_requests pr
             JOIN users u ON pr.applicant_id = u.id
             JOIN clusters c ON pr.cluster_id = c.id
             LEFT JOIN users approver ON pr.approver_id = approver.id
-            WHERE pr.applicant_id = ?"
+            WHERE pr.applicant_id = ?";
+
+        // Build dynamic WHERE clause with parameter placeholders
+        let mut conditions = Vec::new();
+        if filter.status.is_some() {
+            conditions.push("pr.status = ?".to_string());
+        }
+
+        if filter.request_type.is_some() {
+            conditions.push("pr.request_type = ?".to_string());
+        }
+
+        let where_clause = if conditions.is_empty() {
+            String::new()
+        } else {
+            format!(" AND {}", conditions.join(" AND "))
+        };
+
+        // Count query
+        let count_query = format!(
+            "SELECT COUNT(*) FROM permission_requests pr WHERE pr.applicant_id = ?{}",
+            where_clause
         );
 
-        if let Some(status) = &filter.status {
-            query.push_str(&format!(" AND pr.status = '{}'", status.replace("'", "\\'")));
+        // Build count query with bindings
+        let mut count_builder = db_query::query_scalar::<_, i64>(&count_query).bind(applicant_id);
+
+        if let Some(ref status) = filter.status {
+            count_builder = count_builder.bind(status);
+        }
+        if let Some(ref request_type) = filter.request_type {
+            count_builder = count_builder.bind(request_type);
         }
 
-        if let Some(request_type) = &filter.request_type {
-            query.push_str(&format!(" AND pr.request_type = '{}'", request_type.replace("'", "\\'")));
+        let total: i64 = count_builder.fetch_one(&self.pool).await?;
+
+        // Data query with pagination
+        let data_query =
+            format!("{}{} ORDER BY pr.created_at DESC LIMIT ? OFFSET ?", base_query, where_clause,);
+
+        let mut data_builder = db_query::query(&data_query).bind(applicant_id);
+
+        if let Some(ref status) = filter.status {
+            data_builder = data_builder.bind(status);
+        }
+        if let Some(ref request_type) = filter.request_type {
+            data_builder = data_builder.bind(request_type);
         }
 
-        let total: i64 = sqlx::query_scalar(&format!(
-            "SELECT COUNT(*) FROM ({}) as t",
-            query.replace("SELECT pr.*, u.username as applicant_name, c.name as cluster_name, approver.username as approver_name",
-                         "SELECT 1")
-        ))
-        .bind(applicant_id)
-        .fetch_one(&self.pool)
-        .await?;
+        data_builder = data_builder.bind(page_size).bind(offset);
 
-        query.push_str(" ORDER BY pr.created_at DESC LIMIT ? OFFSET ?");
+        let rows = data_builder.fetch_all(&self.pool).await?;
 
-        let rows = sqlx::query(&query)
-            .bind(applicant_id)
-            .bind(page_size)
-            .bind(offset)
-            .fetch_all(&self.pool)
-            .await?;
-
-        let data = rows.into_iter()
+        let data = rows
+            .into_iter()
             .map(|row| self.row_to_response(row))
             .collect::<Result<Vec<_>, _>>()?;
 
         let total_pages = (total + page_size - 1) / page_size;
 
-        Ok(PaginatedResponse {
-            data,
-            total,
-            page,
-            page_size,
-            total_pages,
-        })
+        Ok(PaginatedResponse { data, total, page, page_size, total_pages })
     }
 
     /// List pending requests for approval (as approver)
@@ -149,37 +172,66 @@ impl PermissionRequestService {
         let page_size = filter.page_size.unwrap_or(10);
         let offset = (page - 1) * page_size;
 
-        let mut query = String::from(
-            "SELECT pr.*, u.username as applicant_name, c.name as cluster_name, approver.username as approver_name
+        // Build query with parameterized filters to prevent SQL injection
+        let base_query = "SELECT pr.*, u.username as applicant_name, c.name as cluster_name, approver.username as approver_name
             FROM permission_requests pr
             JOIN users u ON pr.applicant_id = u.id
             JOIN clusters c ON pr.cluster_id = c.id
             LEFT JOIN users approver ON pr.approver_id = approver.id
-            WHERE pr.status = 'pending'"
-        );
+            WHERE pr.status = 'pending'";
+
+        // Build dynamic WHERE clause with parameter placeholders
+        let mut conditions = Vec::new();
+        let mut param_index = 1;
 
         // Org admin can only see pending requests from their organization
         if !is_super_admin {
-            query.push_str(&format!(" AND pr.applicant_org_id = {}", approver_org_id));
+            conditions.push(format!("pr.applicant_org_id = ${}", param_index));
+            param_index += 1;
         }
 
-        if let Some(status) = &filter.status {
-            query.push_str(&format!(" AND pr.status = '{}'", status.replace("'", "\\'")));
+        if filter.status.is_some() {
+            conditions.push(format!("pr.status = ${}", param_index));
+            param_index += 1;
         }
 
-        if let Some(request_type) = &filter.request_type {
-            query.push_str(&format!(" AND pr.request_type = '{}'", request_type.replace("'", "\\'")));
+        if filter.request_type.is_some() {
+            conditions.push(format!("pr.request_type = ${}", param_index));
+            param_index += 1;
         }
 
-        query.push_str(" ORDER BY pr.created_at DESC LIMIT ? OFFSET ?");
+        let where_clause = if conditions.is_empty() {
+            String::new()
+        } else {
+            format!(" AND {}", conditions.join(" AND "))
+        };
 
-        let rows = sqlx::query(&query)
-            .bind(page_size)
-            .bind(offset)
-            .fetch_all(&self.pool)
-            .await?;
+        let data_query = format!(
+            "{}{} ORDER BY pr.created_at DESC LIMIT ${} OFFSET ${}",
+            base_query,
+            where_clause,
+            param_index,
+            param_index + 1
+        );
 
-        let data = rows.into_iter()
+        let mut data_builder = db_query::query(&data_query);
+
+        if !is_super_admin {
+            data_builder = data_builder.bind(approver_org_id);
+        }
+        if let Some(ref status) = filter.status {
+            data_builder = data_builder.bind(status);
+        }
+        if let Some(ref request_type) = filter.request_type {
+            data_builder = data_builder.bind(request_type);
+        }
+
+        data_builder = data_builder.bind(page_size).bind(offset);
+
+        let rows = data_builder.fetch_all(&self.pool).await?;
+
+        let data = rows
+            .into_iter()
             .map(|row| self.row_to_response(row))
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -192,13 +244,37 @@ impl PermissionRequestService {
         request_id: i64,
         approver_id: i64,
         dto: ApprovalDto,
+        cluster_service: &ClusterService<DB>,
+        mysql_pool_manager: Arc<MySQLPoolManager>,
     ) -> ApiResult<()> {
         // Check if approver has permission to approve this request
-        self.check_approval_permission(request_id, approver_id).await?;
+        self.check_approval_permission(request_id, approver_id)
+            .await?;
+
+        // Get cluster_id from request to check admin user configuration before approval
+        let request = db_query::query("SELECT cluster_id FROM permission_requests WHERE id = ?")
+            .bind(request_id)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|_| ApiError::ResourceNotFound("Request not found".to_string()))?;
+
+        let cluster_id: i64 = request.get("cluster_id");
+        let cluster = cluster_service.get_cluster(cluster_id).await?;
+
+        // Check if admin user is configured before approval
+        if cluster.admin_user.is_none() || cluster.admin_password_encrypted.is_none() {
+            let error_msg = format!(
+                "集群 '{}' 未配置管理用户，无法执行权限授权操作。请组织管理员或超级管理员配置管理用户。",
+                cluster.name
+            );
+            tracing::error!("{}", error_msg);
+            return Err(ApiError::ValidationError(error_msg));
+        }
 
         let now = Utc::now();
 
-        sqlx::query(
+        // Update status to approved
+        db_query::query(
             "UPDATE permission_requests SET status = 'approved', approver_id = ?, approval_comment = ?,
              approved_at = ?, updated_at = ? WHERE id = ?"
         )
@@ -210,13 +286,9 @@ impl PermissionRequestService {
         .execute(&self.pool)
         .await?;
 
-        // Async execute SQL in background
-        let pool = self.pool.clone();
-        tokio::spawn(async move {
-            if let Err(e) = Self::execute_request_internal(&pool, request_id).await {
-                tracing::error!("Failed to execute permission request {}: {}", request_id, e);
-            }
-        });
+        // Execute SQL synchronously (not in background)
+        Self::execute_request_internal(&self.pool, request_id, cluster_service, mysql_pool_manager)
+            .await?;
 
         Ok(())
     }
@@ -229,11 +301,12 @@ impl PermissionRequestService {
         dto: ApprovalDto,
     ) -> ApiResult<()> {
         // Check if approver has permission to reject this request
-        self.check_approval_permission(request_id, approver_id).await?;
+        self.check_approval_permission(request_id, approver_id)
+            .await?;
 
         let now = Utc::now();
 
-        sqlx::query(
+        db_query::query(
             "UPDATE permission_requests SET status = 'rejected', approver_id = ?, approval_comment = ?,
              approved_at = ?, updated_at = ? WHERE id = ?"
         )
@@ -249,24 +322,21 @@ impl PermissionRequestService {
     }
 
     /// Cancel a pending request (only by applicant)
-    pub async fn cancel_request(
-        &self,
-        request_id: i64,
-        applicant_id: i64,
-    ) -> ApiResult<()> {
-        let request = sqlx::query(
-            "SELECT applicant_id, status FROM permission_requests WHERE id = ?"
-        )
-        .bind(request_id)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|_| ApiError::ResourceNotFound("Request not found".to_string()))?;
+    pub async fn cancel_request(&self, request_id: i64, applicant_id: i64) -> ApiResult<()> {
+        let request =
+            db_query::query("SELECT applicant_id, status FROM permission_requests WHERE id = ?")
+                .bind(request_id)
+                .fetch_one(&self.pool)
+                .await
+                .map_err(|_| ApiError::ResourceNotFound("Request not found".to_string()))?;
 
         let req_applicant_id: i64 = request.get("applicant_id");
         let status: String = request.get("status");
 
         if req_applicant_id != applicant_id {
-            return Err(ApiError::Unauthorized("Only applicant can cancel the request".to_string()));
+            return Err(ApiError::Unauthorized(
+                "Only applicant can cancel the request".to_string(),
+            ));
         }
 
         if status != "pending" {
@@ -274,8 +344,8 @@ impl PermissionRequestService {
         }
 
         let now = Utc::now();
-        sqlx::query(
-            "UPDATE permission_requests SET status = 'rejected', updated_at = ? WHERE id = ?"
+        db_query::query(
+            "UPDATE permission_requests SET status = 'rejected', updated_at = ? WHERE id = ?",
         )
         .bind(&now)
         .bind(request_id)
@@ -286,8 +356,11 @@ impl PermissionRequestService {
     }
 
     /// Get request detail by ID
-    pub async fn get_request_detail(&self, request_id: i64) -> ApiResult<PermissionRequestResponse> {
-        let row = sqlx::query(
+    pub async fn get_request_detail(
+        &self,
+        request_id: i64,
+    ) -> ApiResult<PermissionRequestResponse> {
+        let row = db_query::query(
             "SELECT pr.*, u.username as applicant_name, c.name as cluster_name, approver.username as approver_name
             FROM permission_requests pr
             JOIN users u ON pr.applicant_id = u.id
@@ -324,7 +397,7 @@ impl PermissionRequestService {
     ) -> ApiResult<String> {
         // Create cluster-specific adapter
         let adapter = create_adapter(cluster.clone(), mysql_pool_manager);
-        
+
         match request_type {
             "grant_permission" => {
                 // 1. 权限列表
@@ -373,14 +446,11 @@ impl PermissionRequestService {
                 // 4. 场景分支：使用集群适配器生成 SQL
                 if let Some(new_user) = &details.new_user_name {
                     // 场景 C：新建用户 + 授权
-                    let password = details
-                        .new_user_password
-                        .as_deref()
-                        .unwrap_or("");
+                    let password = details.new_user_password.as_deref().unwrap_or("");
 
                     let mut sqls = Vec::new();
                     sqls.push(adapter.create_user(new_user, password).await?);
-                    
+
                     let grant_sql = adapter
                         .grant_permissions(
                             "USER",
@@ -397,16 +467,18 @@ impl PermissionRequestService {
                     Ok(sqls.join(" "))
                 } else if let Some(new_role) = &details.new_role_name {
                     // 场景 B：新建角色 + 授权角色 + 把角色授予用户
-                    let target_user = details
-                        .target_user
-                        .as_ref()
-                        .ok_or(ApiError::ValidationError(
-                            "Missing target_user for grant_permission with new_role".to_string(),
-                        ))?;
+                    let target_user =
+                        details
+                            .target_user
+                            .as_ref()
+                            .ok_or(ApiError::ValidationError(
+                                "Missing target_user for grant_permission with new_role"
+                                    .to_string(),
+                            ))?;
 
                     let mut sqls = Vec::new();
                     sqls.push(adapter.create_role(new_role).await?);
-                    
+
                     let grant_sql = adapter
                         .grant_permissions(
                             "ROLE",
@@ -419,7 +491,7 @@ impl PermissionRequestService {
                         )
                         .await?;
                     sqls.push(grant_sql);
-                    
+
                     sqls.push(adapter.grant_role(new_role, target_user).await?);
 
                     Ok(sqls.join(" "))
@@ -457,7 +529,7 @@ impl PermissionRequestService {
                             .to_string(),
                     ))
                 }
-            }
+            },
             "grant_role" => {
                 let target_user = details
                     .target_user
@@ -471,8 +543,9 @@ impl PermissionRequestService {
                     .ok_or(ApiError::ValidationError(
                         "Missing target_role for grant_role".to_string(),
                     ))?;
-                Ok(format!("GRANT '{}' TO USER '{}'@'%';", target_role, target_user))
-            }
+                // Use adapter for consistent SQL generation across different cluster types
+                adapter.grant_role(target_role, target_user).await
+            },
             "revoke_permission" => {
                 let perms = details
                     .permissions
@@ -517,58 +590,133 @@ impl PermissionRequestService {
                     ))?;
 
                 let revoke_sql = adapter
-                    .revoke_permissions(
-                        "USER",
-                        user,
-                        &perms_ref,
-                        resource_type,
-                        &database,
-                        table,
-                    )
+                    .revoke_permissions("USER", user, &perms_ref, resource_type, &database, table)
                     .await?;
                 Ok(revoke_sql)
-            }
-            _ => Err(ApiError::ValidationError(format!(
-                "Unknown request_type: {}",
-                request_type
-            ))),
+            },
+            _ => Err(ApiError::ValidationError(format!("Unknown request_type: {}", request_type))),
         }
     }
 
-    /// Execute request in background (currently只更新状态，不真正连集群执行)
-    async fn execute_request_internal(pool: &SqlitePool, request_id: i64) -> ApiResult<()> {
-        // Query for executed_sql field
-        let request = sqlx::query(
-            "SELECT executed_sql FROM permission_requests WHERE id = ?"
+    /// Execute request synchronously using admin user credentials
+    async fn execute_request_internal(
+        pool: &Pool<DB>,
+        request_id: i64,
+        cluster_service: &ClusterService<DB>,
+        _mysql_pool_manager: Arc<MySQLPoolManager>,
+    ) -> ApiResult<()> {
+        // Query for request details including cluster_id and executed_sql
+        let request = db_query::query(
+            "SELECT cluster_id, executed_sql FROM permission_requests WHERE id = ?",
         )
         .bind(request_id)
         .fetch_one(pool)
         .await
         .map_err(|_| ApiError::ResourceNotFound("Request not found".to_string()))?;
 
+        let cluster_id: i64 = request.get("cluster_id");
         let executed_sql: Option<String> = request.get("executed_sql");
 
         if executed_sql.is_none() {
             return Err(ApiError::ValidationError("No SQL to execute".to_string()));
         }
 
-        // For now, just mark as completed - actual execution would need cluster connection
+        let sql = executed_sql.unwrap();
+
+        // Update status to executing
         let now = Utc::now();
-        sqlx::query(
-            "UPDATE permission_requests SET status = 'completed', executed_at = ?, updated_at = ? WHERE id = ?"
+        db_query::query(
+            "UPDATE permission_requests SET status = 'executing', updated_at = ? WHERE id = ?",
         )
-        .bind(&now)
         .bind(&now)
         .bind(request_id)
         .execute(pool)
         .await?;
 
+        // Get cluster (admin user already checked in approve_request)
+        let cluster = cluster_service.get_cluster(cluster_id).await?;
+        let (exec_user, exec_pass) = cluster.get_execution_credentials();
+
+        // Create temporary MySQL connection using admin user credentials
+        tracing::info!("Executing permission SQL using admin user: {}", exec_user);
+
+        let exec_result =
+            Self::execute_sql_with_admin_user(&cluster, exec_user, exec_pass, &sql).await;
+
+        let now = Utc::now();
+        match exec_result {
+            Ok(_) => {
+                tracing::info!("Permission request {} executed successfully", request_id);
+                db_query::query(
+                    "UPDATE permission_requests SET status = 'completed', execution_result = ?, executed_at = ?, updated_at = ? WHERE id = ?"
+                )
+                .bind("执行成功")
+                .bind(&now)
+                .bind(&now)
+                .bind(request_id)
+                .execute(pool)
+                .await?;
+                Ok(())
+            },
+            Err(e) => {
+                let error_msg = format!("SQL执行失败: {}", e);
+                tracing::error!(
+                    "Permission request {} execution failed: {}",
+                    request_id,
+                    error_msg
+                );
+                db_query::query(
+                    "UPDATE permission_requests SET status = 'failed', execution_result = ?, executed_at = ?, updated_at = ? WHERE id = ?"
+                )
+                .bind(&error_msg)
+                .bind(&now)
+                .bind(&now)
+                .bind(request_id)
+                .execute(pool)
+                .await?;
+                Err(e)
+            },
+        }
+    }
+
+    /// Execute SQL using admin user credentials with temporary connection
+    async fn execute_sql_with_admin_user(
+        cluster: &Cluster,
+        admin_user: &str,
+        admin_password: Option<&str>,
+        sql: &str,
+    ) -> ApiResult<()> {
+        use mysql_async::{Conn, OptsBuilder, SslOpts, prelude::Queryable};
+
+        // Create temporary connection using admin user credentials
+        let opts = OptsBuilder::default()
+            .ip_or_hostname(&cluster.fe_host)
+            .tcp_port(cluster.fe_query_port as u16)
+            .user(Some(admin_user))
+            .pass(admin_password)
+            .db_name(None::<String>)
+            .prefer_socket(false)
+            .ssl_opts(None::<SslOpts>)
+            .tcp_keepalive(Some(30_000_u32))
+            .tcp_nodelay(true);
+
+        let mut conn = Conn::new(opts).await.map_err(|e| {
+            tracing::error!("Failed to create admin user connection: {}", e);
+            ApiError::cluster_connection_failed(format!("无法使用管理用户连接集群: {}", e))
+        })?;
+
+        // Execute SQL
+        conn.query_drop(sql).await.map_err(|e| {
+            tracing::error!("Failed to execute SQL with admin user: {}", e);
+            ApiError::cluster_connection_failed(format!("SQL执行失败: {}", e))
+        })?;
+
+        // Connection will be dropped automatically when it goes out of scope
+        tracing::info!("SQL executed successfully using admin user: {}", admin_user);
         Ok(())
     }
 
-    fn row_to_response(&self, row: sqlx::sqlite::SqliteRow) -> ApiResult<PermissionRequestResponse> {
-        use sqlx::Row;
-
+    fn row_to_response(&self, row: DB::Row) -> ApiResult<PermissionRequestResponse> {
         let request_details_str: String = row.get("request_details");
         let request_details: RequestDetails = serde_json::from_str(&request_details_str)?;
 
@@ -600,39 +748,79 @@ impl PermissionRequestService {
     /// Check if the approver has permission to approve/reject this request
     /// Only organization admins or super admins can approve requests
     async fn check_approval_permission(&self, request_id: i64, approver_id: i64) -> ApiResult<()> {
-        // Get the request to find the applicant's organization
-        let request = sqlx::query(
-            "SELECT pr.applicant_org_id, u.username as approver_name, u.organization_id as approver_org_id
-             FROM permission_requests pr
-             JOIN users u ON u.id = ?
-             WHERE pr.id = ?"
-        )
-        .bind(approver_id)
-        .bind(request_id)
-        .fetch_optional(&self.pool)
-        .await?;
+        // Get the request and approver information including roles
+        let approval_query = format!(
+            r#"
+            SELECT 
+                pr.applicant_org_id,
+                pr.applicant_id,
+                u.username as approver_name,
+                u.organization_id as approver_org_id,
+                {} as role_codes
+            FROM permission_requests pr
+            JOIN users u ON u.id = ?
+            LEFT JOIN user_roles ur ON ur.user_id = u.id
+            LEFT JOIN roles r ON r.id = ur.role_id
+            WHERE pr.id = ?
+            GROUP BY pr.id, u.id
+            "#,
+            DB::string_aggregate("r.code", "','"),
+        );
+        let result = db_query::query(&approval_query)
+            .bind(approver_id)
+            .bind(request_id)
+            .fetch_optional(&self.pool)
+            .await?;
 
-        let (applicant_org_id, _approver_name, approver_org_id) = match request {
-            Some(row) => {
-                let applicant_org_id: Option<i64> = row.get("applicant_org_id");
-                let _approver_name: String = row.get("approver_name");
-                let approver_org_id: Option<i64> = row.get("approver_org_id");
-                (applicant_org_id, _approver_name, approver_org_id)
-            }
+        let row = match result {
+            Some(row) => row,
             None => return Err(ApiError::not_found("Permission request not found".to_string())),
         };
 
-        // Check if approver belongs to the same organization as the applicant
-        if applicant_org_id != approver_org_id {
-            return Err(ApiError::forbidden(
-                "You can only approve requests from users in your organization".to_string()
-            ));
+        let applicant_org_id: Option<i64> = row.get("applicant_org_id");
+        let applicant_id: i64 = row.get("applicant_id");
+        let approver_org_id: Option<i64> = row.get("approver_org_id");
+        let role_codes: Option<String> = row.get("role_codes");
+
+        // Parse role codes
+        let roles: Vec<&str> = role_codes
+            .as_deref()
+            .unwrap_or("")
+            .split(',')
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        // Check if approver is super_admin (can approve any request)
+        let is_super_admin = roles.iter().any(|r| *r == "super_admin");
+
+        // Check if approver is org_admin
+        let is_org_admin = roles.iter().any(|r| *r == "org_admin");
+
+        // Super admin can approve any request
+        if is_super_admin {
+            return Ok(());
         }
 
-        // TODO: In a real implementation, you would check if the user has admin role
-        // For now, we'll allow any user in the organization to approve
-        // This should be enhanced to check for specific admin roles
+        // Org admin can only approve requests from their organization
+        if is_org_admin {
+            if applicant_org_id == approver_org_id {
+                // Cannot approve own request
+                if applicant_id == approver_id {
+                    return Err(ApiError::forbidden(
+                        "You cannot approve your own request".to_string(),
+                    ));
+                }
+                return Ok(());
+            } else {
+                return Err(ApiError::forbidden(
+                    "You can only approve requests from users in your organization".to_string(),
+                ));
+            }
+        }
 
-        Ok(())
+        // Regular users cannot approve requests
+        Err(ApiError::forbidden(
+            "Only organization admins or super admins can approve permission requests".to_string(),
+        ))
     }
 }

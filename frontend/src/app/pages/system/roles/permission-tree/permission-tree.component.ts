@@ -1,4 +1,6 @@
 import { Component, EventEmitter, Input, OnChanges, Output } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
+import { NbCheckboxModule, NbIconModule } from '@nebular/theme';
 
 export interface Permission {
   id: number;
@@ -29,10 +31,14 @@ interface PermissionTreeNode {
 }
 
 @Component({
-  standalone: false,
-  selector: 'ngx-permission-tree',
-  templateUrl: './permission-tree.component.html',
-  styleUrls: ['./permission-tree.component.scss'],
+    selector: 'ngx-permission-tree',
+    templateUrl: './permission-tree.component.html',
+    styleUrls: ['./permission-tree.component.scss'],
+    imports: [
+    NbCheckboxModule,
+    NbIconModule,
+    NgTemplateOutlet
+],
 })
 export class PermissionTreeComponent implements OnChanges {
   @Input() permissions: Permission[] = [];

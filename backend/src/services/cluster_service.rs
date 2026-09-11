@@ -1,15 +1,19 @@
+use crate::db::AppDb;
+use crate::db::dialect::RowsAffected;
+use crate::db::query as db_query;
 use crate::models::{
     Cluster, ClusterHealth, CreateClusterRequest, HealthCheck, HealthStatus, UpdateClusterRequest,
 };
 use crate::services::{MySQLPoolManager, create_adapter};
 use crate::utils::{ApiError, ApiResult};
 use chrono::Utc;
-use sqlx::SqlitePool;
+use sqlx::Pool;
 use std::sync::Arc;
+use stellar_macros::app_impl;
 
 #[derive(Clone)]
-pub struct ClusterService {
-    pool: SqlitePool,
+pub struct ClusterService<DB: AppDb> {
+    pool: Pool<DB>,
     mysql_pool_manager: Arc<MySQLPoolManager>,
 }
 
@@ -22,7 +26,10 @@ fn simplify_health_check_error(error: &str) -> String {
         return "认证失败: 请检查用户名和密码是否正确".to_string();
     }
 
-    if error_lower.contains("connection refused") || error_lower.contains("refused") || error_lower.contains("cannot connect") {
+    if error_lower.contains("connection refused")
+        || error_lower.contains("refused")
+        || error_lower.contains("cannot connect")
+    {
         return "无法连接: 请检查集群地址和端口是否正确".to_string();
     }
 
@@ -35,7 +42,8 @@ fn simplify_health_check_error(error: &str) -> String {
     }
 
     // Default: return a generic message with error code if available
-    error.find("ERROR ")
+    error
+        .find("ERROR ")
         .and_then(|code_start| {
             error[code_start..].find(':').map(|code_end| {
                 let error_code = &error[code_start + 6..code_start + code_end];
@@ -45,8 +53,9 @@ fn simplify_health_check_error(error: &str) -> String {
         .unwrap_or_else(|| "连接失败: 请检查集群配置".to_string())
 }
 
-impl ClusterService {
-    pub fn new(pool: SqlitePool, mysql_pool_manager: Arc<MySQLPoolManager>) -> Self {
+#[app_impl]
+impl<DB: AppDb> ClusterService<DB> {
+    pub fn new(pool: Pool<DB>, mysql_pool_manager: Arc<MySQLPoolManager>) -> Self {
         Self { pool, mysql_pool_manager }
     }
 
@@ -75,7 +84,7 @@ impl ClusterService {
             return Err(ApiError::validation_error("Username cannot be empty"));
         }
 
-        let existing: Option<Cluster> = sqlx::query_as("SELECT * FROM clusters WHERE name = ?")
+        let existing: Option<Cluster> = db_query::query_as("SELECT * FROM clusters WHERE name = ?")
             .bind(&req.name)
             .fetch_optional(&self.pool)
             .await?;
@@ -93,18 +102,18 @@ impl ClusterService {
             .map(|t| serde_json::to_string(&t).unwrap_or_default());
 
         let existing_cluster_count: (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM clusters WHERE organization_id = ?")
+            db_query::query_as("SELECT COUNT(*) FROM clusters WHERE organization_id = ?")
                 .bind(target_org_id)
                 .fetch_one(&self.pool)
                 .await?;
 
         let is_first_cluster = existing_cluster_count.0 == 0;
 
-        let result = sqlx::query(
+        let cluster_id = db_query::query(
             "INSERT INTO clusters (name, description, fe_host, fe_http_port, fe_query_port, 
              username, password_encrypted, enable_ssl, connection_timeout, tags, catalog, 
-             is_active, created_by, organization_id, deployment_mode, cluster_type)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             is_active, created_by, organization_id, deployment_mode, cluster_type, admin_user, admin_password_encrypted)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&req.name)
         .bind(&req.description)
@@ -117,26 +126,26 @@ impl ClusterService {
         .bind(req.connection_timeout)
         .bind(&tags_json)
         .bind(&req.catalog)
-        .bind(if is_first_cluster { 1 } else { 0 })
+        .bind(is_first_cluster)
         .bind(user_id)
         .bind(target_org_id)
         .bind(req.deployment_mode.to_string())
         .bind(req.cluster_type.to_string())
-        .execute(&self.pool)
+        .bind(&req.admin_user)
+        .bind(&req.admin_password)
+        .insert_id(&self.pool)
         .await?;
 
-        let cluster_id = result.last_insert_rowid();
-
         if !is_first_cluster {
-            let active_count: (i64,) = sqlx::query_as(
-                "SELECT COUNT(*) FROM clusters WHERE is_active = 1 AND organization_id = ?",
+            let active_count: (i64,) = db_query::query_as(
+                "SELECT COUNT(*) FROM clusters WHERE is_active = TRUE AND organization_id = ?",
             )
             .bind(target_org_id)
             .fetch_one(&self.pool)
             .await?;
 
             if active_count.0 == 0 {
-                sqlx::query("UPDATE clusters SET is_active = 1 WHERE id = ?")
+                db_query::query("UPDATE clusters SET is_active = TRUE WHERE id = ?")
                     .bind(cluster_id)
                     .execute(&self.pool)
                     .await?;
@@ -147,7 +156,7 @@ impl ClusterService {
             }
         }
 
-        let cluster: Cluster = sqlx::query_as("SELECT * FROM clusters WHERE id = ?")
+        let cluster: Cluster = db_query::query_as("SELECT * FROM clusters WHERE id = ?")
             .bind(cluster_id)
             .fetch_one(&self.pool)
             .await?;
@@ -167,7 +176,7 @@ impl ClusterService {
 
     pub async fn list_clusters(&self) -> ApiResult<Vec<Cluster>> {
         let clusters: Vec<Cluster> =
-            sqlx::query_as("SELECT * FROM clusters ORDER BY created_at DESC")
+            db_query::query_as("SELECT * FROM clusters ORDER BY created_at DESC")
                 .fetch_all(&self.pool)
                 .await?;
 
@@ -175,7 +184,7 @@ impl ClusterService {
     }
 
     pub async fn get_cluster(&self, cluster_id: i64) -> ApiResult<Cluster> {
-        let cluster: Option<Cluster> = sqlx::query_as("SELECT * FROM clusters WHERE id = ?")
+        let cluster: Option<Cluster> = db_query::query_as("SELECT * FROM clusters WHERE id = ?")
             .bind(cluster_id)
             .fetch_optional(&self.pool)
             .await?;
@@ -185,7 +194,7 @@ impl ClusterService {
 
     pub async fn get_active_cluster(&self) -> ApiResult<Cluster> {
         let cluster: Option<Cluster> =
-            sqlx::query_as("SELECT * FROM clusters WHERE is_active = 1 LIMIT 1")
+            db_query::query_as("SELECT * FROM clusters WHERE is_active = TRUE LIMIT 1")
                 .fetch_optional(&self.pool)
                 .await?;
 
@@ -196,8 +205,8 @@ impl ClusterService {
 
     pub async fn get_active_cluster_by_org(&self, org_id: Option<i64>) -> ApiResult<Cluster> {
         let cluster: Option<Cluster> = if let Some(org) = org_id {
-            sqlx::query_as(
-                "SELECT * FROM clusters WHERE is_active = 1 AND organization_id = ? LIMIT 1",
+            db_query::query_as(
+                "SELECT * FROM clusters WHERE is_active = TRUE AND organization_id = ? LIMIT 1",
             )
             .bind(org)
             .fetch_optional(&self.pool)
@@ -220,18 +229,18 @@ impl ClusterService {
         let mut tx = self.pool.begin().await?;
 
         if let Some(org) = org_id {
-            sqlx::query("UPDATE clusters SET is_active = 0 WHERE organization_id = ?")
+            db_query::query("UPDATE clusters SET is_active = FALSE WHERE organization_id = ?")
                 .bind(org)
                 .execute(&mut *tx)
                 .await?;
         } else {
-            sqlx::query("UPDATE clusters SET is_active = 0 WHERE organization_id IS NULL")
+            db_query::query("UPDATE clusters SET is_active = FALSE WHERE organization_id IS NULL")
                 .execute(&mut *tx)
                 .await?;
         }
 
-        sqlx::query(
-            "UPDATE clusters SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        db_query::query(
+            "UPDATE clusters SET is_active = TRUE, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
         )
         .bind(cluster_id)
         .execute(&mut *tx)
@@ -310,6 +319,16 @@ impl ClusterService {
             updates.push("cluster_type = ?");
             params.push(cluster_type.to_string());
         }
+        if let Some(admin_user) = &req.admin_user {
+            updates.push("admin_user = ?");
+            params.push(admin_user.clone());
+        }
+        // Only update admin_password_encrypted if password is provided (not None)
+        // If None, keep existing value
+        if let Some(admin_password) = &req.admin_password {
+            updates.push("admin_password_encrypted = ?");
+            params.push(admin_password.clone());
+        }
 
         if updates.is_empty() {
             return self.get_cluster(cluster_id).await;
@@ -319,7 +338,7 @@ impl ClusterService {
 
         let sql = format!("UPDATE clusters SET {} WHERE id = ?", updates.join(", "));
 
-        let mut query = sqlx::query(&sql);
+        let mut query = db_query::query(&sql);
         for param in params {
             query = query.bind(param);
         }
@@ -334,7 +353,7 @@ impl ClusterService {
 
     pub async fn delete_cluster(&self, cluster_id: i64) -> ApiResult<()> {
         let cluster_record: Option<(bool, Option<i64>)> =
-            sqlx::query_as("SELECT is_active, organization_id FROM clusters WHERE id = ?")
+            db_query::query_as("SELECT is_active, organization_id FROM clusters WHERE id = ?")
                 .bind(cluster_id)
                 .fetch_optional(&self.pool)
                 .await?;
@@ -342,7 +361,7 @@ impl ClusterService {
         let is_active = cluster_record.map(|r| r.0).unwrap_or(false);
         let cluster_org_id = cluster_record.and_then(|r| r.1);
 
-        let result = sqlx::query("DELETE FROM clusters WHERE id = ?")
+        let result = db_query::query("DELETE FROM clusters WHERE id = ?")
             .bind(cluster_id)
             .execute(&self.pool)
             .await?;
@@ -355,14 +374,14 @@ impl ClusterService {
 
         if is_active {
             let next_cluster: Option<(i64,)> = if let Some(org_id) = cluster_org_id {
-                sqlx::query_as(
+                db_query::query_as(
                     "SELECT id FROM clusters WHERE organization_id = ? ORDER BY created_at DESC LIMIT 1",
                 )
                 .bind(org_id)
                 .fetch_optional(&self.pool)
                 .await?
             } else {
-                sqlx::query_as(
+                db_query::query_as(
                     "SELECT id FROM clusters WHERE organization_id IS NULL ORDER BY created_at DESC LIMIT 1",
                 )
                 .fetch_optional(&self.pool)
@@ -370,7 +389,7 @@ impl ClusterService {
             };
 
             if let Some((next_id,)) = next_cluster {
-                sqlx::query("UPDATE clusters SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+                db_query::query("UPDATE clusters SET is_active = TRUE, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
                     .bind(next_id)
                     .execute(&self.pool)
                     .await?;
@@ -401,18 +420,18 @@ impl ClusterService {
 
     async fn fetch_default_org_id(&self) -> ApiResult<i64> {
         if let Some(id) =
-            sqlx::query_scalar("SELECT id FROM organizations WHERE code = 'default_org'")
+            db_query::query_scalar("SELECT id FROM organizations WHERE code = 'default_org'")
                 .fetch_optional(&self.pool)
                 .await?
         {
             return Ok(id);
         }
 
-        sqlx::query("INSERT INTO organizations (code, name, description, is_system) VALUES ('default_org', 'Default Organization', 'Auto-created default organization', 1)")
+        db_query::query("INSERT INTO organizations (code, name, description, is_system) VALUES ('default_org', 'Default Organization', 'Auto-created default organization', TRUE)")
             .execute(&self.pool)
             .await?;
 
-        sqlx::query_scalar("SELECT id FROM organizations WHERE code = 'default_org'")
+        db_query::query_scalar("SELECT id FROM organizations WHERE code = 'default_org'")
             .fetch_optional(&self.pool)
             .await?
             .ok_or_else(|| ApiError::not_found("Default organization not found"))
@@ -614,7 +633,10 @@ impl ClusterService {
                                 checks.push(HealthCheck {
                                     name: "Compute Nodes".to_string(),
                                     status: "warning".to_string(),
-                                    message: format!("Failed to check {} nodes: {}", node_type, error_msg),
+                                    message: format!(
+                                        "Failed to check {} nodes: {}",
+                                        node_type, error_msg
+                                    ),
                                 });
                                 if overall_status == HealthStatus::Healthy {
                                     overall_status = HealthStatus::Warning;

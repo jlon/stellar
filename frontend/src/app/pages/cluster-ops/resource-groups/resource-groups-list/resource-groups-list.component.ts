@@ -1,7 +1,7 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { NbToastrService } from '@nebular/theme';
-import { LocalDataSource } from 'angular2-smart-table';
+import { NbToastrService, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule } from '@nebular/theme';
+import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
@@ -12,13 +12,26 @@ import { ClusterContextService } from '../../../../@core/data/cluster-context.se
 import { Cluster } from '../../../../@core/data/cluster.service';
 import { ConfirmDialogService } from '../../../../@core/services/confirm-dialog.service';
 
+
 @Component({
-  standalone: false,
-  selector: 'ngx-resource-groups-list',
-  templateUrl: './resource-groups-list.component.html',
-  styleUrls: ['./resource-groups-list.component.scss'],
+    selector: 'ngx-resource-groups-list',
+    templateUrl: './resource-groups-list.component.html',
+    styleUrls: ['./resource-groups-list.component.scss'],
+    imports: [
+    NbCardModule,
+    NbButtonModule,
+    NbIconModule,
+    NbSpinnerModule,
+    Angular2SmartTableModule
+],
 })
 export class ResourceGroupsListComponent implements OnInit, OnDestroy {
+  private resourceGroupService = inject(ResourceGroupService);
+  private router = inject(Router);
+  private confirmDialog = inject(ConfirmDialogService);
+  private toastrService = inject(NbToastrService);
+  private clusterContext = inject(ClusterContextService);
+
   private destroy$ = new Subject<void>();
 
   source: LocalDataSource = new LocalDataSource();
@@ -101,14 +114,6 @@ export class ResourceGroupsListComponent implements OnInit, OnDestroy {
       },
     },
   };
-
-  constructor(
-    private resourceGroupService: ResourceGroupService,
-    private router: Router,
-    private confirmDialog: ConfirmDialogService,
-    private toastrService: NbToastrService,
-    private clusterContext: ClusterContextService,
-  ) {}
 
   ngOnInit(): void {
     this.clusterContext.activeCluster$

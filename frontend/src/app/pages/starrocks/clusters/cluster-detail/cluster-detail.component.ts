@@ -1,17 +1,37 @@
-import { Component, OnInit, TemplateRef } from '@angular/core';
+import { Component, OnInit, TemplateRef, inject } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { NbDialogService, NbToastrService } from '@nebular/theme';
+import { NbDialogService, NbToastrService, NbCardModule, NbIconModule, NbTagModule, NbButtonModule, NbTooltipModule, NbSpinnerModule, NbInputModule } from '@nebular/theme';
 import { ClusterService, Cluster, ClusterHealth } from '../../../../@core/data/cluster.service';
 import { ConfirmDialogService } from '../../../../@core/services/confirm-dialog.service';
 import { NodeService, Variable } from '../../../../@core/data/node.service';
+import { DatePipe } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 
 @Component({
-  standalone: false,
-  selector: 'ngx-cluster-detail',
-  templateUrl: './cluster-detail.component.html',
-  styleUrls: ['./cluster-detail.component.scss'],
+    selector: 'ngx-cluster-detail',
+    templateUrl: './cluster-detail.component.html',
+    styleUrls: ['./cluster-detail.component.scss'],
+    imports: [
+    NbCardModule,
+    NbIconModule,
+    NbTagModule,
+    NbButtonModule,
+    NbTooltipModule,
+    NbSpinnerModule,
+    NbInputModule,
+    FormsModule,
+    DatePipe
+],
 })
 export class ClusterDetailComponent implements OnInit {
+  private clusterService = inject(ClusterService);
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+  private toastrService = inject(NbToastrService);
+  private confirmDialogService = inject(ConfirmDialogService);
+  private nodeService = inject(NodeService);
+  private dialogService = inject(NbDialogService);
+
   cluster: Cluster | null = null;
   health: ClusterHealth | null = null;
   loading = true;
@@ -21,15 +41,7 @@ export class ClusterDetailComponent implements OnInit {
   filteredConfigureInfo: Variable[] = [];
   configSearchText = '';
 
-  constructor(
-    private clusterService: ClusterService,
-    private route: ActivatedRoute,
-    private router: Router,
-    private toastrService: NbToastrService,
-    private confirmDialogService: ConfirmDialogService,
-    private nodeService: NodeService,
-    private dialogService: NbDialogService,
-  ) {
+  constructor() {
     this.clusterId = parseInt(this.route.snapshot.paramMap.get('id') || '0', 10);
   }
 

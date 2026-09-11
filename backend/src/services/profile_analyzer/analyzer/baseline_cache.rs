@@ -373,7 +373,7 @@ impl Default for BaselineCacheManager {
 /// Global baseline provider with lazy initialization
 ///
 /// Usage:
-/// ```rust
+/// ```ignore
 /// // Get baseline for specific cluster
 /// let baseline = BaselineProvider::get(cluster_id, QueryComplexity::Medium);
 ///

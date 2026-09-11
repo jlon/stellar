@@ -1,14 +1,16 @@
+use crate::db::query as db_query;
 use axum::{
-    extract::{Path, State, Extension, Query},
     Json,
+    extract::{Extension, Path, Query, State},
 };
-use std::sync::Arc;
 use sqlx::Row;
+use std::sync::Arc;
+use stellar_macros::app_db;
 
 use crate::AppState;
 use crate::models::{
-    SubmitRequestDto, ApprovalDto, PermissionRequestResponse, RequestQueryFilter,
-    PaginatedResponse, DbAccountDto, DbRoleDto, DbUserPermissionDto,
+    ApprovalDto, DbAccountDto, DbRoleDto, DbUserPermissionDto, PaginatedResponse,
+    PermissionRequestResponse, RequestQueryFilter, SubmitRequestDto,
 };
 use crate::utils::ApiResult;
 
@@ -29,14 +31,18 @@ use crate::utils::ApiResult;
     security(("bearer_auth" = [])),
     tag = "Permission Requests"
 )]
+#[app_db]
 pub async fn list_my_requests(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Extension(user_id): Extension<i64>,
     Query(filter): Query<RequestQueryFilter>,
 ) -> ApiResult<Json<PaginatedResponse<PermissionRequestResponse>>> {
     tracing::debug!("User {} listing their requests", user_id);
 
-    let result = state.permission_request_service.list_my_requests(user_id, filter).await?;
+    let result = state
+        .permission_request_service
+        .list_my_requests(user_id, filter)
+        .await?;
     Ok(Json(result))
 }
 
@@ -57,20 +63,19 @@ pub async fn list_my_requests(
     security(("bearer_auth" = [])),
     tag = "Permission Requests"
 )]
+#[app_db]
 pub async fn list_pending_approvals(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Extension(user_id): Extension<i64>,
     Query(filter): Query<RequestQueryFilter>,
 ) -> ApiResult<Json<Vec<PermissionRequestResponse>>> {
     tracing::debug!("User {} listing pending approvals", user_id);
 
     // Get user's org_id from database
-    let user = sqlx::query(
-        "SELECT organization_id FROM users WHERE id = ?"
-    )
-    .bind(user_id)
-    .fetch_one(&state.db)
-    .await?;
+    let user = db_query::query("SELECT organization_id FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_one(&state.db)
+        .await?;
 
     let org_id: Option<i64> = user.get("organization_id");
     let org_id = org_id.unwrap_or(0);
@@ -79,7 +84,8 @@ pub async fn list_pending_approvals(
     // For now, assume any user can view approvals for their org
     let is_super_admin = false;
 
-    let result = state.permission_request_service
+    let result = state
+        .permission_request_service
         .list_pending_approvals(org_id, is_super_admin, filter)
         .await?;
 
@@ -100,13 +106,17 @@ pub async fn list_pending_approvals(
     security(("bearer_auth" = [])),
     tag = "Permission Requests"
 )]
+#[app_db]
 pub async fn get_request(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Path(request_id): Path<i64>,
 ) -> ApiResult<Json<PermissionRequestResponse>> {
     tracing::debug!("Getting request details for request_id: {}", request_id);
 
-    let request = state.permission_request_service.get_request_detail(request_id).await?;
+    let request = state
+        .permission_request_service
+        .get_request_detail(request_id)
+        .await?;
     Ok(Json(request))
 }
 
@@ -122,14 +132,16 @@ pub async fn get_request(
     security(("bearer_auth" = [])),
     tag = "Permission Requests"
 )]
+#[app_db]
 pub async fn submit_request(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Extension(user_id): Extension<i64>,
     Json(req): Json<SubmitRequestDto>,
 ) -> ApiResult<Json<i64>> {
     tracing::info!("User {} submitting permission request", user_id);
 
-    let request_id = state.permission_request_service
+    let request_id = state
+        .permission_request_service
         .submit_request(user_id, req, &state.cluster_service, state.mysql_pool_manager.clone())
         .await?;
 
@@ -152,15 +164,25 @@ pub async fn submit_request(
     security(("bearer_auth" = [])),
     tag = "Permission Requests"
 )]
+#[app_db]
 pub async fn approve_request(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Extension(user_id): Extension<i64>,
     Path(request_id): Path<i64>,
     Json(dto): Json<ApprovalDto>,
 ) -> ApiResult<Json<serde_json::Value>> {
     tracing::info!("User {} approving request {}", user_id, request_id);
 
-    state.permission_request_service.approve_request(request_id, user_id, dto).await?;
+    state
+        .permission_request_service
+        .approve_request(
+            request_id,
+            user_id,
+            dto,
+            &state.cluster_service,
+            state.mysql_pool_manager.clone(),
+        )
+        .await?;
 
     tracing::info!("Request {} approved by user {}", request_id, user_id);
     Ok(Json(serde_json::json!({"status": "approved"})))
@@ -181,15 +203,19 @@ pub async fn approve_request(
     security(("bearer_auth" = [])),
     tag = "Permission Requests"
 )]
+#[app_db]
 pub async fn reject_request(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Extension(user_id): Extension<i64>,
     Path(request_id): Path<i64>,
     Json(dto): Json<ApprovalDto>,
 ) -> ApiResult<Json<serde_json::Value>> {
     tracing::info!("User {} rejecting request {}", user_id, request_id);
 
-    state.permission_request_service.reject_request(request_id, user_id, dto).await?;
+    state
+        .permission_request_service
+        .reject_request(request_id, user_id, dto)
+        .await?;
 
     tracing::info!("Request {} rejected by user {}", request_id, user_id);
     Ok(Json(serde_json::json!({"status": "rejected"})))
@@ -210,14 +236,18 @@ pub async fn reject_request(
     security(("bearer_auth" = [])),
     tag = "Permission Requests"
 )]
+#[app_db]
 pub async fn cancel_request(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Extension(user_id): Extension<i64>,
     Path(request_id): Path<i64>,
 ) -> ApiResult<Json<serde_json::Value>> {
     tracing::info!("User {} cancelling request {}", user_id, request_id);
 
-    state.permission_request_service.cancel_request(request_id, user_id).await?;
+    state
+        .permission_request_service
+        .cancel_request(request_id, user_id)
+        .await?;
 
     tracing::info!("Request {} cancelled by user {}", request_id, user_id);
     Ok(Json(serde_json::json!({"status": "cancelled"})))
@@ -237,13 +267,17 @@ pub async fn cancel_request(
     security(("bearer_auth" = [])),
     tag = "Database Authentication"
 )]
+#[app_db]
 pub async fn list_db_accounts(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Path(cluster_id): Path<i64>,
 ) -> ApiResult<Json<Vec<DbAccountDto>>> {
     tracing::debug!("Listing database accounts for cluster {}", cluster_id);
 
-    let accounts = state.db_auth_query_service.list_accounts(cluster_id).await?;
+    let accounts = state
+        .db_auth_query_service
+        .list_accounts(cluster_id)
+        .await?;
     Ok(Json(accounts))
 }
 
@@ -261,8 +295,9 @@ pub async fn list_db_accounts(
     security(("bearer_auth" = [])),
     tag = "Database Authentication"
 )]
+#[app_db]
 pub async fn list_db_roles(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Path(cluster_id): Path<i64>,
 ) -> ApiResult<Json<Vec<DbRoleDto>>> {
     tracing::debug!("Listing database roles for cluster {}", cluster_id);
@@ -283,8 +318,9 @@ pub async fn list_db_roles(
     security(("bearer_auth" = [])),
     tag = "Database Authentication"
 )]
+#[app_db]
 pub async fn preview_sql(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Json(req): Json<SubmitRequestDto>,
 ) -> ApiResult<Json<serde_json::Value>> {
     tracing::debug!("Previewing SQL for request type: {}", req.request_type);
@@ -295,10 +331,11 @@ pub async fn preview_sql(
     // Use the static method from permission_request_service
     let sql = crate::services::PermissionRequestService::generate_preview_sql_static(
         &cluster,
-        &req.request_type, 
+        &req.request_type,
         &req.request_details,
-        state.mysql_pool_manager.clone()
-    ).await?;
+        state.mysql_pool_manager.clone(),
+    )
+    .await?;
 
     Ok(Json(serde_json::json!({
         "sql": sql,
@@ -317,27 +354,32 @@ pub async fn preview_sql(
     security(("bearer_auth" = [])),
     tag = "Database Authentication"
 )]
+#[app_db]
 pub async fn list_db_accounts_active(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Extension(user_id): Extension<i64>,
 ) -> ApiResult<Json<Vec<DbAccountDto>>> {
     tracing::debug!("Listing database accounts for active cluster of user {}", user_id);
 
     // Get user's organization_id
-    let user = sqlx::query(
-        "SELECT organization_id FROM users WHERE id = ?"
-    )
-    .bind(user_id)
-    .fetch_one(&state.db)
-    .await?;
+    let user = db_query::query("SELECT organization_id FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_one(&state.db)
+        .await?;
 
     let org_id: Option<i64> = user.get("organization_id");
 
     // Get active cluster for this organization
-    let active_cluster = state.cluster_service.get_active_cluster_by_org(org_id).await?;
+    let active_cluster = state
+        .cluster_service
+        .get_active_cluster_by_org(org_id)
+        .await?;
 
     // List accounts for the active cluster
-    let accounts = state.db_auth_query_service.list_accounts(active_cluster.id).await?;
+    let accounts = state
+        .db_auth_query_service
+        .list_accounts(active_cluster.id)
+        .await?;
     Ok(Json(accounts))
 }
 
@@ -352,27 +394,32 @@ pub async fn list_db_accounts_active(
     security(("bearer_auth" = [])),
     tag = "Database Authentication"
 )]
+#[app_db]
 pub async fn list_db_roles_active(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Extension(user_id): Extension<i64>,
 ) -> ApiResult<Json<Vec<DbRoleDto>>> {
     tracing::debug!("Listing database roles for active cluster of user {}", user_id);
 
     // Get user's organization_id
-    let user = sqlx::query(
-        "SELECT organization_id FROM users WHERE id = ?"
-    )
-    .bind(user_id)
-    .fetch_one(&state.db)
-    .await?;
+    let user = db_query::query("SELECT organization_id FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_one(&state.db)
+        .await?;
 
     let org_id: Option<i64> = user.get("organization_id");
 
     // Get active cluster for this organization
-    let active_cluster = state.cluster_service.get_active_cluster_by_org(org_id).await?;
+    let active_cluster = state
+        .cluster_service
+        .get_active_cluster_by_org(org_id)
+        .await?;
 
     // List roles for the active cluster
-    let roles = state.db_auth_query_service.list_roles(active_cluster.id).await?;
+    let roles = state
+        .db_auth_query_service
+        .list_roles(active_cluster.id)
+        .await?;
     Ok(Json(roles))
 }
 
@@ -389,19 +436,18 @@ pub async fn list_db_roles_active(
     security(("bearer_auth" = [])),
     tag = "Database Authentication"
 )]
+#[app_db]
 pub async fn list_my_db_permissions(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Extension(user_id): Extension<i64>,
 ) -> ApiResult<Json<Vec<DbUserPermissionDto>>> {
     tracing::debug!("Listing database permissions for user {}", user_id);
 
     // Get user's organization_id
-    let user = sqlx::query(
-        "SELECT organization_id FROM users WHERE id = ?"
-    )
-    .bind(user_id)
-    .fetch_one(&state.db)
-    .await?;
+    let user = db_query::query("SELECT organization_id FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_one(&state.db)
+        .await?;
 
     let org_id: Option<i64> = user.get("organization_id");
 
@@ -444,20 +490,19 @@ pub async fn list_my_db_permissions(
     security(("bearer_auth" = [])),
     tag = "Database Authentication"
 )]
+#[app_db]
 pub async fn list_role_permissions(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Extension(user_id): Extension<i64>,
     Path(role_name): Path<String>,
 ) -> ApiResult<Json<Vec<DbUserPermissionDto>>> {
     tracing::debug!("Listing permissions for role {} by user {}", role_name, user_id);
 
     // Get user's organization_id
-    let user = sqlx::query(
-        "SELECT organization_id FROM users WHERE id = ?"
-    )
-    .bind(user_id)
-    .fetch_one(&state.db)
-    .await?;
+    let user = db_query::query("SELECT organization_id FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_one(&state.db)
+        .await?;
 
     let org_id: Option<i64> = user.get("organization_id");
 

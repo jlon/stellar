@@ -171,19 +171,19 @@ impl DorisAdapter {
 
                                 if let Some(idx) = index_name_col {
                                     for index_row in index_rows {
-                                        if let Some(index_name) = index_row.get(idx) {
-                                            if index_name == mv_name {
-                                                tracing::debug!(
-                                                    "[Doris] Found Rollup '{}' in table '{}.{}'",
-                                                    mv_name,
-                                                    db_name,
-                                                    table_name
-                                                );
-                                                return Ok(MaterializedViewType::Rollup(
-                                                    db_name.clone(),
-                                                    table_name.clone(),
-                                                ));
-                                            }
+                                        if let Some(index_name) = index_row.get(idx)
+                                            && index_name == mv_name
+                                        {
+                                            tracing::debug!(
+                                                "[Doris] Found Rollup '{}' in table '{}.{}'",
+                                                mv_name,
+                                                db_name,
+                                                table_name
+                                            );
+                                            return Ok(MaterializedViewType::Rollup(
+                                                db_name.clone(),
+                                                table_name.clone(),
+                                            ));
                                         }
                                     }
                                 }
@@ -316,13 +316,7 @@ impl DorisAdapter {
     fn add_priv_suffix(permissions: &[&str]) -> Vec<String> {
         permissions
             .iter()
-            .map(|p| {
-                if p.ends_with("_PRIV") {
-                    p.to_string()
-                } else {
-                    format!("{}_PRIV", p)
-                }
-            })
+            .map(|p| if p.ends_with("_PRIV") { p.to_string() } else { format!("{}_PRIV", p) })
             .collect()
     }
 
@@ -340,7 +334,7 @@ impl DorisAdapter {
                 } else {
                     format!("CATALOG {}", database)
                 }
-            }
+            },
             "TABLE" => {
                 // Table level permissions
                 if database == "*" {
@@ -358,16 +352,74 @@ impl DorisAdapter {
                     // No table specified, default to all tables in database
                     format!("{}.*", database)
                 }
-            }
+            },
             _ => {
                 // Database level permissions (default)
-                if database == "*" {
-                    "*.*".to_string()
-                } else {
-                    format!("{}.*", database)
-                }
+                if database == "*" { "*.*".to_string() } else { format!("{}.*", database) }
+            },
+        }
+    }
+
+    /// Parse a GRANT statement into structured permission data
+    #[allow(dead_code)]
+    fn parse_grant_statement(statement: &str) -> Option<DorisParsedGrant> {
+        let statement = statement.trim();
+
+        // Check if it's a role grant: GRANT 'role_name' TO 'user'@'%'
+        if statement.starts_with("GRANT '") || statement.starts_with("GRANT \"") {
+            // Role grant
+            let role_start = 7; // After "GRANT '"
+            if let Some(role_end) = statement[role_start..]
+                .find('\'')
+                .or_else(|| statement[role_start..].find('"'))
+            {
+                let role_name = &statement[role_start..role_start + role_end];
+                return Some(DorisParsedGrant {
+                    privileges: vec!["ROLE".to_string()],
+                    resource_type: "ROLE".to_string(),
+                    resource_path: role_name.to_string(),
+                    granted_role: Some(role_name.to_string()),
+                });
             }
         }
+
+        // Regular privilege grant: GRANT privileges ON resource TO user
+        if !statement.starts_with("GRANT ") {
+            return None;
+        }
+
+        // Find "ON" keyword
+        let on_pos = statement.find(" ON ")?;
+        let privileges_str = &statement[6..on_pos]; // After "GRANT "
+
+        // Find "TO" keyword
+        let to_pos = statement.find(" TO ")?;
+        let resource_str = &statement[on_pos + 4..to_pos]; // After " ON "
+
+        // Parse privileges (Doris uses _priv suffix like Select_priv, Load_priv)
+        let privileges: Vec<String> = privileges_str
+            .split(',')
+            .map(|s| {
+                let trimmed = s.trim().to_uppercase();
+                // Remove _PRIV suffix if present
+                trimmed.trim_end_matches("_PRIV").to_string()
+            })
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        // Parse resource (e.g., "db_name.*", "db_name.table_name", "*.*")
+        let resource_path = resource_str.trim().to_string();
+        let resource_type = if resource_path == "*.*" || resource_path == "*.*.*" {
+            "GLOBAL".to_string()
+        } else if resource_path.ends_with(".*") || resource_path.ends_with(".*.*") {
+            "DATABASE".to_string()
+        } else if resource_path.contains('.') {
+            "TABLE".to_string()
+        } else {
+            "CATALOG".to_string()
+        };
+
+        Some(DorisParsedGrant { privileges, resource_type, resource_path, granted_role: None })
     }
 
     /// Parse Doris resource privileges format: "resource_path: Priv1, Priv2; resource_path2: Priv3"
@@ -406,6 +458,15 @@ impl DorisAdapter {
             }
         }
     }
+}
+
+/// Helper struct for parsed GRANT statement (Doris)
+#[allow(dead_code)]
+struct DorisParsedGrant {
+    privileges: Vec<String>,
+    resource_type: String,
+    resource_path: String,
+    granted_role: Option<String>,
 }
 
 #[async_trait]
@@ -617,10 +678,12 @@ impl ClusterAdapter for DorisAdapter {
 
         let body = serde_json::json!({ "query": sql });
 
+        // Use connection user for HTTP API operations (not for permission grants)
+        // Permission grants use admin user via temporary MySQL connection in execute_request_internal
         let response = self
             .http_client
             .post(&url)
-            .basic_auth(&self.cluster.username, Some(&self.cluster.password_encrypted))
+            .basic_auth(&self.cluster.username, self.cluster.get_auth_password())
             .json(&body)
             .send()
             .await;
@@ -682,10 +745,11 @@ impl ClusterAdapter for DorisAdapter {
         // Use session mode to ensure SWITCH and SHOW DATABASES run on the same connection
         let mut session = mysql_client.create_session().await?;
 
-        if let Some(cat) = catalog {
-            if !cat.is_empty() && cat != "default_catalog" {
-                session.use_catalog(cat, &self.cluster.cluster_type).await?;
-            }
+        if let Some(cat) = catalog
+            && !cat.is_empty()
+            && cat != "default_catalog"
+        {
+            session.use_catalog(cat, &self.cluster.cluster_type).await?;
         }
 
         let (_, rows, _) = session.execute("SHOW DATABASES").await?;
@@ -856,10 +920,8 @@ impl ClusterAdapter for DorisAdapter {
                                                             .get(8)
                                                             .unwrap_or(&"FINISHED".to_string())
                                                             .clone();
-                                                        create_t =
-                                                            job_row.get(2).map(|s| s.clone());
-                                                        finish_t =
-                                                            job_row.get(3).map(|s| s.clone());
+                                                        create_t = job_row.get(2).cloned();
+                                                        finish_t = job_row.get(3).cloned();
                                                         break;
                                                     }
                                                 }
@@ -924,16 +986,15 @@ impl ClusterAdapter for DorisAdapter {
                     let sql = format!("DESC {}.{} ALL", db, table_name);
                     if let Ok((_, rows)) = mysql_client.query_raw(&sql).await {
                         for row in rows {
-                            if let Some(index_name) = row.first() {
-                                if index_name == mv_name {
-                                    let ddl_sql =
-                                        format!("SHOW CREATE TABLE {}.{}", db, table_name);
-                                    let (_, ddl_rows) = mysql_client.query_raw(&ddl_sql).await?;
-                                    if let Some(ddl_row) = ddl_rows.first() {
-                                        if let Some(ddl) = ddl_row.get(1) {
-                                            return Ok(ddl.clone());
-                                        }
-                                    }
+                            if let Some(index_name) = row.first()
+                                && index_name == mv_name
+                            {
+                                let ddl_sql = format!("SHOW CREATE TABLE {}.{}", db, table_name);
+                                let (_, ddl_rows) = mysql_client.query_raw(&ddl_sql).await?;
+                                if let Some(ddl_row) = ddl_rows.first()
+                                    && let Some(ddl) = ddl_row.get(1)
+                                {
+                                    return Ok(ddl.clone());
                                 }
                             }
                         }
@@ -1249,7 +1310,7 @@ impl ClusterAdapter for DorisAdapter {
                     tracing::info!(
                         "[Doris] SHOW PROC '/compactions' not supported, using '/cluster_health/tablet_health' as alternative"
                     );
-                    let sql = format!("SHOW PROC '/cluster_health/tablet_health'");
+                    let sql = "SHOW PROC '/cluster_health/tablet_health'".to_string();
                     let mysql_client = self.mysql_client().await?;
                     return mysql_client.query(&sql).await;
                 },
@@ -1281,7 +1342,7 @@ impl ClusterAdapter for DorisAdapter {
                     tracing::info!(
                         "[Doris] SHOW PROC '/compute_nodes' not supported, using '/backends' instead (Doris backends serve both storage and compute)"
                     );
-                    let sql = format!("SHOW PROC '/backends'");
+                    let sql = "SHOW PROC '/backends'".to_string();
                     let mysql_client = self.mysql_client().await?;
                     return mysql_client.query(&sql).await;
                 },
@@ -1289,13 +1350,13 @@ impl ClusterAdapter for DorisAdapter {
                     tracing::info!(
                         "[Doris] SHOW PROC '/global_current_queries' not supported, using '/current_queries' instead"
                     );
-                    let sql = format!("SHOW PROC '/current_queries'");
+                    let sql = "SHOW PROC '/current_queries'".to_string();
                     let mysql_client = self.mysql_client().await?;
                     return mysql_client.query(&sql).await;
                 },
                 "catalog" => {
                     tracing::info!("[Doris] Mapping '/catalog' to '/catalogs'");
-                    let sql = format!("SHOW PROC '/catalogs'");
+                    let sql = "SHOW PROC '/catalogs'".to_string();
                     let mysql_client = self.mysql_client().await?;
                     return mysql_client.query(&sql).await;
                 },
@@ -1351,7 +1412,7 @@ impl ClusterAdapter for DorisAdapter {
                 // Total (index 4) -> time
                 // Task State (index 5) -> state
                 // Sql Statement (index 9) -> statement
-                query_id: row.get(0).cloned().unwrap_or_default(),
+                query_id: row.first().cloned().unwrap_or_default(),
                 start_time: row.get(2).cloned().unwrap_or_default(),
                 time: row.get(4).cloned().unwrap_or_default(),
                 state: row.get(5).cloned().unwrap_or_default(),
@@ -1423,10 +1484,7 @@ impl ClusterAdapter for DorisAdapter {
         if password.is_empty() {
             Ok(format!("CREATE USER '{}'@'%';", username))
         } else {
-            Ok(format!(
-                "CREATE USER '{}'@'%' IDENTIFIED BY '{}';",
-                username, password
-            ))
+            Ok(format!("CREATE USER '{}'@'%' IDENTIFIED BY '{}';", username, password))
         }
     }
 
@@ -1447,25 +1505,20 @@ impl ClusterAdapter for DorisAdapter {
         let priv_permissions = Self::add_priv_suffix(permissions);
         let perm_str = priv_permissions.join(", ");
         let resource = Self::build_resource_path(resource_type, database, table);
-        
-        let with_grant = if with_grant_option {
-            " WITH GRANT OPTION"
-        } else {
-            ""
-        };
+
+        let with_grant = if with_grant_option { " WITH GRANT OPTION" } else { "" };
 
         let principal = match principal_type {
             "ROLE" => format!("'{}'", principal_name),
             "USER" => format!("'{}'@'%'", principal_name),
-            _ => return Err(ApiError::ValidationError(
-                "Principal type must be USER or ROLE".to_string(),
-            )),
+            _ => {
+                return Err(ApiError::ValidationError(
+                    "Principal type must be USER or ROLE".to_string(),
+                ));
+            },
         };
 
-        Ok(format!(
-            "GRANT {} ON {} TO {};{}",
-            perm_str, resource, principal, with_grant
-        ))
+        Ok(format!("GRANT {} ON {} TO {};{}", perm_str, resource, principal, with_grant))
     }
 
     async fn revoke_permissions(
@@ -1480,32 +1533,34 @@ impl ClusterAdapter for DorisAdapter {
         let priv_permissions = Self::add_priv_suffix(permissions);
         let perm_str = priv_permissions.join(", ");
         let resource = Self::build_resource_path(resource_type, database, table);
-        
+
         let principal = match principal_type {
             "ROLE" => format!("'{}'", principal_name),
             "USER" => format!("'{}'@'%'", principal_name),
-            _ => return Err(ApiError::ValidationError(
-                "Principal type must be USER or ROLE".to_string(),
-            )),
+            _ => {
+                return Err(ApiError::ValidationError(
+                    "Principal type must be USER or ROLE".to_string(),
+                ));
+            },
         };
 
-        Ok(format!(
-            "REVOKE {} ON {} FROM {};",
-            perm_str, resource, principal
-        ))
+        Ok(format!("REVOKE {} ON {} FROM {};", perm_str, resource, principal))
     }
 
     async fn grant_role(&self, role_name: &str, username: &str) -> ApiResult<String> {
-        Ok(format!(
-            "GRANT '{}' TO '{}'@'%';",
-            role_name, username
-        ))
+        Ok(format!("GRANT '{}' TO '{}'@'%';", role_name, username))
     }
 
-    async fn list_user_permissions(&self, username: &str) -> ApiResult<Vec<crate::models::DbUserPermissionDto>> {
+    async fn list_user_permissions(
+        &self,
+        username: &str,
+    ) -> ApiResult<Vec<crate::models::DbUserPermissionDto>> {
         tracing::debug!("[Doris] Listing permissions for user: {}", username);
-        
-        let mut conn = self.mysql_pool_manager.get_pool(&self.cluster).await?
+
+        let mut conn = self
+            .mysql_pool_manager
+            .get_pool(&self.cluster)
+            .await?
             .get_conn()
             .await
             .map_err(|e| {
@@ -1516,16 +1571,16 @@ impl ClusterAdapter for DorisAdapter {
         // Doris syntax: SHOW GRANTS FOR 'username'@'%'
         let query_str = format!("SHOW GRANTS FOR '{}'@'%'", username);
 
-        use mysql_async::prelude::Queryable;
         use mysql_async::Row;
         use mysql_async::Value;
-        
+        use mysql_async::prelude::Queryable;
+
         let rows: Vec<Row> = match conn.query(&query_str).await {
             Ok(rows) => rows,
             Err(e) => {
                 tracing::debug!("SHOW GRANTS query failed for user {}: {}", username, e);
                 return Ok(Vec::new());
-            }
+            },
         };
 
         let mut permissions: Vec<crate::models::DbUserPermissionDto> = Vec::new();
@@ -1534,7 +1589,10 @@ impl ClusterAdapter for DorisAdapter {
         // Helper function to safely get string value from row
         fn get_string_value(row: &Row, col_name: &str) -> Option<String> {
             // Try to get column index by name
-            let col_idx = row.columns_ref().iter().position(|c| c.name_str() == col_name)?;
+            let col_idx = row
+                .columns_ref()
+                .iter()
+                .position(|c| c.name_str() == col_name)?;
             match row.as_ref(col_idx)? {
                 Value::NULL => None,
                 Value::Bytes(b) => String::from_utf8(b.clone()).ok(),
@@ -1544,88 +1602,126 @@ impl ClusterAdapter for DorisAdapter {
 
         for row in rows {
             // Doris 2.x returns multi-column format:
-            // UserIdentity, Comment, Password, Roles, GlobalPrivs, CatalogPrivs, DatabasePrivs, 
-            // TablePrivs, ColPrivs, ResourcePrivs, CloudClusterPrivs, CloudStagePrivs, 
+            // UserIdentity, Comment, Password, Roles, GlobalPrivs, CatalogPrivs, DatabasePrivs,
+            // TablePrivs, ColPrivs, ResourcePrivs, CloudClusterPrivs, CloudStagePrivs,
             // StorageVaultPrivs, WorkloadGroupPrivs, ComputeGroupPrivs
-            
+
             // Parse Roles (granted roles)
-            if let Some(roles_str) = get_string_value(&row, "Roles") {
-                if !roles_str.is_empty() && roles_str != "NULL" {
-                    for role in roles_str.split(',') {
-                        let role = role.trim();
-                        if !role.is_empty() {
-                            permissions.push(crate::models::DbUserPermissionDto {
-                                id: id_counter,
-                                privilege_type: "ROLE".to_string(),
-                                resource_type: "ROLE".to_string(),
-                                resource_path: role.to_string(),
-                                granted_role: Some(role.to_string()),
-                            });
-                            id_counter += 1;
-                        }
+            if let Some(roles_str) = get_string_value(&row, "Roles")
+                && !roles_str.is_empty()
+                && roles_str != "NULL"
+            {
+                for role in roles_str.split(',') {
+                    let role = role.trim();
+                    if !role.is_empty() {
+                        permissions.push(crate::models::DbUserPermissionDto {
+                            id: id_counter,
+                            privilege_type: "ROLE".to_string(),
+                            resource_type: "ROLE".to_string(),
+                            resource_path: role.to_string(),
+                            granted_role: Some(role.to_string()),
+                        });
+                        id_counter += 1;
                     }
                 }
             }
 
             // Parse GlobalPrivs (e.g., "Node_priv,Admin_priv")
-            if let Some(privs_str) = get_string_value(&row, "GlobalPrivs") {
-                if !privs_str.is_empty() && privs_str != "NULL" {
-                    for privilege in privs_str.split(',') {
-                        let privilege = privilege.trim().replace("_priv", "").to_uppercase();
-                        if !privilege.is_empty() {
-                            permissions.push(crate::models::DbUserPermissionDto {
-                                id: id_counter,
-                                privilege_type: privilege,
-                                resource_type: "GLOBAL".to_string(),
-                                resource_path: "*".to_string(),
-                                granted_role: None,
-                            });
-                            id_counter += 1;
-                        }
+            if let Some(privs_str) = get_string_value(&row, "GlobalPrivs")
+                && !privs_str.is_empty()
+                && privs_str != "NULL"
+            {
+                for privilege in privs_str.split(',') {
+                    let privilege = privilege.trim().replace("_priv", "").to_uppercase();
+                    if !privilege.is_empty() {
+                        permissions.push(crate::models::DbUserPermissionDto {
+                            id: id_counter,
+                            privilege_type: privilege,
+                            resource_type: "GLOBAL".to_string(),
+                            resource_path: "*".to_string(),
+                            granted_role: None,
+                        });
+                        id_counter += 1;
                     }
                 }
             }
 
             // Parse CatalogPrivs (e.g., "catalog_name: Select_priv, Insert_priv")
-            if let Some(privs_str) = get_string_value(&row, "CatalogPrivs") {
-                if !privs_str.is_empty() && privs_str != "NULL" {
-                    Self::parse_doris_resource_privs(&privs_str, "CATALOG", &mut permissions, &mut id_counter);
-                }
+            if let Some(privs_str) = get_string_value(&row, "CatalogPrivs")
+                && !privs_str.is_empty()
+                && privs_str != "NULL"
+            {
+                Self::parse_doris_resource_privs(
+                    &privs_str,
+                    "CATALOG",
+                    &mut permissions,
+                    &mut id_counter,
+                );
             }
 
             // Parse DatabasePrivs (e.g., "internal.information_schema: Select_priv; internal.mysql: Select_priv")
-            if let Some(privs_str) = get_string_value(&row, "DatabasePrivs") {
-                if !privs_str.is_empty() && privs_str != "NULL" {
-                    Self::parse_doris_resource_privs(&privs_str, "DATABASE", &mut permissions, &mut id_counter);
-                }
+            if let Some(privs_str) = get_string_value(&row, "DatabasePrivs")
+                && !privs_str.is_empty()
+                && privs_str != "NULL"
+            {
+                Self::parse_doris_resource_privs(
+                    &privs_str,
+                    "DATABASE",
+                    &mut permissions,
+                    &mut id_counter,
+                );
             }
 
             // Parse TablePrivs
-            if let Some(privs_str) = get_string_value(&row, "TablePrivs") {
-                if !privs_str.is_empty() && privs_str != "NULL" {
-                    Self::parse_doris_resource_privs(&privs_str, "TABLE", &mut permissions, &mut id_counter);
-                }
+            if let Some(privs_str) = get_string_value(&row, "TablePrivs")
+                && !privs_str.is_empty()
+                && privs_str != "NULL"
+            {
+                Self::parse_doris_resource_privs(
+                    &privs_str,
+                    "TABLE",
+                    &mut permissions,
+                    &mut id_counter,
+                );
             }
 
             // Parse ColPrivs (column privileges)
-            if let Some(privs_str) = get_string_value(&row, "ColPrivs") {
-                if !privs_str.is_empty() && privs_str != "NULL" {
-                    Self::parse_doris_resource_privs(&privs_str, "COLUMN", &mut permissions, &mut id_counter);
-                }
+            if let Some(privs_str) = get_string_value(&row, "ColPrivs")
+                && !privs_str.is_empty()
+                && privs_str != "NULL"
+            {
+                Self::parse_doris_resource_privs(
+                    &privs_str,
+                    "COLUMN",
+                    &mut permissions,
+                    &mut id_counter,
+                );
             }
 
             // Parse ResourcePrivs
-            if let Some(privs_str) = get_string_value(&row, "ResourcePrivs") {
-                if !privs_str.is_empty() && privs_str != "NULL" {
-                    Self::parse_doris_resource_privs(&privs_str, "RESOURCE", &mut permissions, &mut id_counter);
-                }
+            if let Some(privs_str) = get_string_value(&row, "ResourcePrivs")
+                && !privs_str.is_empty()
+                && privs_str != "NULL"
+            {
+                Self::parse_doris_resource_privs(
+                    &privs_str,
+                    "RESOURCE",
+                    &mut permissions,
+                    &mut id_counter,
+                );
             }
 
             // Parse WorkloadGroupPrivs (e.g., "normal: Usage_priv")
-            if let Some(privs_str) = get_string_value(&row, "WorkloadGroupPrivs") {
-                if !privs_str.is_empty() && privs_str != "NULL" {
-                    Self::parse_doris_resource_privs(&privs_str, "WORKLOAD_GROUP", &mut permissions, &mut id_counter);
-                }
+            if let Some(privs_str) = get_string_value(&row, "WorkloadGroupPrivs")
+                && !privs_str.is_empty()
+                && privs_str != "NULL"
+            {
+                Self::parse_doris_resource_privs(
+                    &privs_str,
+                    "WORKLOAD_GROUP",
+                    &mut permissions,
+                    &mut id_counter,
+                );
             }
         }
 
@@ -1633,20 +1729,29 @@ impl ClusterAdapter for DorisAdapter {
         Ok(permissions)
     }
 
-    async fn list_role_permissions(&self, role_name: &str) -> ApiResult<Vec<crate::models::DbUserPermissionDto>> {
+    async fn list_role_permissions(
+        &self,
+        role_name: &str,
+    ) -> ApiResult<Vec<crate::models::DbUserPermissionDto>> {
         tracing::debug!("[Doris] Listing permissions for role: {}", role_name);
-        
+
         // Doris doesn't support SHOW GRANTS FOR ROLE syntax
         // We need to query the role's privileges from system tables or return empty
         // For now, return empty as Doris role permissions are shown inline with user grants
-        tracing::info!("[Doris] Role permission query not supported, returning empty list for role: {}", role_name);
+        tracing::info!(
+            "[Doris] Role permission query not supported, returning empty list for role: {}",
+            role_name
+        );
         Ok(Vec::new())
     }
 
     async fn list_db_accounts(&self) -> ApiResult<Vec<crate::models::DbAccountDto>> {
         tracing::debug!("[Doris] Listing database accounts");
-        
-        let mut conn = self.mysql_pool_manager.get_pool(&self.cluster).await?
+
+        let mut conn = self
+            .mysql_pool_manager
+            .get_pool(&self.cluster)
+            .await?
             .get_conn()
             .await
             .map_err(|e| {
@@ -1655,28 +1760,28 @@ impl ClusterAdapter for DorisAdapter {
             })?;
 
         // Doris uses INFORMATION_SCHEMA.USER_PRIVILEGES
-        let query_str = "SELECT DISTINCT GRANTEE FROM INFORMATION_SCHEMA.USER_PRIVILEGES ORDER BY GRANTEE";
+        let query_str =
+            "SELECT DISTINCT GRANTEE FROM INFORMATION_SCHEMA.USER_PRIVILEGES ORDER BY GRANTEE";
 
         use mysql_async::prelude::Queryable;
-        
+
         let rows: Vec<(String,)> = match conn.query(query_str).await {
             Ok(rows) => rows,
             Err(e) => {
                 tracing::debug!("INFORMATION_SCHEMA query failed: {}", e);
                 return Ok(Vec::new());
-            }
+            },
         };
 
         let mut accounts: Vec<crate::models::DbAccountDto> = Vec::new();
         for (grantee,) in rows {
             let (account_name, host) = Self::parse_user_identity(&grantee);
-            
-            if !accounts.iter().any(|a| a.account_name == account_name && a.host == host) {
-                accounts.push(crate::models::DbAccountDto {
-                    account_name,
-                    host,
-                    roles: vec![],
-                });
+
+            if !accounts
+                .iter()
+                .any(|a| a.account_name == account_name && a.host == host)
+            {
+                accounts.push(crate::models::DbAccountDto { account_name, host, roles: vec![] });
             }
         }
 
@@ -1685,8 +1790,11 @@ impl ClusterAdapter for DorisAdapter {
 
     async fn list_db_roles(&self) -> ApiResult<Vec<crate::models::DbRoleDto>> {
         tracing::debug!("[Doris] Listing database roles");
-        
-        let mut conn = self.mysql_pool_manager.get_pool(&self.cluster).await?
+
+        let mut conn = self
+            .mysql_pool_manager
+            .get_pool(&self.cluster)
+            .await?
             .get_conn()
             .await
             .map_err(|e| {
@@ -1697,24 +1805,28 @@ impl ClusterAdapter for DorisAdapter {
         // Doris uses SHOW ROLES
         let query_str = "SHOW ROLES";
 
-        use mysql_async::prelude::Queryable;
         use mysql_async::Row;
-        
+        use mysql_async::prelude::Queryable;
+
         let rows: Vec<Row> = match conn.query(query_str).await {
             Ok(rows) => rows,
             Err(e) => {
                 tracing::debug!("SHOW ROLES query failed: {}", e);
                 return Ok(Vec::new());
-            }
+            },
         };
 
         let mut roles: Vec<crate::models::DbRoleDto> = Vec::new();
         for row in rows {
             // Doris SHOW ROLES returns: Name, Comment, Users, GlobalPrivs, etc.
             let role_name: Option<String> = row.get("Name");
-            
+
             if let Some(name) = role_name {
-                let role_type = if name == "admin" || name == "operator" || name == "public" || name == "root" {
+                let role_type = if name == "admin"
+                    || name == "operator"
+                    || name == "public"
+                    || name == "root"
+                {
                     "built-in".to_string()
                 } else {
                     "custom".to_string()
@@ -1738,7 +1850,8 @@ impl DorisAdapter {
         if identity.contains('@') {
             let parts: Vec<&str> = identity.splitn(2, '@').collect();
             let account_name = parts[0].trim_matches('\'').trim_matches('"').to_string();
-            let host = parts.get(1)
+            let host = parts
+                .get(1)
                 .map(|h| h.trim_matches('\'').trim_matches('"').to_string())
                 .unwrap_or_else(|| "%".to_string());
             (account_name, host)

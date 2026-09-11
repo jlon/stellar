@@ -1,8 +1,8 @@
-import { Component, OnInit, OnDestroy, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { interval, Subject } from 'rxjs';
 import { takeUntil, switchMap } from 'rxjs/operators';
-import { NbToastrService } from '@nebular/theme';
+import { NbToastrService, NbIconModule, NbButtonModule, NbSpinnerModule, NbCardModule, NbTooltipModule, NbTagModule } from '@nebular/theme';
 import { ClusterService, Cluster, ClusterHealth } from '../../../@core/data/cluster.service';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
 import { OrganizationService, Organization } from '../../../@core/data/organization.service';
@@ -10,6 +10,8 @@ import { ErrorHandler } from '../../../@core/utils/error-handler';
 import { PermissionService } from '../../../@core/data/permission.service';
 import { ConfirmDialogService } from '../../../@core/services/confirm-dialog.service';
 import { AuthService } from '../../../@core/data/auth.service';
+
+import { StatusCardComponent } from './status-card/status-card.component';
 
 interface ClusterCard {
   cluster: Cluster;
@@ -28,13 +30,31 @@ interface StatusCard {
 }
 
 @Component({
-  standalone: false,
-  selector: 'ngx-dashboard',
-  templateUrl: './dashboard.component.html',
-  styleUrls: ['./dashboard.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'ngx-dashboard',
+    templateUrl: './dashboard.component.html',
+    styleUrls: ['./dashboard.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush,
+    imports: [
+    StatusCardComponent,
+    NbIconModule,
+    NbButtonModule,
+    NbSpinnerModule,
+    NbCardModule,
+    NbTooltipModule,
+    NbTagModule
+],
 })
 export class DashboardComponent implements OnInit, OnDestroy {
+  private clusterService = inject(ClusterService);
+  private clusterContext = inject(ClusterContextService);
+  private organizationService = inject(OrganizationService);
+  private toastrService = inject(NbToastrService);
+  private router = inject(Router);
+  private permissionService = inject(PermissionService);
+  private confirmDialogService = inject(ConfirmDialogService);
+  private authService = inject(AuthService);
+  private cdr = inject(ChangeDetectorRef);
+
   clusters: ClusterCard[] = [];
   loading = true;
   activeCluster: Cluster | null = null;
@@ -53,18 +73,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
   canViewQueries = false;
   private permissionSignature = '';
   private destroy$ = new Subject<void>();
-
-  constructor(
-    private clusterService: ClusterService,
-    private clusterContext: ClusterContextService,
-    private organizationService: OrganizationService,
-    private toastrService: NbToastrService,
-    private router: Router,
-    private permissionService: PermissionService,
-    private confirmDialogService: ConfirmDialogService,
-    private authService: AuthService,
-    private cdr: ChangeDetectorRef,
-  ) {}
 
   ngOnInit(): void {
     this.clusterContext.activeCluster$

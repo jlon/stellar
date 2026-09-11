@@ -1,21 +1,22 @@
 use axum::{
+    Extension, Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    Extension, Json,
 };
 use serde::Deserialize;
 use std::sync::Arc;
+use stellar_macros::app_db;
 use utoipa::IntoParams;
 
 use crate::{
-    utils::ApiResult,
+    AppState,
     middleware::OrgContext,
     models::{
         CreateResourceGroupRequest, ResourceGroup, ResourceGroupUsage, ResourceUsageAnalysis,
         UpdateResourceGroupRequest,
     },
     services::ResourceGroupService,
-    AppState,
+    utils::ApiResult,
 };
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -37,8 +38,9 @@ fn default_days() -> u32 {
         (status = 500, description = "Internal server error")
     )
 )]
+#[app_db]
 pub async fn list_resource_groups(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Extension(org_ctx): Extension<OrgContext>,
 ) -> ApiResult<Json<Vec<ResourceGroup>>> {
     let cluster = if org_ctx.is_super_admin {
@@ -49,7 +51,7 @@ pub async fn list_resource_groups(
             .get_active_cluster_by_org(org_ctx.organization_id)
             .await?
     };
-    
+
     let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
     let groups = ResourceGroupService::list_resource_groups(&pool).await?;
     Ok(Json(groups))
@@ -68,8 +70,9 @@ pub async fn list_resource_groups(
         (status = 500, description = "Internal server error")
     )
 )]
+#[app_db]
 pub async fn get_resource_group(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Extension(org_ctx): Extension<OrgContext>,
     Path(name): Path<String>,
 ) -> ApiResult<Json<ResourceGroup>> {
@@ -81,7 +84,7 @@ pub async fn get_resource_group(
             .get_active_cluster_by_org(org_ctx.organization_id)
             .await?
     };
-    
+
     let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
     let group = ResourceGroupService::get_resource_group(&pool, &name).await?;
     Ok(Json(group))
@@ -98,8 +101,9 @@ pub async fn get_resource_group(
         (status = 500, description = "Internal server error")
     )
 )]
+#[app_db]
 pub async fn create_resource_group(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Extension(org_ctx): Extension<OrgContext>,
     Json(req): Json<CreateResourceGroupRequest>,
 ) -> ApiResult<StatusCode> {
@@ -111,7 +115,7 @@ pub async fn create_resource_group(
             .get_active_cluster_by_org(org_ctx.organization_id)
             .await?
     };
-    
+
     let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
     ResourceGroupService::create_resource_group(&pool, req).await?;
     Ok(StatusCode::CREATED)
@@ -131,8 +135,9 @@ pub async fn create_resource_group(
         (status = 500, description = "Internal server error")
     )
 )]
+#[app_db]
 pub async fn update_resource_group(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Extension(org_ctx): Extension<OrgContext>,
     Path(name): Path<String>,
     Json(req): Json<UpdateResourceGroupRequest>,
@@ -145,7 +150,7 @@ pub async fn update_resource_group(
             .get_active_cluster_by_org(org_ctx.organization_id)
             .await?
     };
-    
+
     let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
     ResourceGroupService::update_resource_group(&pool, &name, req).await?;
     Ok(StatusCode::OK)
@@ -164,8 +169,9 @@ pub async fn update_resource_group(
         (status = 500, description = "Internal server error")
     )
 )]
+#[app_db]
 pub async fn delete_resource_group(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Extension(org_ctx): Extension<OrgContext>,
     Path(name): Path<String>,
 ) -> ApiResult<StatusCode> {
@@ -177,7 +183,7 @@ pub async fn delete_resource_group(
             .get_active_cluster_by_org(org_ctx.organization_id)
             .await?
     };
-    
+
     let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
     ResourceGroupService::delete_resource_group(&pool, &name).await?;
     Ok(StatusCode::NO_CONTENT)
@@ -192,8 +198,9 @@ pub async fn delete_resource_group(
         (status = 500, description = "Internal server error")
     )
 )]
+#[app_db]
 pub async fn get_resource_group_usage(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Extension(org_ctx): Extension<OrgContext>,
 ) -> ApiResult<Json<Vec<ResourceGroupUsage>>> {
     let cluster = if org_ctx.is_super_admin {
@@ -204,7 +211,7 @@ pub async fn get_resource_group_usage(
             .get_active_cluster_by_org(org_ctx.organization_id)
             .await?
     };
-    
+
     let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
     let usage = ResourceGroupService::get_resource_group_usage(&pool).await?;
     Ok(Json(usage))
@@ -220,8 +227,9 @@ pub async fn get_resource_group_usage(
         (status = 500, description = "Internal server error")
     )
 )]
+#[app_db]
 pub async fn analyze_resource_usage(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Extension(org_ctx): Extension<OrgContext>,
     Query(query): Query<AnalysisQuery>,
 ) -> ApiResult<Json<ResourceUsageAnalysis>> {
@@ -233,7 +241,7 @@ pub async fn analyze_resource_usage(
             .get_active_cluster_by_org(org_ctx.organization_id)
             .await?
     };
-    
+
     let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
     let analysis = ResourceGroupService::analyze_resource_usage(&pool, query.days).await?;
     Ok(Json(analysis))

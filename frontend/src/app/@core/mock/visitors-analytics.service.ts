@@ -1,14 +1,12 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { of as observableOf, Observable } from 'rxjs';
 import { PeriodsService } from './periods.service';
 import { OutlineData, VisitorsAnalyticsData } from '../data/visitors-analytics';
 
 @Injectable()
 export class VisitorsAnalyticsService extends VisitorsAnalyticsData {
+  private periodService = inject(PeriodsService);
 
-  constructor(private periodService: PeriodsService) {
-    super();
-  }
 
   private pieChartValue = 75;
   private innerLinePoints: number[] = [

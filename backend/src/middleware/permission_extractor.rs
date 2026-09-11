@@ -15,7 +15,7 @@ pub fn extract_permission(method: &str, uri: &str) -> Option<(String, String)> {
 
     // Special handling for /api/clusters/db-auth/* paths
     // db-auth is a separate resource in the permissions model, not under clusters
-    if segments.get(0) == Some(&"clusters") && segments.get(1) == Some(&"db-auth") {
+    if segments.first() == Some(&"clusters") && segments.get(1) == Some(&"db-auth") {
         if method == "GET" && segments.len() == 3 {
             let action = match segments.get(2) {
                 Some(&"accounts") => Some("accounts:list".to_string()),

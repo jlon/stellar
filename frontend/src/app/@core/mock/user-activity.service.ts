@@ -1,10 +1,12 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { of as observableOf,  Observable } from 'rxjs';
 import { PeriodsService } from './periods.service';
 import { UserActive, UserActivityData } from '../data/user-activity';
 
 @Injectable()
 export class UserActivityService extends UserActivityData {
+  private periods = inject(PeriodsService);
+
 
   private getRandom = (roundTo: number) => Math.round(Math.random() * roundTo);
   private generateUserActivityRandomData(date) {
@@ -18,7 +20,7 @@ export class UserActivityService extends UserActivityData {
 
   data = {};
 
-  constructor(private periods: PeriodsService) {
+  constructor() {
     super();
     this.data = {
       week: this.getDataWeek(),

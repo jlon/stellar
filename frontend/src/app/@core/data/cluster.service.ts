@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiService } from './api.service';
 
@@ -21,6 +21,7 @@ export interface Cluster {
   organization_id?: number;
   deployment_mode: DeploymentMode;
   cluster_type: ClusterType;
+  admin_user?: string;  // Admin user for permission execution (optional, only visible to org admins and super admins)
   created_at: string;
   updated_at: string;
 }
@@ -40,6 +41,8 @@ export interface CreateClusterRequest {
   organization_id?: number;
   deployment_mode?: DeploymentMode;
   cluster_type?: ClusterType;
+  admin_user?: string;  // Admin user for permission execution (optional, only configurable by org admins and super admins)
+  admin_password?: string;  // Admin password (optional, only configurable by org admins and super admins)
 }
 
 export interface ClusterHealth {
@@ -58,7 +61,8 @@ export interface HealthCheck {
   providedIn: 'root',
 })
 export class ClusterService {
-  constructor(private api: ApiService) {}
+  private api = inject(ApiService);
+
 
   listClusters(): Observable<Cluster[]> {
     return this.api.get<Cluster[]>('/clusters');

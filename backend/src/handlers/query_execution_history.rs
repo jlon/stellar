@@ -7,6 +7,7 @@ use axum::{
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
+use stellar_macros::app_db;
 
 use crate::AppState;
 use crate::middleware::OrgContext;
@@ -40,8 +41,9 @@ fn default_limit() -> i64 {
     security(("bearer_auth" = [])),
     tag = "Queries"
 )]
+#[app_db]
 pub async fn list_execution_history(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<OrgContext>,
     axum::extract::Query(params): axum::extract::Query<HistoryQueryParams>,
 ) -> ApiResult<Json<QueryExecutionHistoryResponse>> {
@@ -75,8 +77,9 @@ pub async fn list_execution_history(
     security(("bearer_auth" = [])),
     tag = "Queries"
 )]
+#[app_db]
 pub async fn delete_execution_history(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<OrgContext>,
     Path(id): Path<i64>,
 ) -> ApiResult<impl IntoResponse> {
@@ -100,8 +103,9 @@ pub async fn delete_execution_history(
     security(("bearer_auth" = [])),
     tag = "Queries"
 )]
+#[app_db]
 pub async fn clear_execution_history(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<OrgContext>,
 ) -> ApiResult<impl IntoResponse> {
     let cluster = if org_ctx.is_super_admin {

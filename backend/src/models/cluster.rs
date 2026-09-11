@@ -4,9 +4,11 @@ use sqlx::FromRow;
 use utoipa::ToSchema;
 
 /// Cluster type for OLAP engine
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, ToSchema, sqlx::Type, Default)]
+///
+/// DB 编解码使用 `impl_string_backed_db_type`（与 String 同构，兼容 VARCHAR/TEXT），
+/// 不用 `sqlx::Type` derive：强枚举的 per-backend impl 与 VARCHAR 列不兼容（MySQL 实测）。
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, ToSchema, Default)]
 #[serde(rename_all = "lowercase")]
-#[sqlx(type_name = "TEXT", rename_all = "lowercase")]
 pub enum ClusterType {
     /// StarRocks OLAP engine
     #[default]
@@ -24,16 +26,39 @@ impl std::fmt::Display for ClusterType {
     }
 }
 
+impl ClusterType {
+    /// Returns the display name for UI and prompts
+    pub const fn display_name(&self) -> &'static str {
+        match self {
+            ClusterType::StarRocks => "StarRocks",
+            ClusterType::Doris => "Doris",
+        }
+    }
+
+    /// Parse from string (case-insensitive)
+    pub fn from_str_loose(s: &str) -> Self {
+        if s.eq_ignore_ascii_case("doris") { ClusterType::Doris } else { ClusterType::StarRocks }
+    }
+}
+
 /// Deployment mode for cluster
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema, sqlx::Type, Default)]
+///
+/// DB 编解码同 `ClusterType`，见 `impl_string_backed_db_type`。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema, Default)]
 #[serde(rename_all = "snake_case")]
-#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 pub enum DeploymentMode {
     /// Shared-nothing architecture: BE nodes handle both storage and compute
     #[default]
     SharedNothing,
     /// Shared-data architecture: CN nodes for compute, separate object storage (S3/HDFS)
     SharedData,
+}
+
+impl DeploymentMode {
+    /// Parse from string (case-insensitive; unknown values fall back to default)
+    pub fn from_str_loose(s: &str) -> Self {
+        if s.eq_ignore_ascii_case("shared_data") { Self::SharedData } else { Self::SharedNothing }
+    }
 }
 
 impl std::fmt::Display for DeploymentMode {
@@ -69,6 +94,11 @@ pub struct Cluster {
     pub deployment_mode: DeploymentMode,
     #[serde(default)]
     pub cluster_type: ClusterType,
+    /// Admin user for permission execution (optional, only visible to org admins and super admins)
+    pub admin_user: Option<String>,
+    /// Admin password encrypted (optional, never serialized)
+    #[serde(skip_serializing)]
+    pub admin_password_encrypted: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -95,6 +125,12 @@ pub struct CreateClusterRequest {
     pub deployment_mode: DeploymentMode,
     #[serde(default)]
     pub cluster_type: ClusterType,
+    /// Admin user for permission execution (optional, only configurable by org admins and super admins)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub admin_user: Option<String>,
+    /// Admin password (optional, only configurable by org admins and super admins)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub admin_password: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -113,6 +149,13 @@ pub struct UpdateClusterRequest {
     pub organization_id: Option<i64>,
     pub deployment_mode: Option<DeploymentMode>,
     pub cluster_type: Option<ClusterType>,
+    /// Admin user for permission execution (optional, only configurable by org admins and super admins)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub admin_user: Option<String>,
+    /// Admin password (optional, only configurable by org admins and super admins)
+    /// If provided, will update admin_password_encrypted; if None, keeps existing value
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub admin_password: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -135,6 +178,9 @@ pub struct ClusterResponse {
     pub organization_id: Option<i64>,
     pub deployment_mode: DeploymentMode,
     pub cluster_type: ClusterType,
+    /// Admin user for permission execution (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub admin_user: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -201,6 +247,7 @@ impl From<Cluster> for ClusterResponse {
             organization_id: cluster.organization_id,
             deployment_mode: cluster.deployment_mode,
             cluster_type: cluster.cluster_type,
+            admin_user: cluster.admin_user,
         }
     }
 }
@@ -229,10 +276,23 @@ impl Cluster {
     /// Get password for authentication - returns None if password is empty
     /// This is used for proper handling of no-password clusters
     pub fn get_auth_password(&self) -> Option<&str> {
-        if self.password_encrypted.is_empty() {
-            None
-        } else {
-            Some(&self.password_encrypted)
+        if self.password_encrypted.is_empty() { None } else { Some(&self.password_encrypted) }
+    }
+
+    /// Get execution credentials for permission operations
+    /// Returns admin user credentials if configured, otherwise falls back to connection user
+    pub fn get_execution_credentials(&self) -> (&str, Option<&str>) {
+        if let (Some(admin_user), Some(admin_pass)) =
+            (&self.admin_user, &self.admin_password_encrypted)
+            && !admin_pass.is_empty()
+        {
+            return (admin_user, Some(admin_pass));
         }
+        // Fallback to connection user
+        (&self.username, self.get_auth_password())
     }
 }
+
+// 数据库编解码：与 String 同构（VARCHAR/TEXT 列），两后端通用
+crate::impl_string_backed_db_type!(ClusterType, |s| ClusterType::from_str_loose(s));
+crate::impl_string_backed_db_type!(DeploymentMode, |s| DeploymentMode::from_str_loose(s));

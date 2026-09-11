@@ -1,7 +1,10 @@
-import { Component, OnInit, OnDestroy, ChangeDetectionStrategy, ChangeDetectorRef, HostListener } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectionStrategy, ChangeDetectorRef, HostListener, inject } from '@angular/core';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { TabService, TabItem } from '../../../@core/services/tab.service';
+import { NgClass } from '@angular/common';
+import { NbIconModule } from '@nebular/theme';
+import { HeaderComponent } from '../header/header.component';
 
 type TabContextMenuAction = 'refresh' | 'close-left' | 'close-right' | 'close-others' | 'toggle-pin';
 
@@ -13,13 +16,16 @@ interface TabContextMenuItem {
 }
 
 @Component({
-  standalone: false,
-  selector: 'ngx-tab-bar',
-  templateUrl: './tab-bar.component.html',
-  styleUrls: ['./tab-bar.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush
+    selector: 'ngx-tab-bar',
+    templateUrl: './tab-bar.component.html',
+    styleUrls: ['./tab-bar.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush,
+    imports: [NbIconModule, NgClass, HeaderComponent]
 })
 export class TabBarComponent implements OnInit, OnDestroy {
+  private tabService = inject(TabService);
+  private cdr = inject(ChangeDetectorRef);
+
   tabs: TabItem[] = [];
   contextMenuVisible = false;
   contextMenuItems: TabContextMenuItem[] = [];
@@ -27,11 +33,6 @@ export class TabBarComponent implements OnInit, OnDestroy {
   contextMenuY = 0;
   private contextMenuTarget: TabItem | null = null;
   private destroy$ = new Subject<void>();
-
-  constructor(
-    private tabService: TabService,
-    private cdr: ChangeDetectorRef
-  ) {}
 
   ngOnInit(): void {
     this.tabService.tabs$

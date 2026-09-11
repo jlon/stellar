@@ -1,20 +1,41 @@
-import { Component, OnInit } from '@angular/core';
-import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { Component, OnInit, inject } from '@angular/core';
+import { FormBuilder, FormGroup, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { NbToastrService } from '@nebular/theme';
+import { NbToastrService, NbCardModule, NbFormFieldModule, NbSelectModule, NbOptionModule, NbIconModule, NbInputModule, NbCheckboxModule, NbButtonModule } from '@nebular/theme';
 import { ClusterService, Cluster } from '../../../../@core/data/cluster.service';
 import { OrganizationService, Organization } from '../../../../@core/data/organization.service';
 import { AuthService } from '../../../../@core/data/auth.service';
 import { ErrorHandler } from '../../../../@core/utils/error-handler';
 import { TabReuseService } from '../../../../@core/services/tab-reuse.service';
 
+
 @Component({
-  standalone: false,
-  selector: 'ngx-cluster-form',
-  templateUrl: './cluster-form.component.html',
-  styleUrls: ['./cluster-form.component.scss'],
+    selector: 'ngx-cluster-form',
+    templateUrl: './cluster-form.component.html',
+    styleUrls: ['./cluster-form.component.scss'],
+    imports: [
+    NbCardModule,
+    FormsModule,
+    ReactiveFormsModule,
+    NbFormFieldModule,
+    NbSelectModule,
+    NbOptionModule,
+    NbIconModule,
+    NbInputModule,
+    NbCheckboxModule,
+    NbButtonModule
+],
 })
 export class ClusterFormComponent implements OnInit {
+  private fb = inject(FormBuilder);
+  private clusterService = inject(ClusterService);
+  private organizationService = inject(OrganizationService);
+  private authService = inject(AuthService);
+  private router = inject(Router);
+  private route = inject(ActivatedRoute);
+  private toastrService = inject(NbToastrService);
+  private tabReuseService = inject(TabReuseService);
+
   clusterForm: FormGroup;
   loading = false;
   isEditMode = false;
@@ -26,18 +47,10 @@ export class ClusterFormComponent implements OnInit {
   organizations: Organization[] = [];
   currentOrganization?: Organization;
   isSuperAdmin = false;
+  isOrgAdmin = false;  // Check if user is organization admin
   organizationsLoading = false;
 
-  constructor(
-    private fb: FormBuilder,
-    private clusterService: ClusterService,
-    private organizationService: OrganizationService,
-    private authService: AuthService,
-    private router: Router,
-    private route: ActivatedRoute,
-    private toastrService: NbToastrService,
-    private tabReuseService: TabReuseService,
-  ) {
+  constructor() {
     this.clusterForm = this.fb.group({
       organization_id: [null],
       name: ['', [Validators.required, Validators.maxLength(100)]],
@@ -53,12 +66,18 @@ export class ClusterFormComponent implements OnInit {
       catalog: ['default_catalog'],
       deployment_mode: ['shared_nothing', [Validators.required]],
       tags: [''],
+      admin_user: [''],  // Admin user for permission execution (optional)
+      admin_password: [''],  // Admin password (optional)
     });
   }
 
   ngOnInit(): void {
     // Determine if current user is super admin
     this.isSuperAdmin = this.authService.isSuperAdmin();
+    
+    // Check if user is organization admin
+    const currentUser = this.authService.currentUserValue;
+    this.isOrgAdmin = currentUser?.is_org_admin === true || false;
 
     // Load organizations and current organization
     this.loadOrganizationData();
@@ -129,6 +148,7 @@ export class ClusterFormComponent implements OnInit {
           catalog: cluster.catalog,
           deployment_mode: cluster.deployment_mode,
           tags: cluster.tags.join(', '),
+          admin_user: cluster.admin_user || '',
         });
         // Password is not loaded for security
         this.clusterForm.get('password')?.clearValidators();
@@ -161,7 +181,7 @@ export class ClusterFormComponent implements OnInit {
       ? formValue.tags.split(',').map((t: string) => t.trim()).filter((t: string) => t)
       : [];
 
-    const clusterData = {
+    const clusterData: any = {
       ...formValue,
       tags,
       organization_id: this.clusterForm.get('organization_id')?.value,
@@ -170,6 +190,28 @@ export class ClusterFormComponent implements OnInit {
     // Remove password if in edit mode and password is empty
     if (this.isEditMode && !formValue.password) {
       delete clusterData.password;
+    }
+
+    // Only include admin_user fields if user is org admin or super admin
+    if (!this.isSuperAdmin && !this.isOrgAdmin) {
+      delete clusterData.admin_user;
+      delete clusterData.admin_password;
+    } else {
+      // If admin_user is provided, admin_password is required
+      if (clusterData.admin_user && !clusterData.admin_password) {
+        this.toastrService.danger('管理用户密码不能为空', '错误');
+        this.loading = false;
+        return;
+      }
+      // If admin_user is empty, clear admin_password
+      if (!clusterData.admin_user) {
+        delete clusterData.admin_user;
+        delete clusterData.admin_password;
+      }
+      // In edit mode, if admin_password is empty, don't send it (keep existing)
+      if (this.isEditMode && !clusterData.admin_password) {
+        delete clusterData.admin_password;
+      }
     }
 
     const request$ = this.isEditMode && this.clusterId

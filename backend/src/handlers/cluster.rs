@@ -1,14 +1,16 @@
+use crate::db::query as db_query;
 use axum::{
     Json,
     extract::{Path, State},
 };
 use std::sync::Arc;
+use stellar_macros::app_db;
 
 use crate::AppState;
 use crate::middleware::OrgContext;
 use crate::models::{ClusterHealth, ClusterResponse, CreateClusterRequest, UpdateClusterRequest};
 use crate::utils::{
-    check_org_access, check_org_reassignment, get_active_cluster_for_org, ApiResult, StringExt,
+    ApiResult, StringExt, check_org_access, check_org_reassignment, get_active_cluster_for_org,
 };
 use serde::Deserialize;
 
@@ -26,10 +28,11 @@ use serde::Deserialize;
     ),
     tag = "Clusters"
 )]
+#[app_db]
 pub async fn create_cluster(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
-    Json(req): Json<CreateClusterRequest>,
+    Json(mut req): Json<CreateClusterRequest>,
 ) -> ApiResult<Json<ClusterResponse>> {
     tracing::info!(
         "Cluster creation request: name={}, host={} by user {} (org: {:?}, super_admin: {})",
@@ -45,6 +48,34 @@ pub async fn create_cluster(
         req.fe_http_port,
         req.enable_ssl
     );
+
+    // Check if user is org admin or super admin for admin_user fields
+    let is_org_admin = if let Some(org_id) = org_ctx.organization_id {
+        let exists: Option<(i64,)> = db_query::query_as(
+            "SELECT 1 FROM user_roles ur 
+             JOIN roles r ON ur.role_id = r.id 
+             WHERE ur.user_id = ? AND r.code LIKE 'org_admin_%' AND r.organization_id = ?
+             LIMIT 1",
+        )
+        .bind(org_ctx.user_id)
+        .bind(org_id)
+        .fetch_optional(&state.db)
+        .await
+        .unwrap_or(None);
+        exists.is_some()
+    } else {
+        false
+    };
+
+    // Only allow org admins and super admins to set admin_user fields
+    if !org_ctx.is_super_admin && !is_org_admin {
+        req.admin_user = None;
+        req.admin_password = None;
+        tracing::debug!(
+            "User {} is not org admin or super admin, clearing admin_user fields",
+            org_ctx.user_id
+        );
+    }
 
     let cluster = state
         .cluster_service
@@ -67,8 +98,9 @@ pub async fn create_cluster(
     ),
     tag = "Clusters"
 )]
+#[app_db]
 pub async fn list_clusters(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<OrgContext>,
 ) -> ApiResult<Json<Vec<ClusterResponse>>> {
     tracing::debug!(
@@ -79,7 +111,7 @@ pub async fn list_clusters(
     );
 
     let clusters = state.cluster_service.list_clusters().await?;
-    
+
     // 使用 lambda 表达式进行过滤和转换
     let responses: Vec<ClusterResponse> = clusters
         .into_iter()
@@ -104,8 +136,9 @@ pub async fn list_clusters(
     ),
     tag = "Clusters"
 )]
+#[app_db]
 pub async fn get_active_cluster(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<OrgContext>,
 ) -> ApiResult<Json<ClusterResponse>> {
     tracing::debug!(
@@ -142,8 +175,9 @@ pub async fn get_active_cluster(
     ),
     tag = "Clusters"
 )]
+#[app_db]
 pub async fn activate_cluster(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Path(id): Path<i64>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<OrgContext>,
 ) -> ApiResult<Json<ClusterResponse>> {
@@ -185,8 +219,9 @@ pub async fn activate_cluster(
     ),
     tag = "Clusters"
 )]
+#[app_db]
 pub async fn get_cluster(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Path(id): Path<i64>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<OrgContext>,
 ) -> ApiResult<Json<ClusterResponse>> {
@@ -212,15 +247,44 @@ pub async fn get_cluster(
     ),
     tag = "Clusters"
 )]
+#[app_db]
 pub async fn update_cluster(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Path(id): Path<i64>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<OrgContext>,
-    Json(req): Json<UpdateClusterRequest>,
+    Json(mut req): Json<UpdateClusterRequest>,
 ) -> ApiResult<Json<ClusterResponse>> {
     let existing = state.cluster_service.get_cluster(id).await?;
     check_org_access(&org_ctx, existing.organization_id, "update clusters")?;
     check_org_reassignment(&org_ctx, req.organization_id, existing.organization_id, "cluster")?;
+
+    // Check if user is org admin or super admin for admin_user fields
+    let is_org_admin = if let Some(org_id) = org_ctx.organization_id {
+        let exists: Option<(i64,)> = db_query::query_as(
+            "SELECT 1 FROM user_roles ur 
+             JOIN roles r ON ur.role_id = r.id 
+             WHERE ur.user_id = ? AND r.code LIKE 'org_admin_%' AND r.organization_id = ?
+             LIMIT 1",
+        )
+        .bind(org_ctx.user_id)
+        .bind(org_id)
+        .fetch_optional(&state.db)
+        .await
+        .unwrap_or(None);
+        exists.is_some()
+    } else {
+        false
+    };
+
+    // Only allow org admins and super admins to set admin_user fields
+    if !org_ctx.is_super_admin && !is_org_admin {
+        req.admin_user = None;
+        req.admin_password = None;
+        tracing::debug!(
+            "User {} is not org admin or super admin, clearing admin_user fields",
+            org_ctx.user_id
+        );
+    }
 
     let cluster = state.cluster_service.update_cluster(id, req).await?;
     Ok(Json(cluster.into()))
@@ -242,8 +306,9 @@ pub async fn update_cluster(
     ),
     tag = "Clusters"
 )]
+#[app_db]
 pub async fn delete_cluster(
-    State(state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Path(id): Path<i64>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<OrgContext>,
 ) -> ApiResult<Json<serde_json::Value>> {
@@ -281,10 +346,11 @@ impl HealthCheckRequest {
     /// 从请求构建临时集群对象用于健康检查
     fn to_temp_cluster(&self) -> ApiResult<crate::models::Cluster> {
         use crate::models::Cluster;
-        
-        let fe_host = self.fe_host.clean()
-            .ok_or_else(|| crate::utils::ApiError::validation_error("Missing required field: fe_host"))?;
-        
+
+        let fe_host = self.fe_host.clean().ok_or_else(|| {
+            crate::utils::ApiError::validation_error("Missing required field: fe_host")
+        })?;
+
         Ok(Cluster {
             id: 0,
             name: "test".to_string(),
@@ -296,7 +362,10 @@ impl HealthCheckRequest {
             password_encrypted: self.password.clone().unwrap_or_default(),
             enable_ssl: self.enable_ssl,
             connection_timeout: 10,
-            catalog: self.catalog.clone().unwrap_or_else(|| "default_catalog".to_string()),
+            catalog: self
+                .catalog
+                .clone()
+                .unwrap_or_else(|| "default_catalog".to_string()),
             is_active: false,
             tags: None,
             created_at: chrono::Utc::now(),
@@ -305,6 +374,8 @@ impl HealthCheckRequest {
             organization_id: None,
             deployment_mode: crate::models::cluster::DeploymentMode::default(),
             cluster_type: crate::models::cluster::ClusterType::default(),
+            admin_user: None,
+            admin_password_encrypted: None,
         })
     }
 }
@@ -329,8 +400,9 @@ impl HealthCheckRequest {
     ),
     tag = "Clusters"
 )]
+#[app_db]
 pub async fn get_cluster_health(
-    State(state): State<Arc<crate::AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Path(id): Path<i64>,
     body: Option<Json<HealthCheckRequest>>,
 ) -> ApiResult<Json<ClusterHealth>> {
@@ -379,8 +451,9 @@ pub async fn get_cluster_health(
     ),
     tag = "Clusters"
 )]
+#[app_db]
 pub async fn test_cluster_connection(
-    State(state): State<Arc<crate::AppState>>,
+    State(state): State<Arc<AppState<DB>>>,
     Json(health_req): Json<HealthCheckRequest>,
 ) -> ApiResult<Json<ClusterHealth>> {
     tracing::info!(

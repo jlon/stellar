@@ -1,8 +1,8 @@
-import { Component, OnInit, OnDestroy, AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Subject, interval } from 'rxjs';
 import { takeUntil, switchMap, skip } from 'rxjs/operators';
-import { NbToastrService, NbThemeService } from '@nebular/theme';
+import { NbToastrService, NbThemeService, NbCardModule, NbBadgeModule, NbIconModule, NbActionsModule, NbSelectModule, NbOptionModule, NbButtonModule, NbSpinnerModule, NbTooltipModule, NbAlertModule, NbProgressBarModule } from '@nebular/theme';
 import { CountUp } from 'countup.js';
 import {
   OverviewService,
@@ -19,15 +19,42 @@ import {
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
 import { AuthService } from '../../../@core/data/auth.service';
 import { themeChartChrome, colorWithAlpha } from '../../../@core/utils/theme-color';
+import { NgClass, DatePipe } from '@angular/common';
+import { MetricCardGroupComponent } from './metric-card-group/metric-card-group.component';
+import { NgxEchartsDirective } from 'ngx-echarts';
 
 @Component({
-  standalone: false,
-  selector: 'ngx-cluster-overview',
-  templateUrl: './cluster-overview.component.html',
-  styleUrls: ['./cluster-overview.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'ngx-cluster-overview',
+    templateUrl: './cluster-overview.component.html',
+    styleUrls: ['./cluster-overview.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush,
+    imports: [
+    NbCardModule,
+    NbBadgeModule,
+    NbIconModule,
+    NbActionsModule,
+    NbSelectModule,
+    NbOptionModule,
+    NbButtonModule,
+    NbSpinnerModule,
+    NbTooltipModule,
+    MetricCardGroupComponent,
+    NgxEchartsDirective,
+    NbAlertModule,
+    NgClass,
+    NbProgressBarModule,
+    DatePipe
+],
 })
 export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewInit {
+  private overviewService = inject(OverviewService);
+  private clusterContext = inject(ClusterContextService);
+  private router = inject(Router);
+  private toastr = inject(NbToastrService);
+  private themeService = inject(NbThemeService);
+  private authService = inject(AuthService);
+  private cdr = inject(ChangeDetectorRef);
+
   overview: ExtendedClusterOverview | null = null;
   healthCards: HealthCard[] = [];
   performanceTrends: PerformanceTrends | null = null;
@@ -80,26 +107,6 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
     { label: '30秒', value: 30 },
     { label: '1分钟', value: 60 },
   ];
-
-  /**
-   * ✅ AUTO-REFRESH IMPLEMENTATION:
-   * - When user selects a refresh interval (15s, 30s, 1m), the component calls setupAutoRefresh()
-   * - setupAutoRefresh() creates an interval Observable that fires at the selected interval
-   * - Each interval trigger calls loadOverview(false) for silent refresh (no loading spinner)
-   * - User can toggle auto-refresh on/off or change interval anytime
-   * - When cluster changes, auto-refresh is restarted
-   * - Refresh intervals can be configured in the refreshIntervalOptions array above
-   */
-  
-  constructor(
-    private overviewService: OverviewService,
-    private clusterContext: ClusterContextService,
-    private router: Router,
-    private toastr: NbToastrService,
-    private themeService: NbThemeService,
-    private authService: AuthService,
-    private cdr: ChangeDetectorRef,
-  ) {}
 
   ngOnInit() {
     // Load Nebular theme colors

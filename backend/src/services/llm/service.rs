@@ -8,6 +8,8 @@ use serde::{Serialize, de::DeserializeOwned};
 use super::client::LLMClient;
 use super::models::*;
 use super::repository::LLMRepository;
+use crate::db::AppDb;
+use stellar_macros::app_impl;
 
 // ============================================================================
 // LLM Analysis Request/Response Traits
@@ -115,16 +117,17 @@ pub trait LLMService: Send + Sync {
 // ============================================================================
 
 /// LLM Service implementation
-pub struct LLMServiceImpl {
-    repository: LLMRepository,
+pub struct LLMServiceImpl<DB: AppDb> {
+    repository: LLMRepository<DB>,
     client: LLMClient,
     enabled: bool,
     cache_ttl_hours: i64,
 }
 
-impl LLMServiceImpl {
+#[app_impl]
+impl<DB: AppDb> LLMServiceImpl<DB> {
     /// Create a new LLM service
-    pub fn new(pool: sqlx::SqlitePool, enabled: bool, cache_ttl_hours: i64) -> Self {
+    pub fn new(pool: sqlx::Pool<DB>, enabled: bool, cache_ttl_hours: i64) -> Self {
         Self {
             repository: LLMRepository::new(pool),
             client: LLMClient::new(),
@@ -135,7 +138,7 @@ impl LLMServiceImpl {
 
     /// Create with custom client (for testing)
     pub fn with_client(
-        pool: sqlx::SqlitePool,
+        pool: sqlx::Pool<DB>,
         client: LLMClient,
         enabled: bool,
         cache_ttl_hours: i64,
@@ -145,7 +148,8 @@ impl LLMServiceImpl {
 }
 
 #[async_trait]
-impl LLMService for LLMServiceImpl {
+#[app_impl]
+impl<DB: AppDb> LLMService for LLMServiceImpl<DB> {
     fn is_available(&self) -> bool {
         self.enabled
     }

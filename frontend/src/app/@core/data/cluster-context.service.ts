@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { BehaviorSubject, Observable, of } from 'rxjs';
 import { catchError, tap, distinctUntilChanged } from 'rxjs/operators';
 import { Cluster, ClusterService } from './cluster.service';
@@ -29,16 +29,16 @@ import { AuthService } from './auth.service';
   providedIn: 'root',
 })
 export class ClusterContextService {
+  private clusterService = inject(ClusterService);
+  private permissionService = inject(PermissionService);
+  private authService = inject(AuthService);
+
   // Current active cluster
   private activeClusterSubject: BehaviorSubject<Cluster | null>;
   public activeCluster$: Observable<Cluster | null>;
   private isRefreshing = false; // Flag to prevent concurrent refresh calls
   
-  constructor(
-    private clusterService: ClusterService,
-    private permissionService: PermissionService,
-    private authService: AuthService,
-  ) {
+  constructor() {
     this.activeClusterSubject = new BehaviorSubject<Cluster | null>(null);
     this.activeCluster$ = this.activeClusterSubject.asObservable();
     

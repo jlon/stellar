@@ -1,8 +1,8 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { interval, Subject } from 'rxjs';
 import { takeUntil, switchMap } from 'rxjs/operators';
-import { NbToastrService } from '@nebular/theme';
-import { LocalDataSource } from 'angular2-smart-table';
+import { NbToastrService, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule } from '@nebular/theme';
+import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { NodeService, Backend } from '../../../@core/data/node.service';
 import { ClusterService, Cluster } from '../../../@core/data/cluster.service';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
@@ -10,13 +10,26 @@ import { ErrorHandler } from '../../../@core/utils/error-handler';
 import { ConfirmDialogService } from '../../../@core/services/confirm-dialog.service';
 import { MetricThresholds, renderMetricBadge } from '../../../@core/utils/metric-badge';
 
+
 @Component({
-  standalone: false,
-  selector: 'ngx-backends',
-  templateUrl: './backends.component.html',
-  styleUrls: ['./backends.component.scss'],
+    selector: 'ngx-backends',
+    templateUrl: './backends.component.html',
+    styleUrls: ['./backends.component.scss'],
+    imports: [
+    NbCardModule,
+    NbButtonModule,
+    NbIconModule,
+    NbSpinnerModule,
+    Angular2SmartTableModule
+],
 })
 export class BackendsComponent implements OnInit, OnDestroy {
+  private nodeService = inject(NodeService);
+  private clusterService = inject(ClusterService);
+  private clusterContext = inject(ClusterContextService);
+  private toastrService = inject(NbToastrService);
+  private confirmDialogService = inject(ConfirmDialogService);
+
   source: LocalDataSource = new LocalDataSource();
   clusterId: number;
   activeCluster: Cluster | null = null;
@@ -185,13 +198,7 @@ export class BackendsComponent implements OnInit, OnDestroy {
       });
   }
 
-  constructor(
-    private nodeService: NodeService,
-    private clusterService: ClusterService,
-    private clusterContext: ClusterContextService,
-    private toastrService: NbToastrService,
-    private confirmDialogService: ConfirmDialogService,
-  ) {
+  constructor() {
     // Get clusterId from ClusterContextService
     this.clusterId = this.clusterContext.getActiveClusterId() || 0;
   }

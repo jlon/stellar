@@ -1,27 +1,32 @@
+use crate::db::AppDb;
+use crate::db::query as db_query;
 use crate::models::{CreateUserRequest, LoginRequest, UpdateUserRequest, User, UserResponse};
 use crate::utils::{ApiError, ApiResult, JwtUtil};
 use bcrypt::{DEFAULT_COST, hash, verify};
-use sqlx::SqlitePool;
+use sqlx::Pool;
 use std::sync::Arc;
+use stellar_macros::app_impl;
 
 #[derive(Clone)]
-pub struct AuthService {
-    pool: SqlitePool,
+pub struct AuthService<DB: AppDb> {
+    pool: Pool<DB>,
     jwt_util: Arc<JwtUtil>,
 }
 
-impl AuthService {
-    pub fn new(pool: SqlitePool, jwt_util: Arc<JwtUtil>) -> Self {
+#[app_impl]
+impl<DB: AppDb> AuthService<DB> {
+    pub fn new(pool: Pool<DB>, jwt_util: Arc<JwtUtil>) -> Self {
         Self { pool, jwt_util }
     }
 
     pub async fn register(&self, req: CreateUserRequest) -> ApiResult<User> {
         tracing::debug!("Checking if username exists: {}", req.username);
 
-        let existing_user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE username = ?")
-            .bind(&req.username)
-            .fetch_optional(&self.pool)
-            .await?;
+        let existing_user: Option<User> =
+            db_query::query_as("SELECT * FROM users WHERE username = ?")
+                .bind(&req.username)
+                .fetch_optional(&self.pool)
+                .await?;
 
         if existing_user.is_some() {
             tracing::warn!("Registration failed: username '{}' already exists", req.username);
@@ -37,19 +42,17 @@ impl AuthService {
 
         tracing::debug!("Inserting user into database: {}", req.username);
 
-        let result = sqlx::query(
+        let user_id = db_query::query(
             "INSERT INTO users (username, password_hash, email, avatar) VALUES (?, ?, ?, ?)",
         )
         .bind(&req.username)
         .bind(&password_hash)
         .bind(&req.email)
         .bind(&req.avatar)
-        .execute(&self.pool)
+        .insert_id(&self.pool)
         .await?;
 
-        let user_id = result.last_insert_rowid();
-
-        let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?")
+        let user: User = db_query::query_as("SELECT * FROM users WHERE id = ?")
             .bind(user_id)
             .fetch_one(&self.pool)
             .await?;
@@ -62,7 +65,7 @@ impl AuthService {
     pub async fn login(&self, req: LoginRequest) -> ApiResult<(User, String)> {
         tracing::debug!("Looking up user: {}", req.username);
 
-        let user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE username = ?")
+        let user: Option<User> = db_query::query_as("SELECT * FROM users WHERE username = ?")
             .bind(&req.username)
             .fetch_optional(&self.pool)
             .await?;
@@ -100,7 +103,7 @@ impl AuthService {
     }
 
     pub async fn get_user_by_id(&self, user_id: i64) -> ApiResult<User> {
-        let user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE id = ?")
+        let user: Option<User> = db_query::query_as("SELECT * FROM users WHERE id = ?")
             .bind(user_id)
             .fetch_optional(&self.pool)
             .await?;
@@ -131,7 +134,7 @@ impl AuthService {
                 ApiError::internal_error(format!("Failed to hash password: {}", e))
             })?;
 
-            sqlx::query(
+            db_query::query(
                 "UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             )
             .bind(&new_password_hash)
@@ -144,20 +147,24 @@ impl AuthService {
 
         if let Some(email) = &req.email {
             tracing::debug!("Updating email for user_id: {}", user_id);
-            sqlx::query("UPDATE users SET email = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-                .bind(email)
-                .bind(user_id)
-                .execute(&self.pool)
-                .await?;
+            db_query::query(
+                "UPDATE users SET email = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            )
+            .bind(email)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
         }
 
         if let Some(avatar) = &req.avatar {
             tracing::debug!("Updating avatar for user_id: {}", user_id);
-            sqlx::query("UPDATE users SET avatar = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-                .bind(avatar)
-                .bind(user_id)
-                .execute(&self.pool)
-                .await?;
+            db_query::query(
+                "UPDATE users SET avatar = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            )
+            .bind(avatar)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
         }
 
         let updated_user = self.get_user_by_id(user_id).await?;
@@ -171,7 +178,7 @@ impl AuthService {
     }
 
     pub async fn is_user_super_admin(&self, user_id: i64) -> ApiResult<bool> {
-        let exists: Option<i64> = sqlx::query_scalar(
+        let exists: Option<i64> = db_query::query_scalar(
             r#"
             SELECT ur.role_id
             FROM user_roles ur
@@ -194,7 +201,7 @@ impl AuthService {
     }
 
     async fn is_user_org_admin(&self, user_id: i64) -> ApiResult<bool> {
-        let exists: Option<(i64,)> = sqlx::query_as(
+        let exists: Option<(i64,)> = db_query::query_as(
             "SELECT 1 FROM user_roles ur 
              JOIN roles r ON ur.role_id = r.id 
              WHERE ur.user_id = ? AND r.code LIKE 'org_admin_%' 

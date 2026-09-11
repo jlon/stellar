@@ -40,93 +40,110 @@
   </nb-card-header>
 
   <nb-card-body>
-    <div *ngIf="loading" class="text-center">
-      <nb-spinner status="primary"></nb-spinner>
-    </div>
+    @if (loading) {
+      <div class="text-center">
+        <nb-spinner status="primary"></nb-spinner>
+      </div>
+    }
 
-    <angular2-smart-table
-      *ngIf="!loading && filteredPermissions.length > 0"
-      [settings]="settings"
-      [source]="source"
-      (edit)="onEditRow($event)">
-    </angular2-smart-table>
+    @if (!loading && filteredPermissions.length > 0) {
+      <angular2-smart-table
+        [settings]="settings"
+        [source]="source"
+        (edit)="onEditRow($event)">
+      </angular2-smart-table>
+    }
 
-    <div *ngIf="!loading && filteredPermissions.length === 0" class="text-center p-4">
-      <p class="text-hint">暂无权限数据</p>
-      <button nbButton status="primary" size="small" (click)="switchToRequest.emit({type: 'grant_permission'})">
-        <nb-icon icon="plus-outline"></nb-icon>
-        申请权限
-      </button>
-    </div>
+    @if (!loading && filteredPermissions.length === 0) {
+      <div class="text-center p-4">
+        <p class="text-hint">暂无权限数据</p>
+        <button nbButton status="primary" size="small" (click)="switchToRequest.emit({type: 'grant_permission'})">
+          <nb-icon icon="plus-outline"></nb-icon>
+          申请权限
+        </button>
+      </div>
+    }
   </nb-card-body>
 </nb-card>
 
 <ng-template #detailDialog let-ref="dialogRef">
   <nb-card>
     <nb-card-header>{{ isRolePermission ? '角色权限详情' : '权限详情' }}</nb-card-header>
-    <nb-card-body *ngIf="selectedPermission">
-      <nb-list>
-        <nb-list-item>
-          <span class="text-hint">权限类型</span>
-          <nb-badge [text]="selectedPermission.privilege_type" status="primary"></nb-badge>
-        </nb-list-item>
-        <nb-list-item>
-          <span class="text-hint">资源类型</span>
-          <nb-badge [text]="selectedPermission.resource_type" status="info"></nb-badge>
-        </nb-list-item>
-        <nb-list-item>
-          <span class="text-hint">资源路径</span>
-          <span>{{ selectedPermission.resource_path }}</span>
-        </nb-list-item>
-        <nb-list-item>
-          <span class="text-hint">授权方式</span>
-          <span>{{ selectedPermission.granted_role || '直接授权' }}</span>
-        </nb-list-item>
-        <nb-list-item>
-          <span class="text-hint">风险等级</span>
-          <nb-badge
-            [text]="getRiskLabel(selectedPermission.risk_level)"
-            [status]="getRiskColor(selectedPermission.risk_level)">
-          </nb-badge>
-        </nb-list-item>
-      </nb-list>
-
-      <nb-accordion>
-        <nb-accordion-item [expanded]="true">
-          <nb-accordion-item-header>权限说明</nb-accordion-item-header>
-          <nb-accordion-item-body>
-            <p>{{ getPrivilegeDescription(selectedPermission.privilege_type) }}</p>
-            <p class="text-hint">
-              影响范围：{{ getResourceScopeDescription(selectedPermission.resource_type, selectedPermission.resource_path) }}
-            </p>
-            <p class="text-hint" *ngIf="getPrivilegeUsage(selectedPermission.privilege_type)">
-              使用场景：{{ getPrivilegeUsage(selectedPermission.privilege_type) }}
-            </p>
-          </nb-accordion-item-body>
-        </nb-accordion-item>
-
-        <nb-accordion-item *ngIf="isRolePermission" [expanded]="true">
-          <nb-accordion-item-header>
-            角色 "{{ selectedPermission.resource_path }}" 包含的权限
-          </nb-accordion-item-header>
-          <nb-accordion-item-body>
-            <div *ngIf="loadingRolePermissions" class="text-center">
-              <nb-spinner size="small" status="primary"></nb-spinner>
-            </div>
-            <p *ngIf="!loadingRolePermissions && rolePermissions.length === 0" class="text-hint">
-              该角色暂无权限或无法查询
-            </p>
-            <nb-list *ngIf="!loadingRolePermissions && rolePermissions.length > 0">
-              <nb-list-item *ngFor="let perm of rolePermissions">
-                <nb-badge [text]="perm.privilege_type" status="primary"></nb-badge>
-                <span class="ml-2">{{ perm.resource_type }}</span>
-                <span class="text-hint ml-2">{{ perm.resource_path }}</span>
-              </nb-list-item>
-            </nb-list>
-          </nb-accordion-item-body>
-        </nb-accordion-item>
-      </nb-accordion>
-    </nb-card-body>
+    @if (selectedPermission) {
+      <nb-card-body>
+        <nb-list>
+          <nb-list-item>
+            <span class="text-hint">权限类型</span>
+            <nb-badge [text]="selectedPermission.privilege_type" status="primary"></nb-badge>
+          </nb-list-item>
+          <nb-list-item>
+            <span class="text-hint">资源类型</span>
+            <nb-badge [text]="selectedPermission.resource_type" status="info"></nb-badge>
+          </nb-list-item>
+          <nb-list-item>
+            <span class="text-hint">资源路径</span>
+            <span>{{ selectedPermission.resource_path }}</span>
+          </nb-list-item>
+          <nb-list-item>
+            <span class="text-hint">授权方式</span>
+            <span>{{ selectedPermission.granted_role || '直接授权' }}</span>
+          </nb-list-item>
+          <nb-list-item>
+            <span class="text-hint">风险等级</span>
+            <nb-badge
+              [text]="getRiskLabel(selectedPermission.risk_level)"
+              [status]="getRiskColor(selectedPermission.risk_level)">
+            </nb-badge>
+          </nb-list-item>
+        </nb-list>
+        <nb-accordion>
+          <nb-accordion-item [expanded]="true">
+            <nb-accordion-item-header>权限说明</nb-accordion-item-header>
+            <nb-accordion-item-body>
+              <p>{{ getPrivilegeDescription(selectedPermission.privilege_type) }}</p>
+              <p class="text-hint">
+                影响范围：{{ getResourceScopeDescription(selectedPermission.resource_type, selectedPermission.resource_path) }}
+              </p>
+              @if (getPrivilegeUsage(selectedPermission.privilege_type)) {
+                <p class="text-hint">
+                  使用场景：{{ getPrivilegeUsage(selectedPermission.privilege_type) }}
+                </p>
+              }
+            </nb-accordion-item-body>
+          </nb-accordion-item>
+          @if (isRolePermission) {
+            <nb-accordion-item [expanded]="true">
+              <nb-accordion-item-header>
+                角色 "{{ selectedPermission.resource_path }}" 包含的权限
+              </nb-accordion-item-header>
+              <nb-accordion-item-body>
+                @if (loadingRolePermissions) {
+                  <div class="text-center">
+                    <nb-spinner size="small" status="primary"></nb-spinner>
+                  </div>
+                }
+                @if (!loadingRolePermissions && rolePermissions.length === 0) {
+                  <p class="text-hint">
+                    该角色暂无权限或无法查询
+                  </p>
+                }
+                @if (!loadingRolePermissions && rolePermissions.length > 0) {
+                  <nb-list>
+                    @for (perm of rolePermissions; track perm) {
+                      <nb-list-item>
+                        <nb-badge [text]="perm.privilege_type" status="primary"></nb-badge>
+                        <span class="ml-2">{{ perm.resource_type }}</span>
+                        <span class="text-hint ml-2">{{ perm.resource_path }}</span>
+                      </nb-list-item>
+                    }
+                  </nb-list>
+                }
+              </nb-accordion-item-body>
+            </nb-accordion-item>
+          }
+        </nb-accordion>
+      </nb-card-body>
+    }
     <nb-card-footer class="d-flex justify-content-end">
       <button nbButton ghost status="basic" class="mr-2" (click)="ref.close()">关闭</button>
       <button nbButton status="danger" outline (click)="requestRevoke(selectedPermission); ref.close()">

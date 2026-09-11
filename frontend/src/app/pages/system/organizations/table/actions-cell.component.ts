@@ -1,15 +1,15 @@
-import { Component, EventEmitter, Input, Output, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
+import { Component, EventEmitter, Input, Output, OnInit, OnDestroy, ChangeDetectorRef, inject } from '@angular/core';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
 import { Organization } from '../../../../@core/data/organization.service';
 import { AuthService } from '../../../../@core/data/auth.service';
 import { PermissionService } from '../../../../@core/data/permission.service';
+import { NbButtonModule, NbTooltipModule, NbIconModule } from '@nebular/theme';
 
 @Component({
-  standalone: false,
-  selector: 'ngx-organizations-actions-cell',
-  template: `
+    selector: 'ngx-organizations-actions-cell',
+    template: `
     <div class="actions-container">
       <button
         nbButton
@@ -39,8 +39,8 @@ import { PermissionService } from '../../../../@core/data/permission.service';
       </button>
     </div>
   `,
-  styles: [
-    `
+    styles: [
+        `
       .actions-container {
         display: flex;
         justify-content: center;
@@ -60,20 +60,23 @@ import { PermissionService } from '../../../../@core/data/permission.service';
         transform: translateY(0);
       }
     `,
-  ],
+    ],
+    imports: [
+        NbButtonModule,
+        NbTooltipModule,
+        NbIconModule,
+    ],
 })
 export class OrganizationsActionsCellComponent implements OnInit, OnDestroy {
+  private authService = inject(AuthService);
+  private permissionService = inject(PermissionService);
+  private cdr = inject(ChangeDetectorRef);
+
   @Input() rowData!: Organization;
   @Output() edit = new EventEmitter<Organization>();
   @Output() delete = new EventEmitter<Organization>();
 
   private destroy$ = new Subject<void>();
-
-  constructor(
-    private authService: AuthService,
-    private permissionService: PermissionService,
-    private cdr: ChangeDetectorRef,
-  ) {}
 
   ngOnInit(): void {
     this.permissionService.permissions$

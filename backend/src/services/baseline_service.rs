@@ -48,7 +48,7 @@ impl BaselineService {
     /// 3. Falls back to defaults if cache miss
     ///
     /// # Example
-    /// ```rust
+    /// ```ignore
     /// let baseline = service.get_baseline(cluster_id, QueryComplexity::Medium);
     /// let threshold = baseline.stats.p95_ms + 2.0 * baseline.stats.std_dev_ms;
     /// ```
@@ -388,7 +388,7 @@ pub struct RefreshResult {
 /// Initialize baseline system (call once at application startup)
 ///
 /// # Example
-/// ```rust
+/// ```ignore
 /// // In main.rs or startup code
 /// init_baseline_system();
 ///

@@ -1,10 +1,11 @@
-import { Component, Input, OnInit, OnDestroy } from '@angular/core';
-import { FormBuilder, FormGroup, Validators } from '@angular/forms';
-import { NbDialogRef } from '@nebular/theme';
+import { Component, Input, OnInit, OnDestroy, inject } from '@angular/core';
+import { FormBuilder, FormGroup, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { NbDialogRef, NbCardModule, NbInputModule, NbSelectModule, NbOptionModule, NbButtonModule } from '@nebular/theme';
 import { Subject } from 'rxjs';
 
 import { Organization } from '../../../../@core/data/organization.service';
 import { UserWithRoles } from '../../../../@core/data/user.service';
+
 
 export type OrganizationFormMode = 'create' | 'edit';
 
@@ -17,12 +18,23 @@ export interface OrganizationFormDialogResult {
 }
 
 @Component({
-  standalone: false,
-  selector: 'ngx-organization-form-dialog',
-  templateUrl: './organization-form-dialog.component.html',
-  styleUrls: ['./organization-form-dialog.component.scss'],
+    selector: 'ngx-organization-form-dialog',
+    templateUrl: './organization-form-dialog.component.html',
+    styleUrls: ['./organization-form-dialog.component.scss'],
+    imports: [
+    NbCardModule,
+    FormsModule,
+    ReactiveFormsModule,
+    NbInputModule,
+    NbSelectModule,
+    NbOptionModule,
+    NbButtonModule
+],
 })
 export class OrganizationFormDialogComponent implements OnInit, OnDestroy {
+  private dialogRef = inject<NbDialogRef<OrganizationFormDialogComponent>>(NbDialogRef);
+  private fb = inject(FormBuilder);
+
   @Input() mode: OrganizationFormMode = 'create';
   @Input() organization?: Organization;
   @Input() availableUsers: UserWithRoles[] = [];
@@ -31,10 +43,7 @@ export class OrganizationFormDialogComponent implements OnInit, OnDestroy {
   
   private destroy$ = new Subject<void>();
 
-  constructor(
-    private dialogRef: NbDialogRef<OrganizationFormDialogComponent>,
-    private fb: FormBuilder,
-  ) {
+  constructor() {
     this.form = this.fb.group({
       code: ['', [Validators.required, Validators.maxLength(50), Validators.pattern(/^[a-z0-9_]+$/)]],
       name: ['', [Validators.required, Validators.maxLength(100)]],

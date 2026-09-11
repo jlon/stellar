@@ -39,7 +39,7 @@ Stellar is a professional, enterprise-grade OLAP database cluster management pla
 git clone https://github.com/jlon/stellar.git
 cd stellar
 
-# 2. Build and package
+# 2. Build and package (use make build-static for a fully static single binary)
 make build
 
 # 3. Start the service
@@ -152,6 +152,58 @@ Define and manage user roles with customizable permission sets.
 
 ## Configuration
 
+### Database Backend (SQLite / MySQL / PostgreSQL)
+
+Stellar stores its own metadata in SQLite (zero-configuration), MySQL/MariaDB, or PostgreSQL. The backend is selected **at runtime** by the URL scheme — no rebuild needed.
+
+**Switch to MySQL** (3 steps):
+
+```bash
+# 1. Create the database (table schema is created automatically by migrations on startup;
+#    you do NOT need to create any tables manually)
+mysql -u root -p -e "CREATE DATABASE stellar CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+
+# 2. Point the URL to it in conf/config.toml
+[database]
+url = "mysql://user:pass@localhost:3306/stellar?charset=utf8mb4"
+
+# 3. Start the service. The MySQL migrations embedded in the binary run on first
+#    connect and build the full schema; a friendly error is shown if the database is missing.
+```
+
+Environment variable override also works: `APP_DATABASE_URL="mysql://..."`
+
+**Switch to PostgreSQL** (3 steps):
+
+```bash
+# 1. Create the database (tables are created automatically by startup migrations)
+createdb -h localhost -U postgres stellar
+
+# 2. Point the URL to it in conf/config.toml
+[database]
+url = "postgres://user:pass@localhost:5432/stellar"
+
+# 3. Start the service. The PostgreSQL migrations embedded in the binary run on first
+#    connect and build the full schema. Database names must be created first; a missing
+#    database produces a clear error.
+```
+
+`postgresql://...` is accepted as an alias. The same environment override applies: `APP_DATABASE_URL="postgres://..."`.
+
+**Schema changes (migrations)**:
+
+- Migrations are **embedded into the binary at compile time** (`sqlx::migrate!`, one
+  static set per backend). On startup the embedded migrations for the selected backend
+  run automatically; the applied set is tracked in the `_sqlmigrations` table.
+- To change the schema, add a NEW numbered file (e.g. `backend/migrations/mysql/20260915000000_add_foo.sql`
+  and the SQLite/MySQL/PostgreSQL counterparts), containing only the change (e.g. `ALTER TABLE ...`).
+  Never edit an already-applied file — sqlx rejects it by checksum. After changing a
+  migration you must **rebuild** the binary (and image/package); there are no runtime
+  migration files in the distribution.
+- All dialect directories must be kept in sync (MySQL uses `AUTO_INCREMENT`, SQLite uses `AUTOINCREMENT`,
+  and PostgreSQL uses `BIGSERIAL`/`RETURNING`,
+  and so on — see `docs/MYSQL_SUPPORT_DESIGN.md` for the dialect checklist).
+
 ### StarRocks User Permissions (Important)
 
 **Before adding a cluster**, you need to create a dedicated monitoring user with appropriate read-only permissions in StarRocks.
@@ -177,7 +229,12 @@ host = "0.0.0.0"
 port = 8080
 
 [database]
+# SQLite (default, zero-configuration)
 url = "sqlite://data/stellar.db"
+# MySQL (alternative): url = "mysql://user:pass@localhost:3306/stellar?charset=utf8mb4"
+# PostgreSQL (alternative): url = "postgres://user:pass@localhost:5432/stellar"
+# The backend is selected at runtime by the URL scheme (sqlite:// / mysql:// / postgres://).
+# Migrations are embedded into the binary at compile time and run automatically.
 
 [auth]
 jwt_secret = "your-secret-key-change-in-production"
@@ -276,7 +333,7 @@ Stellar 是一个专业的、企业级的 OLAP 数据库集群管理平台，提
 git clone https://github.com/jlon/stellar.git
 cd stellar
 
-# 2. 构建和打包
+# 2. 构建和打包（发布推荐 make build-static：musl 全静态单二进制）
 make build
 
 # 3. 启动服务
@@ -414,7 +471,12 @@ host = "0.0.0.0"
 port = 8080
 
 [database]
+# SQLite (default, zero-configuration)
 url = "sqlite://data/stellar.db"
+# MySQL (alternative): url = "mysql://user:pass@localhost:3306/stellar?charset=utf8mb4"
+# PostgreSQL (alternative): url = "postgres://user:pass@localhost:5432/stellar"
+# The backend is selected at runtime by the URL scheme (sqlite:// / mysql:// / postgres://).
+# Migrations are embedded into the binary at compile time and run automatically.
 
 [auth]
 jwt_secret = "your-secret-key-change-in-production"

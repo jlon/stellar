@@ -1,17 +1,22 @@
+use crate::db::query as db_query;
 // Metrics Collector Service
 // Purpose: Periodically collect metrics from StarRocks clusters and store them in SQLite
 // Design Ref: ARCHITECTURE_ANALYSIS_AND_INTEGRATION.md
 
+use crate::db::AppDb;
+use crate::db::SqlDialect;
+use crate::db::dialect::RowsAffected;
 use crate::models::Cluster;
 use crate::services::mysql_pool_manager::MySQLPoolManager;
 use crate::services::{ClusterService, StarRocksClient};
 use crate::utils::{ApiResult, ScheduledTask};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
+use sqlx::Pool;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use stellar_macros::app_impl;
 use utoipa::ToSchema;
 
 /// Aggregated metrics from database queries
@@ -89,18 +94,19 @@ pub struct MetricsSnapshot {
 }
 
 #[derive(Clone)]
-pub struct MetricsCollectorService {
-    db: SqlitePool,
-    cluster_service: Arc<ClusterService>,
+pub struct MetricsCollectorService<DB: AppDb> {
+    db: Pool<DB>,
+    cluster_service: Arc<ClusterService<DB>>,
     mysql_pool_manager: Arc<MySQLPoolManager>,
     retention_days: i64,
 }
 
-impl MetricsCollectorService {
+#[app_impl]
+impl<DB: AppDb> MetricsCollectorService<DB> {
     /// Create a new MetricsCollectorService
     pub fn new(
-        db: SqlitePool,
-        cluster_service: Arc<ClusterService>,
+        db: Pool<DB>,
+        cluster_service: Arc<ClusterService<DB>>,
         mysql_pool_manager: Arc<MySQLPoolManager>,
         retention_days: i64,
     ) -> Self {
@@ -122,11 +128,12 @@ impl MetricsCollectorService {
         let today = Utc::now().date_naive();
         let yesterday = today - chrono::Duration::days(1);
 
-        let count: (i64,) =
-            sqlx::query_as("SELECT COUNT(*) as count FROM daily_snapshots WHERE snapshot_date = ?")
-                .bind(yesterday)
-                .fetch_one(&self.db)
-                .await?;
+        let count: (i64,) = db_query::query_as(
+            "SELECT COUNT(*) as count FROM daily_snapshots WHERE snapshot_date = ?",
+        )
+        .bind(yesterday)
+        .fetch_one(&self.db)
+        .await?;
 
         if count.0 == 0 {
             tracing::info!("Running daily aggregation for date: {}", yesterday);
@@ -423,7 +430,7 @@ impl MetricsCollectorService {
 
     /// Save metrics snapshot to database
     async fn save_snapshot(&self, snapshot: &MetricsSnapshot) -> ApiResult<()> {
-        sqlx::query(
+        db_query::query(
             r#"
             INSERT INTO metrics_snapshots (
                 cluster_id, collected_at,
@@ -508,7 +515,7 @@ impl MetricsCollectorService {
     async fn cleanup_old_metrics(&self) -> Result<(), sqlx::Error> {
         let cutoff_date = Utc::now() - chrono::Duration::days(self.retention_days);
 
-        let result = sqlx::query("DELETE FROM metrics_snapshots WHERE collected_at < ?")
+        let result = db_query::query("DELETE FROM metrics_snapshots WHERE collected_at < ?")
             .bind(cutoff_date)
             .execute(&self.db)
             .await?;
@@ -529,7 +536,7 @@ impl MetricsCollectorService {
         #[derive(sqlx::FromRow)]
         struct SnapshotRow {
             cluster_id: i64,
-            collected_at: chrono::NaiveDateTime,
+            collected_at: chrono::DateTime<Utc>,
             qps: f64,
             rps: f64,
             query_latency_p50: f64,
@@ -571,7 +578,7 @@ impl MetricsCollectorService {
             io_write_rate: f64,
         }
 
-        let row: Option<SnapshotRow> = sqlx::query_as(
+        let row: Option<SnapshotRow> = db_query::query_as(
             r#"
             SELECT * FROM metrics_snapshots
             WHERE cluster_id = ?
@@ -586,7 +593,7 @@ impl MetricsCollectorService {
         if let Some(r) = row {
             Ok(Some(MetricsSnapshot {
                 cluster_id: r.cluster_id,
-                collected_at: r.collected_at.and_utc(),
+                collected_at: r.collected_at,
                 qps: r.qps,
                 rps: r.rps,
                 query_latency_p50: r.query_latency_p50,
@@ -656,7 +663,8 @@ fn parse_storage_size(size_str: &str) -> Option<i64> {
     Some(bytes as i64)
 }
 
-impl MetricsCollectorService {
+#[app_impl]
+impl<DB: AppDb> MetricsCollectorService<DB> {
     /// Run daily aggregation for all clusters
     async fn run_daily_aggregation_all_clusters(&self) -> Result<(), anyhow::Error> {
         let clusters = self.cluster_service.list_clusters().await?;
@@ -693,7 +701,7 @@ impl MetricsCollectorService {
             yesterday_end
         );
 
-        let snapshots = sqlx::query_as::<_, MetricsAggregation>(
+        let snapshots = db_query::query_as::<_, MetricsAggregation>(
             r#"
             SELECT
                 AVG(qps) as avg_qps,
@@ -744,57 +752,62 @@ impl MetricsCollectorService {
         let data_size_end = snapshots.max_disk_used_bytes.unwrap_or(0.0) as i64;
         let data_growth_bytes = 0i64;
 
-        sqlx::query(
-            r#"
-            INSERT INTO daily_snapshots (
-                cluster_id, snapshot_date,
-                avg_qps, max_qps, min_qps,
-                avg_latency_p99, max_latency_p99,
-                total_queries, total_errors, error_rate,
-                avg_cpu_usage, max_cpu_usage,
-                avg_memory_usage, max_memory_usage,
-                avg_disk_usage_pct, max_disk_usage_pct,
-                data_size_end, data_growth_bytes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(cluster_id, snapshot_date) DO UPDATE SET
-                avg_qps = excluded.avg_qps,
-                max_qps = excluded.max_qps,
-                min_qps = excluded.min_qps,
-                avg_latency_p99 = excluded.avg_latency_p99,
-                max_latency_p99 = excluded.max_latency_p99,
-                total_queries = excluded.total_queries,
-                total_errors = excluded.total_errors,
-                error_rate = excluded.error_rate,
-                avg_cpu_usage = excluded.avg_cpu_usage,
-                max_cpu_usage = excluded.max_cpu_usage,
-                avg_memory_usage = excluded.avg_memory_usage,
-                max_memory_usage = excluded.max_memory_usage,
-                avg_disk_usage_pct = excluded.avg_disk_usage_pct,
-                max_disk_usage_pct = excluded.max_disk_usage_pct,
-                data_size_end = excluded.data_size_end,
-                data_growth_bytes = excluded.data_growth_bytes
-            "#,
-        )
-        .bind(cluster_id)
-        .bind(yesterday)
-        .bind(avg_qps)
-        .bind(max_qps)
-        .bind(min_qps)
-        .bind(avg_latency_p99)
-        .bind(max_latency_p99)
-        .bind(total_queries)
-        .bind(total_errors)
-        .bind(error_rate)
-        .bind(avg_cpu_usage)
-        .bind(max_cpu_usage)
-        .bind(avg_memory_usage)
-        .bind(max_memory_usage)
-        .bind(avg_disk_usage_pct)
-        .bind(max_disk_usage_pct)
-        .bind(data_size_end)
-        .bind(data_growth_bytes)
-        .execute(&self.db)
-        .await?;
+        let upsert_sql = format!(
+            "INSERT INTO daily_snapshots (\
+              cluster_id, snapshot_date,\
+              avg_qps, max_qps, min_qps,\
+              avg_latency_p99, max_latency_p99,\
+              total_queries, total_errors, error_rate,\
+              avg_cpu_usage, max_cpu_usage,\
+              avg_memory_usage, max_memory_usage,\
+              avg_disk_usage_pct, max_disk_usage_pct,\
+              data_size_end, data_growth_bytes\
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) {}",
+            <DB as SqlDialect>::upsert_suffix(
+                &["cluster_id", "snapshot_date"],
+                &[
+                    "avg_qps",
+                    "max_qps",
+                    "min_qps",
+                    "avg_latency_p99",
+                    "max_latency_p99",
+                    "total_queries",
+                    "total_errors",
+                    "error_rate",
+                    "avg_cpu_usage",
+                    "max_cpu_usage",
+                    "avg_memory_usage",
+                    "max_memory_usage",
+                    "avg_disk_usage_pct",
+                    "max_disk_usage_pct",
+                    "data_size_end",
+                    "data_growth_bytes",
+                ],
+                &[],
+            ),
+        );
+
+        db_query::query(&upsert_sql)
+            .bind(cluster_id)
+            .bind(yesterday)
+            .bind(avg_qps)
+            .bind(max_qps)
+            .bind(min_qps)
+            .bind(avg_latency_p99)
+            .bind(max_latency_p99)
+            .bind(total_queries)
+            .bind(total_errors)
+            .bind(error_rate)
+            .bind(avg_cpu_usage)
+            .bind(max_cpu_usage)
+            .bind(avg_memory_usage)
+            .bind(max_memory_usage)
+            .bind(avg_disk_usage_pct)
+            .bind(max_disk_usage_pct)
+            .bind(data_size_end)
+            .bind(data_growth_bytes)
+            .execute(&self.db)
+            .await?;
 
         tracing::info!(
             "Daily aggregation completed for cluster {} (date: {})",
@@ -979,7 +992,7 @@ impl MetricsCollectorService {
     async fn cleanup_old_daily_snapshots(&self) -> Result<(), sqlx::Error> {
         let cutoff_date = Utc::now().date_naive() - chrono::Duration::days(90);
 
-        let result = sqlx::query("DELETE FROM daily_snapshots WHERE snapshot_date < ?")
+        let result = db_query::query("DELETE FROM daily_snapshots WHERE snapshot_date < ?")
             .bind(cutoff_date)
             .execute(&self.db)
             .await?;
@@ -996,7 +1009,8 @@ impl MetricsCollectorService {
 }
 
 // Implement ScheduledTask for MetricsCollectorService
-impl ScheduledTask for MetricsCollectorService {
+#[app_impl]
+impl<DB: AppDb> ScheduledTask for MetricsCollectorService<DB> {
     fn run(&self) -> Pin<Box<dyn Future<Output = Result<(), anyhow::Error>> + Send + '_>> {
         Box::pin(async move { self.collect_once().await })
     }

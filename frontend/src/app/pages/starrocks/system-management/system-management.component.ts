@@ -1,9 +1,9 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { CdkDragDrop, moveItemInArray, transferArrayItem } from '@angular/cdk/drag-drop';
+import { CdkDragDrop, moveItemInArray, transferArrayItem, CdkDropList, CdkDrag } from '@angular/cdk/drag-drop';
 
-import { NbDialogService, NbToastrService, NbDialogRef } from '@nebular/theme';
-import { LocalDataSource } from 'angular2-smart-table';
+import { NbDialogService, NbToastrService, NbDialogRef, NbCardModule, NbSpinnerModule, NbButtonModule, NbIconModule } from '@nebular/theme';
+import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { NodeService } from '../../../@core/data/node.service';
@@ -16,6 +16,7 @@ import { AddFunctionDialogComponent } from './add-function-dialog/add-function-d
 import { EditFunctionDialogComponent } from './edit-function-dialog/edit-function-dialog.component';
 import { ErrorHandler } from '../../../@core/utils/error-handler';
 import { ConfirmDialogService } from '../../../@core/services/confirm-dialog.service';
+
 
 interface SystemFunctionOld {
   name: string;
@@ -45,12 +46,21 @@ interface NavigationHistoryItem {
 }
 
 @Component({
-  standalone: false,
-  selector: 'ngx-system-management',
-  templateUrl: './system-management.component.html',
-  styleUrls: ['./system-management.component.scss']
+    selector: 'ngx-system-management',
+    templateUrl: './system-management.component.html',
+    styleUrls: ['./system-management.component.scss'],
+    imports: [NbCardModule, NbSpinnerModule, NbButtonModule, NbIconModule, CdkDropList, CdkDrag, Angular2SmartTableModule]
 })
 export class SystemManagementComponent implements OnInit, OnDestroy {
+  private nodeService = inject(NodeService);
+  private clusterContext = inject(ClusterContextService);
+  private dialogService = inject(NbDialogService);
+  private confirmDialogService = inject(ConfirmDialogService);
+  private toastrService = inject(NbToastrService);
+  private systemFunctionService = inject(SystemFunctionService);
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+
   clusterId: number;
   activeCluster: Cluster | null = null;
   
@@ -120,16 +130,7 @@ export class SystemManagementComponent implements OnInit, OnDestroy {
   
   private destroy$ = new Subject<void>();
 
-  constructor(
-    private nodeService: NodeService,
-    private clusterContext: ClusterContextService,
-    private dialogService: NbDialogService,
-    private confirmDialogService: ConfirmDialogService,
-    private toastrService: NbToastrService,
-    private systemFunctionService: SystemFunctionService,
-    private route: ActivatedRoute,
-    private router: Router
-  ) {
+  constructor() {
     // Get clusterId from ClusterContextService
     this.clusterId = this.clusterContext.getActiveClusterId() || 0;
   }

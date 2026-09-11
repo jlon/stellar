@@ -1,21 +1,18 @@
-import { Component, OnDestroy, AfterViewInit, Output, EventEmitter, ElementRef } from '@angular/core';
+import { Component, OnDestroy, AfterViewInit, Output, EventEmitter, ElementRef, inject } from '@angular/core';
 import { LocationStrategy } from '@angular/common';
 
 @Component({
-  standalone: false,
-  selector: 'ngx-tiny-mce',
-  template: '',
+    selector: 'ngx-tiny-mce',
+    template: '',
 })
 export class TinyMCEComponent implements OnDestroy, AfterViewInit {
+  private host = inject(ElementRef);
+  private locationStrategy = inject(LocationStrategy);
+
 
   @Output() editorKeyup = new EventEmitter<any>();
 
   editor: any;
-
-  constructor(
-    private host: ElementRef,
-    private locationStrategy: LocationStrategy,
-  ) { }
 
   ngAfterViewInit() {
     tinymce.init({

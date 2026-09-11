@@ -1,3 +1,4 @@
+use crate::db::query as db_query;
 use axum::{
     extract::{Request, State},
     http::header,
@@ -5,17 +6,30 @@ use axum::{
     response::Response,
 };
 use std::sync::Arc;
+use stellar_macros::app_db;
 
+use crate::db::AppDb;
 use crate::middleware::permission_extractor;
 use crate::services::casbin_service::CasbinService;
 use crate::utils::{ApiError, JwtUtil};
-use sqlx::SqlitePool;
+use sqlx::Pool;
 
-#[derive(Clone)]
-pub struct AuthState {
+pub struct AuthState<DB: AppDb> {
     pub jwt_util: Arc<JwtUtil>,
     pub casbin_service: Arc<CasbinService>,
-    pub db: SqlitePool,
+    pub db: Pool<DB>,
+}
+
+// 手动实现 Clone：sqlx 的 Database marker 类型（Sqlite/MySql）未实现 Clone，
+// derive(Clone) 会引入不满足的 `DB: Clone` 约束；实际字段克隆不依赖 DB。
+impl<DB: AppDb> Clone for AuthState<DB> {
+    fn clone(&self) -> Self {
+        Self {
+            jwt_util: Arc::clone(&self.jwt_util),
+            casbin_service: Arc::clone(&self.casbin_service),
+            db: self.db.clone(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
@@ -30,8 +44,9 @@ pub struct OrgContext {
 /// 1. 验证 JWT
 /// 2. 将 `user_id` 写入 request extensions
 /// 3. 根据 URI/Method 推导权限码并交给 Casbin 检查
-pub async fn auth_middleware(
-    State(state): State<AuthState>,
+#[app_db]
+pub async fn auth_middleware<DB: AppDb>(
+    State(state): State<AuthState<DB>>,
     mut req: Request,
     next: Next,
 ) -> Result<Response, ApiError> {
@@ -69,7 +84,7 @@ pub async fn auth_middleware(
         uri
     );
 
-    let (is_super_admin, organization_id): (bool, Option<i64>) = sqlx::query_as(
+    let (is_super_admin, organization_id): (bool, Option<i64>) = db_query::query_as(
         r#"
         SELECT
             COALESCE(EXISTS (
@@ -148,8 +163,9 @@ pub async fn auth_middleware(
 }
 
 // Helper to fetch organization from user_organizations when users.organization_id is NULL
-async fn fetch_org_from_user_organizations(db: &SqlitePool, user_id: i64) -> Option<i64> {
-    sqlx::query_scalar::<_, i64>(
+#[app_db]
+async fn fetch_org_from_user_organizations<DB: AppDb>(db: &Pool<DB>, user_id: i64) -> Option<i64> {
+    db_query::query_scalar::<_, i64>(
         r#"SELECT organization_id FROM user_organizations WHERE user_id = ?"#,
     )
     .bind(user_id)

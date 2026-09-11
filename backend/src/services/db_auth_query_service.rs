@@ -1,24 +1,27 @@
+use crate::db::AppDb;
 use std::sync::Arc;
+use stellar_macros::app_impl;
 
 use crate::models::{DbAccountDto, DbRoleDto, DbUserPermissionDto};
-use crate::services::{MySQLPoolManager, ClusterService};
 use crate::services::cluster_adapter::create_adapter;
+use crate::services::{ClusterService, MySQLPoolManager};
 use crate::utils::ApiResult;
 
 /// Service for querying database accounts and roles from OLAP engines (StarRocks/Doris)
 /// Uses ClusterAdapter for database-specific SQL dialect handling
 #[derive(Clone)]
-pub struct DbAuthQueryService {
+pub struct DbAuthQueryService<DB: AppDb> {
     mysql_pool_manager: Arc<MySQLPoolManager>,
-    cluster_service: Arc<ClusterService>,
+    cluster_service: Arc<ClusterService<DB>>,
 }
 
-impl DbAuthQueryService {
-    pub fn new(mysql_pool_manager: Arc<MySQLPoolManager>, cluster_service: Arc<ClusterService>) -> Self {
-        Self {
-            mysql_pool_manager,
-            cluster_service,
-        }
+#[app_impl]
+impl<DB: AppDb> DbAuthQueryService<DB> {
+    pub fn new(
+        mysql_pool_manager: Arc<MySQLPoolManager>,
+        cluster_service: Arc<ClusterService<DB>>,
+    ) -> Self {
+        Self { mysql_pool_manager, cluster_service }
     }
 
     /// Query all database accounts from the cluster
@@ -26,13 +29,13 @@ impl DbAuthQueryService {
     pub async fn list_accounts(&self, cluster_id: i64) -> ApiResult<Vec<DbAccountDto>> {
         let cluster = self.cluster_service.get_cluster(cluster_id).await?;
         let adapter = create_adapter(cluster, self.mysql_pool_manager.clone());
-        
+
         match adapter.list_db_accounts().await {
             Ok(accounts) => Ok(accounts),
             Err(e) => {
                 tracing::warn!("Failed to query accounts for cluster {}: {}", cluster_id, e);
                 Ok(Vec::new())
-            }
+            },
         }
     }
 
@@ -41,13 +44,13 @@ impl DbAuthQueryService {
     pub async fn list_roles(&self, cluster_id: i64) -> ApiResult<Vec<DbRoleDto>> {
         let cluster = self.cluster_service.get_cluster(cluster_id).await?;
         let adapter = create_adapter(cluster, self.mysql_pool_manager.clone());
-        
+
         match adapter.list_db_roles().await {
             Ok(roles) => Ok(roles),
             Err(e) => {
                 tracing::warn!("Failed to query roles for cluster {}: {}", cluster_id, e);
                 Ok(Vec::new())
-            }
+            },
         }
     }
 
@@ -60,16 +63,18 @@ impl DbAuthQueryService {
     ) -> ApiResult<Vec<DbUserPermissionDto>> {
         let cluster = self.cluster_service.get_cluster(cluster_id).await?;
         let adapter = create_adapter(cluster, self.mysql_pool_manager.clone());
-        
+
         match adapter.list_user_permissions(username).await {
             Ok(permissions) => Ok(permissions),
             Err(e) => {
                 tracing::warn!(
                     "Failed to query permissions for user {} on cluster {}: {}",
-                    username, cluster_id, e
+                    username,
+                    cluster_id,
+                    e
                 );
                 Ok(Vec::new())
-            }
+            },
         }
     }
 
@@ -82,16 +87,18 @@ impl DbAuthQueryService {
     ) -> ApiResult<Vec<DbUserPermissionDto>> {
         let cluster = self.cluster_service.get_cluster(cluster_id).await?;
         let adapter = create_adapter(cluster, self.mysql_pool_manager.clone());
-        
+
         match adapter.list_role_permissions(role_name).await {
             Ok(permissions) => Ok(permissions),
             Err(e) => {
                 tracing::warn!(
                     "Failed to query permissions for role {} on cluster {}: {}",
-                    role_name, cluster_id, e
+                    role_name,
+                    cluster_id,
+                    e
                 );
                 Ok(Vec::new())
-            }
+            },
         }
     }
 }

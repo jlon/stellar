@@ -8,40 +8,48 @@
         <form [formGroup]="clusterForm" (ngSubmit)="onSubmit()">
           <!-- Organization Selection (Super Admin Only) -->
           <div class="row">
-            <div class="col-md-6" *ngIf="isSuperAdmin">
-              <div class="form-group">
-                <label for="organization" class="label">所属组织 *</label>
-                <nb-form-field>
-                  <nb-select
-                    formControlName="organization_id"
-                    id="organization"
-                    placeholder="请选择组织"
-                    [status]="clusterForm.get('organization_id')?.invalid && clusterForm.get('organization_id')?.touched ? 'danger' : 'basic'"
-                    fullWidth
-                  >
-                    <nb-option *ngFor="let org of organizations" [value]="org.id">
-                      {{ org.name }}
-                      <span class="text-hint" *ngIf="org.code"> ({{ org.code }})</span>
-                    </nb-option>
-                  </nb-select>
-                </nb-form-field>
-                <ng-container *ngIf="clusterForm.get('organization_id')?.invalid && clusterForm.get('organization_id')?.touched">
-                  <small class="form-text text-danger">
-                    请选择组织
-                  </small>
-                </ng-container>
-              </div>
-            </div>
-
-            <div class="col-md-6" *ngIf="!isSuperAdmin && currentOrganization">
-              <div class="form-group">
-                <label class="label">所属组织</label>
-                <div class="alert alert-info d-flex align-items-center">
-                  <nb-icon icon="info-outline" class="me-2"></nb-icon>
-                  <span>{{ currentOrganization.name }} <span class="text-hint">({{ currentOrganization.code }})</span></span>
+            @if (isSuperAdmin) {
+              <div class="col-md-6">
+                <div class="form-group">
+                  <label for="organization" class="label">所属组织 *</label>
+                  <nb-form-field>
+                    <nb-select
+                      formControlName="organization_id"
+                      id="organization"
+                      placeholder="请选择组织"
+                      [status]="clusterForm.get('organization_id')?.invalid && clusterForm.get('organization_id')?.touched ? 'danger' : 'basic'"
+                      fullWidth
+                      >
+                      @for (org of organizations; track org) {
+                        <nb-option [value]="org.id">
+                          {{ org.name }}
+                          @if (org.code) {
+                            <span class="text-hint"> ({{ org.code }})</span>
+                          }
+                        </nb-option>
+                      }
+                    </nb-select>
+                  </nb-form-field>
+                  @if (clusterForm.get('organization_id')?.invalid && clusterForm.get('organization_id')?.touched) {
+                    <small class="form-text text-danger">
+                      请选择组织
+                    </small>
+                  }
                 </div>
               </div>
-            </div>
+            }
+
+            @if (!isSuperAdmin && currentOrganization) {
+              <div class="col-md-6">
+                <div class="form-group">
+                  <label class="label">所属组织</label>
+                  <div class="alert alert-info d-flex align-items-center">
+                    <nb-icon icon="info-outline" class="me-2"></nb-icon>
+                    <span>{{ currentOrganization.name }} <span class="text-hint">({{ currentOrganization.code }})</span></span>
+                  </div>
+                </div>
+              </div>
+            }
 
             <div class="col-md-6">
               <div class="form-group">
@@ -53,16 +61,16 @@
                     placeholder="请选择部署模式"
                     [status]="clusterForm.get('deployment_mode')?.invalid && clusterForm.get('deployment_mode')?.touched ? 'danger' : 'basic'"
                     fullWidth
-                  >
+                    >
                     <nb-option value="shared_nothing">存算一体 (Shared-Nothing)</nb-option>
                     <nb-option value="shared_data">存算分离 (Shared-Data)</nb-option>
                   </nb-select>
                 </nb-form-field>
-                <ng-container *ngIf="clusterForm.get('deployment_mode')?.invalid && clusterForm.get('deployment_mode')?.touched">
+                @if (clusterForm.get('deployment_mode')?.invalid && clusterForm.get('deployment_mode')?.touched) {
                   <small class="form-text text-danger">
                     请选择部署模式
                   </small>
-                </ng-container>
+                }
               </div>
             </div>
           </div>
@@ -79,10 +87,12 @@
                   formControlName="name"
                   placeholder="输入集群名称"
                   [status]="clusterForm.get('name')?.invalid && clusterForm.get('name')?.touched ? 'danger' : 'basic'"
-                />
-                <small class="form-text text-danger" *ngIf="clusterForm.get('name')?.invalid && clusterForm.get('name')?.touched">
-                  请输入集群名称
-                </small>
+                  />
+                @if (clusterForm.get('name')?.invalid && clusterForm.get('name')?.touched) {
+                  <small class="form-text text-danger">
+                    请输入集群名称
+                  </small>
+                }
               </div>
             </div>
 
@@ -96,16 +106,16 @@
                     placeholder="请选择集群类型"
                     [status]="clusterForm.get('cluster_type')?.invalid && clusterForm.get('cluster_type')?.touched ? 'danger' : 'basic'"
                     fullWidth
-                  >
+                    >
                     <nb-option value="starrocks">StarRocks</nb-option>
                     <nb-option value="doris">Apache Doris</nb-option>
                   </nb-select>
                 </nb-form-field>
-                <ng-container *ngIf="clusterForm.get('cluster_type')?.invalid && clusterForm.get('cluster_type')?.touched">
+                @if (clusterForm.get('cluster_type')?.invalid && clusterForm.get('cluster_type')?.touched) {
                   <small class="form-text text-danger">
                     请选择集群类型
                   </small>
-                </ng-container>
+                }
               </div>
             </div>
           </div>
@@ -121,7 +131,7 @@
                   id="catalog"
                   formControlName="catalog"
                   placeholder="default_catalog"
-                />
+                  />
               </div>
             </div>
           </div>
@@ -141,7 +151,7 @@
                   formControlName="fe_host"
                   placeholder="192.168.1.100"
                   [status]="clusterForm.get('fe_host')?.invalid && clusterForm.get('fe_host')?.touched ? 'danger' : 'basic'"
-                />
+                  />
               </div>
             </div>
 
@@ -155,7 +165,7 @@
                   id="fe_http_port"
                   formControlName="fe_http_port"
                   placeholder="8030"
-                />
+                  />
               </div>
             </div>
 
@@ -169,7 +179,7 @@
                   id="fe_query_port"
                   formControlName="fe_query_port"
                   placeholder="9030"
-                />
+                  />
               </div>
             </div>
           </div>
@@ -189,7 +199,7 @@
                   formControlName="username"
                   placeholder="root"
                   [status]="clusterForm.get('username')?.invalid && clusterForm.get('username')?.touched ? 'danger' : 'basic'"
-                />
+                  />
               </div>
             </div>
 
@@ -204,13 +214,49 @@
                   formControlName="password"
                   placeholder="输入密码或留空"
                   [status]="clusterForm.get('password')?.invalid && clusterForm.get('password')?.touched ? 'danger' : 'basic'"
-                />
+                  />
               </div>
             </div>
           </div>
 
           <h6 class="mt-4">高级选项</h6>
           <hr />
+
+          <!-- Admin User Fields (Only visible to org admins and super admins) -->
+          @if (isOrgAdmin || isSuperAdmin) {
+            <div class="row">
+              <div class="col-md-12">
+              </div>
+              <div class="col-md-6">
+                <div class="form-group">
+                  <label for="admin_user" class="label">管理用户（可选）</label>
+                  <input
+                    nbInput
+                    fullWidth
+                    type="text"
+                    id="admin_user"
+                    formControlName="admin_user"
+                    placeholder="root"
+                    />
+                  <small class="form-text text-muted">用于执行权限授权操作的用户名</small>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="form-group">
+                  <label for="admin_password" class="label">管理密码 {{ isEditMode ? '(留空表示不修改)' : '' }}</label>
+                  <input
+                    nbInput
+                    fullWidth
+                    type="password"
+                    id="admin_password"
+                    formControlName="admin_password"
+                    placeholder="输入管理用户密码"
+                    />
+                  <small class="form-text text-muted">管理用户的密码</small>
+                </div>
+              </div>
+            </div>
+          }
 
           <div class="row">
             <div class="col-md-6">
@@ -223,7 +269,7 @@
                   id="connection_timeout"
                   formControlName="connection_timeout"
                   placeholder="10"
-                />
+                  />
               </div>
             </div>
 
@@ -237,7 +283,7 @@
                   id="tags"
                   formControlName="tags"
                   placeholder="生产, 北京, 主集群"
-                />
+                  />
               </div>
             </div>
           </div>
@@ -270,7 +316,7 @@
               type="button"
               (click)="testConnection()"
               [disabled]="loading"
-            >
+              >
               <nb-icon icon="refresh-outline"></nb-icon>
               测试连接
             </button>
@@ -284,7 +330,7 @@
                 type="button"
                 (click)="onCancel()"
                 [disabled]="loading"
-              >
+                >
                 取消
               </button>
 
@@ -295,8 +341,10 @@
                 status="primary"
                 type="submit"
                 [disabled]="loading"
-              >
-                <nb-icon icon="loader-outline" class="spin" *ngIf="loading"></nb-icon>
+                >
+                @if (loading) {
+                  <nb-icon icon="loader-outline" class="spin"></nb-icon>
+                }
                 保存
               </button>
             </div>
