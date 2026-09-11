@@ -173,13 +173,13 @@
     }
 
     angular2-smart-table-pager {
-      display: block;
+      justify-content: flex-end !important; // override component :host space-between
       color: nb-theme(text-hint-color);
     }
 
     nav.angular2-smart-pagination-nav {
       display: flex;
-      justify-content: center;
+      justify-content: flex-end;
       margin-top: 1.25rem;
 
       .angular2-smart-pagination {
@@ -283,11 +283,17 @@
       }
     }
 
-    .angular2-smart-pagination-per-page select {
-      color: nb-theme(input-basic-text-color);
-      background-color: nb-theme(input-basic-background-color);
-      border: 1px solid nb-theme(input-basic-border-color);
-      border-radius: nb-theme(border-radius);
+    .angular2-smart-pagination-per-page {
+      display: flex;
+      align-items: center;
+      margin-left: 1rem;
+
+      select {
+        color: nb-theme(input-basic-text-color);
+        background-color: nb-theme(input-basic-background-color);
+        border: 1px solid nb-theme(input-basic-border-color);
+        border-radius: nb-theme(border-radius);
+      }
     }
   }
 }
