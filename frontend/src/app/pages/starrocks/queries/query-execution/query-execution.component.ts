@@ -10,14 +10,15 @@ import { Cluster } from '../../../../@core/data/cluster.service';
 import { ErrorHandler } from '../../../../@core/utils/error-handler';
 import { withTableRow } from '../../../../@core/utils/smart-table';
 import { EditorView } from '@codemirror/view';
-import { autocompletion, completionKeymap, Completion, CompletionSource } from '@codemirror/autocomplete';
+import { autocompletion, completionKeymap } from '@codemirror/autocomplete';
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
 import { highlightActiveLine, highlightActiveLineGutter, drawSelection, keymap } from '@codemirror/view';
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
 import { EditorState, Compartment, type Extension } from '@codemirror/state';
-import { history, historyKeymap } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
 import { sql, MySQL, type SQLNamespace } from '@codemirror/lang-sql';
+import { oneDarkHighlightStyle } from '@codemirror/theme-one-dark';
 import { format } from 'sql-formatter';
 import { trigger, transition, style, animate, state } from '@angular/animations';
 import { renderMetricBadge, MetricThresholds } from '../../../../@core/utils/metric-badge';
@@ -26,7 +27,7 @@ import { renderLongText } from '../../../../@core/utils/text-truncate';
 import { ConfirmDialogService } from '../../../../@core/services/confirm-dialog.service';
 import { AuthService } from '../../../../@core/data/auth.service';
 import { themeColor, themeColorAlpha, themeChartChrome } from '../../../../@core/utils/theme-color';
-import { NgTemplateOutlet, NgClass, SlicePipe, DecimalPipe, DatePipe } from '@angular/common';
+import { CommonModule, NgTemplateOutlet, NgClass, SlicePipe, DecimalPipe, DatePipe } from '@angular/common';
 import { NgxEchartsDirective } from 'ngx-echarts';
 import { FormsModule } from '@angular/forms';
 
@@ -75,8 +76,10 @@ type ContextMenuAction =
   | 'triggerCompaction'    // 表级别 - 手动触发Compaction
   | 'cancelCompaction'     // Compaction任务 - 取消任务
   | 'viewMaterializedViewRefreshStatus'  // 物化视图 - 查看刷新状态
-  | 'viewViewQueryPlan'    // 视图 - 查看查询计划
-  | 'viewBucketAnalysis';  // 表级别 - 查看分桶分析
+  | 'viewViewQueryPlan'
+  | 'viewBucketAnalysis'
+  | 'previewRows'
+  | 'insertTableName';
 
 interface TreeContextMenuItem {
   label: string;
@@ -145,7 +148,8 @@ interface NavTreeNode {
     NbBadgeModule,
     SlicePipe,
     DecimalPipe,
-    DatePipe
+    DatePipe,
+    CommonModule
 ],
 })
 export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit {
@@ -224,6 +228,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   readonly collapsedTreeWidth: number = 28;
   private readonly sqlDialect = MySQL;
   private readonly themeCompartment = new Compartment();
+  private readonly highlightCompartment = new Compartment();
   private readonly sqlConfigCompartment = new Compartment();
   // Slow query thresholds: 5min(300000ms)=blue, 10min(600000ms)=yellow, 30min(1800000ms)=red
   private readonly runningDurationThresholds: MetricThresholds = { warn: 300000, danger: 600000 };
@@ -472,9 +477,12 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   editorHeight: number = 400;
   
   // Running queries settings
+  selectedRunningQueries: Query[] = [];
+
   runningSettings = {
     mode: 'external',
-    hideSubHeader: false, // Enable search
+    selectMode: 'multi',
+    hideSubHeader: false,
     noDataMessage: '当前没有运行中的查询',
     actions: {
       add: false,
@@ -668,6 +676,18 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     this.closeContextMenu();
   }
 
+  @HostListener('keydown', ['$event'])
+  onQueryShortcut(event: KeyboardEvent): void {
+    if (this.selectedTab !== 'realtime' || event.defaultPrevented) {
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+      event.preventDefault();
+      event.stopPropagation();
+      this.executeSQL();
+    }
+  }
+
   @HostListener('window:scroll')
   onWindowScroll(): void {
     if (this.contextMenuVisible) {
@@ -736,36 +756,65 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
 
+  private isDarkEditorTheme(): boolean {
+    return this.currentTheme === 'dark' || this.currentTheme === 'cosmic';
+  }
+
   private applyEditorTheme(): void {
     if (!this.editorView) {
       return;
     }
     this.editorView.dispatch({
-      effects: this.themeCompartment.reconfigure(this.buildEditorTheme()),
+      effects: [
+        this.themeCompartment.reconfigure(this.buildEditorTheme()),
+        this.highlightCompartment.reconfigure(this.buildHighlightStyle()),
+      ],
     });
-    }
+  }
+
+  private buildHighlightStyle(): Extension {
+    return syntaxHighlighting(
+      this.isDarkEditorTheme() ? oneDarkHighlightStyle : defaultHighlightStyle,
+      { fallback: true },
+    );
+  }
 
   private buildEditorTheme(): Extension {
-    const isDark = this.currentTheme === 'dark' || this.currentTheme === 'cosmic';
+    const isDark = this.isDarkEditorTheme();
     const keyword = themeColor('--color-primary-default', '#3366ff');
+    const text = themeColor('--text-basic-color', '#222b45');
+    const surface = themeColor('--background-basic-color-1', '#ffffff');
+    const border = themeColor('--border-basic-color-3', '#e4e9f2');
     return EditorView.theme(
       {
         '&': {
           height: `${this.editorHeight}px`,
-          backgroundColor: themeColor('--background-basic-color-1', '#ffffff'),
+          backgroundColor: 'transparent',
+          color: text,
+          caretColor: text,
         },
         '.cm-content': {
           padding: '8px 12px',
           fontSize: '14px',
+          caretColor: text,
         },
         '.cm-line': {
           fontFamily: `'JetBrains Mono', Menlo, Consolas, monospace`,
           fontSize: '14px',
         },
+        '.cm-cursor, .cm-dropCursor': {
+          borderLeftColor: text,
+        },
         '.cm-gutters': {
           backgroundColor: themeColor('--background-basic-color-2', '#f7f9fc'),
-          borderRight: `1px solid ${themeColor('--border-basic-color-3', '#e4e9f2')}`,
+          borderRight: `1px solid ${border}`,
           color: themeColor('--text-hint-color', '#8f9bb3'),
+        },
+        '.cm-activeLine': {
+          backgroundColor: themeColorAlpha('--color-primary-default', isDark ? 0.08 : 0.04, '#3366ff'),
+        },
+        '.cm-activeLineGutter': {
+          backgroundColor: themeColorAlpha('--color-primary-default', isDark ? 0.12 : 0.06, '#3366ff'),
         },
         '.cm-selectionBackground, .cm-selectionLayer .cm-selectionBackground': {
           backgroundColor: themeColorAlpha('--color-primary-default', isDark ? 0.35 : 0.16, '#3366ff'),
@@ -773,9 +822,27 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         '.cm-matchingBracket': {
           outline: `1px solid ${keyword}`,
         },
+        '.cm-tooltip': {
+          backgroundColor: surface,
+          color: text,
+          border: `1px solid ${border}`,
+        },
+        '.cm-tooltip-autocomplete ul li[aria-selected]': {
+          backgroundColor: themeColorAlpha('--color-primary-default', isDark ? 0.28 : 0.14, '#3366ff'),
+          color: text,
+        },
       },
       { dark: isDark },
     );
+  }
+
+  private buildSqlExtension(): Extension {
+    return sql({
+      dialect: this.sqlDialect,
+      upperCaseKeywords: true,
+      schema: this.currentSqlSchema,
+      defaultSchema: this.selectedDatabase || undefined,
+    });
   }
 
   private applySqlSchema(): void {
@@ -783,14 +850,16 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       return;
     }
     this.editorView.dispatch({
-      effects: this.sqlConfigCompartment.reconfigure(
-        sql({
-          dialect: this.sqlDialect,
-          upperCaseKeywords: true,
-          schema: this.currentSqlSchema,
-        }),
-      ),
+      effects: this.sqlConfigCompartment.reconfigure(this.buildSqlExtension()),
     });
+  }
+
+  private tablesToNamespace(tableNames: string[]): Record<string, SQLNamespace> {
+    const tables: Record<string, SQLNamespace> = {};
+    tableNames.forEach((tableName) => {
+      tables[tableName] = [];
+    });
+    return tables;
   }
 
   private buildSqlSchema(): SQLNamespace {
@@ -803,7 +872,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
       if (databases.length === 0) {
         if (catalogName) {
-          namespace[catalogName] = [];
+          namespace[catalogName] = {};
         }
         return;
       }
@@ -811,26 +880,23 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       const dbNamespace: Record<string, SQLNamespace> = {};
       databases.forEach((databaseName) => {
         const tableKey = this.getDatabaseCacheKey(catalogName, databaseName);
-        const tables = this.tableCache[tableKey] || [];
-        const tableNames = this.mapTableNames(tables);
-        dbNamespace[databaseName] = tableNames.length > 0 ? tableNames : [];
+        const tables = this.tablesToNamespace(this.mapTableNames(this.tableCache[tableKey] || []));
+        dbNamespace[databaseName] = tables;
+        if (!namespace[databaseName] || catalogName === this.selectedCatalog) {
+          namespace[databaseName] = tables;
+        }
       });
 
       namespace[catalogName || 'default'] = dbNamespace;
     });
 
     if (Object.keys(namespace).length === 0 && Object.keys(this.tableCache).length > 0) {
-      const fallback: Record<string, SQLNamespace> = {};
       Object.entries(this.tableCache).forEach(([cacheKey, tables]) => {
         const [, databaseName] = cacheKey.split('|');
         if (databaseName) {
-          const tableNames = this.mapTableNames(tables);
-          fallback[databaseName] = tableNames.length > 0 ? tableNames : [];
+          namespace[databaseName] = this.tablesToNamespace(this.mapTableNames(tables));
         }
       });
-      if (Object.keys(fallback).length > 0) {
-        namespace['default'] = fallback;
-      }
     }
 
     return namespace;
@@ -839,229 +905,6 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   private refreshSqlSchema(): void {
     this.currentSqlSchema = this.buildSqlSchema();
     this.applySqlSchema();
-  }
-
-  private buildSchemaCompletions(context: any): { completions: Completion[], from: number } | null {
-    if (Object.keys(this.currentSqlSchema).length === 0) {
-      return null;
-    }
-
-    const completions: Completion[] = [];
-    const { state, pos } = context;
-    
-    // Get text before cursor
-    const textBefore = state.doc.sliceString(Math.max(0, pos - 200), pos);
-    
-    // Parse the context to find dot notation prefix (e.g., "catalog.database." or "database.")
-    // Match patterns like "identifier." or "catalog.database." at the end of text before cursor
-    // Also capture any partial identifier being typed after the dot
-    const dotMatch = textBefore.match(/([\w\u4e00-\u9fa5.]+)\.(\w*)$/);
-    
-    // ONLY provide schema completions when after a dot
-    // This prevents schema items from interfering with keyword completions
-    if (!dotMatch || !dotMatch[1]) {
-      return null;
-    }
-    
-    // Found dot notation, parse the path
-    const pathParts = dotMatch[1].split('.').filter(p => p.trim());
-    const prefixPath = pathParts;
-    const partialWord = dotMatch[2] || ''; // The partial word being typed after the dot
-    const wordStartPos = partialWord ? pos - partialWord.length : pos; // Start position for replacement
-    
-    // Navigate to the target namespace
-    let targetNamespace: SQLNamespace | null = this.currentSqlSchema;
-    
-    // If only one path part (e.g., "sys."), it could be a database name
-    // Try to find it in all catalogs, prioritizing the selected catalog
-    if (pathParts.length === 1) {
-      const dbName = pathParts[0];
-      let foundNamespace: SQLNamespace | null = null;
-      
-      // First, try to find in the selected catalog if available
-      if (this.selectedCatalog && this.currentSqlSchema[this.selectedCatalog]) {
-        const catalogNs = this.currentSqlSchema[this.selectedCatalog] as SQLNamespace;
-        if (catalogNs && typeof catalogNs === 'object' && !Array.isArray(catalogNs) && catalogNs[dbName]) {
-          foundNamespace = catalogNs[dbName] as SQLNamespace;
-        }
-      }
-      
-      // If not found in selected catalog, search all catalogs
-      if (!foundNamespace) {
-        for (const catalogKey in this.currentSqlSchema) {
-          if (Object.prototype.hasOwnProperty.call(this.currentSqlSchema, catalogKey)) {
-            const catalogNs = this.currentSqlSchema[catalogKey] as SQLNamespace;
-            if (catalogNs && typeof catalogNs === 'object' && !Array.isArray(catalogNs) && catalogNs[dbName]) {
-              foundNamespace = catalogNs[dbName] as SQLNamespace;
-              break;
-            }
-          }
-        }
-      }
-      
-      if (!foundNamespace) {
-      } else {
-        if (Array.isArray(foundNamespace)) {
-        }
-      }
-      
-      targetNamespace = foundNamespace;
-    } else {
-      // Multiple path parts (e.g., "catalog.database."), navigate normally
-      for (const part of pathParts) {
-        if (targetNamespace && typeof targetNamespace === 'object' && !Array.isArray(targetNamespace)) {
-          targetNamespace = (targetNamespace as SQLNamespace)[part] as SQLNamespace;
-          if (!targetNamespace) {
-            // Path not found in schema, return null
-            return null;
-          }
-        } else {
-          targetNamespace = null;
-          break;
-        }
-      }
-    }
-
-    if (!targetNamespace) {
-      return null;
-    }
-
-    // Handle when targetNamespace is a table array (e.g., after "database.")
-    if (Array.isArray(targetNamespace)) {
-      targetNamespace.forEach((tableName) => {
-        if (!partialWord || tableName.toLowerCase().startsWith(partialWord.toLowerCase())) {
-          completions.push({
-            label: tableName,
-            detail: prefixPath.join('.') || undefined,
-            type: 'variable',
-          });
-        }
-      });
-      return completions.length > 0 ? { completions, from: wordStartPos } : null;
-    }
-
-    // targetNamespace is an object (catalog or contains databases)
-    if (typeof targetNamespace !== 'object') {
-      return null;
-    }
-
-    // Build completions from target namespace
-    const processNamespace = (ns: SQLNamespace, path: string[] = []): void => {
-      for (const key in ns) {
-        if (Object.prototype.hasOwnProperty.call(ns, key)) {
-          const value = ns[key];
-          const currentPath = [...path, key];
-          
-          if (Array.isArray(value)) {
-            // Tables array
-            value.forEach((item) => {
-              // Filter by partial word if exists
-              if (!partialWord || item.toLowerCase().startsWith(partialWord.toLowerCase())) {
-                completions.push({
-                  label: item,
-                  detail: currentPath.slice(0, -1).join('.') || undefined,
-                  type: 'variable',
-                });
-              }
-            });
-          } else if (typeof value === 'object' && value !== null) {
-            // Nested namespace (catalog/database)
-            // Filter by partial word if exists
-            if (!partialWord || key.toLowerCase().startsWith(partialWord.toLowerCase())) {
-              completions.push({
-                label: key,
-                detail: currentPath.slice(0, -1).join('.') || undefined,
-                type: 'namespace',
-              });
-            }
-          }
-        }
-      }
-    };
-    
-    processNamespace(targetNamespace, prefixPath);
-    return completions.length > 0 ? { completions, from: wordStartPos } : null;
-  }
-
-  private buildKeywordCompletions(context: any): { completions: Completion[], from: number } | null {
-    // SQL keywords that should be suggested
-    const sqlKeywords = [
-      'SELECT', 'FROM', 'WHERE', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'FULL', 'OUTER',
-      'ON', 'AS', 'AND', 'OR', 'NOT', 'IN', 'EXISTS', 'LIKE', 'BETWEEN', 'IS', 'NULL',
-      'GROUP', 'BY', 'HAVING', 'ORDER', 'ASC', 'DESC', 'LIMIT', 'OFFSET',
-      'INSERT', 'INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE', 'CREATE', 'DROP',
-      'ALTER', 'TABLE', 'DATABASE', 'INDEX', 'VIEW', 'TRIGGER', 'PROCEDURE',
-      'UNION', 'ALL', 'DISTINCT', 'COUNT', 'SUM', 'AVG', 'MAX', 'MIN',
-      'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'IF', 'ELSEIF',
-      'CAST', 'CONVERT', 'NULLIF', 'COALESCE',
-      'WITH', 'RECURSIVE',
-      'EXPLAIN', 'DESCRIBE', 'SHOW', 'USE',
-    ];
-
-    const { state, pos } = context;
-    const textBefore = state.doc.sliceString(Math.max(0, pos - 100), pos);
-    
-    // Don't suggest keywords if we're after a dot or in a quoted string
-    const isAfterDot = /[\w.]\.\s*$/.test(textBefore);
-    const isInQuotedString = /(['"])(?:[^\\]|\\.)*$/.test(textBefore);
-    
-    if (isAfterDot || isInQuotedString) {
-      return null;
-    }
-
-    // Extract the current word being typed (if any)
-    // Match word characters including those that may be part of SQL identifiers
-    const wordMatch = textBefore.match(/([a-zA-Z_][a-zA-Z0-9_]*)$/);
-    const currentWord = wordMatch ? wordMatch[1].toUpperCase() : '';
-    const wordStartPos = wordMatch ? pos - wordMatch[1].length : pos;
-    
-    // If user is typing a word, filter keywords that start with it
-    if (currentWord) {
-      const matchingKeywords = sqlKeywords.filter(keyword => 
-        keyword.startsWith(currentWord)
-      );
-      
-      if (matchingKeywords.length > 0) {
-        return {
-          completions: matchingKeywords.map(keyword => ({
-            label: keyword,
-            type: 'keyword',
-          })),
-          from: wordStartPos, // Start from the beginning of the current word
-        };
-      }
-    }
-
-    // If no word is being typed or no matching keywords, check if we should show all keywords
-    // Show all keywords at statement start (for explicit requests or clear boundaries)
-    const isStatementStart = /(^|\s|;|,|\(|\))\s*$/.test(textBefore);
-    
-    if (isStatementStart) {
-      // For explicit completions (Ctrl+Space) always show keywords
-      if (context.explicit) {
-        return {
-          completions: sqlKeywords.map(keyword => ({
-            label: keyword,
-            type: 'keyword',
-          })),
-          from: pos,
-        };
-      }
-      
-      // For auto-trigger, only show at very clear statement boundaries
-      const clearBoundary = /(^|[\s;])\s*$/.test(textBefore);
-      if (clearBoundary) {
-        return {
-          completions: sqlKeywords.map(keyword => ({
-            label: keyword,
-            type: 'keyword',
-          })),
-          from: pos,
-        };
-      }
-    }
-
-    return null;
   }
 
   startTreeResize(event: MouseEvent): void {
@@ -1221,6 +1064,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       // View (视图) - 只有逻辑结构，没有物理存储
       if (tableType === 'VIEW') {
         return [
+          ...this.tableQueryMenuItems(),
           {
             label: '查看视图结构',
             icon: 'file-text-outline',
@@ -1237,6 +1081,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       // Materialized View (物化视图) - 有物理存储，但Compaction由系统管理
       if (tableType === 'MATERIALIZED_VIEW') {
         return [
+          ...this.tableQueryMenuItems(),
           {
             label: '查看物化视图结构',
             icon: 'file-text-outline',
@@ -1262,6 +1107,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       
       // Regular Table (普通表) - 所有功能
       return [
+        ...this.tableQueryMenuItems(),
         {
           label: '查看表结构',
           icon: 'file-text-outline',
@@ -1303,6 +1149,17 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     }
 
     switch (action) {
+      case 'previewRows':
+        if (targetNode.type === 'table') {
+          this.previewTableRows(targetNode);
+        }
+        break;
+      case 'insertTableName':
+        if (targetNode.type === 'table') {
+          this.onNodeSelect(targetNode);
+          this.insertTextAtCursor(this.qualifiedTableName(targetNode));
+        }
+        break;
       case 'viewSchema':
         if (targetNode.type === 'table') {
           this.viewTableSchema(targetNode);
@@ -1394,6 +1251,92 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     this.contextMenuVisible = false;
     this.contextMenuItems = [];
     this.contextMenuTargetNode = null;
+  }
+
+  onTableDoubleClick(node: NavTreeNode, event: MouseEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    if (node.type !== 'table') {
+      return;
+    }
+    this.onNodeSelect(node);
+    this.insertTextAtCursor(this.qualifiedTableName(node));
+  }
+
+  private tableQueryMenuItems(): TreeContextMenuItem[] {
+    return [
+      {
+        label: '查询前 N 行',
+        icon: 'play-circle-outline',
+        action: 'previewRows',
+      },
+      {
+        label: '插入表名',
+        icon: 'code-outline',
+        action: 'insertTableName',
+      },
+    ];
+  }
+
+  private qualifiedTableName(node: NavTreeNode): string {
+    const info = this.extractNodeInfo(node);
+    if (!info?.tableName) {
+      return '';
+    }
+    return this.buildQualifiedTableName(info.catalogName, info.databaseName, info.tableName);
+  }
+
+  private setEditorContent(sql: string): void {
+    this.sqlInput = sql;
+    if (this.editorView) {
+      this.editorView.dispatch({
+        changes: { from: 0, to: this.editorView.state.doc.length, insert: sql },
+      });
+    }
+    this.cdr.markForCheck();
+  }
+
+  private insertTextAtCursor(text: string): void {
+    if (!text) {
+      this.toastrService.warning('无法识别表名', '提示');
+      return;
+    }
+    if (this.sqlEditorCollapsed) {
+      this.toggleSqlEditor(false);
+    }
+    if (!this.editorView) {
+      const prefix = this.sqlInput && !/\s$/.test(this.sqlInput) ? ' ' : '';
+      this.sqlInput = `${this.sqlInput || ''}${prefix}${text}`;
+      this.cdr.markForCheck();
+      return;
+    }
+    const selection = this.editorView.state.selection.main;
+    const doc = this.editorView.state.doc;
+    const before = selection.from > 0 ? doc.sliceString(selection.from - 1, selection.from) : '';
+    const after = selection.to < doc.length ? doc.sliceString(selection.to, selection.to + 1) : '';
+    const prefix = before && !/\s/.test(before) ? ' ' : '';
+    const suffix = after && !/\s/.test(after) ? ' ' : '';
+    const insert = `${prefix}${text}${suffix}`;
+    this.editorView.dispatch({
+      changes: { from: selection.from, to: selection.to, insert },
+      selection: { anchor: selection.from + insert.length },
+    });
+    this.editorView.focus();
+    this.sqlInput = this.editorView.state.doc.toString();
+    this.cdr.markForCheck();
+  }
+
+  private previewTableRows(node: NavTreeNode): void {
+    const name = this.qualifiedTableName(node);
+    if (!name) {
+      this.toastrService.warning('无法识别表名', '提示');
+      return;
+    }
+    this.onNodeSelect(node);
+    if (this.sqlEditorCollapsed) {
+      this.toggleSqlEditor(false);
+    }
+    this.setEditorContent(`SELECT *\nFROM ${name}\nLIMIT ${this.queryLimit}`);
   }
 
   private viewTableSchema(node: NavTreeNode): void {
@@ -4445,6 +4388,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     this.selectedCatalog = catalog;
     this.selectedDatabase = database;
     this.selectedTable = table;
+    this.refreshSqlSchema();
 
     if (this.editorView) {
       // Use requestAnimationFrame to wait for DOM update before calculating height
@@ -4648,51 +4592,23 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       highlightActiveLine(),
       highlightActiveLineGutter(),
       highlightSelectionMatches(),
-      syntaxHighlighting(defaultHighlightStyle),
+      this.highlightCompartment.of(this.buildHighlightStyle()),
       keymap.of([
+        {
+          key: 'Mod-Enter',
+          run: () => {
+            this.executeSQL();
+            return true;
+          },
+        },
         ...completionKeymap,
+        ...defaultKeymap,
         ...historyKeymap,
         ...closeBracketsKeymap,
         ...searchKeymap,
       ] as any),
       closeBrackets(),
       autocompletion({
-        override: [
-          (context) => {
-            // Build schema-aware completions based on context (for dot notation)
-            const schemaResult = this.buildSchemaCompletions(context);
-            
-            // If we have schema completions (e.g., after a dot), return them
-            if (schemaResult && schemaResult.completions.length > 0) {
-              return {
-                from: schemaResult.from,
-                options: schemaResult.completions,
-              };
-            }
-            
-            // Check if we're after a dot - if so, return empty to prevent keyword completion
-            const textBefore = context.state.doc.sliceString(Math.max(0, context.pos - 50), context.pos);
-            const isAfterDot = /[\w.]\.\s*$/.test(textBefore);
-            
-            if (isAfterDot) {
-              // After a dot but no completions found, return empty
-              return { from: context.pos, options: [] };
-            }
-            
-            // For keyword completions, manually add SQL keywords
-            // This is necessary because override prevents SQL extension's default completions
-            const keywordResult = this.buildKeywordCompletions(context);
-            if (keywordResult && keywordResult.completions.length > 0) {
-              return {
-                from: keywordResult.from,
-                options: keywordResult.completions,
-              };
-            }
-            
-            // Return null to try other completion sources
-            return null;
-          },
-        ],
         activateOnTyping: true,
         defaultKeymap: true,
         maxRenderedOptions: 50,
@@ -4703,13 +4619,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         }
       }),
       this.themeCompartment.of(this.buildEditorTheme()),
-      this.sqlConfigCompartment.of(
-        sql({
-          dialect: this.sqlDialect,
-          upperCaseKeywords: true,
-          schema: this.currentSqlSchema,
-        }),
-      ),
+      this.sqlConfigCompartment.of(this.buildSqlExtension()),
     ];
 
     const state = EditorState.create({
@@ -4906,6 +4816,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         }
         
         this.runningSource.load(filteredQueries);
+        this.selectedRunningQueries = [];
         this.cdr.markForCheck();
       },
       error: (error) => {
@@ -4934,6 +4845,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
             return scanBytes >= 1073741824;
           });
         }
+        this.selectedRunningQueries = [];
         assignTableRows(this.runningSource, filteredQueries).then(() => {
           this.loading = false;
           this.cdr.markForCheck();
@@ -5158,27 +5070,20 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     this.loadRunningQueries();
   }
 
-  // Batch kill selected queries (from filter bar - kills all currently displayed queries)
-  batchKillSelectedQueries(): void {
-    // Get all currently displayed queries (after filtering)
-    this.runningSource.getAll().then((allQueries: Query[]) => {
-      const queryIds = allQueries.map((q: Query) => q.QueryId);
-      
-      if (queryIds.length === 0) {
-        this.toastrService.warning('当前没有可查杀的查询', '提示');
-        return;
-      }
+  onRunningRowSelect(event: { selected?: Query[] }): void {
+    this.selectedRunningQueries = event.selected || [];
+    this.cdr.markForCheck();
+  }
 
-      this.confirmDialogService.confirm(
-        '确认批量查杀',
-        `确定要查杀当前显示的 ${queryIds.length} 个查询吗？`,
-        '查杀',
-        '取消',
-        'danger'
-      ).pipe(takeUntil(this.destroy$)).subscribe(confirmed => {
-        if (confirmed) this.batchKillQueries(queryIds);
-      });
-    });
+  batchKillSelectedQueries(): void {
+    const queryIds = this.selectedRunningQueries
+      .map((query) => query.QueryId)
+      .filter((queryId) => !!queryId);
+    if (queryIds.length === 0) {
+      this.toastrService.warning('请先勾选要查杀的查询', '提示');
+      return;
+    }
+    this.batchKillQueries(queryIds);
   }
 
   // Show query detail dialog
@@ -5245,26 +5150,16 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
   // Real-time query methods
   executeSQL(): void {
+    if (this.executing) {
+      return;
+    }
+    if (!this.clusterId) {
+      this.toastrService.warning('请先选择集群', '提示');
+      return;
+    }
     if (!this.sqlInput || this.sqlInput.trim() === '') {
       this.toastrService.warning('请输入SQL语句', '提示');
       return;
-    }
-
-    // Check if catalog is selected
-    if (!this.selectedCatalog) {
-      this.toastrService.warning('请先选择 Catalog', '提示');
-      return;
-    }
-
-    // Check if databases are still loading
-    if (this.loadingDatabases) {
-      this.toastrService.warning('数据库列表加载中，请稍候...', '提示');
-      return;
-    }
-
-    if (!this.selectedDatabase) {
-        this.toastrService.warning('请选择数据库', '提示');
-        return;
     }
 
     const trimmedSql = this.sqlInput.trim();
@@ -5289,11 +5184,8 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
   private executeSQLInternal(sql: string): void {
     this.executing = true;
-    this.queryResult = null;
-    this.resultSettings = [];
-    this.queryResults = [];
-    this.resultSources = [];
-    this.currentResultIndex = 0;
+    this.cdr.markForCheck();
+    const startedAt = performance.now();
 
     this.nodeService.executeSQL(
       sql,
@@ -5304,7 +5196,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       next: (result) => {
         this.queryResult = result;
         this.queryResults = result.results;
-        this.executionTime = result.total_execution_time_ms;
+        this.executionTime = Math.max(0, Math.round(performance.now() - startedAt));
 
         // Build settings and data sources for each result
         this.resultSettings = [];
@@ -5345,9 +5237,12 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
         this.rowCount = totalRowCount;
         this.executing = false;
+        this.currentResultIndex = 0;
 
         this.loadExecutionHistory();
         this.parseQueryResultToFields();
+        this.calculateEditorHeight();
+        this.cdr.markForCheck();
 
         if (result.results.length > 1) {
           this.toastrService.success(
@@ -5363,18 +5258,11 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
           }
         }
 
-        // Auto-collapse SQL editor after successful query
-        // Use requestAnimationFrame + setTimeout for better timing and smooth UX
-        if (result.results.length > 0 && result.results[0].success) {
-          requestAnimationFrame(() => {
-          setTimeout(() => {
-            this.toggleSqlEditor(true);
-            }, 300);
-          });
-        }
       },
       error: (error) => {
         this.executing = false;
+        this.executionTime = Math.max(0, Math.round(performance.now() - startedAt));
+        this.cdr.markForCheck();
         this.toastrService.danger(ErrorHandler.extractErrorMessage(error), '执行失败');
       },
     });
@@ -5425,23 +5313,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   clearSQL(): void {
-    this.sqlInput = '';
-    if (this.editorView) {
-      const transaction = this.editorView.state.update({
-        changes: {
-          from: 0,
-          to: this.editorView.state.doc.length,
-          insert: '',
-        },
-      });
-      this.editorView.dispatch(transaction);
-    }
-    this.queryResult = null;
-    this.resultSettings = [];
-    this.queryResults = [];
-    this.resultSources = [];
-    this.executionTime = 0;
-    this.rowCount = 0;
+    this.setEditorContent('');
   }
 
   formatSQL(): void {
@@ -5449,27 +5321,12 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       return;
     }
     try {
-      // Use sql-formatter for proper SQL formatting
       const formatted = format(this.sqlInput.trim(), {
         language: 'sql',
         tabWidth: 2,
         keywordCase: 'upper',
-        identifierCase: 'lower',
       });
-      
-      this.sqlInput = formatted;
-      
-      // Update editor content
-      if (this.editorView) {
-        const transaction = this.editorView.state.update({
-          changes: {
-            from: 0,
-            to: this.editorView.state.doc.length,
-            insert: formatted,
-          },
-        });
-        this.editorView.dispatch(transaction);
-      }
+      this.setEditorContent(formatted);
     } catch (error) {
       this.toastrService.warning('格式化失败，使用原始SQL', '提示');
     }
@@ -5684,13 +5541,10 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   applyHistorySQL(item: QueryExecutionHistoryItem): void {
-    this.sqlInput = item.sql_statement;
-    if (this.editorView) {
-      const transaction = this.editorView.state.update({
-        changes: { from: 0, to: this.editorView.state.doc.length, insert: item.sql_statement },
-      });
-      this.editorView.dispatch(transaction);
+    if (this.sqlEditorCollapsed) {
+      this.toggleSqlEditor(false);
     }
+    this.setEditorContent(item.sql_statement);
     if (item.catalog) {
       this.selectedCatalog = item.catalog;
     }

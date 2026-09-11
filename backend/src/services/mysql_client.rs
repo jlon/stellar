@@ -151,7 +151,6 @@ impl MySQLSession {
         Ok(())
     }
 
-    /// Execute a query and return both results and execution time (SQL only, excluding data processing)
     pub async fn execute(
         &mut self,
         sql: &str,
@@ -161,21 +160,14 @@ impl MySQLSession {
             tracing::error!("MySQL query execution failed: {}", e);
             ApiError::internal_error(format!("SQL execution failed: {}", e))
         })?;
-        let execution_time_ms = start.elapsed().as_millis();
-
-        tracing::debug!("SQL: '{}' -> {} rows in {}ms", sql, rows.len(), execution_time_ms);
-
-        let process_start = std::time::Instant::now();
         let (columns, data_rows) = process_query_result(rows);
-        let process_time_ms = process_start.elapsed().as_millis();
-
+        let execution_time_ms = start.elapsed().as_millis();
         tracing::debug!(
-            "Data processing: {}ms (SQL: {}ms, Total: {}ms)",
-            process_time_ms,
-            execution_time_ms,
-            execution_time_ms + process_time_ms
+            "SQL: '{}' -> {} rows in {}ms",
+            sql,
+            data_rows.len(),
+            execution_time_ms
         );
-
         Ok((columns, data_rows, execution_time_ms))
     }
 

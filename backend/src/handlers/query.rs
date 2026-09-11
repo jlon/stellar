@@ -453,6 +453,10 @@ pub async fn execute_sql(
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Json(request): Json<QueryExecuteRequest>,
 ) -> ApiResult<Json<QueryExecuteResponse>> {
+    // Wall-clock from request arrival to response: covers cluster lookup, session
+    // creation, USE, execution, row conversion and history persistence.
+    let total_start = Instant::now();
+
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -483,7 +487,6 @@ pub async fn execute_sql(
         session.use_database(db).await?;
     }
 
-    let total_start = Instant::now();
     let mut results = Vec::new();
 
     for sql in sql_statements {
@@ -570,8 +573,6 @@ pub async fn execute_sql(
         }
     }
 
-    let total_execution_time_ms = total_start.elapsed().as_millis();
-
     let history_service = QueryExecutionHistoryService::new(state.db.clone());
     for result in &results {
         let _ = history_service
@@ -588,6 +589,8 @@ pub async fn execute_sql(
             })
             .await;
     }
+
+    let total_execution_time_ms = total_start.elapsed().as_millis();
 
     Ok(Json(QueryExecuteResponse { results, total_execution_time_ms }))
 }
@@ -633,25 +636,157 @@ fn parse_sql_statements(sql: &str) -> Vec<String> {
 
 fn apply_query_limit(sql: &str, limit: i32) -> String {
     let trimmed = sql.trim();
-    let sql_upper = trimmed.to_uppercase();
-
-    if sql_upper.contains("LIMIT") {
+    if !should_apply_select_limit(trimmed) || has_outer_limit_clause(trimmed) {
         return trimmed.to_string();
     }
 
-    if sql_upper.starts_with("SELECT") {
-        if sql_upper.contains("GET_QUERY_PROFILE")
-            || sql_upper.contains("SHOW_PROFILE")
-            || sql_upper.contains("EXPLAIN")
-        {
-            return trimmed.to_string();
+    let sql_without_semicolon = trimmed.trim_end_matches(';').trim_end();
+    format!("{} LIMIT {}", sql_without_semicolon, limit)
+}
+
+fn should_apply_select_limit(sql: &str) -> bool {
+    let chars: Vec<char> = sql.chars().collect();
+    let start = skip_sql_trivia(&chars, 0);
+    if !sql_keyword_at(&chars, start).eq_ignore_ascii_case("SELECT") {
+        return false;
+    }
+
+    let upper = sql.to_ascii_uppercase();
+    !upper.contains("GET_QUERY_PROFILE") && !upper.contains("SHOW_PROFILE") && !upper.contains("EXPLAIN")
+}
+
+fn has_outer_limit_clause(sql: &str) -> bool {
+    let chars: Vec<char> = sql.chars().collect();
+    let mut i = 0;
+    let mut depth: usize = 0;
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut in_backtick = false;
+
+    while i < chars.len() {
+        if in_single {
+            if chars[i] == '\'' {
+                if i + 1 < chars.len() && chars[i + 1] == '\'' {
+                    i += 2;
+                    continue;
+                }
+                in_single = false;
+            }
+            i += 1;
+            continue;
+        }
+        if in_double {
+            if chars[i] == '"' {
+                if i + 1 < chars.len() && chars[i + 1] == '"' {
+                    i += 2;
+                    continue;
+                }
+                in_double = false;
+            }
+            i += 1;
+            continue;
+        }
+        if in_backtick {
+            if chars[i] == '`' {
+                in_backtick = false;
+            }
+            i += 1;
+            continue;
         }
 
-        let sql_without_semicolon = trimmed.trim_end_matches(';');
-        format!("{} LIMIT {}", sql_without_semicolon, limit)
-    } else {
-        trimmed.to_string()
+        let next = skip_sql_trivia(&chars, i);
+        if next != i {
+            i = next;
+            continue;
+        }
+
+        match chars[i] {
+            '\'' => {
+                in_single = true;
+                i += 1;
+            },
+            '"' => {
+                in_double = true;
+                i += 1;
+            },
+            '`' => {
+                in_backtick = true;
+                i += 1;
+            },
+            '(' => {
+                depth += 1;
+                i += 1;
+            },
+            ')' => {
+                depth = depth.saturating_sub(1);
+                i += 1;
+            },
+            c if is_sql_ident_start(c) => {
+                let word = sql_keyword_at(&chars, i);
+                i += word.chars().count();
+                if depth == 0 && word.eq_ignore_ascii_case("LIMIT") {
+                    let after = skip_sql_trivia(&chars, i);
+                    if after < chars.len() && chars[after].is_ascii_digit() {
+                        return true;
+                    }
+                }
+            },
+            _ => {
+                i += 1;
+            },
+        }
     }
+
+    false
+}
+
+fn skip_sql_trivia(chars: &[char], mut i: usize) -> usize {
+    loop {
+        while i < chars.len() && chars[i].is_whitespace() {
+            i += 1;
+        }
+        if i + 1 < chars.len() && chars[i] == '-' && chars[i + 1] == '-' {
+            i += 2;
+            while i < chars.len() && chars[i] != '\n' {
+                i += 1;
+            }
+            continue;
+        }
+        if i < chars.len() && chars[i] == '#' {
+            while i < chars.len() && chars[i] != '\n' {
+                i += 1;
+            }
+            continue;
+        }
+        if i + 1 < chars.len() && chars[i] == '/' && chars[i + 1] == '*' {
+            i += 2;
+            while i + 1 < chars.len() && !(chars[i] == '*' && chars[i + 1] == '/') {
+                i += 1;
+            }
+            i = i.saturating_add(2).min(chars.len());
+            continue;
+        }
+        return i;
+    }
+}
+
+fn sql_keyword_at(chars: &[char], start: usize) -> String {
+    if start >= chars.len() || !is_sql_ident_start(chars[start]) {
+        return String::new();
+    }
+    let mut end = start + 1;
+    while end < chars.len() && is_sql_ident_part(chars[end]) {
+        end += 1;
+    }
+    chars[start..end].iter().collect()
+}
+
+fn is_sql_ident_start(c: char) -> bool {
+    c.is_ascii_alphabetic() || c == '_'
+}
+
+fn is_sql_ident_part(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_'
 }
 
 // ==================== SQL Blacklist APIs ====================
@@ -1025,5 +1160,72 @@ fn normalize_table_names_for_doris(sql: &str) -> String {
         .to_string()
     } else {
         sql.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{apply_query_limit, has_outer_limit_clause, should_apply_select_limit};
+
+    #[test]
+    fn apply_limit_appends_when_select_has_none() {
+        assert_eq!(
+            apply_query_limit("SELECT * FROM t", 1000),
+            "SELECT * FROM t LIMIT 1000"
+        );
+        assert_eq!(
+            apply_query_limit("select * from t;", 50),
+            "select * from t LIMIT 50"
+        );
+    }
+
+    #[test]
+    fn apply_limit_keeps_existing_outer_limit() {
+        assert_eq!(
+            apply_query_limit("SELECT * FROM t LIMIT 10", 1000),
+            "SELECT * FROM t LIMIT 10"
+        );
+        assert_eq!(
+            apply_query_limit("SELECT * FROM t LIMIT 10, 20", 1000),
+            "SELECT * FROM t LIMIT 10, 20"
+        );
+    }
+
+    #[test]
+    fn apply_limit_ignores_subquery_and_comment_and_literal() {
+        assert_eq!(
+            apply_query_limit("SELECT * FROM (SELECT * FROM t LIMIT 1) x", 1000),
+            "SELECT * FROM (SELECT * FROM t LIMIT 1) x LIMIT 1000"
+        );
+        assert_eq!(
+            apply_query_limit("SELECT * FROM t -- LIMIT 10", 100),
+            "SELECT * FROM t -- LIMIT 10 LIMIT 100"
+        );
+        assert_eq!(
+            apply_query_limit("SELECT * FROM t WHERE name = 'LIMIT'", 20),
+            "SELECT * FROM t WHERE name = 'LIMIT' LIMIT 20"
+        );
+        assert_eq!(
+            apply_query_limit("SELECT limit FROM t", 8),
+            "SELECT limit FROM t LIMIT 8"
+        );
+    }
+
+    #[test]
+    fn apply_limit_skips_non_select_and_profile() {
+        assert_eq!(apply_query_limit("INSERT INTO t VALUES (1)", 1000), "INSERT INTO t VALUES (1)");
+        assert_eq!(apply_query_limit("EXPLAIN SELECT * FROM t", 1000), "EXPLAIN SELECT * FROM t");
+        assert_eq!(
+            apply_query_limit("SELECT GET_QUERY_PROFILE('q')", 1000),
+            "SELECT GET_QUERY_PROFILE('q')"
+        );
+    }
+
+    #[test]
+    fn outer_limit_detects_digit_after_trivia() {
+        assert!(has_outer_limit_clause("SELECT * FROM t LIMIT /* x */ 10"));
+        assert!(!has_outer_limit_clause("SELECT * FROM t"));
+        assert!(should_apply_select_limit("/* hint */ SELECT 1"));
+        assert!(!should_apply_select_limit("WITH x AS (SELECT 1) INSERT INTO t SELECT * FROM x"));
     }
 }

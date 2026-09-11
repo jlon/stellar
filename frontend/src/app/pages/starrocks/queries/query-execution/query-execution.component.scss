@@ -11,6 +11,13 @@
   user-select: none !important;
 }
 
+:host-context(.nb-theme-dark) .codemirror-container,
+:host-context(.nb-theme-cosmic) .codemirror-container {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+}
+
 // Tab header wrapper with toggle button
 .tab-header-wrapper {
   position: relative;
@@ -493,19 +500,19 @@
         border-radius: nb-theme(border-radius);
         overflow: hidden;
         background-color: nb-theme(background-basic-color-1);
-        padding: 1px;
-        box-sizing: border-box;
         background-image:
-          linear-gradient(rgba(128, 128, 128, 0.08) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(128, 128, 128, 0.08) 1px, transparent 1px);
+          linear-gradient(rgba(0, 0, 0, 0.06) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(0, 0, 0, 0.06) 1px, transparent 1px);
         background-size: 20px 20px;
         background-position: 0 0;
-        font-size: 20px;
+        padding: 1px;
+        box-sizing: border-box;
+        font-size: 14px;
         flex: 1;
         min-height: 0;
 
       ::ng-deep .cm-editor {
-        font-size: 20px;
+        font-size: 14px;
         width: 100% !important;
         max-width: 100% !important;
         box-sizing: border-box !important;
@@ -513,15 +520,14 @@
         background-color: transparent !important;
 
           .cm-content {
-            font-size: 20px;
+            font-size: 14px;
             width: 100% !important;
             max-width: 100% !important;
             box-sizing: border-box !important;
-            background-color: transparent !important;
           }
 
           .cm-line {
-            font-size: 20px;
+            font-size: 14px;
             word-wrap: break-word !important;
             white-space: pre-wrap !important;
           }
@@ -611,6 +617,11 @@
 
     .editor-action-buttons {
       flex-shrink: 0;
+
+      .editor-collapse-btn {
+        min-width: auto;
+        padding: 0.25rem 0.5rem;
+      }
     }
 
     .hint-text {
