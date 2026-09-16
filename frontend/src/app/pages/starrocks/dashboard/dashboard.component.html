@@ -29,9 +29,16 @@
     <p class="cluster-page__hint">请联系管理员授予集群相关权限</p>
   </div>
 
-  <div *ngIf="!loading && hasClusterAccess && clusters.length === 0" class="cluster-page__state">
-    <p>暂无集群</p>
-    <p class="cluster-page__hint">添加第一个集群后会出现在这里</p>
+  <div *ngIf="!loading && hasClusterAccess && clusters.length === 0" class="cluster-page__state setup-guide">
+    <h6>三步接入第一个集群</h6>
+    <ol>
+      <li><strong>填写连接</strong><span>FE 地址、端口、账号密码</span></li>
+      <li><strong>测试连接</strong><span>确认网络与权限没问题</span></li>
+      <li><strong>设为当前集群</strong><span>开始查看概览与实时查询</span></li>
+    </ol>
+    <button nbButton status="primary" size="small" (click)="addCluster()" [disabled]="!canCreateCluster">
+      <nb-icon icon="plus-outline"></nb-icon>添加集群
+    </button>
   </div>
 
   <div class="cluster-grid" *ngIf="!loading && hasClusterAccess && clusters.length > 0">

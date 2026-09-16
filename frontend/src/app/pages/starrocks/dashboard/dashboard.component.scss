@@ -42,6 +42,35 @@
   font-size: 0.75rem;
 }
 
+/* 空集群三步向导：左对齐步骤+主按钮，一眼知道先干嘛 */
+.setup-guide {
+  max-width: 26rem;
+  margin: 0 auto;
+  text-align: left;
+
+  h6 {
+    margin: 0 0 0.75rem;
+    font-size: 0.9rem;
+  }
+
+  ol {
+    margin: 0 0 1rem;
+    padding-left: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    font-size: 0.82rem;
+
+    strong {
+      margin-right: 0.5rem;
+    }
+
+    span {
+      color: nb-theme(text-hint-color);
+    }
+  }
+}
+
 .cluster-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(26rem, 1fr));
