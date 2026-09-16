@@ -10,8 +10,8 @@ import { NbDialogRef, NbCardModule, NbButtonModule } from '@nebular/theme';
         <p style="white-space: pre-line;">{{ message }}</p>
       </nb-card-body>
       <nb-card-footer>
-        <button nbButton ghost size="small" status="basic" (click)="cancel()">{{ cancelText }}</button>
-        <button nbButton size="small" [status]="confirmStatus" (click)="confirm()">{{ confirmText }}</button>
+        <button nbButton ghost size="tiny" status="basic" (click)="cancel()">{{ cancelText }}</button>
+        <button nbButton size="tiny" [status]="confirmStatus" (click)="confirm()">{{ confirmText }}</button>
       </nb-card-footer>
     </nb-card>
   `,
