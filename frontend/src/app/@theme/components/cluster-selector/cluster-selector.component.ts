@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, inject } from '@angular/core';
+import { Component, ChangeDetectorRef, OnInit, OnDestroy, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
@@ -20,6 +20,7 @@ import { ClusterContextService } from '../../../@core/data/cluster-context.servi
 })
 export class ClusterSelectorComponent implements OnInit, OnDestroy {
   private clusterService = inject(ClusterService);
+  private cdRef = inject(ChangeDetectorRef);
   private clusterContext = inject(ClusterContextService);
   private router = inject(Router);
   private toastr = inject(NbToastrService);
@@ -35,10 +36,16 @@ export class ClusterSelectorComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe(cluster => {
         this.activeCluster = cluster;
+        this.cdRef.detectChanges();
       });
 
     // Load clusters
     this.loadClusters();
+
+    // 集群增删改后刷新（否则 header 状态残留：有集群还显示“添加集群”）
+    this.clusterService.clustersChanged$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(() => this.loadClusters(true));
   }
 
   ngOnDestroy(): void {
@@ -46,12 +53,15 @@ export class ClusterSelectorComponent implements OnInit, OnDestroy {
     this.destroy$.complete();
   }
 
-  loadClusters(): void {
-    this.loading = true;
+  loadClusters(silent = false): void {
+    if (!silent) {
+      this.loading = true;
+    }
     this.clusterService.listClusters().subscribe({
       next: (clusters) => {
         this.clusters = clusters;
         this.loading = false;
+        this.cdRef.detectChanges(); // NG0100：异步赋值后手动检测（nb-select selectedIndex 同步）
 
         // The active cluster status comes from backend via the is_active field
         // Just need to refresh if no active cluster is shown

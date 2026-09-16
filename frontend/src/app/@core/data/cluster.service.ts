@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, Subject, tap } from 'rxjs';
 import { ApiService } from './api.service';
 
 export type DeploymentMode = 'shared_nothing' | 'shared_data';
@@ -73,6 +73,10 @@ export interface ClusterResourceSummary {
 export class ClusterService {
   private api = inject(ApiService);
 
+  /** 集群增删改后通知（header 选择器等订阅刷新，避免状态残留） */
+  private clustersChangedSubject = new Subject<void>();
+  public clustersChanged$ = this.clustersChangedSubject.asObservable();
+
 
   listClusters(): Observable<Cluster[]> {
     return this.api.get<Cluster[]>('/clusters');
@@ -83,15 +87,18 @@ export class ClusterService {
   }
 
   createCluster(data: CreateClusterRequest): Observable<Cluster> {
-    return this.api.post<Cluster>('/clusters', data);
+    return this.api.post<Cluster>('/clusters', data)
+      .pipe(tap(() => this.clustersChangedSubject.next()));
   }
 
   updateCluster(id: number, data: Partial<CreateClusterRequest>): Observable<Cluster> {
-    return this.api.put<Cluster>(`/clusters/${id}`, data);
+    return this.api.put<Cluster>(`/clusters/${id}`, data)
+      .pipe(tap(() => this.clustersChangedSubject.next()));
   }
 
   deleteCluster(id: number): Observable<any> {
-    return this.api.delete(`/clusters/${id}`);
+    return this.api.delete(`/clusters/${id}`)
+      .pipe(tap(() => this.clustersChangedSubject.next()));
   }
 
   getActiveCluster(): Observable<Cluster> {
