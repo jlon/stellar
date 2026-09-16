@@ -2,7 +2,7 @@ import { Component, Input, OnInit, inject } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import { NbDialogRef, NbToastrService, NbCardModule, NbFormFieldModule, NbSelectModule, NbOptionModule, NbIconModule, NbInputModule, NbCheckboxModule, NbButtonModule, NbSpinnerModule, NbTooltipModule } from '@nebular/theme';
-import { timeout } from 'rxjs';
+import { Subscription, timeout } from 'rxjs';
 import { ClusterService, Cluster } from '../../../../@core/data/cluster.service';
 import { OrganizationService, Organization } from '../../../../@core/data/organization.service';
 import { AuthService } from '../../../../@core/data/auth.service';
@@ -47,6 +47,7 @@ export class ClusterFormComponent implements OnInit {
   testing = false;
   /** 上次测试成功时间（本轮弹窗内有效） */
   lastTestOkAt: Date | null = null;
+  private testingSub?: Subscription;
   connectionTested = false; // Track if connection has been tested
   connectionValid = false;  // Track if connection is valid
   
@@ -270,6 +271,11 @@ export class ClusterFormComponent implements OnInit {
   }
 
   testConnection(): void {
+    // 测试中再次点击则取消（spinner 覆盖层会吞点击，取消走旁边独立按钮，此处兜底）
+    if (this.testing) {
+      this.cancelTest();
+      return;
+    }
     // Check required fields for new cluster
     if (!this.isEditMode) {
       const requiredFields = ['fe_host', 'fe_http_port', 'fe_query_port', 'username', 'password'];
@@ -296,17 +302,24 @@ export class ClusterFormComponent implements OnInit {
         catalog: formValue.catalog || 'default_catalog',
       };
 
-      this.clusterService.testConnection(testData).pipe(timeout(30000)).subscribe({
+      this.testingSub = this.clusterService.testConnection(testData).pipe(timeout(30000)).subscribe({
         next: (health) => this.handleHealthCheckResult(health),
         error: (error) => this.handleHealthCheckError(error),
       });
     } else {
       // Edit mode: check health of existing cluster
-      this.clusterService.getHealth(this.clusterId!).pipe(timeout(30000)).subscribe({
+      this.testingSub = this.clusterService.getHealth(this.clusterId!).pipe(timeout(30000)).subscribe({
         next: (health) => this.handleHealthCheckResult(health),
         error: (error) => this.handleHealthCheckError(error),
       });
     }
+  }
+
+  /** 取消进行中的测试连接 */
+  cancelTest(): void {
+    this.testingSub?.unsubscribe();
+    this.testingSub = undefined;
+    this.testing = false;
   }
 
   private handleHealthCheckResult(health: any): void {
@@ -331,6 +344,7 @@ export class ClusterFormComponent implements OnInit {
       this.toastrService.danger(`健康检查失败\n\n${errors || '请检查集群配置'}`, '连接失败');
     }
     this.testing = false;
+    this.testingSub = undefined;
   }
 
   private handleHealthCheckError(error: any): void {

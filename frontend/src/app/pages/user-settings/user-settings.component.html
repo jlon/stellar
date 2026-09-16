@@ -196,7 +196,7 @@
             <div class="col-md-12">
               <div class="d-flex justify-content-end">
                 <button type="button" class="icon-btn" (click)="onCancel()" nbTooltip="取消" nbTooltipPlacement="top" aria-label="取消"><nb-icon icon="close-outline"></nb-icon></button>
-                <button type="submit" class="icon-btn is-primary" [disabled]="submitted || !form.valid" nbTooltip="保存更改" nbTooltipPlacement="top" aria-label="保存更改"><nb-icon icon="checkmark-outline"></nb-icon></button>
+                <button type="submit" class="icon-btn is-primary" [disabled]="submitted || !form.valid" nbTooltip="保存更改" nbTooltipPlacement="top" aria-label="保存更改">@if (submitted) {<nb-icon icon="loader-outline" class="spin"></nb-icon>} @else {<nb-icon icon="checkmark-outline"></nb-icon>}</button>
               </div>
             </div>
           </div>

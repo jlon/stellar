@@ -18,6 +18,16 @@
   // Custom colorful icons and the left accent bar were removed for a calmer,
   // shadcn-style navigation; active/hover backgrounds come from theme variables.
 
+  // 侧栏宽度响应式：展开态在笔记本窄屏（<1366px）从 16rem 收窄到 13.5rem，
+  // 文字仍完整可读（最长菜单项实测无截断）；compact 折叠态 (3.5rem) 与隐藏态不变，
+  // 交由 Nebular 自身断点管理，宽屏 ≥1366px 保持原生 16rem。
+  @media (max-width: 1365.98px) {
+    nb-sidebar:not(.collapsed):not(.compacted),
+    nb-sidebar:not(.collapsed):not(.compacted) .main-container {
+      width: 13.5rem;
+    }
+  }
+
   nb-card-footer .cancel {
     margin-right: 1rem;
   }
@@ -153,8 +163,7 @@
   .cdk-overlay-pane.profile-dialog-lg,
   .cdk-overlay-pane.profile-detail-dialog {
     max-width: unset !important;
-    max-height: unset !important;
-  }
+    max-height: unset !important;  }
 
   // 下拉选项永不换行：长文本单行省略（overlay 挂 body 下，无法按组件隔离，
   // 但 nowrap+ellipsis 对所有下拉都是正确行为）
@@ -178,6 +187,18 @@
   nb-option-list .option-list {
     max-height: none;
     overflow: visible;
+  }
+
+  // 无固定 class 的通用弹窗：矮屏（14寸@150% 等）限高内滚，保证头部/底部按钮始终可达
+  .cdk-overlay-pane nb-dialog-container > nb-card {
+    max-height: calc(100vh - 2rem);
+    display: flex;
+    flex-direction: column;
+
+    nb-card-body {
+      overflow-y: auto;
+      min-height: 0;
+    }
   }
 
   nb-card.profile-dialog-card {
@@ -296,6 +317,16 @@
   .text-muted {
     color: nb-theme(text-hint-color);
   }
+  /* 全局旋转动画（loader-outline.spin，图标按钮保存中状态） */
+  .spin {
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
   /* 全局图标按钮：30x30 固定尺寸 + 全透明底，hover 才亮（query-execution 工具栏同源） */
   .icon-btn {
     width: 30px;

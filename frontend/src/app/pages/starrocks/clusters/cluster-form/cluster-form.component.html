@@ -316,6 +316,7 @@
       >
       <nb-icon icon="refresh-outline"></nb-icon>
     </button>
+    <button type="button" class="icon-btn is-danger" *ngIf="testing" (click)="cancelTest()" nbTooltip="取消测试" nbTooltipPlacement="top" aria-label="取消测试"><nb-icon icon="close-outline"></nb-icon></button>
     <span class="test-ok-hint" *ngIf="lastTestOkAt && !testing">上次成功 {{ lastTestOkAt | date:'HH:mm:ss' }}</span>
 
     <div class="footer-right">
