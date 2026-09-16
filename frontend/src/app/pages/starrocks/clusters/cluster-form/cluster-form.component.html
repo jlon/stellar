@@ -303,19 +303,18 @@
 
   <nb-card-footer class="dialog-footer">
     <button
-      nbButton
-      ghost
-      status="basic"
-      size="small"
       type="button"
+      class="icon-btn"
       (click)="testConnection()"
       [disabled]="loading || saving"
       [nbSpinner]="testing"
-      nbSpinnerStatus="info"
-      nbSpinnerSize="small"
+      nbSpinnerStatus="basic"
+      nbSpinnerSize="tiny"
+      nbTooltip="测试连接"
+      nbTooltipPlacement="top"
+      aria-label="测试连接"
       >
       <nb-icon icon="refresh-outline"></nb-icon>
-      测试连接
     </button>
 
     <div class="footer-right">

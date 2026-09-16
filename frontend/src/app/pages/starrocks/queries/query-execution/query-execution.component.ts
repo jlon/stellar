@@ -1,9 +1,9 @@
 import { Component, OnInit, OnDestroy, ViewChild, AfterViewInit, ElementRef, HostListener, TemplateRef, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
-import { NbDialogRef, NbDialogService, NbMenuItem, NbMenuService, NbSidebarService, NbToastrService, NbThemeService, NbSpinnerModule, NbCardModule, NbTabsetModule, NbIconModule, NbButtonModule, NbSelectModule, NbOptionModule, NbAlertModule, NbTooltipModule, NbCheckboxModule, NbInputModule, NbBadgeModule } from '@nebular/theme';
+import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
+import { NbDialogRef, NbDialogService, NbMenuItem, NbMenuService, NbSidebarService, NbSidebarState, NbToastrService, NbThemeService, NbSpinnerModule, NbCardModule, NbTabsetModule, NbIconModule, NbButtonModule, NbSelectModule, NbOptionModule, NbAlertModule, NbTooltipModule, NbCheckboxModule, NbInputModule, NbBadgeModule } from '@nebular/theme';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
-import { Subject, Observable, forkJoin, of, fromEvent } from 'rxjs';
-import { map, catchError, takeUntil, debounceTime, finalize } from 'rxjs/operators';
+import { Subject, Observable, forkJoin, of, fromEvent, Subscription } from 'rxjs';
+import { map, catchError, filter, take, takeUntil, debounceTime, finalize } from 'rxjs/operators';
 import { NodeService, Query, QueryExecuteResult, SingleQueryResult, TableInfo, TableObjectType, SqlDiagResponse, SqlDiagResult, PerfIssue, QueryExecutionHistoryItem } from '../../../../@core/data/node.service';
 import { ClusterContextService } from '../../../../@core/data/cluster-context.service';
 import { Cluster } from '../../../../@core/data/cluster.service';
@@ -24,6 +24,7 @@ import { trigger, transition, style, animate, state } from '@angular/animations'
 import { renderMetricBadge, MetricThresholds } from '../../../../@core/utils/metric-badge';
 import { assignTableRows } from '../../../../@core/utils/table-rows';
 import { renderLongText } from '../../../../@core/utils/text-truncate';
+import { TablePaginationComponent } from '../../../../@theme/components/table-pagination/table-pagination.component';
 import { ConfirmDialogService } from '../../../../@core/services/confirm-dialog.service';
 import { AuthService } from '../../../../@core/data/auth.service';
 import { themeColor, themeColorAlpha, themeChartChrome } from '../../../../@core/utils/theme-color';
@@ -60,6 +61,17 @@ interface ChartConfig {
 interface ChartDataPoint {
   label: string;
   value: number;
+}
+
+/** 收藏的 SQL（localStorage 持久化）。 */
+interface SqlFavorite {
+  id: string;
+  name: string;
+  sql: string;
+  catalog?: string;
+  database?: string;
+  uses: number;
+  updatedAt: number;
 }
 
 type NavNodeType = 'catalog' | 'database' | 'group' | 'table';
@@ -146,6 +158,7 @@ interface NavTreeNode {
     FormsModule,
     NbInputModule,
     NbBadgeModule,
+    TablePaginationComponent,
     SlicePipe,
     DecimalPipe,
     DatePipe,
@@ -155,6 +168,7 @@ interface NavTreeNode {
 export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit {
   private nodeService = inject(NodeService);
   private route = inject(ActivatedRoute);
+  private router = inject(Router);
   private toastrService = inject(NbToastrService);
   private clusterContext = inject(ClusterContextService);
   private themeService = inject(NbThemeService);
@@ -163,6 +177,10 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   private confirmDialogService = inject(ConfirmDialogService);
   private authService = inject(AuthService);
   private cdr = inject(ChangeDetectorRef);
+  private sidebarStateBeforeWorkspace: NbSidebarState | null = null;
+  private sidebarCompactedByWorkspace = false;
+  private workspaceRouteActive = true;
+  private readonly sidebarTag = 'menu-sidebar';
 
   @ViewChild('editorContainer', { static: false }) editorContainer!: ElementRef;
   @ViewChild('tableSchemaDialog', { static: false }) tableSchemaDialogTemplate!: TemplateRef<any>;
@@ -457,6 +475,10 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   executionHistory: QueryExecutionHistoryItem[] = [];
   executionHistoryTotal: number = 0;
   loadingHistory: boolean = false;
+  /** 历史列表服务端分页状态（后端 limit+offset）。 */
+  historyPage: number = 1;
+  historyPageSize: number = 20;
+  readonly historyPageSizeOptions = [10, 20, 50, 100];
   
   // Chart Tab 相关属性
   chartFields: ChartField[] = [];
@@ -471,6 +493,12 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   
   sqlEditorCollapsed: boolean = false;
   editorHeight: number = 400;
+  /** 用户手动拖过编辑器高度后，自动计算不再覆盖（双击手柄恢复自动）。 */
+  private manualEditorHeight = false;
+  private isEditorResizing = false;
+  private resizeStartY = 0;
+  private resizeStartHeight = 400;
+  private readonly editorMinHeight = 160;
   
   // Running queries settings
   selectedRunningQueries: Query[] = [];
@@ -485,13 +513,13 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       edit: true,
       delete: true,
       position: 'right',
-      width: '120px',
+      columnTitle: '操作',
     },
     edit: {
-      editButtonContent: '<i class="nb-search"></i>',
+      editButtonContent: '<i class="nb-search" title="查看"></i>',
     },
     delete: {
-      deleteButtonContent: '<i class="nb-trash"></i>',
+      deleteButtonContent: '<i class="nb-trash" title="删除"></i>',
       confirmDelete: true,
     },
     pager: {
@@ -640,6 +668,15 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
   @HostListener('document:mousemove', ['$event'])
   onDocumentMouseMove(event: MouseEvent): void {
+    if (this.isEditorResizing) {
+      const delta = event.clientY - this.resizeStartY;
+      this.editorHeight = this.clampEditorHeight(this.resizeStartHeight + delta);
+      if (this.editorView) {
+        this.applyEditorTheme();
+      }
+      event.preventDefault();
+      return;
+    }
     if (!this.isTreeResizing) {
       return;
     }
@@ -652,6 +689,10 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
   @HostListener('document:mouseup')
   onDocumentMouseUp(): void {
+    if (this.isEditorResizing) {
+      this.isEditorResizing = false;
+      document.body.classList.remove('resizing-editor');
+    }
     if (this.isTreeResizing) {
       this.isTreeResizing = false;
       document.body.classList.remove('resizing-tree');
@@ -660,6 +701,10 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
   @HostListener('document:click', ['$event'])
   onDocumentClick(event: MouseEvent): void {
+    const clickTarget = event.target as HTMLElement | null;
+    if (clickTarget && !clickTarget.closest('.fav-wrap') && this.showFavorites) {
+      this.showFavorites = false;
+    }
     if (!this.contextMenuVisible) {
       return;
     }
@@ -674,6 +719,10 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
   @HostListener('keydown', ['$event'])
   onQueryShortcut(event: KeyboardEvent): void {
+    if (event.key === 'Escape' && this.showFavorites) {
+      this.showFavorites = false;
+      return;
+    }
     if (this.selectedTab !== 'realtime' || event.defaultPrevented) {
       return;
     }
@@ -730,6 +779,15 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     
     if (this.sqlEditorCollapsed) {
       this.editorHeight = 0;
+      if (this.editorView) {
+        this.applyEditorTheme();
+      }
+      return;
+    }
+
+    // 用户手动拖过：只按新空间钳制，不覆盖手动高度
+    if (this.manualEditorHeight) {
+      this.editorHeight = this.clampEditorHeight(this.editorHeight);
       if (this.editorView) {
         this.applyEditorTheme();
       }
@@ -901,6 +959,32 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   private refreshSqlSchema(): void {
     this.currentSqlSchema = this.buildSqlSchema();
     this.applySqlSchema();
+  }
+
+  /** SQL 编辑器纵向拖拽（镜像左侧库表树横向拖拽）。 */
+  startEditorResize(event: MouseEvent): void {
+    if (this.sqlEditorCollapsed) {
+      return;
+    }
+    this.isEditorResizing = true;
+    this.manualEditorHeight = true;
+    this.resizeStartY = event.clientY;
+    this.resizeStartHeight = this.editorHeight;
+    document.body.classList.add('resizing-editor');
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  /** 双击手柄：恢复自动高度。 */
+  resetEditorHeight(): void {
+    this.manualEditorHeight = false;
+    this.calculateEditorHeight();
+  }
+
+  private clampEditorHeight(h: number): number {
+    const reserved = 80 + 28 + (this.queryResult ? 160 : 0);
+    const maxH = Math.max(200, this.treePanelHeight - reserved);
+    return Math.min(maxH, Math.max(this.editorMinHeight, h));
   }
 
   startTreeResize(event: MouseEvent): void {
@@ -4681,7 +4765,21 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   ngOnInit(): void {
-    this.sidebarService.compact('menu-sidebar');
+    this.activateWorkspaceSidebar();
+    this.router.events
+      .pipe(
+        filter((event): event is NavigationEnd => event instanceof NavigationEnd),
+        takeUntil(this.destroy$),
+      )
+      .subscribe((event) => {
+        this.workspaceRouteActive = this.isWorkspaceRoute(event.urlAfterRedirects);
+        if (this.workspaceRouteActive) {
+          this.activateWorkspaceSidebar();
+        } else {
+          this.restoreSidebar();
+        }
+      });
+    this.favorites = this.readFavorites();
     
     this.clusterContext.activeCluster$
       .pipe(takeUntil(this.destroy$))
@@ -4717,6 +4815,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   ngOnDestroy(): void {
+    this.restoreSidebar();
     this.stopAutoRefresh();
     this.destroyEditor();
     this.destroy$.next();
@@ -4728,6 +4827,45 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     }
     this.contextMenuVisible = false;
     this.contextMenuTargetNode = null;
+  }
+
+  private isWorkspaceRoute(url: string): boolean {
+    return url.split('?')[0].endsWith('/starrocks/queries/execution');
+  }
+
+  private activateWorkspaceSidebar(): void {
+    if (this.sidebarCompactedByWorkspace) {
+      return;
+    }
+
+    this.sidebarService
+      .getSidebarState(this.sidebarTag)
+      .pipe(take(1), takeUntil(this.destroy$))
+      .subscribe((state) => {
+        if (!this.workspaceRouteActive || state === 'compacted') {
+          return;
+        }
+
+        this.sidebarStateBeforeWorkspace = state;
+        this.sidebarCompactedByWorkspace = true;
+        this.sidebarService.compact(this.sidebarTag);
+      });
+  }
+
+  private restoreSidebar(): void {
+    if (!this.sidebarCompactedByWorkspace || !this.sidebarStateBeforeWorkspace) {
+      return;
+    }
+
+    const state = this.sidebarStateBeforeWorkspace;
+    this.sidebarCompactedByWorkspace = false;
+    this.sidebarStateBeforeWorkspace = null;
+
+    if (state === 'expanded') {
+      this.sidebarService.expand(this.sidebarTag);
+    } else if (state === 'collapsed') {
+      this.sidebarService.collapse(this.sidebarTag);
+    }
   }
 
   // Tab switching
@@ -5189,12 +5327,133 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     this.executeSQLInternal(trimmedSql);
   }
 
+  private execSub: Subscription | null = null;
+  private execStartedAt = 0;
+  private execFingerprint = '';
+
+  /** SQL 指纹（与后端 cancel_running_query 同算法）：压空白，前 300 字。 */
+  static sqlFingerprint(sql: string): string {
+    return sql.replace(/\s+/g, ' ').trim().slice(0, 300);
+  }
+
+  /** 取消执行：先断开等待，再按指纹 KILL 在跑查询（影响面限于相同 SQL）。 */
+  cancelExecute(): void {
+    if (!this.executing) {
+      return;
+    }
+    this.execSub?.unsubscribe();
+    this.execSub = null;
+    const fp = this.execFingerprint;
+    const started = this.execStartedAt;
+    this.executing = false;
+    this.cdr.markForCheck();
+    if (!fp) {
+      this.toastrService.info('已断开等待', '已取消');
+      return;
+    }
+    this.nodeService.cancelQuery(fp, started).subscribe({
+      next: (r) => {
+        const n = r?.killed?.length ?? 0;
+        this.toastrService.success(
+          n > 0 ? `已终止 ${n} 个在跑查询` : '查询已结束，无需终止',
+          '已取消',
+        );
+      },
+      error: () => this.toastrService.warning('终止指令发送失败，FE 侧任务状态未知', '已取消'),
+    });
+  }
+
+  /** SQL 收藏夹（localStorage，跨会话保留）。 */
+  favorites: SqlFavorite[] = [];
+  showFavorites = false;
+  private readonly favKey = 'stellar-sql-favorites';
+
+  private readFavorites(): SqlFavorite[] {
+    try {
+      const raw = localStorage.getItem(this.favKey);
+      const list = raw ? JSON.parse(raw) : [];
+      return Array.isArray(list) ? list : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private persistFavorites(): void {
+    try {
+      localStorage.setItem(this.favKey, JSON.stringify(this.favorites.slice(0, 50)));
+    } catch {
+      // 配额不足时静默忽略
+    }
+  }
+
+  isFavorited(): boolean {
+    const sql = (this.sqlInput || '').trim();
+    return !!sql && this.favorites.some((f) => f.sql === sql);
+  }
+
+  toggleFavorite(): void {
+    const sql = (this.sqlInput || '').trim();
+    if (!sql) {
+      this.toastrService.warning('先写点 SQL 再收藏', '提示');
+      return;
+    }
+    if (this.favorites.length === 0) {
+      this.favorites = this.readFavorites();
+    }
+    const idx = this.favorites.findIndex((f) => f.sql === sql);
+    if (idx >= 0) {
+      this.favorites.splice(idx, 1);
+      this.toastrService.success('已取消收藏', '成功');
+    } else {
+      const firstLine = sql.split('\n')[0].trim().slice(0, 30) || '未命名查询';
+      this.favorites.unshift({
+        id: `${Date.now()}`,
+        name: firstLine,
+        sql,
+        catalog: this.selectedCatalog || undefined,
+        database: this.selectedDatabase || undefined,
+        uses: 0,
+        updatedAt: Date.now(),
+      });
+      this.toastrService.success('已收藏当前 SQL', '成功');
+    }
+    this.persistFavorites();
+    this.cdr.markForCheck();
+  }
+
+  applyFavorite(f: SqlFavorite): void {
+    this.sqlInput = f.sql;
+    if (f.catalog) {
+      this.selectedCatalog = f.catalog;
+    }
+    if (f.database) {
+      this.selectedDatabase = f.database;
+    }
+    f.uses += 1;
+    f.updatedAt = Date.now();
+    this.favorites.sort((a, b) => b.uses - a.uses || b.updatedAt - a.updatedAt);
+    this.persistFavorites();
+    this.showFavorites = false;
+    this.setEditorContent(f.sql);
+    this.cdr.markForCheck();
+  }
+
+  removeFavorite(id: string, event: Event): void {
+    event.stopPropagation();
+    this.favorites = this.favorites.filter((f) => f.id !== id);
+    this.persistFavorites();
+    this.cdr.markForCheck();
+  }
+
   private executeSQLInternal(sql: string): void {
     this.executing = true;
     this.cdr.markForCheck();
     const startedAt = performance.now();
 
-    this.nodeService.executeSQL(
+    this.execStartedAt = Date.now();
+    this.execFingerprint = QueryExecutionComponent.sqlFingerprint(sql);
+    this.execSub?.unsubscribe();
+    this.execSub = this.nodeService.executeSQL(
       sql,
       this.queryLimit,
       this.selectedCatalog || undefined,
@@ -5244,6 +5503,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
         this.rowCount = totalRowCount;
         this.executing = false;
+        this.execSub = null;
         this.currentResultIndex = 0;
 
         this.loadExecutionHistory();
@@ -5268,6 +5528,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       },
       error: (error) => {
         this.executing = false;
+        this.execSub = null;
         this.executionTime = Math.max(0, Math.round(performance.now() - startedAt));
         this.cdr.markForCheck();
         this.toastrService.danger(ErrorHandler.extractErrorMessage(error), '执行失败');
@@ -5523,13 +5784,14 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     this.cdr.markForCheck();
   }
 
-  loadExecutionHistory(): void {
+  loadExecutionHistory(page: number = this.historyPage): void {
     if (!this.clusterId) return;
     
     this.loadingHistory = true;
     this.cdr.markForCheck();
     
-    this.nodeService.listExecutionHistory(50, 0)
+    this.historyPage = page;
+    this.nodeService.listExecutionHistory(this.historyPageSize, (page - 1) * this.historyPageSize)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (response) => {
@@ -5545,6 +5807,12 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
           this.cdr.markForCheck();
         },
       });
+  }
+
+  /** 历史页大小变化：回到第 1 页并重新加载。 */
+  onHistoryPageSizeChange(size: number): void {
+    this.historyPageSize = size;
+    this.loadExecutionHistory(1);
   }
 
   applyHistorySQL(item: QueryExecutionHistoryItem): void {
@@ -5577,10 +5845,13 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: () => {
-          this.executionHistory = this.executionHistory.filter(h => h.id !== item.id);
-          this.executionHistoryTotal = Math.max(0, this.executionHistoryTotal - 1);
           this.toastrService.success('已删除', '成功');
-          this.cdr.markForCheck();
+          // 当前页删空时回退一页，避免空页
+          if (this.executionHistory.length === 1 && this.historyPage > 1) {
+            this.loadExecutionHistory(this.historyPage - 1);
+          } else {
+            this.loadExecutionHistory();
+          }
         },
         error: () => {
           this.toastrService.danger('删除失败', '错误');
@@ -5603,6 +5874,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
             next: () => {
               this.executionHistory = [];
               this.executionHistoryTotal = 0;
+              this.historyPage = 1;
               this.toastrService.success('已清空历史', '成功');
               this.cdr.markForCheck();
             },

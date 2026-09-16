@@ -94,7 +94,7 @@
                         <button
                           *ngIf="!executing"
                           type="button"
-                          class="sql-icon-btn is-primary"
+                          class="icon-btn is-primary"
                           (click)="executeSQL()"
                           [disabled]="!clusterId || !sqlInput"
                           nbTooltip="执行（Ctrl / ⌘ + Enter）"
@@ -105,7 +105,7 @@
                         <button
                           *ngIf="executing"
                           type="button"
-                          class="sql-icon-btn is-danger-active"
+                          class="icon-btn is-danger-active"
                           (click)="cancelExecute()"
                           nbTooltip="断开等待并按指纹终止在跑查询"
                           nbTooltipPlacement="top"
@@ -117,7 +117,7 @@
 
                         <button
                           type="button"
-                          class="sql-icon-btn is-danger"
+                          class="icon-btn is-danger"
                           (click)="clearSQL()"
                           [disabled]="executing || !sqlInput"
                           nbTooltip="清空 SQL"
@@ -127,7 +127,7 @@
                         </button>
                         <button
                           type="button"
-                          class="sql-icon-btn"
+                          class="icon-btn"
                           (click)="formatSQL()"
                           [disabled]="executing || !sqlInput"
                           nbTooltip="格式化 SQL"
@@ -138,7 +138,7 @@
                         <div class="fav-wrap">
                           <button
                             type="button"
-                            class="sql-icon-btn"
+                            class="icon-btn"
                             [class.is-active]="isFavorited()"
                             (click)="showFavorites = !showFavorites; $event.stopPropagation()"
                             nbTooltip="SQL 收藏夹"
@@ -168,7 +168,7 @@
                         </div>
                         <button
                           type="button"
-                          class="sql-icon-btn"
+                          class="icon-btn"
                           [nbSpinner]="diagnosing"
                           nbSpinnerStatus="basic"
                           nbSpinnerSize="tiny"
@@ -181,7 +181,7 @@
                         </button>
                         <button
                           type="button"
-                          class="sql-icon-btn"
+                          class="icon-btn"
                           (click)="toggleSqlEditor(true)"
                           nbTooltip="收起 SQL 编辑器"
                           nbTooltipPlacement="top"

@@ -1,6 +1,6 @@
 import { Component, Input, OnInit, inject } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { NbDialogRef, NbToastrService, NbCardModule, NbFormFieldModule, NbSelectModule, NbOptionModule, NbIconModule, NbInputModule, NbCheckboxModule, NbButtonModule, NbSpinnerModule } from '@nebular/theme';
+import { NbDialogRef, NbToastrService, NbCardModule, NbFormFieldModule, NbSelectModule, NbOptionModule, NbIconModule, NbInputModule, NbCheckboxModule, NbButtonModule, NbSpinnerModule, NbTooltipModule } from '@nebular/theme';
 import { timeout } from 'rxjs';
 import { ClusterService, Cluster } from '../../../../@core/data/cluster.service';
 import { OrganizationService, Organization } from '../../../../@core/data/organization.service';
@@ -23,7 +23,8 @@ import { ErrorHandler } from '../../../../@core/utils/error-handler';
     NbInputModule,
     NbCheckboxModule,
     NbButtonModule,
-    NbSpinnerModule
+    NbSpinnerModule,
+    NbTooltipModule
 ],
 })
 export class ClusterFormComponent implements OnInit {

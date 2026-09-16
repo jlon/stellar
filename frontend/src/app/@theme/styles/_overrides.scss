@@ -1,8 +1,10 @@
 @import './themes';
 @import './smart-table';
+@import './table-pagination';
 
 @mixin nb-overrides() {
   @include ngx-smart-table-theme();
+  @include ngx-table-pagination-theme();
 
   nb-select.size-medium button {
     padding: 0.4375rem 2.2rem 0.4375rem 1.125rem !important;
@@ -12,35 +14,9 @@
     }
   }
 
-  nb-menu .menu-item {
-    @each $status in primary, success, info, warning, danger {
-      .menu-icon.status-#{$status} {
-        color: nb-theme(color-#{$status}-default);
-        opacity: 0.7;
-      }
-
-      a:hover .menu-icon.status-#{$status},
-      a.active .menu-icon.status-#{$status} {
-        color: nb-theme(color-#{$status}-default);
-        opacity: 1;
-      }
-    }
-
-    > a {
-      position: relative;
-    }
-  }
-
-  nb-sidebar:not(.compacted) nb-menu .menu-item > a.active::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 0.45rem;
-    bottom: 0.45rem;
-    width: 3px;
-    border-radius: 0 2px 2px 0;
-    background: nb-theme(color-primary-default);
-  }
+  // Menu: use Nebular defaults (muted icon color + primary text on active).
+  // Custom colorful icons and the left accent bar were removed for a calmer,
+  // shadcn-style navigation; active/hover backgrounds come from theme variables.
 
   nb-card-footer .cancel {
     margin-right: 1rem;
@@ -50,16 +26,127 @@
     .angular2-smart-actions {
       text-align: center;
       vertical-align: middle;
+      width: 5rem !important;
+      min-width: 5rem !important;
+    }
+
+    > div {
+      max-width: 100%;
+      overflow-x: auto;
     }
 
     table {
-      table-layout: auto;
+      table-layout: fixed;
       width: 100%;
     }
 
     th, td {
       white-space: nowrap;
-      min-width: fit-content;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    // 列名截断时省略号展示；完整列名由 AppComponent 全局同步器写入 data-th-title，
+    // hover 用主题化 ::after 浮层展示（不用原生 title 的黑框）。
+    th.angular2-smart-th {
+      position: relative;
+
+      &:hover::after {
+        content: attr(data-th-title);
+        position: fixed;
+        top: auto;
+        bottom: auto;
+        // 固定在 th 下方：无法用 %/transform 定位到伪元素自身，改由 CSS 变量
+        // （--th-bottom / --th-center，由同步器写入）提供锚点，避免 overflow 裁剪。
+        top: var(--th-bottom, auto);
+        left: var(--th-center, 50%);
+        transform: translateX(-50%);
+        z-index: 10;
+        max-width: 20rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        padding: 0.25rem 0.75rem;
+        border-radius: nb-theme(border-radius);
+        background: nb-theme(background-basic-color-3);
+        color: nb-theme(text-basic-color);
+        border: 1px solid nb-theme(border-basic-color-4);
+        box-shadow: 0 4px 14px 0 rgba(0, 0, 0, 0.25);
+        font-size: 0.8125rem;
+        font-weight: nb-theme(text-font-weight);
+        pointer-events: none;
+      }
+    }
+
+    th .angular2-smart-title,
+    th a.angular2-smart-sort-link,
+    th span.angular2-smart-sort {
+      display: inline-block;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      vertical-align: bottom;
+    }
+
+    // 操作列图标按钮：细描边、统一尺寸，hover 才着色（危险动作红色）。
+    a.angular2-smart-action {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.75rem;
+      height: 1.75rem;
+      margin: 0 0.125rem;
+      padding: 0;
+      border: 1px solid nb-theme(border-basic-color-3);
+      border-radius: nb-theme(border-radius);
+      color: nb-theme(text-hint-color);
+      font-size: 1rem !important;
+      line-height: 1;
+      transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+
+      &:not(:last-child) {
+        border-right: 1px solid nb-theme(border-basic-color-3);
+      }
+
+      &:hover {
+        text-decoration: none;
+        border-color: nb-theme(color-primary-default);
+        color: nb-theme(color-primary-default);
+        background-color: nb-theme(color-primary-transparent-100);
+      }
+    }
+
+    a.angular2-smart-action-delete-delete:hover {
+      border-color: nb-theme(color-danger-default);
+      color: nb-theme(color-danger-default);
+      background-color: nb-theme(color-danger-transparent-100);
+    }
+  }
+
+  // 窄屏不把列压成不可读的碎片，保留 smart-table 的自然横向浏览。
+  @media (max-width: 48rem) {
+    .filter-row,
+    .search-filters .filter-row,
+    .running-query-filters,
+    .selection-toolbar,
+    .cluster-toolbar,
+    .overview-toolbar {
+      flex-wrap: wrap;
+    }
+
+    angular2-smart-table {
+      table {
+        table-layout: auto;
+        min-width: 44rem;
+      }
+
+      th, td {
+        min-width: 7rem;
+        overflow: visible;
+        text-overflow: clip;
+      }
     }
   }
 
@@ -71,6 +158,11 @@
 
   // 下拉选项永不换行：长文本单行省略（overlay 挂 body 下，无法按组件隔离，
   // 但 nowrap+ellipsis 对所有下拉都是正确行为）
+  nb-option-list {
+    // 面板宽度自适应最长选项，不按触发器宽度折行
+    min-width: min-content;
+  }
+
   nb-option-list .option-list nb-option {
     white-space: nowrap;
 
@@ -203,5 +295,82 @@
 
   .text-muted {
     color: nb-theme(text-hint-color);
+  }
+  /* 全局图标按钮：30x30 固定尺寸 + 全透明底，hover 才亮（query-execution 工具栏同源） */
+  .icon-btn {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 0;
+    border-radius: 7px;
+    color: nb-theme(text-hint-color);
+    cursor: pointer;
+    position: relative;
+    transition: color 0.15s ease, background-color 0.15s ease, transform 0.1s ease;
+
+    nb-icon {
+      font-size: 16px;
+      line-height: 1;
+    }
+
+    &:hover:not(:disabled) {
+      color: nb-theme(text-basic-color);
+      background-color: nb-theme(color-basic-transparent-hover);
+    }
+
+    &:active:not(:disabled) {
+      transform: scale(0.94);
+    }
+
+    &:focus-visible {
+      outline: 2px solid nb-theme(color-primary-transparent-500);
+      outline-offset: 1px;
+    }
+
+    &:disabled {
+      background: transparent;
+      color: nb-theme(text-disabled-color);
+      cursor: not-allowed;
+    }
+
+  /* 主操作：工具栏里唯一的常亮色 */
+    &.is-primary {
+      color: nb-theme(color-primary-default);
+
+      &:hover:not(:disabled) {
+        color: nb-theme(color-primary-hover);
+        background-color: nb-theme(color-primary-transparent-100);
+      }
+    }
+
+  /* 执行中的取消：常亮红 */
+    &.is-danger-active {
+      color: nb-theme(color-danger-default);
+
+      &:hover:not(:disabled) {
+        color: nb-theme(color-danger-hover);
+        background-color: nb-theme(color-danger-transparent-100);
+      }
+    }
+
+    &.is-danger:hover:not(:disabled) {
+      color: nb-theme(color-danger-default);
+      background-color: nb-theme(color-danger-transparent-100);
+    }
+
+  /* 当前 SQL 已收藏：星标高亮 */
+    &.is-active {
+      color: nb-theme(color-warning-500);
+
+      &:hover:not(:disabled) {
+        color: nb-theme(color-warning-600);
+        background-color: nb-theme(color-warning-transparent-100);
+      }
+    }
   }
 }
