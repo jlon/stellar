@@ -627,58 +627,86 @@
     .editor-action-buttons {
       flex-shrink: 0;
       position: relative;
-      gap: 0.15rem;
+      display: flex;
+      align-items: center;
+      gap: 4px;
 
-      /* 主操作与辅助操作之间的细分隔线 */
+      /* 主操作与辅助操作之间的发丝分隔线 */
       .action-divider {
         width: 1px;
-        height: 1.1rem;
-        margin: 0 0.45rem;
+        height: 16px;
+        margin: 0 6px;
         background: nb-theme(border-basic-color-3);
       }
 
-      /* 图标按钮：默认安静（中性灰），hover 才亮起，降低工具栏视觉噪声 */
-      [nbButton].icon-action {
-        min-width: auto;
-        padding: 0.25rem 0.5rem;
+      /*
+       * 原生图标按钮：Nebular ghost 自带半透明底且各 status 深浅不一，
+       * 去不干净。30x30 固定尺寸 + 全透明底，hover 才亮（只过渡
+       * color / background-color，不位移不跳动）。
+       */
+      .sql-icon-btn {
+        width: 30px;
+        height: 30px;
+        padding: 0;
+        margin: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: 0;
+        border-radius: 7px;
         color: nb-theme(text-hint-color);
-        transition: color 0.15s ease, background-color 0.15s ease;
+        cursor: pointer;
+        position: relative;
+        transition: color 0.15s ease, background-color 0.15s ease, transform 0.1s ease;
 
         nb-icon {
-          font-size: 1.05rem;
-          vertical-align: middle;
+          font-size: 16px;
+          line-height: 1;
         }
 
-        &:hover:not([disabled]),
-        &:focus:not([disabled]) {
-          color: nb-theme(color-primary-500);
-          background-color: nb-theme(color-primary-transparent-100);
+        &:hover:not(:disabled) {
+          color: nb-theme(text-basic-color);
+          background-color: nb-theme(color-basic-transparent-hover);
         }
 
-        /* 主操作：常亮（工具栏里唯一的彩色，自然焦点） */
+        &:active:not(:disabled) {
+          transform: scale(0.94);
+        }
+
+        &:focus-visible {
+          outline: 2px solid nb-theme(color-primary-transparent-500);
+          outline-offset: 1px;
+        }
+
+        &:disabled {
+          background: transparent;
+          color: nb-theme(text-disabled-color);
+          cursor: not-allowed;
+        }
+
+        /* 主操作：工具栏里唯一的常亮色 */
         &.is-primary {
           color: nb-theme(color-primary-default);
 
-          &:hover:not([disabled]),
-          &:focus:not([disabled]) {
+          &:hover:not(:disabled) {
             color: nb-theme(color-primary-hover);
             background-color: nb-theme(color-primary-transparent-100);
           }
         }
 
-        /* 执行中的取消：常亮红，醒目可终止 */
+        /* 执行中的取消：常亮红 */
         &.is-danger-active {
           color: nb-theme(color-danger-default);
 
-          &:hover:not([disabled]),
-          &:focus:not([disabled]) {
+          &:hover:not(:disabled) {
             color: nb-theme(color-danger-hover);
             background-color: nb-theme(color-danger-transparent-100);
           }
         }
 
-        &.is-danger:hover:not([disabled]) {
-          color: nb-theme(color-danger-500);
+        &.is-danger:hover:not(:disabled) {
+          color: nb-theme(color-danger-default);
           background-color: nb-theme(color-danger-transparent-100);
         }
 
@@ -686,26 +714,18 @@
         &.is-active {
           color: nb-theme(color-warning-500);
 
-          &:hover:not([disabled]) {
+          &:hover:not(:disabled) {
             color: nb-theme(color-warning-600);
             background-color: nb-theme(color-warning-transparent-100);
           }
         }
-
-        &[disabled] {
-          color: nb-theme(text-disabled-color);
-        }
-      }
-
-      .editor-collapse-btn {
-        min-width: auto;
-        padding: 0.25rem 0.5rem;
       }
     }
 
     /* SQL 收藏夹下拉（原生组件拼装） */
     .fav-wrap {
       position: relative;
+      display: inline-flex;
     }
 
     .fav-panel {

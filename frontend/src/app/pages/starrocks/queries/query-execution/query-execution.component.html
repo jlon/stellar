@@ -90,70 +90,60 @@
                         <nb-spinner *ngIf="loadingDatabases" size="tiny" status="info" class="loading-indicator" [message]="''"></nb-spinner>
                       </div>
 
-                      <div class="editor-action-buttons d-flex align-items-center">
+                      <div class="editor-action-buttons">
                         <button
                           *ngIf="!executing"
-                          nbButton
-                          ghost
-                          status="primary"
-                          size="small"
-                          class="icon-action is-primary"
+                          type="button"
+                          class="sql-icon-btn is-primary"
                           (click)="executeSQL()"
                           [disabled]="!clusterId || !sqlInput"
                           nbTooltip="执行（Ctrl / ⌘ + Enter）"
-                          nbTooltipPlacement="top">
+                          nbTooltipPlacement="top"
+                          aria-label="执行 SQL">
                           <nb-icon icon="play-circle-outline"></nb-icon>
                         </button>
                         <button
                           *ngIf="executing"
-                          nbButton
-                          ghost
-                          status="danger"
-                          size="small"
-                          class="icon-action is-danger-active"
+                          type="button"
+                          class="sql-icon-btn is-danger-active"
                           (click)="cancelExecute()"
                           nbTooltip="断开等待并按指纹终止在跑查询"
-                          nbTooltipPlacement="top">
+                          nbTooltipPlacement="top"
+                          aria-label="取消执行">
                           <nb-icon icon="stop-circle-outline"></nb-icon>
                         </button>
 
                         <span class="action-divider"></span>
 
                         <button
-                          nbButton
-                          ghost
-                          status="basic"
-                          size="small"
-                          class="icon-action is-danger"
+                          type="button"
+                          class="sql-icon-btn is-danger"
                           (click)="clearSQL()"
                           [disabled]="executing || !sqlInput"
                           nbTooltip="清空 SQL"
-                          nbTooltipPlacement="top">
+                          nbTooltipPlacement="top"
+                          aria-label="清空 SQL">
                           <nb-icon icon="backspace-outline"></nb-icon>
                         </button>
                         <button
-                          nbButton
-                          ghost
-                          status="basic"
-                          size="small"
-                          class="icon-action"
+                          type="button"
+                          class="sql-icon-btn"
                           (click)="formatSQL()"
                           [disabled]="executing || !sqlInput"
                           nbTooltip="格式化 SQL"
-                          nbTooltipPlacement="top">
+                          nbTooltipPlacement="top"
+                          aria-label="格式化 SQL">
                           <nb-icon icon="code-outline"></nb-icon>
                         </button>
                         <div class="fav-wrap">
                           <button
-                            nbButton
-                            ghost
-                            status="basic"
-                            size="small"
-                            class="icon-action"
+                            type="button"
+                            class="sql-icon-btn"
                             [class.is-active]="isFavorited()"
                             (click)="showFavorites = !showFavorites; $event.stopPropagation()"
                             nbTooltip="SQL 收藏夹"
-                            nbTooltipPlacement="top">
+                            nbTooltipPlacement="top"
+                            aria-label="SQL 收藏夹">
                             <nb-icon [icon]="isFavorited() ? 'star' : 'star-outline'"></nb-icon>
                           </button>
                           <div class="fav-panel" *ngIf="showFavorites" (click)="$event.stopPropagation()">
@@ -177,30 +167,25 @@
                           </div>
                         </div>
                         <button
-                          nbButton
-                          ghost
-                          status="basic"
-                          size="small"
-                          class="icon-action"
+                          type="button"
+                          class="sql-icon-btn"
                           [nbSpinner]="diagnosing"
                           nbSpinnerStatus="basic"
-                          nbSpinnerSize="small"
+                          nbSpinnerSize="tiny"
                           (click)="diagnoseSQL()"
                           [disabled]="executing || diagnosing || !sqlInput || !clusterId"
                           nbTooltip="智能诊断"
-                          nbTooltipPlacement="top">
+                          nbTooltipPlacement="top"
+                          aria-label="智能诊断">
                           <nb-icon *ngIf="!diagnosing" icon="bulb-outline"></nb-icon>
                         </button>
                         <button
-                          nbButton
-                          ghost
-                          status="basic"
-                          size="small"
                           type="button"
-                          class="icon-action editor-collapse-btn"
+                          class="sql-icon-btn"
                           (click)="toggleSqlEditor(true)"
                           nbTooltip="收起 SQL 编辑器"
-                          nbTooltipPlacement="top">
+                          nbTooltipPlacement="top"
+                          aria-label="收起 SQL 编辑器">
                           <nb-icon icon="chevron-up-outline"></nb-icon>
                         </button>
                       </div>
