@@ -1,6 +1,6 @@
 import { Component, OnInit, OnDestroy, ViewChild, AfterViewInit, ElementRef, HostListener, TemplateRef, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
-import { NbDialogRef, NbDialogService, NbMenuItem, NbMenuService, NbSidebarService, NbSidebarState, NbToastrService, NbThemeService, NbSpinnerModule, NbCardModule, NbTabsetModule, NbIconModule, NbButtonModule, NbSelectModule, NbOptionModule, NbAlertModule, NbTooltipModule, NbCheckboxModule, NbInputModule, NbBadgeModule } from '@nebular/theme';
+import { NbAlertModule, NbBadgeModule, NbButtonModule, NbCardModule, NbCheckboxModule, NbDialogRef, NbDialogService, NbIconModule, NbInputModule, NbMenuItem, NbMenuService, NbOptionModule, NbSelectModule, NbSidebarService, NbSidebarState, NbSpinnerModule, NbTabsetModule, NbThemeService, NbToastrService, NbTooltipModule } from '@nebular/theme';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { Subject, Observable, forkJoin, of, fromEvent, Subscription } from 'rxjs';
 import { map, catchError, filter, take, takeUntil, debounceTime, finalize } from 'rxjs/operators';
@@ -5841,6 +5841,21 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
   deleteHistoryItem(item: QueryExecutionHistoryItem, event: Event): void {
     event.stopPropagation();
+    this.confirmDialogService.confirm(
+      '确认删除',
+      '确定要删除这条执行记录吗？此操作不可撤销。',
+      '删除',
+      '取消',
+      'danger'
+    ).pipe(takeUntil(this.destroy$)).subscribe((confirmed) => {
+      if (!confirmed) {
+        return;
+      }
+      this.deleteHistoryItemConfirmed(item);
+    });
+  }
+
+  private deleteHistoryItemConfirmed(item: QueryExecutionHistoryItem): void {
     this.nodeService.deleteExecutionHistory(item.id)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
