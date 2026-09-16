@@ -69,6 +69,25 @@
     max-height: unset !important;
   }
 
+  // 下拉选项永不换行：长文本单行省略（overlay 挂 body 下，无法按组件隔离，
+  // 但 nowrap+ellipsis 对所有下拉都是正确行为）
+  nb-option-list .option-list nb-option {
+    white-space: nowrap;
+
+    .option-content {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+
+  // 下拉面板高度完全自适应内容，永不出现滚动条
+  // （本项目下拉选项数可控，全球统一无滚动更干净）
+  nb-option-list .option-list {
+    max-height: none;
+    overflow: visible;
+  }
+
   nb-card.profile-dialog-card {
     display: flex;
     flex-direction: column;

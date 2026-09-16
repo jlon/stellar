@@ -14,7 +14,7 @@
       </span>
     </nb-select-label>
     @for (cluster of clusters; track cluster) {
-      <nb-option [value]="cluster">{{ cluster.name }}</nb-option>
+      <nb-option [value]="cluster" [title]="cluster.name">{{ cluster.name }}</nb-option>
     }
   </nb-select>
 }
