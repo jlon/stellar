@@ -1,10 +1,10 @@
-import { Component, OnInit, OnDestroy, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
-import { NbToastrService, NbDialogService, NbCardModule, NbCheckboxModule, NbButtonModule, NbIconModule, NbSelectModule, NbOptionModule, NbSpinnerModule, NbAlertModule } from '@nebular/theme';
+import { NbToastrService, NbDialogService, NbCardModule, NbButtonModule, NbIconModule, NbSelectModule, NbOptionModule, NbSpinnerModule, NbTooltipModule } from '@nebular/theme';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
+import { takeUntil, timeout } from 'rxjs/operators';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
 import { Cluster } from '../../../@core/data/cluster.service';
 import { NodeService, Session } from '../../../@core/data/node.service';
@@ -14,9 +14,9 @@ import { MetricThresholds, renderMetricBadge } from '../../../@core/utils/metric
 import { renderLongText } from '../../../@core/utils/text-truncate';
 import { ConfirmDialogService } from '../../../@core/services/confirm-dialog.service';
 import { assignTableRows } from '../../../@core/utils/table-rows';
-import { AuthService } from '../../../@core/data/auth.service';
 
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
 
 @Component({
     selector: 'ngx-sessions',
@@ -24,14 +24,13 @@ import { FormsModule } from '@angular/forms';
     styleUrls: ['./sessions.component.scss'],
     imports: [
     NbCardModule,
-    NbCheckboxModule,
     FormsModule,
     NbButtonModule,
     NbIconModule,
     NbSelectModule,
     NbOptionModule,
     NbSpinnerModule,
-    NbAlertModule,
+    NbTooltipModule,
     Angular2SmartTableModule,
     CommonModule
 ],
@@ -42,24 +41,15 @@ export class SessionsComponent implements OnInit, OnDestroy {
   private confirmDialogService = inject(ConfirmDialogService);
   private clusterContext = inject(ClusterContextService);
   private nodeService = inject(NodeService);
-  private authService = inject(AuthService);
+  private cdr = inject(ChangeDetectorRef);
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
 
   clusterId: number;
   activeCluster: Cluster | null = null;
   sessions: Session[] = [];
   source: LocalDataSource = new LocalDataSource();
   loading = true;
-  autoRefresh = false; // Default: disabled
-  refreshInterval: any;
-  selectedRefreshInterval: number | 'off' = 'off'; // Default: off (Grafana style)
-  refreshIntervalOptions = [
-    { value: 'off', label: '关闭' },
-    { value: 3, label: '3秒' },
-    { value: 5, label: '5秒' },
-    { value: 10, label: '10秒' },
-    { value: 30, label: '30秒' },
-    { value: 60, label: '1分钟' },
-  ];
   private destroy$ = new Subject<void>();
   // Session duration thresholds: 1min(60s)=warn, 5min(300s)=danger
   private readonly sessionDurationThresholds: MetricThresholds = { warn: 60, danger: 300 };
@@ -78,9 +68,10 @@ export class SessionsComponent implements OnInit, OnDestroy {
       edit: false,
       delete: true,
       position: 'right',
+      columnTitle: '操作',
     },
     delete: {
-      deleteButtonContent: '<i class="nb-trash"></i>',
+      deleteButtonContent: '<i class="nb-trash" title="删除"></i>',
       confirmDelete: true,
     },
     pager: {
@@ -91,50 +82,43 @@ export class SessionsComponent implements OnInit, OnDestroy {
       id: {
         title: 'Session ID',
         type: 'string',
-        width: '10%',
+        width: '13%',
       },
       user: {
         title: 'User',
         type: 'string',
-        width: '10%',
+        width: '11%',
       },
       host: {
         title: 'Host',
         type: 'string',
-        width: '15%',
+        width: '13%',
       },
       db: {
         title: 'Database',
         type: 'string',
-        width: '10%',
+        width: '12%',
         valuePrepareFunction: (value: any) => value || 'N/A',
       },
       command: {
         title: 'Command',
         type: 'html',
         sanitizer: { bypassHtml: true },
-        width: '10%',
+        width: '12%',
         valuePrepareFunction: withTableRow((value: string, row: Session) => this.renderCommandBadge(value, row)),
       },
       time: {
         title: 'Time (s)',
         type: 'html',
         sanitizer: { bypassHtml: true },
-        width: '10%',
+        width: '11%',
         valuePrepareFunction: (value: string | number) => renderMetricBadge(value, this.sessionDurationThresholds),
-      },
-      state: {
-        title: 'State',
-        type: 'html',
-        sanitizer: { bypassHtml: true },
-        width: '10%',
-        valuePrepareFunction: (value: string) => this.renderStateBadge(value),
       },
       info: {
         title: 'Info',
         type: 'html',
         sanitizer: { bypassHtml: true },
-        width: '25%',
+        width: '16%',
         valuePrepareFunction: (value: any) => {
           if (!value) return 'N/A';
           return renderLongText(value, 80);
@@ -167,15 +151,32 @@ export class SessionsComponent implements OnInit, OnDestroy {
         // Backend will handle "no active cluster" case
       });
 
+    // 筛选条件 URL 参数化（复制链接即复现视图）
+    const qp = this.route.snapshot.queryParamMap;
+    if (qp.get('sleep') === '1') {
+      this.sessionFilter.sleepOnly = true;
+    }
+    if (qp.get('slow') === '1') {
+      this.sessionFilter.slowOnly = true;
+    }
+
     // Load data - backend will get active cluster automatically
     this.loadSessions();
-    if (this.autoRefresh) {
-      this.startAutoRefresh();
-    }
+  }
+
+  /** 筛选变化同步到 URL（replaceUrl，不污染历史） */
+  private syncFilterToUrl(): void {
+    this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: {
+        ...(this.sessionFilter.sleepOnly ? { sleep: '1' } : {}),
+        ...(this.sessionFilter.slowOnly ? { slow: '1' } : {}),
+      },
+      replaceUrl: true,
+    });
   }
 
   ngOnDestroy(): void {
-    this.stopAutoRefresh();
     this.destroy$.next();
     this.destroy$.complete();
   }
@@ -183,10 +184,12 @@ export class SessionsComponent implements OnInit, OnDestroy {
   loadSessions(): void {
     // Backend will get active cluster automatically - no need to check clusterId
     this.loading = true;
-    this.nodeService.getSessions().subscribe({
+    this.cdr.markForCheck();
+    this.nodeService.getSessions().pipe(takeUntil(this.destroy$), timeout(20000)).subscribe({
       next: (allSessions) => {
         this.updateSessionsData(allSessions).then(() => {
           this.loading = false;
+          this.cdr.markForCheck();
         });
       },
       error: (error) => {
@@ -198,6 +201,7 @@ export class SessionsComponent implements OnInit, OnDestroy {
         this.sessions = [];
         assignTableRows(this.source, []).then(() => {
           this.loading = false;
+          this.cdr.markForCheck();
         });
       },
     });
@@ -217,28 +221,31 @@ export class SessionsComponent implements OnInit, OnDestroy {
     });
   }
 
-  // Update sessions data (shared logic)
+  refresh(): void {
+    this.loadSessions();
+  }
+
   private updateSessionsData(allSessions: Session[]): Promise<void> {
     // Apply filters
     let filteredSessions = allSessions;
-    
+
     if (this.sessionFilter.sleepOnly) {
       filteredSessions = filteredSessions.filter(s => {
         const cmdLower = s.command?.toLowerCase() || '';
         const stateLower = s.state?.toLowerCase() || '';
-        return cmdLower === 'sleep' || 
+        return cmdLower === 'sleep' ||
                stateLower.includes('sleep') ||
                cmdLower === 'daemon';
       });
     }
-    
+
     if (this.sessionFilter.slowOnly) {
       filteredSessions = filteredSessions.filter(s => {
         const time = this.parseTime(s.time);
         return time >= 60; // 1 minute
       });
     }
-    
+
     this.sessions = filteredSessions;
     return assignTableRows(this.source, filteredSessions);
   }
@@ -277,55 +284,6 @@ export class SessionsComponent implements OnInit, OnDestroy {
     });
   }
 
-  // Grafana-style: selecting an interval automatically enables auto-refresh
-  // Selecting 'off' disables auto-refresh
-  onRefreshIntervalChange(interval: number | 'off'): void {
-    this.selectedRefreshInterval = interval;
-    
-    if (interval === 'off') {
-      // Disable auto-refresh
-      this.autoRefresh = false;
-      this.stopAutoRefresh();
-    } else {
-      // Enable auto-refresh with selected interval
-      this.autoRefresh = true;
-      this.stopAutoRefresh();
-      this.startAutoRefresh();
-    }
-  }
-
-  startAutoRefresh(): void {
-    this.stopAutoRefresh(); // Clear any existing interval
-    
-    // Only start if interval is a number (not 'off')
-    if (typeof this.selectedRefreshInterval !== 'number') {
-      return;
-    }
-    
-    this.refreshInterval = setInterval(() => {
-      // Stop auto-refresh if user is not authenticated (logged out)
-      if (!this.authService.isAuthenticated()) {
-        this.autoRefresh = false;
-        this.selectedRefreshInterval = 'off';
-        this.stopAutoRefresh();
-        return;
-      }
-      // Only update data, don't show loading spinner during auto-refresh
-      this.loadSessionsSilently();
-    }, this.selectedRefreshInterval * 1000);
-  }
-
-  stopAutoRefresh(): void {
-    if (this.refreshInterval) {
-      clearInterval(this.refreshInterval);
-      this.refreshInterval = null;
-    }
-  }
-
-  refresh(): void {
-    this.loadSessions();
-  }
-
   // Render command badge
   renderCommandBadge(value: string, row: Session): string {
     const cmd = (value || '').toLowerCase();
@@ -337,20 +295,6 @@ export class SessionsComponent implements OnInit, OnDestroy {
       return '<span class="badge badge-info">Connect</span>';
     }
     return value || 'N/A';
-  }
-
-  // Render state badge
-  renderStateBadge(value: string): string {
-    if (!value || value.trim() === '') {
-      return '<span class="text-hint">-</span>';
-    }
-    const state = value.toLowerCase();
-    if (state.includes('sleep')) {
-      return '<span class="badge badge-secondary">Sleep</span>';
-    } else if (state.includes('query')) {
-      return '<span class="badge badge-primary">Query</span>';
-    }
-    return value;
   }
 
   // Parse time from string
@@ -367,9 +311,22 @@ export class SessionsComponent implements OnInit, OnDestroy {
     this.loadSessions();
   }
 
+  toggleSleepFilter(): void {
+    this.sessionFilter.sleepOnly = !this.sessionFilter.sleepOnly;
+    this.syncFilterToUrl();
+    this.applySessionFilter();
+  }
+
+  toggleSlowFilter(): void {
+    this.sessionFilter.slowOnly = !this.sessionFilter.slowOnly;
+    this.syncFilterToUrl();
+    this.applySessionFilter();
+  }
+
   // Reset filter
   resetSessionFilter(): void {
     this.sessionFilter = {};
+    this.syncFilterToUrl();
     this.loadSessions();
   }
 

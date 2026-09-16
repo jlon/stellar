@@ -1,17 +1,17 @@
-import { Component, OnInit, OnDestroy, TemplateRef, ViewChild, inject } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
-import { NbToastrService, NbDialogService, NbCardModule, NbButtonModule, NbIconModule, NbSelectModule, NbOptionModule, NbFormFieldModule, NbInputModule, NbBadgeModule, NbSpinnerModule } from '@nebular/theme';
+import { Component, OnInit, OnDestroy, TemplateRef, ViewChild, inject, ChangeDetectorRef } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
+import { NbToastrService, NbDialogService, NbCardModule, NbButtonModule, NbIconModule, NbSelectModule, NbOptionModule, NbFormFieldModule, NbInputModule, NbBadgeModule, NbSpinnerModule, NbTooltipModule } from '@nebular/theme';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
+import { takeUntil, timeout } from 'rxjs/operators';
 import { NodeService, QueryHistoryItem } from '../../../../@core/data/node.service';
 import { ClusterContextService } from '../../../../@core/data/cluster-context.service';
 import { Cluster } from '../../../../@core/data/cluster.service';
 import { ErrorHandler } from '../../../../@core/utils/error-handler';
 import { MetricThresholds, renderMetricBadge } from '../../../../@core/utils/metric-badge';
 import { renderLongText } from '../../../../@core/utils/text-truncate';
-import { AuthService } from '../../../../@core/data/auth.service';
 import { assignTableRows } from '../../../../@core/utils/table-rows';
+import { TablePaginationComponent } from '../../../../@theme/components/table-pagination/table-pagination.component';
 
 import { FormsModule } from '@angular/forms';
 
@@ -30,38 +30,27 @@ import { FormsModule } from '@angular/forms';
     FormsModule,
     NbBadgeModule,
     NbSpinnerModule,
+    NbTooltipModule,
+    TablePaginationComponent,
     Angular2SmartTableModule
 ],
 })
 export class AuditLogsComponent implements OnInit, OnDestroy {
   private nodeService = inject(NodeService);
+  private cdr = inject(ChangeDetectorRef);
   private route = inject(ActivatedRoute);
+  private router = inject(Router);
   private toastrService = inject(NbToastrService);
   private clusterContext = inject(ClusterContextService);
   private dialogService = inject(NbDialogService);
-  private authService = inject(AuthService);
 
   // Data sources
   historySource: LocalDataSource = new LocalDataSource();
-  
-  // Expose Math to template
-  Math = Math;
   
   // State
   clusterId: number;
   activeCluster: Cluster | null = null;
   loading = true;
-  autoRefresh = false; // Default: disabled
-  refreshInterval: any;
-  selectedRefreshInterval: number | 'off' = 'off'; // Default: off (Grafana style)
-  refreshIntervalOptions = [
-    { value: 'off', label: '关闭' },
-    { value: 3, label: '3秒' },
-    { value: 5, label: '5秒' },
-    { value: 10, label: '10秒' },
-    { value: 30, label: '30秒' },
-    { value: 60, label: '1分钟' },
-  ];
   private destroy$ = new Subject<void>();
   private readonly durationThresholds: MetricThresholds = { warn: 3000, danger: 10000 };
 
@@ -89,10 +78,10 @@ export class AuditLogsComponent implements OnInit, OnDestroy {
       edit: true,
       delete: false,
       position: 'right',
-      width: '80px',
+      columnTitle: '操作',
     },
     edit: {
-      editButtonContent: '<i class="nb-search"></i>',
+      editButtonContent: '<i class="nb-search" title="查看"></i>',
     },
     pager: {
       display: false, // Disable ng2-smart-table's built-in pagination (we'll use custom pagination)
@@ -145,59 +134,38 @@ export class AuditLogsComponent implements OnInit, OnDestroy {
         // Backend will handle "no active cluster" case
       });
 
+    // 筛选条件 URL 参数化（复制链接即复现视图）
+    const qp = this.route.snapshot.queryParamMap;
+    if (qp.get('q')) {
+      this.searchKeyword = qp.get('q')!;
+    }
+    if (qp.get('from')) {
+      this.searchStartTime = qp.get('from')!;
+    }
+    if (qp.get('to')) {
+      this.searchEndTime = qp.get('to')!;
+    }
+
     // Load data - backend will get active cluster automatically
     this.loadHistoryQueries();
   }
 
+  /** 筛选变化同步到 URL（replaceUrl，不污染历史） */
+  private syncFilterToUrl(): void {
+    this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: {
+        ...(this.searchKeyword?.trim() ? { q: this.searchKeyword.trim() } : {}),
+        ...(this.searchStartTime ? { from: this.searchStartTime } : {}),
+        ...(this.searchEndTime ? { to: this.searchEndTime } : {}),
+      },
+      replaceUrl: true,
+    });
+  }
+
   ngOnDestroy(): void {
-    this.stopAutoRefresh();
     this.destroy$.next();
     this.destroy$.complete();
-  }
-
-  // Grafana-style: selecting an interval automatically enables auto-refresh
-  // Selecting 'off' disables auto-refresh
-  onRefreshIntervalChange(interval: number | 'off'): void {
-    this.selectedRefreshInterval = interval;
-    
-    if (interval === 'off') {
-      // Disable auto-refresh
-      this.autoRefresh = false;
-      this.stopAutoRefresh();
-    } else {
-      // Enable auto-refresh with selected interval
-      this.autoRefresh = true;
-      this.stopAutoRefresh();
-      this.startAutoRefresh();
-    }
-  }
-
-  startAutoRefresh(): void {
-    this.stopAutoRefresh(); // Clear any existing interval
-    
-    // Only start if interval is a number (not 'off')
-    if (typeof this.selectedRefreshInterval !== 'number') {
-      return;
-    }
-    
-    this.refreshInterval = setInterval(() => {
-      // Stop auto-refresh if user is not authenticated (logged out)
-      if (!this.authService.isAuthenticated()) {
-        this.autoRefresh = false;
-        this.selectedRefreshInterval = 'off';
-        this.stopAutoRefresh();
-        return;
-      }
-      // Only update data, don't show loading spinner during auto-refresh
-      this.loadHistoryQueriesSilently();
-    }, this.selectedRefreshInterval * 1000);
-  }
-
-  stopAutoRefresh(): void {
-    if (this.refreshInterval) {
-      clearInterval(this.refreshInterval);
-      this.refreshInterval = null;
-    }
   }
 
   // Load query history with pagination and filters
@@ -217,12 +185,13 @@ export class AuditLogsComponent implements OnInit, OnDestroy {
         (this.historyCurrentPage - 1) * this.historyPageSize,
         filters
       )
-      .pipe(takeUntil(this.destroy$))
+      .pipe(takeUntil(this.destroy$), timeout(20000))
       .subscribe({
         next: (data) => {
           this.historyTotalCount = data.total;
           assignTableRows(this.historySource, data.data).then(() => {
             this.loading = false;
+            this.cdr.markForCheck();
           });
         },
         error: (error) => {
@@ -232,36 +201,8 @@ export class AuditLogsComponent implements OnInit, OnDestroy {
           );
           assignTableRows(this.historySource, []).then(() => {
             this.loading = false;
+            this.cdr.markForCheck();
           });
-        },
-      });
-  }
-
-  // Load query history silently (for auto-refresh, no loading spinner)
-  loadHistoryQueriesSilently(): void {
-    // Prepare filters
-    const filters = {
-      keyword: this.searchKeyword?.trim() || undefined,
-      startTime: this.searchStartTime || undefined,
-      endTime: this.searchEndTime || undefined,
-    };
-    
-    // Only update data, don't show loading spinner during auto-refresh
-    this.nodeService
-      .listQueryHistory(
-        this.historyPageSize, 
-        (this.historyCurrentPage - 1) * this.historyPageSize,
-        filters
-      )
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        next: (data) => {
-          this.historySource.load(data.data);
-          this.historyTotalCount = data.total;
-        },
-        error: (error) => {
-          // Silently handle errors during auto-refresh, don't show toast
-          console.error('[AuditLogs] Auto-refresh error:', error);
         },
       });
   }
@@ -311,6 +252,7 @@ export class AuditLogsComponent implements OnInit, OnDestroy {
 
   // Search history methods
   searchHistory(): void {
+    this.syncFilterToUrl();
     this.loadHistoryQueries();
   }
 
