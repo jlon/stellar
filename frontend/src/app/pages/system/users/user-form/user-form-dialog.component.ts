@@ -1,6 +1,6 @@
 import { Component, Input, OnInit, inject } from '@angular/core';
 import { AbstractControl, FormBuilder, FormGroup, ValidationErrors, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { NbDialogRef, NbCardModule, NbSelectModule, NbOptionModule, NbInputModule, NbButtonModule } from '@nebular/theme';
+import { NbDialogRef, NbCardModule, NbSelectModule, NbOptionModule, NbInputModule, NbButtonModule, NbTooltipModule, NbIconModule } from '@nebular/theme';
 
 import {
   CreateUserPayload,
@@ -31,8 +31,9 @@ export interface UserFormDialogResult {
     NbSelectModule,
     NbOptionModule,
     NbInputModule,
-    NbButtonModule
-],
+    NbButtonModule,
+    NbIconModule,
+    NbTooltipModule,],
 })
 export class UserFormDialogComponent implements OnInit {
   private dialogRef = inject<NbDialogRef<UserFormDialogComponent>>(NbDialogRef);

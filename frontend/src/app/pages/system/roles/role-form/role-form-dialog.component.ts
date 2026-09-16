@@ -1,6 +1,6 @@
 import { Component, Input, OnInit, inject } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { NbDialogRef, NbCardModule, NbIconModule, NbFormFieldModule, NbSelectModule, NbOptionModule, NbInputModule, NbCheckboxModule, NbButtonModule } from '@nebular/theme';
+import { NbDialogRef, NbCardModule, NbIconModule, NbFormFieldModule, NbSelectModule, NbOptionModule, NbInputModule, NbCheckboxModule, NbButtonModule, NbTooltipModule } from '@nebular/theme';
 
 import {
   CreateRolePayload,
@@ -57,8 +57,8 @@ interface PermissionTreeNode {
     NbInputModule,
     NgTemplateOutlet,
     NbCheckboxModule,
-    NbButtonModule
-],
+    NbButtonModule,
+    NbTooltipModule,],
 })
 export class RoleFormDialogComponent implements OnInit {
   private dialogRef = inject<NbDialogRef<RoleFormDialogComponent>>(NbDialogRef);

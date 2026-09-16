@@ -1,7 +1,7 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
-import { NbToastrService, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule, NbAlertModule, NbInputModule } from '@nebular/theme';
+import { NbToastrService, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule, NbAlertModule, NbInputModule, NbTooltipModule } from '@nebular/theme';
 import { AuthService, User } from '../../@core/data/auth.service';
 import { ApiService } from '../../@core/data/api.service';
 import { DiceBearService } from '../../@core/services/dicebear.service';
@@ -12,7 +12,8 @@ import { FormsModule } from '@angular/forms';
     selector: 'ngx-user-settings',
     templateUrl: './user-settings.component.html',
     styleUrls: ['./user-settings.component.scss'],
-    imports: [CommonModule, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule, NbAlertModule, FormsModule, NbInputModule]
+    imports: [CommonModule, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule, NbAlertModule, FormsModule, NbInputModule,
+    NbTooltipModule,]
 })
 export class UserSettingsComponent implements OnInit {
   private authService = inject(AuthService);

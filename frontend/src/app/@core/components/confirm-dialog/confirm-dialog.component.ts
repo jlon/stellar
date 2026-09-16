@@ -1,5 +1,5 @@
 import { Component, Input, inject } from '@angular/core';
-import { NbDialogRef, NbCardModule, NbButtonModule } from '@nebular/theme';
+import { NbDialogRef, NbCardModule, NbButtonModule, NbTooltipModule, NbIconModule } from '@nebular/theme';
 
 @Component({
     selector: 'ngx-confirm-dialog',
@@ -10,8 +10,8 @@ import { NbDialogRef, NbCardModule, NbButtonModule } from '@nebular/theme';
         <p style="white-space: pre-line;">{{ message }}</p>
       </nb-card-body>
       <nb-card-footer>
-        <button nbButton ghost size="tiny" status="basic" (click)="cancel()">{{ cancelText }}</button>
-        <button nbButton size="tiny" [status]="confirmStatus" (click)="confirm()">{{ confirmText }}</button>
+        <button type="button" class="icon-btn" (click)="cancel()" [nbTooltip]="cancelText" nbTooltipPlacement="top" [attr.aria-label]="cancelText"><nb-icon icon="close-outline"></nb-icon></button>
+        <button type="button" class="icon-btn is-primary" (click)="confirm()" [nbTooltip]="confirmText" nbTooltipPlacement="top" [attr.aria-label]="confirmText"><nb-icon icon="checkmark-outline"></nb-icon></button>
       </nb-card-footer>
     </nb-card>
   `,
@@ -33,7 +33,9 @@ import { NbDialogRef, NbCardModule, NbButtonModule } from '@nebular/theme';
       line-height: 1.5;
     }
   `],
-    imports: [NbCardModule, NbButtonModule]
+    imports: [NbCardModule, NbButtonModule,
+    NbTooltipModule,
+    NbIconModule,]
 })
 export class ConfirmDialogComponent {
   protected ref = inject<NbDialogRef<ConfirmDialogComponent>>(NbDialogRef);

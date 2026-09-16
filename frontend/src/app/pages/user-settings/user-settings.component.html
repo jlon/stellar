@@ -7,10 +7,7 @@
             <h5>用户设置</h5>
             <small class="text-hint">修改您的个人信息和密码</small>
           </div>
-          <button nbButton ghost status="basic" size="small" (click)="onCancel()">
-            <nb-icon icon="arrow-back-outline"></nb-icon>
-            返回
-          </button>
+          <button type="button" class="icon-btn" (click)="onCancel()" nbTooltip="返回" nbTooltipPlacement="top" aria-label="返回"><nb-icon icon="arrow-back-outline"></nb-icon></button>
         </div>
       </nb-card-header>
 
@@ -56,15 +53,7 @@
 
                 <!-- Refresh Button -->
                 <div class="refresh-section">
-                  <button 
-                    type="button" 
-                    nbButton 
-                    status="primary" 
-                    size="small"
-                    (click)="generateAvatarOptions()">
-                    <nb-icon icon="refresh-outline"></nb-icon>
-                    换一批
-                  </button>
+                  <button type="button" class="icon-btn" (click)="generateAvatarOptions()" nbTooltip="换一批" nbTooltipPlacement="top" aria-label="换一批"><nb-icon icon="refresh-outline"></nb-icon></button>
                 </div>
               </div>
             </div>
@@ -129,16 +118,7 @@
                 <nb-card-header>
                   <div class="d-flex align-items-center justify-content-between">
                     <span>修改密码</span>
-                    <button 
-                      nbButton 
-                      ghost
-                      type="button"
-                      status="info" 
-                      size="small" 
-                      (click)="togglePasswordFields()">
-                      <nb-icon [icon]="showPasswordFields ? 'eye-off-outline' : 'edit-outline'"></nb-icon>
-                      {{ showPasswordFields ? '取消修改' : '修改密码' }}
-                    </button>
+                    <button type="button" class="icon-btn" (click)="togglePasswordFields()" nbTooltip="修改密码" nbTooltipPlacement="top" aria-label="修改密码"><nb-icon [icon]="showPasswordFields ? 'eye-off-outline' : 'edit-outline'"></nb-icon></button>
                   </div>
                 </nb-card-header>
 
@@ -215,24 +195,8 @@
           <div class="row mt-3">
             <div class="col-md-12">
               <div class="d-flex justify-content-end">
-                <button 
-                  nbButton 
-                  ghost
-                  status="basic"
-                  type="button"
-                  class="mr-2"
-                  (click)="onCancel()">
-                  <nb-icon icon="close-outline"></nb-icon>
-                  取消
-                </button>
-                <button 
-                  nbButton 
-                  status="primary"
-                  type="submit"
-                  [disabled]="submitted || !form.valid">
-                  <nb-icon icon="save-outline"></nb-icon>
-                  {{ submitted ? '保存中...' : '保存更改' }}
-                </button>
+                <button type="button" class="icon-btn" (click)="onCancel()" nbTooltip="取消" nbTooltipPlacement="top" aria-label="取消"><nb-icon icon="close-outline"></nb-icon></button>
+                <button type="submit" class="icon-btn is-primary" [disabled]="submitted || !form.valid" nbTooltip="保存更改" nbTooltipPlacement="top" aria-label="保存更改"><nb-icon icon="checkmark-outline"></nb-icon></button>
               </div>
             </div>
           </div>

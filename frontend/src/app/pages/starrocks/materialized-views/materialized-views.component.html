@@ -340,26 +340,10 @@
     </nb-card-body>
     <nb-card-footer>
       <div class="d-flex justify-content-end gap-2">
-        <button
-          nbButton
-          ghost
-          status="basic"
-          size="small"
-          (click)="closeCreateDialog()"
-          [disabled]="creating"
-          >
-          取消
-        </button>
-        <button
-          nbButton
-          status="primary"
-          size="small"
-          (click)="createMV()"
-          [disabled]="creating || !createSQL.trim()"
-          >
-          <nb-icon icon="checkmark-outline"></nb-icon>
-          {{ creating ? '创建中...' : '创建' }}
-        </button>
+        <button type="button" class="icon-btn" (click="closeCreateDialog()" [disabled]="creating"
+          nbTooltip="取消" nbTooltipPlacement="top" aria-label="取消"><nb-icon icon="close-outline"></nb-icon></button>
+        <button type="button" class="icon-btn is-primary" (click="createMV()" [disabled]="creating || !createSQL.trim()"
+          nbTooltip="创建" nbTooltipPlacement="top" aria-label="创建"><nb-icon icon="checkmark-outline"></nb-icon></button>
       </div>
     </nb-card-footer>
   </nb-card>
@@ -631,26 +615,10 @@
       </nb-card-body>
       <nb-card-footer>
         <div class="d-flex justify-content-end gap-2">
-          <button
-            nbButton
-            ghost
-            status="basic"
-            size="small"
-            (click)="closeRefreshDialog()"
-            [disabled]="refreshing"
-            >
-            取消
-          </button>
-          <button
-            nbButton
-            status="primary"
-            size="small"
-            (click)="refreshMV()"
-            [disabled]="refreshing"
-            >
-            <nb-icon icon="refresh-outline"></nb-icon>
-            {{ refreshing ? '刷新中...' : '开始刷新' }}
-          </button>
+          <button type="button" class="icon-btn" (click="closeRefreshDialog()" [disabled]="refreshing"
+            nbTooltip="取消" nbTooltipPlacement="top" aria-label="取消"><nb-icon icon="close-outline"></nb-icon></button>
+          <button type="button" class="icon-btn is-primary" (click="refreshMV()" [disabled]="refreshing"
+            nbTooltip="刷新" nbTooltipPlacement="top" aria-label="刷新"><nb-icon icon="checkmark-outline"></nb-icon></button>
         </div>
       </nb-card-footer>
     </nb-card>
@@ -828,26 +796,10 @@
     </nb-card-body>
     <nb-card-footer>
       <div class="d-flex justify-content-end gap-2">
-        <button
-          nbButton
-          ghost
-          status="basic"
-          size="small"
-          (click)="closeEditDialog()"
-          [disabled]="editing"
-          >
-          取消
-        </button>
-        <button
-          nbButton
-          status="primary"
-          size="small"
-          (click)="editMV()"
-          [disabled]="editing"
-          >
-          <nb-icon icon="checkmark-outline"></nb-icon>
-          {{ editing ? '修改中...' : '确认修改' }}
-        </button>
+        <button type="button" class="icon-btn" (click="closeEditDialog()" [disabled]="editing"
+          nbTooltip="取消" nbTooltipPlacement="top" aria-label="取消"><nb-icon icon="close-outline"></nb-icon></button>
+        <button type="button" class="icon-btn is-primary" (click="editMV()" [disabled]="editing"
+          nbTooltip="保存" nbTooltipPlacement="top" aria-label="保存"><nb-icon icon="checkmark-outline"></nb-icon></button>
       </div>
     </nb-card-footer>
   </nb-card>

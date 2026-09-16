@@ -1,5 +1,5 @@
 import { Component, Input, inject } from '@angular/core';
-import { NbDialogRef, NbCardModule, NbInputModule, NbAlertModule, NbButtonModule, NbIconModule } from '@nebular/theme';
+import { NbDialogRef, NbCardModule, NbInputModule, NbAlertModule, NbButtonModule, NbTooltipModule, NbIconModule } from '@nebular/theme';
 
 import { FormsModule } from '@angular/forms';
 
@@ -57,14 +57,11 @@ import { FormsModule } from '@angular/forms';
     
       <nb-card-footer>
         <div class="d-flex justify-content-end gap-2">
-          <button nbButton size="tiny" [status]="confirmButtonStatus" (click)="confirm()">
-            @if (confirmIcon) {
-              <nb-icon [icon]="confirmIcon"></nb-icon>
-            }
-            {{ confirmText }}
+          <button type="button" class="icon-btn is-primary" (click)="confirm()" [nbTooltip]="confirmText" nbTooltipPlacement="top" [attr.aria-label]="confirmText">
+            <nb-icon icon="checkmark-outline"></nb-icon>
           </button>
-          <button nbButton ghost size="tiny" status="basic" (click)="cancel()">
-            {{ cancelText }}
+          <button type="button" class="icon-btn" (click)="cancel()" [nbTooltip]="cancelText" nbTooltipPlacement="top" [attr.aria-label]="cancelText">
+            <nb-icon icon="close-outline"></nb-icon>
           </button>
         </div>
       </nb-card-footer>
@@ -109,8 +106,8 @@ import { FormsModule } from '@angular/forms';
     FormsModule,
     NbAlertModule,
     NbButtonModule,
-    NbIconModule
-],
+    NbIconModule,
+    NbTooltipModule,],
 })
 export class ConfirmationDialogComponent {
   protected dialogRef = inject<NbDialogRef<ConfirmationDialogComponent>>(NbDialogRef);

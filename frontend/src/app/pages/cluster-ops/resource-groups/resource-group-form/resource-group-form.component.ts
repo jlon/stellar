@@ -1,6 +1,6 @@
 import { Component, Input, OnInit, OnDestroy, ViewChild, inject } from '@angular/core';
 import { FormBuilder, FormGroup, FormArray, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { NbDialogRef, NbToastrService, NbTabsetComponent, NbCardModule, NbSpinnerModule, NbTabsetModule, NbInputModule, NbIconModule, NbButtonModule, NbFormFieldModule, NbSelectModule, NbOptionModule } from '@nebular/theme';
+import { NbButtonModule, NbCardModule, NbDialogRef, NbFormFieldModule, NbIconModule, NbInputModule, NbOptionModule, NbSelectModule, NbSpinnerModule, NbTabsetComponent, NbTabsetModule, NbToastrService, NbTooltipModule } from '@nebular/theme';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
@@ -28,8 +28,8 @@ import {
     NbButtonModule,
     NbFormFieldModule,
     NbSelectModule,
-    NbOptionModule
-],
+    NbOptionModule,
+    NbTooltipModule]
 })
 export class ResourceGroupFormComponent implements OnInit, OnDestroy {
   private dialogRef = inject<NbDialogRef<ResourceGroupFormComponent>>(NbDialogRef);

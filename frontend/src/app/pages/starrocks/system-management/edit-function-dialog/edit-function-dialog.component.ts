@@ -1,6 +1,6 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, AbstractControl, ValidationErrors, FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { NbDialogRef, NbCardModule, NbIconModule, NbInputModule, NbButtonModule } from '@nebular/theme';
+import { NbDialogRef, NbCardModule, NbIconModule, NbInputModule, NbButtonModule, NbTooltipModule } from '@nebular/theme';
 import { SystemFunction } from '../../../../@core/data/system-function';
 
 
@@ -105,21 +105,13 @@ import { SystemFunction } from '../../../../@core/data/system-function';
             status="basic"
             size="small"
             (click)="onCancel()"
+            nbTooltip="取消" nbTooltipPlacement="top" aria-label="取消"
+            class="icon-btn" type="button"
             >
             <nb-icon icon="close-outline"></nb-icon>
-            取消
           </button>
-          <button
-            type="button"
-            nbButton
-            status="primary"
-            size="small"
-            [disabled]="editFunctionForm.invalid"
-            (click)="onSubmit()"
-            >
-            <nb-icon icon="checkmark-outline"></nb-icon>
-            保存
-          </button>
+          <button type="button" class="icon-btn is-primary" [disabled]="editFunctionForm.invalid"
+            (click)="onSubmit()" nbTooltip="保存" nbTooltipPlacement="top" aria-label="保存"><nb-icon icon="checkmark-outline"></nb-icon></button>
         </div>
       </nb-card-footer>
     </nb-card>
@@ -163,7 +155,8 @@ import { SystemFunction } from '../../../../@core/data/system-function';
       cursor: not-allowed !important;
     }
   `],
-    imports: [NbCardModule, NbIconModule, FormsModule, ReactiveFormsModule, NbInputModule, NbButtonModule]
+    imports: [NbCardModule, NbIconModule, FormsModule, ReactiveFormsModule, NbInputModule, NbButtonModule,
+    NbTooltipModule,]
 })
 export class EditFunctionDialogComponent implements OnInit {
   private fb = inject(FormBuilder);

@@ -178,7 +178,7 @@
   </nb-card-body>
 
   <nb-card-footer>
-    <button class="cancel" nbButton ghost status="basic" size="small" (click)="cancel()">取消</button>
-    <button nbButton status="primary" size="small" (click)="submit()" [disabled]="form.invalid">保存</button>
+    <button type="button" class="icon-btn" (click)="cancel()" nbTooltip="取消" nbTooltipPlacement="top" aria-label="取消"><nb-icon icon="close-outline"></nb-icon></button>
+    <button type="button" class="icon-btn is-primary" (click)="submit()" [disabled]="form.invalid" nbTooltip="保存" nbTooltipPlacement="top" aria-label="保存"><nb-icon icon="checkmark-outline"></nb-icon></button>
   </nb-card-footer>
 </nb-card>

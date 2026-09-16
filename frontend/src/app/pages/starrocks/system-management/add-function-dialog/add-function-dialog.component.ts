@@ -1,6 +1,6 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, AbstractControl, ValidationErrors, FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { NbDialogRef, NbCardModule, NbIconModule, NbInputModule, NbButtonModule } from '@nebular/theme';
+import { NbDialogRef, NbCardModule, NbIconModule, NbInputModule, NbButtonModule, NbTooltipModule } from '@nebular/theme';
 import { CreateFunctionRequest } from '../../../../@core/data/system-function';
 
 
@@ -112,21 +112,13 @@ import { CreateFunctionRequest } from '../../../../@core/data/system-function';
             status="basic"
             size="small"
             (click)="onCancel()"
+            nbTooltip="取消" nbTooltipPlacement="top" aria-label="取消"
+            class="icon-btn" type="button"
             >
             <nb-icon icon="close-outline"></nb-icon>
-            取消
           </button>
-          <button
-            type="button"
-            nbButton
-            status="primary"
-            size="small"
-            [disabled]="addFunctionForm.invalid"
-            (click)="onSubmit()"
-            >
-            <nb-icon icon="checkmark-outline"></nb-icon>
-            添加
-          </button>
+          <button type="button" class="icon-btn is-primary" [disabled]="addFunctionForm.invalid"
+            (click)="onSubmit()" nbTooltip="添加" nbTooltipPlacement="top" aria-label="添加"><nb-icon icon="checkmark-outline"></nb-icon></button>
         </div>
       </nb-card-footer>
     </nb-card>
@@ -164,7 +156,8 @@ import { CreateFunctionRequest } from '../../../../@core/data/system-function';
       margin-left: 0.5rem;
     }
   `],
-    imports: [NbCardModule, NbIconModule, FormsModule, ReactiveFormsModule, NbInputModule, NbButtonModule]
+    imports: [NbCardModule, NbIconModule, FormsModule, ReactiveFormsModule, NbInputModule, NbButtonModule,
+]
 })
 export class AddFunctionDialogComponent implements OnInit {
   private fb = inject(FormBuilder);

@@ -1,5 +1,5 @@
 import { Component, Input, inject } from '@angular/core';
-import { NbDialogRef, NbCardModule, NbBadgeModule, NbIconModule, NbListModule, NbButtonModule } from '@nebular/theme';
+import { NbDialogRef, NbCardModule, NbBadgeModule, NbIconModule, NbListModule, NbButtonModule, NbTooltipModule } from '@nebular/theme';
 import { PermissionRequestResponse } from '../../../../@core/data/permission-request.model';
 import { NgClass } from '@angular/common';
 
@@ -208,19 +208,23 @@ import { NgClass } from '@angular/common';
     
       @if (showActions && request.status === 'pending') {
         <nb-card-footer>
-          <button nbButton status="success" size="small" (click)="approve()">
-            <nb-icon icon="checkmark-outline"></nb-icon> 批准
+          <button type="button" class="icon-btn is-success" (click)="approve()" nbTooltip="批准" nbTooltipPlacement="top" aria-label="批准">
+            <nb-icon icon="checkmark-outline"></nb-icon>
           </button>
-          <button nbButton status="danger" size="small" (click)="reject()">
-            <nb-icon icon="close-outline"></nb-icon> 拒绝
+          <button type="button" class="icon-btn is-danger-active" (click)="reject()" nbTooltip="拒绝" nbTooltipPlacement="top" aria-label="拒绝">
+            <nb-icon icon="close-circle-outline"></nb-icon>
           </button>
-          <button nbButton status="basic" size="small" (click)="close()">关闭</button>
+          <button type="button" class="icon-btn" (click)="close()" nbTooltip="关闭" nbTooltipPlacement="top" aria-label="关闭">
+            <nb-icon icon="close-outline"></nb-icon>
+          </button>
         </nb-card-footer>
       }
     
       @if (!showActions || request.status !== 'pending') {
         <nb-card-footer>
-          <button nbButton status="basic" size="small" (click)="close()">关闭</button>
+          <button type="button" class="icon-btn" (click)="close()" nbTooltip="关闭" nbTooltipPlacement="top" aria-label="关闭">
+            <nb-icon icon="close-outline"></nb-icon>
+          </button>
         </nb-card-footer>
       }
     </nb-card>
@@ -424,8 +428,8 @@ import { NgClass } from '@angular/common';
     NbIconModule,
     NbListModule,
     NgClass,
-    NbButtonModule
-],
+    NbButtonModule,
+    NbTooltipModule,],
 })
 export class PermissionApprovalDetailDialogComponent {
   protected dialogRef = inject<NbDialogRef<PermissionApprovalDetailDialogComponent>>(NbDialogRef);

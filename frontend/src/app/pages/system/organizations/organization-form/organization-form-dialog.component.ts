@@ -1,6 +1,6 @@
 import { Component, Input, OnInit, OnDestroy, inject } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { NbDialogRef, NbCardModule, NbInputModule, NbSelectModule, NbOptionModule, NbButtonModule } from '@nebular/theme';
+import { NbDialogRef, NbCardModule, NbInputModule, NbSelectModule, NbOptionModule, NbButtonModule, NbTooltipModule, NbIconModule } from '@nebular/theme';
 import { Subject } from 'rxjs';
 
 import { Organization } from '../../../../@core/data/organization.service';
@@ -28,8 +28,9 @@ export interface OrganizationFormDialogResult {
     NbInputModule,
     NbSelectModule,
     NbOptionModule,
-    NbButtonModule
-],
+    NbButtonModule,
+    NbIconModule,
+    NbTooltipModule,],
 })
 export class OrganizationFormDialogComponent implements OnInit, OnDestroy {
   private dialogRef = inject<NbDialogRef<OrganizationFormDialogComponent>>(NbDialogRef);

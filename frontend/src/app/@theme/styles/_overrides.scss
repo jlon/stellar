@@ -348,6 +348,16 @@
       }
     }
 
+  /* 常亮绿（审批通过类语义） */
+  &.is-success {
+    color: nb-theme(color-success-default);
+
+    &:hover:not(:disabled) {
+      color: nb-theme(color-success-hover);
+      background-color: nb-theme(color-success-transparent-100);
+    }
+  }
+
   /* 执行中的取消：常亮红 */
     &.is-danger-active {
       color: nb-theme(color-danger-default);

@@ -380,30 +380,11 @@
       </nb-card-body>
 
       <nb-card-footer class="d-flex justify-content-end">
-        <button
-          type="button"
-          nbButton
-          ghost
-          status="basic"
-          size="small"
-          class="me-2"
-          (click)="cancel()"
-          [disabled]="loading"
-          >
-          取消
-        </button>
-        <button
-          type="submit"
-          nbButton
-          status="primary"
-          size="small"
+        <button type="button" class="icon-btn" (click)="cancel()" [disabled]="loading"
+           nbTooltip="取消" nbTooltipPlacement="top" aria-label="取消"><nb-icon icon="close-outline"></nb-icon></button>
+        <button type="submit" class="icon-btn is-primary" (click)="onSubmit()" 
           (click)="onSubmit()"
           [disabled]="loading || form.invalid"
-          >
-          @if (loading) {
-            <nb-icon icon="loader-outline" class="spin"></nb-icon>
-          }
-          {{ isEditMode ? '更新' : '创建' }}
-        </button>
+           nbTooltip="保存" nbTooltipPlacement="top" aria-label="保存"><nb-icon icon="checkmark-outline"></nb-icon></button>
       </nb-card-footer>
 </nb-card>

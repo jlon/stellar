@@ -318,31 +318,10 @@
     </button>
 
     <div class="footer-right">
-      <button
-        nbButton
-        ghost
-        status="basic"
-        size="small"
-        type="button"
-        (click)="onCancel()"
-        [disabled]="loading || saving"
-        >
-        取消
-      </button>
+      <button type="button" class="icon-btn" (click)="onCancel()" [disabled]="loading || saving" nbTooltip="取消" nbTooltipPlacement="top" aria-label="取消"><nb-icon icon="close-outline"></nb-icon></button>
 
-      <button
-        nbButton
-        status="primary"
-        size="small"
-        type="button"
-        (click)="onSubmit()"
-        [disabled]="loading || saving"
-        >
-        @if (saving) {
-          <nb-icon icon="loader-outline" class="spin"></nb-icon>
-        }
-        保存
-      </button>
+      <button type="button" class="icon-btn is-primary" (click)="onSubmit()" [disabled]="loading || saving"
+         nbTooltip="保存" nbTooltipPlacement="top" aria-label="保存">@if (saving) {<nb-icon icon="loader-outline" class="spin"></nb-icon>}@else {<nb-icon icon="checkmark-outline"></nb-icon>}</button>
     </div>
   </nb-card-footer>
 </nb-card>

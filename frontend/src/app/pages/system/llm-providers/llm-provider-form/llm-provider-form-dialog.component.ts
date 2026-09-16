@@ -1,6 +1,6 @@
 import { Component, Input, OnInit, inject } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { NbDialogRef, NbCardModule, NbSelectModule, NbOptionModule, NbInputModule, NbFormFieldModule, NbButtonModule, NbIconModule, NbAccordionModule } from '@nebular/theme';
+import { NbDialogRef, NbCardModule, NbSelectModule, NbOptionModule, NbInputModule, NbFormFieldModule, NbButtonModule, NbTooltipModule, NbIconModule, NbAccordionModule } from '@nebular/theme';
 
 import { LLMProvider } from '../../../../@core/data/llm-provider.service';
 
@@ -33,8 +33,8 @@ export interface LLMProviderFormDialogResult {
     NbFormFieldModule,
     NbButtonModule,
     NbIconModule,
-    NbAccordionModule
-],
+    NbAccordionModule,
+    NbTooltipModule,],
 })
 export class LLMProviderFormDialogComponent implements OnInit {
   private dialogRef = inject<NbDialogRef<LLMProviderFormDialogComponent>>(NbDialogRef);
