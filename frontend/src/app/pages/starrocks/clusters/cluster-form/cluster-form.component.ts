@@ -1,14 +1,13 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, Input, OnInit, inject } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
-import { NbToastrService, NbCardModule, NbFormFieldModule, NbSelectModule, NbOptionModule, NbIconModule, NbInputModule, NbCheckboxModule, NbButtonModule } from '@nebular/theme';
+import { NbDialogRef, NbToastrService, NbCardModule, NbFormFieldModule, NbSelectModule, NbOptionModule, NbIconModule, NbInputModule, NbCheckboxModule, NbButtonModule, NbSpinnerModule } from '@nebular/theme';
+import { timeout } from 'rxjs';
 import { ClusterService, Cluster } from '../../../../@core/data/cluster.service';
 import { OrganizationService, Organization } from '../../../../@core/data/organization.service';
 import { AuthService } from '../../../../@core/data/auth.service';
 import { ErrorHandler } from '../../../../@core/utils/error-handler';
-import { TabReuseService } from '../../../../@core/services/tab-reuse.service';
 
-
+/** 集群创建/编辑弹窗（llm-provider-form-dialog 同款范式）。 */
 @Component({
     selector: 'ngx-cluster-form',
     templateUrl: './cluster-form.component.html',
@@ -23,26 +22,33 @@ import { TabReuseService } from '../../../../@core/services/tab-reuse.service';
     NbIconModule,
     NbInputModule,
     NbCheckboxModule,
-    NbButtonModule
+    NbButtonModule,
+    NbSpinnerModule
 ],
 })
 export class ClusterFormComponent implements OnInit {
+  private dialogRef = inject<NbDialogRef<ClusterFormComponent>>(NbDialogRef);
   private fb = inject(FormBuilder);
   private clusterService = inject(ClusterService);
   private organizationService = inject(OrganizationService);
   private authService = inject(AuthService);
-  private router = inject(Router);
-  private route = inject(ActivatedRoute);
   private toastrService = inject(NbToastrService);
-  private tabReuseService = inject(TabReuseService);
 
+  /** 编辑时传入集群 id；新增时为空。 */
+  @Input() clusterId: number | null = null;
   clusterForm: FormGroup;
   loading = false;
-  isEditMode = false;
-  clusterId: number | null = null;
+  /** 保存中（与测试连接互不阻塞：测试超时/挂起不再锁死保存按钮） */
+  saving = false;
+  /** 测试连接中 */
+  testing = false;
   connectionTested = false; // Track if connection has been tested
   connectionValid = false;  // Track if connection is valid
   
+  get isEditMode(): boolean {
+    return this.clusterId !== null;
+  }
+
   // Organization support
   organizations: Organization[] = [];
   currentOrganization?: Organization;
@@ -82,10 +88,7 @@ export class ClusterFormComponent implements OnInit {
     // Load organizations and current organization
     this.loadOrganizationData();
 
-    const id = this.route.snapshot.paramMap.get('id');
-    if (id && id !== 'new') {
-      this.isEditMode = true;
-      this.clusterId = parseInt(id, 10);
+    if (this.isEditMode) {
       this.loadCluster();
     } else {
       // In create mode, password is optional (allow empty password)
@@ -173,7 +176,7 @@ export class ClusterFormComponent implements OnInit {
       return;
     }
 
-    this.loading = true;
+    this.saving = true;
     const formValue = this.clusterForm.value;
     
     // Parse tags
@@ -200,7 +203,7 @@ export class ClusterFormComponent implements OnInit {
       // If admin_user is provided, admin_password is required
       if (clusterData.admin_user && !clusterData.admin_password) {
         this.toastrService.danger('管理用户密码不能为空', '错误');
-        this.loading = false;
+        this.saving = false;
         return;
       }
       // If admin_user is empty, clear admin_password
@@ -225,7 +228,7 @@ export class ClusterFormComponent implements OnInit {
           this.testConnectionAfterCreate(cluster.id);
         } else {
           this.toastrService.success('集群更新成功', '成功');
-          this.navigateToDashboardWithRefresh();
+          this.dialogRef.close(true);
         }
       },
       error: (error) => {
@@ -233,7 +236,7 @@ export class ClusterFormComponent implements OnInit {
           ErrorHandler.extractErrorMessage(error),
           '错误',
         );
-        this.loading = false;
+        this.saving = false;
       },
     });
   }
@@ -248,17 +251,17 @@ export class ClusterFormComponent implements OnInit {
         } else {
           this.toastrService.warning('集群已创建，但健康检查失败。请检查配置', '警告');
         }
-        this.navigateToDashboardWithRefresh();
+        this.dialogRef.close(true);
       },
       error: () => {
         this.toastrService.warning('集群已创建，但健康检查失败。请检查配置', '警告');
-        this.navigateToDashboardWithRefresh();
+        this.dialogRef.close(true);
       },
     });
   }
 
   onCancel(): void {
-    this.router.navigate(['/pages/starrocks/dashboard']);
+    this.dialogRef.close();
   }
 
   testConnection(): void {
@@ -273,7 +276,7 @@ export class ClusterFormComponent implements OnInit {
       }
     }
 
-    this.loading = true;
+    this.testing = true;
     const formValue = this.clusterForm.value;
     
     if (!this.isEditMode) {
@@ -288,13 +291,13 @@ export class ClusterFormComponent implements OnInit {
         catalog: formValue.catalog || 'default_catalog',
       };
 
-      this.clusterService.testConnection(testData).subscribe({
+      this.clusterService.testConnection(testData).pipe(timeout(30000)).subscribe({
         next: (health) => this.handleHealthCheckResult(health),
         error: (error) => this.handleHealthCheckError(error),
       });
     } else {
       // Edit mode: check health of existing cluster
-      this.clusterService.getHealth(this.clusterId).subscribe({
+      this.clusterService.getHealth(this.clusterId!).pipe(timeout(30000)).subscribe({
         next: (health) => this.handleHealthCheckResult(health),
         error: (error) => this.handleHealthCheckError(error),
       });
@@ -321,20 +324,15 @@ export class ClusterFormComponent implements OnInit {
         .join('\n');
       this.toastrService.danger(`健康检查失败\n\n${errors || '请检查集群配置'}`, '连接失败');
     }
-    this.loading = false;
+    this.testing = false;
   }
 
   private handleHealthCheckError(error: any): void {
-    this.toastrService.danger(
-      ErrorHandler.extractErrorMessage(error),
-      '错误',
-    );
-    this.loading = false;
-  }
-
-  private navigateToDashboardWithRefresh(): void {
-    this.tabReuseService.markForRefresh('/pages/starrocks/dashboard');
-    this.router.navigate(['/pages/starrocks/dashboard']);
+    const message = error?.name === 'TimeoutError'
+      ? '连接超时（30秒无响应），请检查 FE 地址与端口是否可达'
+      : ErrorHandler.extractErrorMessage(error);
+    this.toastrService.danger(message, '错误');
+    this.testing = false;
   }
 }
 
