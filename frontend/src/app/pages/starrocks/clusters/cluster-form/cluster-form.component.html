@@ -305,7 +305,8 @@
     <button
       nbButton
       ghost
-      status="info"
+      status="basic"
+      size="small"
       type="button"
       (click)="testConnection()"
       [disabled]="loading || saving"
@@ -322,6 +323,7 @@
         nbButton
         ghost
         status="basic"
+        size="small"
         type="button"
         (click)="onCancel()"
         [disabled]="loading || saving"
@@ -332,6 +334,7 @@
       <button
         nbButton
         status="primary"
+        size="small"
         type="button"
         (click)="onSubmit()"
         [disabled]="loading || saving"

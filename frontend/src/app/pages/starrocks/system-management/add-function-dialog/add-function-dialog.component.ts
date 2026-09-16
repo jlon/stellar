@@ -108,7 +108,9 @@ import { CreateFunctionRequest } from '../../../../@core/data/system-function';
           <button
             type="button"
             nbButton
+            ghost
             status="basic"
+            size="small"
             (click)="onCancel()"
             >
             <nb-icon icon="close-outline"></nb-icon>
@@ -118,6 +120,7 @@ import { CreateFunctionRequest } from '../../../../@core/data/system-function';
             type="button"
             nbButton
             status="primary"
+            size="small"
             [disabled]="addFunctionForm.invalid"
             (click)="onSubmit()"
             >

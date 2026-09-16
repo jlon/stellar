@@ -57,13 +57,13 @@ import { FormsModule } from '@angular/forms';
     
       <nb-card-footer>
         <div class="d-flex justify-content-end gap-2">
-          <button nbButton [status]="confirmButtonStatus" (click)="confirm()">
+          <button nbButton size="small" [status]="confirmButtonStatus" (click)="confirm()">
             @if (confirmIcon) {
               <nb-icon [icon]="confirmIcon"></nb-icon>
             }
             {{ confirmText }}
           </button>
-          <button nbButton status="basic" (click)="cancel()">
+          <button nbButton ghost size="small" status="basic" (click)="cancel()">
             {{ cancelText }}
           </button>
         </div>

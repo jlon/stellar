@@ -59,7 +59,7 @@
 </nb-card-body>
 
 <nb-card-footer>
-  <button class="cancel" nbButton status="danger" (click)="cancel()">取消</button>
-  <button nbButton status="success" (click)="submit()" [disabled]="form.invalid">保存</button>
+  <button class="cancel" nbButton ghost status="basic" size="small" (click)="cancel()">取消</button>
+  <button nbButton status="primary" size="small" (click)="submit()" [disabled]="form.invalid">保存</button>
 </nb-card-footer>
 </nb-card>
