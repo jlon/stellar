@@ -250,14 +250,13 @@
                                     </div>
                                       <button 
                                       *ngIf="queryResults[0].success"
-                                      nbButton 
-                                      ghost
-                                      size="small" 
-                                      status="info"
+                                      type="button"
+                                      class="icon-btn ml-2"
                                       (click)="exportResults(0)"
-                                      class="ml-2">
+                                      nbTooltip="导出 CSV"
+                                      nbTooltipPlacement="top"
+                                      aria-label="导出 CSV">
                                       <nb-icon icon="download-outline"></nb-icon>
-                                      导出 CSV
                                     </button>
                                   </div>
                                 </div>
