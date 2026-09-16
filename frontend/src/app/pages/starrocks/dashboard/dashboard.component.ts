@@ -1,15 +1,16 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, OnDestroy, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { Subject } from 'rxjs';
+import { Subject, interval } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
-import { NbToastrService, NbIconModule, NbButtonModule, NbSpinnerModule, NbCardModule, NbTooltipModule, NbTagModule } from '@nebular/theme';
+import { NbToastrService, NbIconModule, NbButtonModule, NbSpinnerModule, NbCardModule, NbTooltipModule, NbTagModule, NbDialogService } from '@nebular/theme';
 import { ClusterService, Cluster, ClusterHealth, ClusterResourceSummary } from '../../../@core/data/cluster.service';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
 import { OrganizationService, Organization } from '../../../@core/data/organization.service';
 import { ErrorHandler } from '../../../@core/utils/error-handler';
 import { PermissionService } from '../../../@core/data/permission.service';
 import { ConfirmDialogService } from '../../../@core/services/confirm-dialog.service';
+import { ClusterFormComponent } from '../clusters/cluster-form/cluster-form.component';
 import { AuthService } from '../../../@core/data/auth.service';
 
 interface ClusterCard {
@@ -45,6 +46,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private permissionService = inject(PermissionService);
   private confirmDialogService = inject(ConfirmDialogService);
+  private dialogService = inject(NbDialogService);
   private authService = inject(AuthService);
   private cdr = inject(ChangeDetectorRef);
 
@@ -60,7 +62,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
   canDeleteCluster = false;
   canActivateCluster = false;
   canViewActiveCluster = false;
-  canViewClusterDetails = false;
   canViewBackends = false;
   canViewFrontends = false;
   canViewQueries = false;
@@ -84,7 +85,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
       });
 
     this.applyPermissionState();
-    
+
+    // 定时刷新卡片资源数据（与后端 30s 采集对齐；无轮询时页面会停留在加载时的旧快照）
+    interval(30000)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(() => this.loadClusters(true));
+
     // Load organizations if super admin
     this.isSuperAdmin = this.authService.isSuperAdmin();
     if (this.isSuperAdmin) {
@@ -107,15 +113,18 @@ export class DashboardComponent implements OnInit, OnDestroy {
     });
   }
 
-  loadClusters(): void {
+  loadClusters(silent = false): void {
     if (!this.canListClusters) {
       this.loading = false;
       this.cdr.markForCheck();
       return;
     }
 
-    this.loading = true;
-    this.cdr.markForCheck();
+    // 轮询刷新时不闪整页 loading（静默更新卡片数据）
+    if (!silent) {
+      this.loading = true;
+      this.cdr.markForCheck();
+    }
     this.clusterService.listClusters().subscribe({
       next: (clusters) => {
         // Update clusters, setting isActive based on backend response
@@ -332,13 +341,54 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return clusterCard.cluster.id;
   }
 
-  navigateToCluster(clusterId?: number): void {
-    if (!this.canViewClusterDetails) {
-      this.toastrService.warning('您没有查看集群详情的权限', '提示');
+  onClusterCardKeydown(event: KeyboardEvent, clusterCard: ClusterCard): void {
+    if (event.target !== event.currentTarget) {
       return;
     }
-    const commands = clusterId ? ['/pages/starrocks/clusters', clusterId] : ['/pages/starrocks/clusters'];
-    this.router.navigate(commands);
+    event.preventDefault();
+    this.navigateToClusterOverview(clusterCard);
+  }
+
+  navigateToClusterOverview(clusterCard: ClusterCard): void {
+    if (!this.permissionService.hasPermission('menu:overview')) {
+      this.toastrService.warning('您没有查看集群概览的权限', '提示');
+      return;
+    }
+
+    const navigate = () => this.router.navigate(['/pages/starrocks/overview']);
+    if (clusterCard.isActive) {
+      navigate();
+      return;
+    }
+
+    if (!this.canActivateCluster) {
+      this.toastrService.warning('请先切换到该集群后再查看概览', '提示');
+      return;
+    }
+
+    // 查看非当前集群的概览必须显式切换：禁止静默激活
+    this.confirmDialogService.confirm(
+      '切换集群',
+      `查看「${clusterCard.cluster.name}」的概览需要先将其设为当前集群，是否切换？`,
+      '切换并查看',
+      '取消',
+      'primary'
+    ).pipe(takeUntil(this.destroy$)).subscribe((confirmed) => {
+      if (!confirmed) {
+        return;
+      }
+      this.clusterService.activateCluster(clusterCard.cluster.id).subscribe({
+        next: () => {
+          this.clusters.forEach(card => {
+            card.isActive = card.cluster.id === clusterCard.cluster.id;
+          });
+          this.clusterContext.refreshActiveCluster();
+          this.cdr.markForCheck();
+          navigate();
+        },
+        error: (error) => ErrorHandler.handleHttpError(error, this.toastrService),
+      });
+    });
   }
 
   navigateToBackends(clusterId?: number): void {
@@ -394,7 +444,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.toastrService.warning('您没有创建集群的权限', '提示');
       return;
     }
-    this.router.navigate(['/pages/starrocks/clusters/new']);
+    this.dialogService
+      .open(ClusterFormComponent, { context: { clusterId: null } })
+      .onClose.subscribe((saved) => {
+        if (saved) {
+          this.loadClusters();
+        }
+      });
   }
 
   editCluster(cluster: Cluster): void {
@@ -402,7 +458,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.toastrService.warning('您没有编辑集群的权限', '提示');
       return;
     }
-    this.router.navigate(['/pages/starrocks/clusters', cluster.id, 'edit']);
+    this.dialogService
+      .open(ClusterFormComponent, { context: { clusterId: cluster.id } })
+      .onClose.subscribe((saved) => {
+        if (saved) {
+          this.loadClusters();
+        }
+      });
   }
 
   deleteCluster(cluster: Cluster): void {
@@ -449,7 +511,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const canDelete = this.permissionService.hasPermission('api:clusters:delete');
     const canActivate = this.permissionService.hasPermission('api:clusters:activate');
     const canViewActive = this.permissionService.hasPermission('api:clusters:active');
-    const canViewDetail = this.permissionService.hasPermission('api:clusters:get');
     const canViewBackends = this.permissionService.hasPermission('api:clusters:backends');
     const canViewFrontends = this.permissionService.hasPermission('api:clusters:frontends');
     const canViewQuery = this.permissionService.hasPermission('api:clusters:queries');
@@ -461,7 +522,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
       canDelete,
       canActivate,
       canViewActive,
-      canViewDetail,
       canViewBackends,
       canViewFrontends,
       canViewQuery,
@@ -478,7 +538,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.canDeleteCluster = canDelete;
     this.canActivateCluster = canActivate;
     this.canViewActiveCluster = canViewActive;
-    this.canViewClusterDetails = canViewDetail;
     this.canViewBackends = canViewBackends;
     this.canViewFrontends = canViewFrontends;
     this.canViewQueries = canViewQuery;
