@@ -24,22 +24,22 @@ fn simplify_health_check_error(error: &str) -> String {
 
     // Check error patterns using if-else
     if error_lower.contains("28000") || error_lower.contains("access denied") {
-        return "认证失败: 请检查用户名和密码是否正确".to_string();
+        return "认证失败: 请检查用户名和密码是否正确；普通用户需确认有 SHOW PROC 等基础权限".to_string();
     }
 
     if error_lower.contains("connection refused")
         || error_lower.contains("refused")
         || error_lower.contains("cannot connect")
     {
-        return "无法连接: 请检查集群地址和端口是否正确".to_string();
+        return "无法连接: 请检查集群地址和端口是否正确；可用 telnet 验证 FE 查询端口连通性".to_string();
     }
 
     if error_lower.contains("timeout") {
-        return "连接超时: 请检查网络连接和集群状态".to_string();
+        return "连接超时: 请检查安全组/防火墙是否放行，以及集群是否正常运行".to_string();
     }
 
     if error_lower.contains("unknown host") || error_lower.contains("resolve") {
-        return "解析失败: 无法解析集群地址，请检查是否输入正确".to_string();
+        return "解析失败: 无法解析集群地址；内网地址需确认平台与集群网络互通".to_string();
     }
 
     // Default: return a generic message with error code if available
@@ -379,7 +379,17 @@ impl<DB: AppDb> ClusterService<DB> {
 
         tracing::info!("Cluster updated: ID {}", cluster_id);
 
-        self.get_cluster(cluster_id).await
+        let updated = self.get_cluster(cluster_id).await?;
+
+        // Keep the active-cluster cache coherent: deployment_mode / connection
+        // changes must take effect immediately (feature cards, node management).
+        if let Ok(mut guard) = self.active_cluster.write() {
+            if guard.as_ref().map(|c| c.id) == Some(cluster_id) {
+                *guard = Some(updated.clone());
+            }
+        }
+
+        Ok(updated)
     }
 
     pub async fn delete_cluster(&self, cluster_id: i64) -> ApiResult<()> {

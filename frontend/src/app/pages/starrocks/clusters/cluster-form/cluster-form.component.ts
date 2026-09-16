@@ -1,5 +1,6 @@
 import { Component, Input, OnInit, inject } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { DatePipe } from '@angular/common';
 import { NbDialogRef, NbToastrService, NbCardModule, NbFormFieldModule, NbSelectModule, NbOptionModule, NbIconModule, NbInputModule, NbCheckboxModule, NbButtonModule, NbSpinnerModule, NbTooltipModule } from '@nebular/theme';
 import { timeout } from 'rxjs';
 import { ClusterService, Cluster } from '../../../../@core/data/cluster.service';
@@ -24,7 +25,8 @@ import { ErrorHandler } from '../../../../@core/utils/error-handler';
     NbCheckboxModule,
     NbButtonModule,
     NbSpinnerModule,
-    NbTooltipModule
+    NbTooltipModule,
+    DatePipe
 ],
 })
 export class ClusterFormComponent implements OnInit {
@@ -43,6 +45,8 @@ export class ClusterFormComponent implements OnInit {
   saving = false;
   /** 测试连接中 */
   testing = false;
+  /** 上次测试成功时间（本轮弹窗内有效） */
+  lastTestOkAt: Date | null = null;
   connectionTested = false; // Track if connection has been tested
   connectionValid = false;  // Track if connection is valid
   
@@ -307,6 +311,7 @@ export class ClusterFormComponent implements OnInit {
 
   private handleHealthCheckResult(health: any): void {
     if (health.status === 'healthy') {
+      this.lastTestOkAt = new Date();
       // For healthy status, show detailed checks
       const details = health.checks.map((c: any) => `✓ ${c.name}: ${c.message}`).join('\n');
       this.toastrService.success(`健康检查通过\n\n${details}`, '连接成功');

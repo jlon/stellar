@@ -61,6 +61,14 @@
   gap: 0.6rem;
 }
 
+/* 上次测试成功时间（测试按钮右侧小字） */
+.test-ok-hint {
+  font-size: 0.75rem;
+  color: var(--text-hint-color);
+  margin-left: 0.5rem;
+  white-space: nowrap;
+}
+
 .spin {
   animation: spin 1s linear infinite;
 }
