@@ -655,6 +655,28 @@
           background-color: nb-theme(color-primary-transparent-100);
         }
 
+        /* 主操作：常亮（工具栏里唯一的彩色，自然焦点） */
+        &.is-primary {
+          color: nb-theme(color-primary-default);
+
+          &:hover:not([disabled]),
+          &:focus:not([disabled]) {
+            color: nb-theme(color-primary-hover);
+            background-color: nb-theme(color-primary-transparent-100);
+          }
+        }
+
+        /* 执行中的取消：常亮红，醒目可终止 */
+        &.is-danger-active {
+          color: nb-theme(color-danger-default);
+
+          &:hover:not([disabled]),
+          &:focus:not([disabled]) {
+            color: nb-theme(color-danger-hover);
+            background-color: nb-theme(color-danger-transparent-100);
+          }
+        }
+
         &.is-danger:hover:not([disabled]) {
           color: nb-theme(color-danger-500);
           background-color: nb-theme(color-danger-transparent-100);

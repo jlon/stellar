@@ -94,25 +94,27 @@
                         <button
                           *ngIf="!executing"
                           nbButton
+                          ghost
                           status="primary"
                           size="small"
+                          class="icon-action is-primary"
                           (click)="executeSQL()"
                           [disabled]="!clusterId || !sqlInput"
                           nbTooltip="执行（Ctrl / ⌘ + Enter）"
                           nbTooltipPlacement="top">
                           <nb-icon icon="play-circle-outline"></nb-icon>
-                          执行
                         </button>
                         <button
                           *ngIf="executing"
                           nbButton
+                          ghost
                           status="danger"
                           size="small"
+                          class="icon-action is-danger-active"
                           (click)="cancelExecute()"
                           nbTooltip="断开等待并按指纹终止在跑查询"
                           nbTooltipPlacement="top">
                           <nb-icon icon="stop-circle-outline"></nb-icon>
-                          取消
                         </button>
 
                         <span class="action-divider"></span>
@@ -127,7 +129,7 @@
                           [disabled]="executing || !sqlInput"
                           nbTooltip="清空 SQL"
                           nbTooltipPlacement="top">
-                          <nb-icon icon="trash-2-outline"></nb-icon>
+                          <nb-icon icon="backspace-outline"></nb-icon>
                         </button>
                         <button
                           nbButton
@@ -139,7 +141,7 @@
                           [disabled]="executing || !sqlInput"
                           nbTooltip="格式化 SQL"
                           nbTooltipPlacement="top">
-                          <nb-icon icon="wand-outline"></nb-icon>
+                          <nb-icon icon="code-outline"></nb-icon>
                         </button>
                         <div class="fav-wrap">
                           <button
