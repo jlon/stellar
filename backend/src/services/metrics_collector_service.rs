@@ -1,4 +1,9 @@
 use crate::db::query as db_query;
+
+/// 磁盘水位阈值（告警口径）：与 overview_service::generate_alerts 的 80/90 分档一致。
+/// 事件闭环（agent_runtime/collectors.rs）与概览告警共用同一常量，避免口径漂移。
+pub const DISK_WARNING_PCT: f64 = 80.0;
+pub const DISK_CRITICAL_PCT: f64 = 90.0;
 // Metrics Collector Service
 // Purpose: Periodically collect metrics from StarRocks clusters and store them in SQLite
 // Design Ref: ARCHITECTURE_ANALYSIS_AND_INTEGRATION.md
@@ -269,6 +274,17 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
                 )));
             },
         };
+        if backends.is_empty() {
+            // 节点列表为空（集群重启/切换中）：本轮数据不可靠，跳过快照，
+            // 避免全零快照覆盖正常值导致 dashboard 显示 0%/空白。
+            // 注意：空列表也不写入节点缓存，否则节点管理页会被清空。
+            tracing::warn!(
+                "No backends/compute-nodes returned for cluster {} ({}), skipping snapshot",
+                cluster.id,
+                cluster.name
+            );
+            return Ok(());
+        }
         self.store_backends(cluster.id, backends.clone());
         let frontends = match frontends_result {
             Ok(Ok(value)) => {

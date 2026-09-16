@@ -9,11 +9,14 @@
     <button
       type="button"
       nbButton
-      size="tiny"
+      size="small"
+      ghost
       status="primary"
       (click)="addCluster()"
-      [disabled]="!canCreateCluster">
-      添加集群
+      [disabled]="!canCreateCluster"
+      title="添加集群"
+      aria-label="添加集群">
+      <nb-icon icon="plus-outline"></nb-icon>
     </button>
   </div>
 
@@ -35,14 +38,19 @@
     <article
       class="cluster-card"
       *ngFor="let card of clusters; trackBy: trackByClusterId"
-      [attr.data-status]="statusTone(card.health?.status)">
+      [attr.data-status]="statusTone(card.health?.status)"
+      role="link"
+      tabindex="0"
+      (click)="navigateToClusterOverview(card)"
+      (keydown.enter)="onClusterCardKeydown($event, card)"
+      (keydown.space)="onClusterCardKeydown($event, card)">
       <div class="cluster-card__head">
         <div class="cluster-card__name">
           <div class="cluster-card__title-line">
             <button
               type="button"
               class="cluster-card__title"
-              (click)="navigateToCluster(card.cluster.id)">
+              (click)="$event.stopPropagation(); navigateToClusterOverview(card)">
               {{ card.cluster.name }}
             </button>
             <span class="cluster-card__current" *ngIf="card.isActive">当前</span>
@@ -62,7 +70,7 @@
             ghost
             size="tiny"
             status="basic"
-            (click)="toggleActiveCluster(card)"
+            (click)="$event.stopPropagation(); toggleActiveCluster(card)"
             [disabled]="!canActivateCluster"
             aria-label="设为当前集群">
             <nb-icon icon="star-outline"></nb-icon>
@@ -73,7 +81,7 @@
             ghost
             size="tiny"
             status="basic"
-            (click)="editCluster(card.cluster)"
+            (click)="$event.stopPropagation(); editCluster(card.cluster)"
             [disabled]="!canUpdateCluster"
             aria-label="设置">
             <nb-icon icon="settings-2-outline"></nb-icon>
@@ -84,7 +92,7 @@
             ghost
             size="tiny"
             status="basic"
-            (click)="deleteCluster(card.cluster)"
+            (click)="$event.stopPropagation(); deleteCluster(card.cluster)"
             [disabled]="!canDeleteCluster"
             aria-label="删除">
             <nb-icon icon="trash-2-outline"></nb-icon>
@@ -98,7 +106,7 @@
           type="button"
           class="cluster-card__status"
           [attr.data-tone]="statusTone(card.health.status)"
-          (click)="toggleHealthDetails(card)">
+          (click)="$event.stopPropagation(); toggleHealthDetails(card)">
           <span class="cluster-card__dot" aria-hidden="true"></span>
           {{ getHealthBadgeText(card) }}
           <span *ngIf="failedCountLabel(card)" class="cluster-card__fail">{{ failedCountLabel(card) }}</span>
@@ -107,16 +115,16 @@
           <span class="cluster-card__dot" aria-hidden="true"></span>
           未知
         </span>
-        <button type="button" class="cluster-card__link" (click)="navigateToFrontends(card.cluster.id)">
+        <button type="button" class="cluster-card__link" (click)="$event.stopPropagation(); navigateToFrontends(card.cluster.id)">
           FE {{ getFeCount(card) }}
         </button>
-        <button type="button" class="cluster-card__link" (click)="navigateToBackends(card.cluster.id)">
+        <button type="button" class="cluster-card__link" (click)="$event.stopPropagation(); navigateToBackends(card.cluster.id)">
           {{ computeNodeShort(card) }} {{ getComputeNodeCount(card) }}
         </button>
         <span class="cluster-card__addr">{{ card.cluster.fe_host }}:{{ card.cluster.fe_http_port }}</span>
       </div>
 
-      <div class="cluster-card__meters" *ngIf="card.resources">
+      <div class="cluster-card__meters" *ngIf="card.resources; else metersLoading">
         <div class="meter" [attr.data-tone]="usageTone(card.resources.cpu_usage_pct)">
           <nb-icon icon="flash-outline"></nb-icon>
           <span>CPU {{ formatPct(card.resources.cpu_usage_pct) }}</span>
@@ -127,12 +135,16 @@
           <span>内存 {{ formatPct(card.resources.memory_usage_pct) }}</span>
           <span class="meter__track"><span class="meter__fill" [style.width.%]="clampPct(card.resources.memory_usage_pct)"></span></span>
         </div>
-        <div class="meter" *ngIf="card.resources.disk_usage_pct != null" [attr.data-tone]="usageTone(card.resources.disk_usage_pct)">
+        <div class="meter" [attr.data-tone]="usageTone(card.resources.disk_usage_pct)"
+          [attr.title]="card.resources.disk_usage_pct == null ? '暂无磁盘指标（采集中，或存算分离集群无本地存储）' : null">
           <nb-icon icon="hard-drive-outline"></nb-icon>
           <span>磁盘 {{ formatPct(card.resources.disk_usage_pct) }}</span>
           <span class="meter__track"><span class="meter__fill" [style.width.%]="clampPct(card.resources.disk_usage_pct)"></span></span>
         </div>
       </div>
+      <ng-template #metersLoading>
+        <div class="cluster-card__meters-empty">指标采集中…</div>
+      </ng-template>
 
       <span class="cluster-card__tags" *ngIf="card.cluster.tags?.length">
         <span *ngFor="let tag of card.cluster.tags">{{ tag }}</span>

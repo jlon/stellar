@@ -54,9 +54,15 @@
   border: 1px solid nb-theme(border-basic-color-3);
   border-radius: nb-theme(border-radius);
   background: nb-theme(background-basic-color-1);
+  cursor: pointer;
 
   &:hover {
     background: nb-theme(background-basic-color-2);
+  }
+
+  &:focus-visible {
+    outline: 2px solid nb-theme(color-primary-default);
+    outline-offset: 2px;
   }
 
   &[data-status='warning'] {
@@ -268,6 +274,12 @@ span.cluster-card__status {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.75rem;
   margin-top: 0.75rem;
+}
+
+.cluster-card__meters-empty {
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+  color: var(--text-hint-color);
 }
 
 .meter {
