@@ -11,23 +11,9 @@
             </span>
           </div>
           <div class="d-flex align-items-center gap-2">
-            <button nbButton status="primary" size="small" (click)="loadProfiles()" [disabled]="loading || !clusterId">
+            <button nbButton ghost status="basic" size="small" (click)="loadProfiles()" [disabled]="loading || !clusterId" nbTooltip="刷新" title="刷新">
               <nb-icon icon="refresh-outline"></nb-icon>
-              刷新
             </button>
-            
-            <nb-select 
-              [(selected)]="selectedRefreshInterval" 
-              size="small" 
-              placeholder="自动刷新"
-              (selectedChange)="onRefreshIntervalChange($event)"
-              [disabled]="!clusterId"
-              style="min-width: 100px;"
-            >
-              <nb-option *ngFor="let option of refreshIntervalOptions" [value]="option.value">
-                {{ option.label }}
-              </nb-option>
-            </nb-select>
           </div>
         </div>
       </nb-card-header>
@@ -616,7 +602,7 @@
                                     'badge-danger': diag.severity === 'Error',
                                     'badge-warning': diag.severity === 'Warning',
                                     'badge-info': diag.severity === 'Info'
-                                  }">{{ diag.rule_id }}</span>
+                                  }" [title]="diag.rule_id">{{ diag.severity === 'Error' ? '严重' : diag.severity === 'Warning' ? '警告' : '提示' }}</span>
                                   <span class="diag-name-inline">{{ diag.rule_name }}</span>
                                 </div>
                                 <div class="diag-message-inline">{{ diag.message }}</div>
@@ -947,7 +933,7 @@
                               'badge-danger': diag.severity === 'Error',
                               'badge-warning': diag.severity === 'Warning',
                               'badge-info': diag.severity === 'Info'
-                            }">{{ diag.rule_id }}</span>
+                            }" [title]="diag.rule_id">{{ diag.severity === 'Error' ? '严重' : diag.severity === 'Warning' ? '警告' : '提示' }}</span>
                             <span class="diag-name">{{ diag.rule_name }}</span>
                             <span class="node-count-badge" *ngIf="diag.node_count > 1">×{{ diag.node_count }} 个节点</span>
                           </div>
