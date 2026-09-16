@@ -1,3 +1,5 @@
+pub mod agent_runtime;
+pub mod ai;
 pub mod audit_log_service;
 pub mod auth_service;
 pub mod baseline_refresh_task;
@@ -10,9 +12,12 @@ pub mod db_auth_query_service;
 pub mod llm;
 pub mod materialized_view_service;
 pub mod metrics_collector_service;
+pub mod notification_service;
+pub mod op_audit;
 pub mod mysql_client;
 pub mod mysql_pool_manager;
 pub mod organization_service;
+pub mod ops_agent;
 pub mod overview_service;
 pub mod permission_service;
 pub mod permission_request_service;
@@ -42,6 +47,8 @@ pub use metrics_collector_service::{
     ClusterResourceSummary, MetricsCollectorService, MetricsSnapshot,
 };
 pub use mysql_client::MySQLClient;
+pub use agent_runtime::AgentRuntimeService;
+pub use ops_agent::OpsAgentService;
 pub use mysql_pool_manager::MySQLPoolManager;
 pub use organization_service::OrganizationService;
 pub use overview_service::{
@@ -65,6 +72,8 @@ pub use user_service::UserService;
 
 // Cluster adapters for multi-engine support
 pub use cluster_adapter::{
-    ClusterAdapter, DorisAdapter, StarRocksAdapter, create_adapter, create_doris_adapter,
+    ClusterAdapter, DorisAdapter, StarRocksAdapter, cluster_timeout, create_adapter, create_doris_adapter,
     create_starrocks_adapter,
 };
+
+pub use notification_service::NotificationService;

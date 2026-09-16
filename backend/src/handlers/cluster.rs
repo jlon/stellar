@@ -83,6 +83,19 @@ pub async fn create_cluster(
         .await?;
 
     tracing::info!("Cluster created successfully: {} (ID: {})", cluster.name, cluster.id);
+    crate::services::op_audit::log_op_best_effort(
+        &state.db,
+        crate::services::op_audit::OpAuditEntry {
+            user_id: org_ctx.user_id,
+            username: &org_ctx.username,
+            organization_id: org_ctx.organization_id,
+            action: "create",
+            target_type: "cluster",
+            target_id: Some(cluster.id),
+            target_name: &cluster.name,
+        },
+    )
+    .await;
     Ok(Json(cluster.into()))
 }
 
@@ -300,6 +313,19 @@ pub async fn update_cluster(
     }
 
     let cluster = state.cluster_service.update_cluster(id, req).await?;
+    crate::services::op_audit::log_op_best_effort(
+        &state.db,
+        crate::services::op_audit::OpAuditEntry {
+            user_id: org_ctx.user_id,
+            username: &org_ctx.username,
+            organization_id: org_ctx.organization_id,
+            action: "update",
+            target_type: "cluster",
+            target_id: Some(id),
+            target_name: &existing.name,
+        },
+    )
+    .await;
     Ok(Json(cluster.into()))
 }
 
@@ -333,6 +359,19 @@ pub async fn delete_cluster(
     state.cluster_service.delete_cluster(id).await?;
 
     tracing::warn!("Cluster deleted successfully: ID {}", id);
+    crate::services::op_audit::log_op_best_effort(
+        &state.db,
+        crate::services::op_audit::OpAuditEntry {
+            user_id: org_ctx.user_id,
+            username: &org_ctx.username,
+            organization_id: org_ctx.organization_id,
+            action: "delete",
+            target_type: "cluster",
+            target_id: Some(id),
+            target_name: &existing.name,
+        },
+    )
+    .await;
     Ok(Json(serde_json::json!({"message": "Cluster deleted successfully"})))
 }
 

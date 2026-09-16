@@ -13,6 +13,44 @@ pub fn extract_permission(method: &str, uri: &str) -> Option<(String, String)> {
     let path = uri.strip_prefix("/api/").unwrap_or(uri);
     let segments: Vec<&str> = path.split('/').collect();
 
+    // Op audit logs: /api/op-audit-logs -- 平台操作审计
+    if segments.first() == Some(&"op-audit-logs") {
+        return Some((
+            "op-audit-logs".to_string(),
+            "logs:list".to_string(),
+        ));
+    }
+
+    // Notifications resource: /api/notifications -- 用户通知（铃铛）
+    if segments.first() == Some(&"notifications") {
+        return Some((
+            "notifications".to_string(),
+            extract_notifications_action(&segments, method)?,
+        ));
+    }
+
+    // Chat actions resource: /api/agent/chat-actions -- 对话内动作确认
+    if segments.first() == Some(&"agent")
+        && segments.get(1) == Some(&"chat-actions")
+    {
+        return match (segments.len(), method, segments.get(2).copied()) {
+            // 资源复用 "agent"（权限码 api:agent:chat-actions:*，与播种一致）
+            (2, "GET", _) => Some(("agent".to_string(), "chat-actions:list".to_string())),
+            (3, "POST", Some("confirm")) => {
+                Some(("agent".to_string(), "chat-actions:confirm".to_string()))
+            }
+            (3, "POST", Some("cancel")) => {
+                Some(("agent".to_string(), "chat-actions:cancel".to_string()))
+            }
+            _ => None,
+        };
+    }
+
+    // Agent resource: /api/agent/* -- AI 运维助手权限
+    if segments.first() == Some(&"agent") {
+        return Some(("agent".to_string(), extract_agent_action(&segments, method)?));
+    }
+
     // Special handling for /api/clusters/db-auth/* paths
     // db-auth is a separate resource in the permissions model, not under clusters
     if segments.first() == Some(&"clusters") && segments.get(1) == Some(&"db-auth") {
@@ -25,6 +63,14 @@ pub fn extract_permission(method: &str, uri: &str) -> Option<(String, String)> {
             return Some(("db-auth".to_string(), action));
         }
         return None;
+    }
+
+    // Special handling for /api/clusters/resource-groups/* paths
+    // resource-groups is a separate resource in the permissions model,
+    // matching the seeded api:resource-groups:* permission codes
+    if segments.first() == Some(&"clusters") && segments.get(1) == Some(&"resource-groups") {
+        let action = extract_resource_groups_action(&segments, method)?;
+        return Some(("resource-groups".to_string(), action));
     }
 
     let resource = match *(segments.first()?) {
@@ -51,6 +97,54 @@ fn extract_action_with_special_handlers(
         "roles" => extract_roles_action(segments, method),
         "users" => extract_users_action(segments, method),
         "clusters" => extract_clusters_action_special(segments, method),
+        _ => None,
+    }
+}
+
+/// Extract action for notifications resource (/api/notifications/*)
+fn extract_notifications_action(segments: &[&str], method: &str) -> Option<String> {
+    match (segments.len(), method, segments.get(2).copied()) {
+        (2, "GET", _) => Some("list".to_string()),
+        (2, "POST", _) => Some("create".to_string()),
+        (3, "POST", Some("read")) => Some("read".to_string()),
+        _ => None,
+    }
+}
+
+/// Extract action for agent resource (/api/agent/*)
+fn extract_agent_action(segments: &[&str], method: &str) -> Option<String> {
+    match (segments.get(1).copied(), segments.len(), method) {
+        (Some("chat"), 2, "POST") => Some("chat".to_string()),
+        (Some("chat"), 3, "POST") if segments.get(2) == Some(&"stream") => Some("chat".to_string()),
+        (Some("sessions"), 2, "GET") => Some("sessions".to_string()),
+        (Some("sessions"), 3, "GET") => Some("sessions:get".to_string()),
+        (Some("sessions"), 3, "PATCH") => Some("sessions:rename".to_string()),
+        (Some("sessions"), 3, "DELETE") => Some("sessions:delete".to_string()),
+        // 事件闭环（runtime）
+        (Some("incidents"), 2, "GET") => Some("incidents".to_string()),
+        (Some("incidents"), 3, "GET") if segments.get(2) == Some(&"actions") => {
+            Some("incidents:actions:get".to_string())
+        }
+        (Some("incidents"), 3, "GET") => Some("incidents:get".to_string()),
+        (Some("incidents"), 4, "POST") => match segments.get(3).copied() {
+            Some("investigate") => Some("incidents:investigate".to_string()),
+            Some("analyze") => Some("incidents:analyze".to_string()),
+            Some("close") => Some("incidents:close".to_string()),
+            Some("actions") => Some("incidents:actions".to_string()),
+            _ => None,
+        },
+        (Some("incidents"), 5, "POST") if segments.get(3) == Some(&"actions") => {
+            match segments.get(4).copied() {
+                Some("confirm") => Some("incidents:actions:confirm".to_string()),
+                Some("cancel") => Some("incidents:actions:cancel".to_string()),
+                _ => None,
+            }
+        },
+        (Some("events"), 2, "GET") => Some("events".to_string()),
+        // 回答点赞/点踩：POST /api/agent/messages/:id/feedback
+        (Some("messages"), 4, "POST") if segments.get(3) == Some(&"feedback") => {
+            Some("messages:feedback".to_string())
+        }
         _ => None,
     }
 }
@@ -170,6 +264,16 @@ fn extract_clusters_special_paths(segments: &[&str], method: &str) -> Option<Str
             }
         }),
         Box::new(|seg, m| {
+            // 按指纹取消在跑查询：与 KILL 同风险等级，复用 queries:kill 权限码（零迁移）。
+            if m == "POST" && seg.len() == 3 && seg.get(1) == Some(&"queries")
+                && seg.get(2) == Some(&"cancel")
+            {
+                Some("queries:kill".to_string())
+            } else {
+                None
+            }
+        }),
+        Box::new(|seg, m| {
             if m == "GET" && seg.len() >= 4 && seg.get(1) == Some(&"queries") {
                 if let Some(last) = seg.last()
                     && *last == "profile"
@@ -204,6 +308,7 @@ fn extract_clusters_special_paths(segments: &[&str], method: &str) -> Option<Str
         Box::new(extract_variables_action),
         Box::new(extract_system_functions_action),
         Box::new(extract_sql_blacklist_action),
+        Box::new(extract_resource_groups_action),
     ];
 
     for handler in handlers {
@@ -213,6 +318,27 @@ fn extract_clusters_special_paths(segments: &[&str], method: &str) -> Option<Str
     }
 
     None
+}
+
+/// Extract action for resource-groups paths
+/// Matches seeded permissions (api:resource-groups:*) under resource "resource-groups"
+fn extract_resource_groups_action(segments: &[&str], method: &str) -> Option<String> {
+    let action = match (segments.len(), method) {
+        // /api/clusters/resource-groups
+        (2, "GET") => "list",
+        (2, "POST") => "create",
+        // /api/clusters/resource-groups/usage | analysis | :name
+        (3, "GET") => match *segments.get(2)? {
+            "usage" => "usage",
+            "analysis" => "analysis",
+            _ => "get",
+        },
+        (3, "PUT") => "update",
+        (3, "DELETE") => "delete",
+        _ => return None,
+    };
+
+    Some(action.to_string())
 }
 
 /// Extract action for materialized_views paths

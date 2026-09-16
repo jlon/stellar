@@ -18,10 +18,12 @@ use stellar::db::{self, AppDb};
 use stellar::embedded::WebAssets;
 use stellar::models;
 use stellar::services::{
-    AuthService, CasbinService, ClusterService, DataStatisticsService, DbAuthQueryService,
-    LLMServiceImpl, MetricsCollectorService, MySQLPoolManager, OrganizationService,
-    OverviewService, PermissionRequestService, PermissionService, RoleService,
-    SystemFunctionService, UserRoleService, UserService,
+    AgentRuntimeService, AuditLogService, AuthService, CasbinService, ClusterService,
+    DataStatisticsService, DbAuthQueryService, LLMServiceImpl, MetricsCollectorService,
+    NotificationService,
+    MySQLPoolManager, OpsAgentService, OrganizationService, OverviewService,
+    PermissionRequestService, PermissionService, RoleService, SystemFunctionService,
+    UserRoleService, UserService,
 };
 use stellar::utils::{JwtUtil, ScheduledExecutor};
 use stellar::{AppState, handlers, middleware, services};
@@ -301,12 +303,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let file_prefix = file_name.strip_suffix(".log").unwrap_or(file_name);
 
-        let file_appender = tracing_appender::rolling::daily(log_dir, file_prefix);
-        let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
-        registry
-            .with(tracing_subscriber::fmt::layer().with_writer(non_blocking))
-            .with(tracing_subscriber::fmt::layer())
-            .init();
+        // Unwritable log dir must degrade to stdout, never panic: services run
+        // as dedicated users from arbitrary cwds (e.g. systemd) where creating
+        // ./logs may be denied. Probe-write before initializing the appender.
+        let probe = format!("{log_dir}/.stellar-write-test-{}", std::process::id());
+        let probe_path = std::path::Path::new(&probe);
+        if std::fs::write(probe_path, b"")
+            .and_then(|_| std::fs::remove_file(probe_path))
+            .is_err()
+        {
+            eprintln!(
+                "[stellar] WARNING: log directory '{log_dir}' is not writable, falling back to stdout logging"
+            );
+            registry.with(tracing_subscriber::fmt::layer()).init();
+        } else {
+            let file_appender = tracing_appender::rolling::daily(log_dir, file_prefix);
+            let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+            registry
+                .with(tracing_subscriber::fmt::layer().with_writer(non_blocking))
+                .with(tracing_subscriber::fmt::layer())
+                .init();
+        }
     } else {
         registry.with(tracing_subscriber::fmt::layer()).init();
     }
@@ -441,6 +458,29 @@ where
 
     let profile_analysis_cache = Arc::new(stellar::services::profile_analyzer::ProfileAnalysisCache::new());
 
+    let notification_service = Arc::new(NotificationService::new(pool.clone()));
+    let ops_agent_service = Arc::new(OpsAgentService::new(
+        pool.clone(),
+        Arc::clone(&mysql_pool_manager),
+        config.audit.clone(),
+        Arc::clone(&cluster_service),
+        Arc::clone(&metrics_collector_service),
+    ));
+    tracing::info!("OpsAgentService initialized");
+
+    let audit_service = Arc::new(AuditLogService::new(
+        Arc::clone(&mysql_pool_manager),
+        config.audit.clone(),
+    ));
+    let agent_runtime_service = Arc::new(AgentRuntimeService::new(
+        pool.clone(),
+        Arc::clone(&mysql_pool_manager),
+        Arc::clone(&cluster_service),
+        audit_service,
+        config.agent.clone(),
+    ));
+    tracing::info!("AgentRuntimeService initialized");
+
     let app_state = AppState {
         db: pool.clone(),
         mysql_pool_manager: Arc::clone(&mysql_pool_manager),
@@ -462,6 +502,9 @@ where
         db_auth_query_service: Arc::clone(&db_auth_query_service),
         permission_request_service: Arc::clone(&permission_request_service),
         profile_analysis_cache,
+        ops_agent_service,
+        notification_service,
+        agent_runtime_service: Arc::clone(&agent_runtime_service),
     };
 
     if config.metrics.enabled {
@@ -492,6 +535,24 @@ where
         3600,
     );
     tracing::info!("Baseline refresh task started (interval: 1 hour)");
+
+    if config.agent.enabled {
+        let interval = std::time::Duration::from_secs(config.agent.interval_secs);
+        tracing::info!(
+            "Agent runtime loop started with interval: {}s",
+            config.agent.interval_secs
+        );
+        let executor = ScheduledExecutor::new("agent-runtime", interval);
+        let service = Arc::clone(&agent_runtime_service);
+        tokio::spawn(async move {
+            if let Err(e) = service.run_once().await {
+                tracing::error!("Agent runtime initial tick failed: {}", e);
+            }
+            executor.start(service).await;
+        });
+    } else {
+        tracing::warn!("Agent runtime loop disabled by configuration");
+    }
 
     let app_state_arc = Arc::new(app_state);
 
@@ -525,6 +586,7 @@ where
         )
         .route("/api/clusters/queries", get(handlers::query::list_queries))
         .route("/api/clusters/queries/execute", post(handlers::query::execute_sql))
+        .route("/api/clusters/queries/cancel", post(handlers::query::cancel_running_query))
         .route("/api/clusters/queries/:query_id", delete(handlers::query::kill_query))
         .route("/api/clusters/queries/history", get(handlers::query_history::list_query_history))
         .route(
@@ -766,6 +828,68 @@ where
                 .put(handlers::resource_group::update_resource_group)
                 .delete(handlers::resource_group::delete_resource_group),
         )
+        .route("/api/notifications", get(handlers::notification::list))
+        .route("/api/notifications", post(handlers::notification::create))
+        .route(
+            "/api/notifications/:id/read",
+            post(handlers::notification::mark_read),
+        )
+        .route("/api/op-audit-logs", get(handlers::op_audit::list))
+        .route("/api/agent/chat", post(handlers::agent_chat::chat))
+        .route(
+            "/api/agent/chat/stream",
+            post(handlers::agent_chat::stream_chat),
+        )
+        .route("/api/agent/incidents", get(handlers::agent_incident::list_incidents))
+        .route("/api/agent/incidents/:id", get(handlers::agent_incident::get_incident))
+        .route(
+            "/api/agent/incidents/:id/investigate",
+            post(handlers::agent_incident::investigate),
+        )
+        .route(
+            "/api/agent/incidents/:id/analyze",
+            post(handlers::agent_incident::analyze),
+        )
+        .route(
+            "/api/agent/incidents/:id/close",
+            post(handlers::agent_incident::close_incident),
+        )
+        .route("/api/agent/events", get(handlers::agent_incident::list_events))
+        .route(
+            "/api/agent/chat-actions/:id/confirm",
+            post(handlers::chat_action::confirm_chat_action),
+        )
+        .route(
+            "/api/agent/chat-actions/:id/cancel",
+            post(handlers::chat_action::cancel_chat_action),
+        )
+        .route(
+            "/api/agent/chat-actions",
+            get(handlers::chat_action::list_chat_actions),
+        )
+        .route(
+            "/api/agent/incidents/:id/actions",
+            get(handlers::agent_incident::list_actions).post(handlers::agent_incident::create_action),
+        )
+        .route(
+            "/api/agent/incidents/:id/actions/:action_id/confirm",
+            post(handlers::agent_incident::confirm_action),
+        )
+        .route(
+            "/api/agent/incidents/:id/actions/:action_id/cancel",
+            post(handlers::agent_incident::cancel_action),
+        )
+        .route("/api/agent/sessions", get(handlers::agent_chat::list_sessions))
+        .route(
+            "/api/agent/messages/:id/feedback",
+            post(handlers::agent_chat::set_message_feedback),
+        )
+        .route(
+            "/api/agent/sessions/:id",
+            get(handlers::agent_chat::get_session)
+                .delete(handlers::agent_chat::delete_session)
+                .patch(handlers::agent_chat::rename_session),
+        )
         .with_state(Arc::clone(&app_state_arc))
         .layer(axum_middleware::from_fn_with_state(auth_state, middleware::auth_middleware));
 
@@ -845,22 +969,42 @@ async fn serve_static_files(uri: Uri) -> impl IntoResponse {
         path.to_string()
     };
 
+    let mut found: Option<(Vec<u8>, HeaderValue /* content_type */, bool /* is_gzip */)> = None;
     if let Some(file) = WebAssets::get(&asset_path) {
-        let content_type = get_content_type(&asset_path);
         let data: Vec<u8> = file.data.to_vec();
-        return Response::builder()
+        found = Some((data, get_content_type(&asset_path), false));
+    } else if let Some(file) = WebAssets::get(&format!("{asset_path}.gz")) {
+        // Text assets are gzip-compressed at build time (build-frontend.sh)
+        // and stored as <name>.gz; serve with Content-Encoding: gzip.
+        let data: Vec<u8> = file.data.to_vec();
+        found = Some((data, get_content_type(&asset_path), true));
+    }
+    if let Some((data, content_type, is_gzip)) = found {
+        let mut builder = Response::builder()
             .status(StatusCode::OK)
-            .header(header::CONTENT_TYPE, content_type)
-            .body(Body::from(data))
-            .unwrap()
-            .into_response();
+            .header(header::CONTENT_TYPE, content_type);
+        if is_gzip {
+            builder = builder.header(header::CONTENT_ENCODING, "gzip");
+        }
+        return builder.body(Body::from(data)).unwrap().into_response();
     }
 
     if let Some(index) = WebAssets::get("index.html") {
         let data: Vec<u8> = index.data.to_vec();
+        let mut builder = Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, "text/html; charset=utf-8");
+        if data.starts_with(&[0x1f, 0x8b]) {
+            builder = builder.header(header::CONTENT_ENCODING, "gzip");
+        }
+        return builder.body(Body::from(data)).unwrap().into_response();
+    }
+    if let Some(index) = WebAssets::get("index.html.gz") {
+        let data: Vec<u8> = index.data.to_vec();
         return Response::builder()
             .status(StatusCode::OK)
             .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+            .header(header::CONTENT_ENCODING, "gzip")
             .body(Body::from(data))
             .unwrap()
             .into_response();

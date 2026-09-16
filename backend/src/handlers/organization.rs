@@ -106,7 +106,21 @@ pub async fn create_organization(
         .await?;
     tracing::info!("Reloaded Casbin policies after organization creation");
 
-    Ok(Json(org))
+        crate::services::op_audit::log_op_best_effort(
+        &state.db,
+        crate::services::op_audit::OpAuditEntry {
+            user_id: org_ctx.user_id,
+            username: &org_ctx.username,
+            organization_id: org_ctx.organization_id,
+            action: "create",
+            target_type: "organization",
+            target_id: Some(org.id),
+            target_name: &org.name,
+        },
+    )
+    .await;
+        
+Ok(Json(org))
 }
 
 // Update organization
@@ -138,7 +152,21 @@ pub async fn update_organization(
         .update_organization(id, req, org_ctx.organization_id, org_ctx.is_super_admin)
         .await?;
     tracing::info!("Organization updated: ID {} by user {}", org.id, org_ctx.user_id);
-    Ok(Json(org))
+        crate::services::op_audit::log_op_best_effort(
+        &state.db,
+        crate::services::op_audit::OpAuditEntry {
+            user_id: org_ctx.user_id,
+            username: &org_ctx.username,
+            organization_id: org_ctx.organization_id,
+            action: "update",
+            target_type: "organization",
+            target_id: Some(org.id),
+            target_name: &org.name,
+        },
+    )
+    .await;
+        
+Ok(Json(org))
 }
 
 // Delete organization (super admin only, cannot delete system orgs)
@@ -177,5 +205,19 @@ pub async fn delete_organization(
         .await?;
 
     tracing::warn!("Organization deleted successfully: ID {} by user {}", id, org_ctx.user_id);
-    Ok(Json(serde_json::json!({"message": "Organization deleted successfully"})))
+        crate::services::op_audit::log_op_best_effort(
+        &state.db,
+        crate::services::op_audit::OpAuditEntry {
+            user_id: org_ctx.user_id,
+            username: &org_ctx.username,
+            organization_id: org_ctx.organization_id,
+            action: "delete",
+            target_type: "organization",
+            target_id: Some(id),
+            target_name: "",
+        },
+    )
+    .await;
+        
+Ok(Json(serde_json::json!({"message": "Organization deleted successfully"})))
 }

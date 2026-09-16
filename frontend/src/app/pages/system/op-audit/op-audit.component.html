@@ -1,0 +1,29 @@
+<div class="row">
+  <div class="col-12">
+    <nb-card [nbSpinner]="loading" nbSpinnerStatus="primary" nbSpinnerMessage="加载中">
+      <nb-card-header>
+        <div class="d-flex justify-content-between align-items-center">
+          <h5>操作日志</h5>
+          <div class="d-flex gap-2">
+            <nb-select size="small" placeholder="对象" [(selected)]="filterTarget" (selectedChange)="load()">
+              <nb-option value="">全部对象</nb-option>
+              <nb-option value="cluster">集群</nb-option>
+              <nb-option value="user">用户</nb-option>
+              <nb-option value="role">角色</nb-option>
+              <nb-option value="organization">组织</nb-option>
+            </nb-select>
+            <nb-select size="small" placeholder="动作" [(selected)]="filterAction" (selectedChange)="load()">
+              <nb-option value="">全部动作</nb-option>
+              <nb-option value="create">创建</nb-option>
+              <nb-option value="update">更新</nb-option>
+              <nb-option value="delete">删除</nb-option>
+            </nb-select>
+          </div>
+        </div>
+      </nb-card-header>
+      <nb-card-body>
+        <angular2-smart-table [settings]="settings" [source]="source"></angular2-smart-table>
+      </nb-card-body>
+    </nb-card>
+  </div>
+</div>

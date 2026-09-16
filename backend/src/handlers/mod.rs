@@ -1,3 +1,5 @@
+pub mod agent_chat;
+pub mod agent_incident;
 pub mod auth;
 pub mod backend;
 pub mod cluster;
@@ -22,3 +24,8 @@ pub mod system_management;
 pub mod user;
 pub mod user_role;
 pub mod variables;
+
+pub mod notification;
+pub mod op_audit;
+
+pub mod chat_action;
