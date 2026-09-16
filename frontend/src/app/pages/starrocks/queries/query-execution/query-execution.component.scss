@@ -22,34 +22,6 @@
 .tab-header-wrapper {
   position: relative;
   width: 100%;
-  
-  .sql-editor-toggle-btn {
-    position: absolute;
-    right: 15px; // Match Bootstrap col-12 padding to align with content
-    top: 8px;
-    z-index: 100;
-    padding: 0.25rem 0.5rem;
-    min-width: auto;
-    
-    // Nebular ghost button native styles
-    background: transparent;
-    border: 1px solid transparent;
-    transition: all 0.2s ease;
-    
-    &:hover {
-      background-color: nb-theme(background-basic-color-2);
-      border-color: nb-theme(border-basic-color-3);
-    }
-    
-    &:active {
-      background-color: nb-theme(background-basic-color-3);
-    }
-    
-    nb-icon {
-      font-size: 1.25rem;
-      color: nb-theme(text-hint-color);
-    }
-  }
 }
 
 // Tab header with toggle button layout
@@ -200,6 +172,8 @@
       display: flex;
       align-items: center;
       gap: 0.5rem;
+      /* 与 nb-card-header 原生字号一致 */
+      font-size: nb-theme(card-header-text-font-size);
       font-weight: 600;
 
       nb-icon {
@@ -317,8 +291,9 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      font-size: 0.92rem;
-      font-weight: 500;
+      /* 与左侧导航菜单（nb-menu）原生字号字重一致 */
+      font-size: nb-theme(menu-text-font-size);
+      font-weight: nb-theme(menu-text-font-weight);
     }
 
     &.type-catalog {
@@ -419,6 +394,35 @@
     }
   }
 
+  .editor-resizer {
+    flex: 0 0 8px;
+    cursor: row-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0.25rem 0;
+    border-radius: 6px;
+    transition: background-color 0.2s ease;
+    background-color: nb-theme(border-basic-color-4);
+
+    &:hover {
+      background-color: nb-theme(border-basic-color-5);
+    }
+
+    .resizer-grip {
+      width: 24px;
+      height: 2px;
+      border-radius: 2px;
+      background: linear-gradient(
+        to right,
+        transparent,
+        nb-theme(text-hint-color),
+        transparent
+      );
+      opacity: 0.6;
+    }
+  }
+
   .editor-panel {
     flex: 1;
     min-width: 0;
@@ -460,6 +464,9 @@
         gap: 0.35rem;
         font-size: 0.85rem;
         color: nb-theme(text-basic-color);
+        // nb-spinner 是 position:absolute; inset:0 的遮罩，必须限制在本行内，
+        // 否则 containing block 会向上穿透到卡片级，盖住整个编辑区拦截鼠标。
+        position: relative;
 
         nb-icon {
           font-size: 1rem;
@@ -516,7 +523,9 @@
         width: 100% !important;
         max-width: 100% !important;
         box-sizing: border-box !important;
-        height: 100% !important;
+        // 注意：不要在这里写 height。cm-editor 的高度由组件内
+        // buildEditorTheme() 注入的 px（跟随 editorHeight）控制；
+        // 写 height:100%!important 会压制 JS 主题，拖拽调高手柄完全失效。
         background-color: transparent !important;
 
           .cm-content {
@@ -538,7 +547,7 @@
             overflow-x: hidden !important;
             overflow-y: auto !important;
             box-sizing: border-box !important;
-            height: 100% !important;
+            // scroller 跟随 cm-editor 高度（同上，勿写 height:100%!important）
             background-color: transparent !important;
           }
         }
@@ -617,11 +626,136 @@
 
     .editor-action-buttons {
       flex-shrink: 0;
+      position: relative;
+      gap: 0.15rem;
+
+      /* 主操作与辅助操作之间的细分隔线 */
+      .action-divider {
+        width: 1px;
+        height: 1.1rem;
+        margin: 0 0.45rem;
+        background: nb-theme(border-basic-color-3);
+      }
+
+      /* 图标按钮：默认安静（中性灰），hover 才亮起，降低工具栏视觉噪声 */
+      [nbButton].icon-action {
+        min-width: auto;
+        padding: 0.25rem 0.5rem;
+        color: nb-theme(text-hint-color);
+        transition: color 0.15s ease, background-color 0.15s ease;
+
+        nb-icon {
+          font-size: 1.05rem;
+          vertical-align: middle;
+        }
+
+        &:hover:not([disabled]),
+        &:focus:not([disabled]) {
+          color: nb-theme(color-primary-500);
+          background-color: nb-theme(color-primary-transparent-100);
+        }
+
+        &.is-danger:hover:not([disabled]) {
+          color: nb-theme(color-danger-500);
+          background-color: nb-theme(color-danger-transparent-100);
+        }
+
+        /* 当前 SQL 已收藏：星标高亮 */
+        &.is-active {
+          color: nb-theme(color-warning-500);
+
+          &:hover:not([disabled]) {
+            color: nb-theme(color-warning-600);
+            background-color: nb-theme(color-warning-transparent-100);
+          }
+        }
+
+        &[disabled] {
+          color: nb-theme(text-disabled-color);
+        }
+      }
 
       .editor-collapse-btn {
         min-width: auto;
         padding: 0.25rem 0.5rem;
       }
+    }
+
+    /* SQL 收藏夹下拉（原生组件拼装） */
+    .fav-wrap {
+      position: relative;
+    }
+
+    .fav-panel {
+      position: absolute;
+      top: calc(100% + 0.4rem);
+      right: 0;
+      z-index: 20;
+      width: 20rem;
+      max-height: 22rem;
+      overflow-y: auto;
+      background: var(--card-background-color);
+      border: 1px solid var(--border-basic-color-3);
+      border-radius: 0.75rem;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+      padding: 0.5rem;
+    }
+
+    .fav-panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.25rem 0.4rem 0.5rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text-hint-color);
+    }
+
+    .fav-empty {
+      padding: 0.8rem;
+      text-align: center;
+      font-size: 0.78rem;
+      color: var(--text-hint-color);
+    }
+
+    .fav-item {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.4rem 0.5rem;
+      border-radius: 0.5rem;
+      cursor: pointer;
+    }
+
+    .fav-item:hover {
+      background: var(--background-basic-color-2);
+    }
+
+    .fav-item-main {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .fav-item-name {
+      font-size: 0.8rem;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    .fav-item-meta {
+      font-size: 0.7rem;
+      color: var(--text-hint-color);
+    }
+
+    .error-actions {
+      display: flex;
+      gap: 0.4rem;
+      margin-top: 0.5rem;
+    }
+
+    .no-data-message button {
+      margin-top: 0.4rem;
     }
 
     .hint-text {
@@ -1086,30 +1220,31 @@
   }
 }
 
-// Loading overlay for info dialogs; lives inside .info-dialog-card and covers it
+// Loading overlay for info dialogs; lives inside .info-dialog-card and covers it.
+// 无方块无遮罩：spinner + 文字直接浮在内容上。
 .info-dialog-loading-overlay {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 10;
   border-radius: nb-theme(border-radius);
-  
+
   .loading-content {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 2rem;
-    background: nb-theme(background-basic-color-1);
-    border-radius: nb-theme(border-radius);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-    
+    padding: 0;
+    background: transparent;
+    border-radius: 0;
+    box-shadow: none;
+
     p {
       margin-top: 1rem;
       color: nb-theme(text-hint-color);
