@@ -563,6 +563,9 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
 
         self.save_snapshot(&snapshot).await?;
 
+        // P1-8 最小告警：三条硬编码规则，不满足写站内通知（1小时同规则去重）
+        self.check_alert_rules(cluster, &snapshot).await;
+
         tracing::debug!(
             "Metrics collected for cluster {} ({}): QPS={:.2}, CPU={:.1}%, Disk={:.1}%",
             cluster.id,
@@ -794,6 +797,87 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
             }))
         } else {
             Ok(None)
+        }
+    }
+
+    /// 最小告警规则（硬编码三条）：节点宕机 / 磁盘>85% / P99>30s。
+    /// 通知发给同组织所有用户；同集群同规则 1 小时内只发一次，防刷屏。
+    async fn check_alert_rules(&self, cluster: &Cluster, snapshot: &MetricsSnapshot) {
+        let mut alerts: Vec<(&str, &str, String)> = vec![];
+        if snapshot.backend_alive < snapshot.backend_total {
+            alerts.push((
+                "alert_node_down",
+                "critical",
+                format!(
+                    "【{}】计算节点存活 {}/{}，请检查宕机节点",
+                    cluster.name, snapshot.backend_alive, snapshot.backend_total
+                ),
+            ));
+        }
+        if snapshot.disk_total_bytes > 0 && snapshot.disk_usage_pct > 85.0 {
+            alerts.push((
+                "alert_disk_high",
+                "warning",
+                format!(
+                    "【{}】磁盘使用率 {:.1}%，超过 85% 警戒线",
+                    cluster.name, snapshot.disk_usage_pct
+                ),
+            ));
+        }
+        if snapshot.query_latency_p99 > 30000.0 {
+            alerts.push((
+                "alert_slow_p99",
+                "warning",
+                format!(
+                    "【{}】P99 延迟 {:.1}s，超过 30s 阈值，建议看慢查询",
+                    cluster.name,
+                    snapshot.query_latency_p99 / 1000.0
+                ),
+            ));
+        }
+        if alerts.is_empty() {
+            return;
+        }
+
+        let since = chrono::Utc::now() - chrono::Duration::hours(1);
+        let meta = format!(r#"{{"cluster_id":{}}}"#, cluster.id);
+        for (kind, severity, title) in alerts {
+            // 去重：1 小时内同集群同规则已发过则跳过
+            let existed: Option<(i64,)> = db_query::query_as(
+                "SELECT 1 FROM notifications WHERE kind = ? AND meta_json = ? AND created_at > ? LIMIT 1",
+            )
+            .bind(kind)
+            .bind(&meta)
+            .bind(since)
+            .fetch_optional(&self.db)
+            .await
+            .unwrap_or(None);
+            if existed.is_some() {
+                continue;
+            }
+            // 收件人：集群所属组织的所有用户（无组织则跳过）
+            let Some(org_id) = cluster.organization_id else {
+                continue;
+            };
+            let user_ids: Vec<(i64,)> = db_query::query_as(
+                "SELECT id FROM users WHERE organization_id = ?",
+            )
+            .bind(org_id)
+            .fetch_all(&self.db)
+            .await
+            .unwrap_or_default();
+            for (user_id,) in user_ids {
+                let _ = db_query::query(
+                    "INSERT INTO notifications (user_id, kind, title, severity, meta_json) VALUES (?, ?, ?, ?, ?)",
+                )
+                .bind(user_id)
+                .bind(kind)
+                .bind(&title)
+                .bind(severity)
+                .bind(&meta)
+                .insert_id(&self.db)
+                .await;
+            }
         }
     }
 
