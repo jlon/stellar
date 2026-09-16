@@ -31,7 +31,7 @@ import { FormsModule } from '@angular/forms';
                 <span class="text-danger">*</span>
               }
             </label>
-            <textarea
+            <textarea nbInput size="small"
               nbInput
               fullWidth
               [rows]="commentRows"

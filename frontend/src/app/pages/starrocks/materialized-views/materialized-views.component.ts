@@ -1,7 +1,8 @@
-import { Component, OnInit, OnDestroy, TemplateRef, ViewChild, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, TemplateRef, ViewChild, ChangeDetectorRef, inject } from '@angular/core';
 import { Subject } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
-import { NbToastrService, NbDialogService, NbCardModule, NbButtonModule, NbIconModule, NbInputModule, NbSelectModule, NbOptionModule, NbBadgeModule, NbSpinnerModule, NbAccordionModule, NbTabsetModule, NbAlertModule, NbCheckboxModule } from '@nebular/theme';
+import { skip, takeUntil, timeout } from 'rxjs/operators';
+import { NbToastrService, NbDialogService, NbCardModule, NbButtonModule, NbIconModule, NbInputModule, NbSelectModule, NbOptionModule, NbBadgeModule, NbSpinnerModule, NbAccordionModule, NbTabsetModule, NbAlertModule, NbCheckboxModule, NbFormFieldModule, NbTooltipModule } from '@nebular/theme';
+import { MarkdownModule } from 'ngx-markdown';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import {
   MaterializedViewService,
@@ -9,11 +10,12 @@ import {
 } from '../../../@core/data/materialized-view.service';
 import { ClusterService, Cluster } from '../../../@core/data/cluster.service';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
+import { AuthService } from '../../../@core/data/auth.service';
 import { ErrorHandler } from '../../../@core/utils/error-handler';
-import { withTableRow } from '../../../@core/utils/smart-table';
 import { ConfirmDialogService } from '../../../@core/services/confirm-dialog.service';
 import { assignTableRows } from '../../../@core/utils/table-rows';
 import { ActiveToggleRenderComponent } from './active-toggle-render.component';
+import { BadgeRenderComponent, BadgeInfo } from './badge-render.component';
 import { FormsModule } from '@angular/forms';
 
 
@@ -36,7 +38,12 @@ import { FormsModule } from '@angular/forms';
     NbAccordionModule,
     NbTabsetModule,
     NbAlertModule,
-    NbCheckboxModule
+    NbCheckboxModule,
+    NbFormFieldModule,
+    NbTooltipModule,
+    MarkdownModule,
+    BadgeRenderComponent,
+    ActiveToggleRenderComponent
 ],
 })
 export class MaterializedViewsComponent implements OnInit, OnDestroy {
@@ -46,6 +53,8 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
   private toastrService = inject(NbToastrService);
   private confirmDialogService = inject(ConfirmDialogService);
   private dialogService = inject(NbDialogService);
+  private cdRef = inject(ChangeDetectorRef);
+  private authService = inject(AuthService);
 
   @ViewChild('createDialog', { static: false }) createDialogTemplate: TemplateRef<any>;
   @ViewChild('detailDialog', { static: false }) detailDialogTemplate: TemplateRef<any>;
@@ -103,12 +112,6 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
     { value: 'UNPARTITIONED', label: 'UNPARTITIONED' },
   ];
 
-  // Statistics
-  totalCount = 0;
-  filteredCount = 0;
-  activeCount = 0;
-  inactiveCount = 0;
-
   // Dialog states
   createDialogRef: any;
   detailDialogRef: any;
@@ -156,11 +159,11 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
       position: 'right',
     },
     edit: {
-      editButtonContent: '<i class="nb-search"></i>',
+      editButtonContent: '<i class="nb-search" title="查看"></i>',
       confirmEdit: false,
     },
     delete: {
-      deleteButtonContent: '<i class="nb-trash"></i>',
+      deleteButtonContent: '<i class="nb-trash" title="删除"></i>',
       confirmDelete: false,
     },
     pager: {
@@ -180,24 +183,31 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
       },
       mv_type: {
         title: '类型',
-        type: 'html',
-        sanitizer: { bypassHtml: true },
+        type: 'custom',
         width: '7%',
-        valuePrepareFunction: withTableRow((value: any, row: MaterializedView) => {
-          if (row.refresh_type === 'ROLLUP') {
-            return '<span class="badge badge-primary">同步</span>';
-          } else {
-            return '<span class="badge badge-info">异步</span>';
-          }
-        }),
+        renderComponent: BadgeRenderComponent,
+        componentInitFunction: (instance: BadgeRenderComponent) => {
+          instance.getBadge = (_value: any, row: MaterializedView) => ({
+            status: row?.refresh_type === 'ROLLUP' ? 'primary' : 'info',
+            label: row?.refresh_type === 'ROLLUP' ? '同步' : '异步',
+          });
+        },
       },
       refresh_type: {
         title: '刷新策略',
-        type: 'html',
-        sanitizer: { bypassHtml: true },
+        type: 'custom',
         width: '9%',
-        valuePrepareFunction: (value: string) => {
-          return this.getRefreshTypeBadge(value);
+        renderComponent: BadgeRenderComponent,
+        componentInitFunction: (instance: BadgeRenderComponent) => {
+          instance.getBadge = (value: string): BadgeInfo | null => {
+            const map: Record<string, BadgeInfo> = {
+              ASYNC: { status: 'success', label: '自动' },
+              MANUAL: { status: 'info', label: '手动' },
+              ROLLUP: { status: 'primary', label: '同步' },
+              INCREMENTAL: { status: 'warning', label: '增量' },
+            };
+            return map[value] ?? null;
+          };
         },
       },
       is_active: {
@@ -213,13 +223,21 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
       },
       last_refresh_state: {
         title: '刷新状态',
-        type: 'html',
-        sanitizer: { bypassHtml: true },
+        type: 'custom',
         width: '9%',
-        valuePrepareFunction: withTableRow((value: string, row: MaterializedView) => {
-          if (row.refresh_type === 'ROLLUP') return '-';
-          return this.getRefreshStateBadge(value);
-        }),
+        renderComponent: BadgeRenderComponent,
+        componentInitFunction: (instance: BadgeRenderComponent) => {
+          instance.getBadge = (value: string, row: MaterializedView): BadgeInfo | null => {
+            if (row?.refresh_type === 'ROLLUP') return null;
+            const map: Record<string, BadgeInfo> = {
+              SUCCESS: { status: 'success', label: '成功' },
+              RUNNING: { status: 'info', label: '运行中' },
+              FAILED: { status: 'danger', label: '失败' },
+              PENDING: { status: 'warning', label: '等待中' },
+            };
+            return map[value] ?? null;
+          };
+        },
       },
       last_refresh_finished_time: {
         title: '最后刷新时间',
@@ -244,28 +262,31 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
       },
       error_info: {
         title: '错误信息',
-        type: 'html',
-        sanitizer: { bypassHtml: true },
+        type: 'custom',
         width: '8%',
-        valuePrepareFunction: withTableRow((value: any, row: MaterializedView) => {
-          if (row.last_refresh_error_message) {
-            return `<span class="text-danger" title="${row.last_refresh_error_message}">
-              <i class="nb-alert-circle"></i> 错误
-            </span>`;
-          }
-          return '-';
-        }),
+        renderComponent: BadgeRenderComponent,
+        componentInitFunction: (instance: BadgeRenderComponent) => {
+          instance.getBadge = (_value: any, row: MaterializedView): BadgeInfo | null =>
+            row?.last_refresh_error_message
+              ? { status: 'danger', label: '错误', tooltip: row.last_refresh_error_message }
+              : null;
+        },
       },
     },
   };
 
   ngOnInit() {
-    // Get clusterId from ClusterContextService
-    this.clusterId = this.clusterContextService.getActiveClusterId() || 0;
+    // Only fire requests when a cluster is active (backend rejects clusterId=0 anyway)
+    const activeId = this.clusterContextService.getActiveClusterId();
+    if (activeId) {
+      this.clusterId = activeId;
+      this.loadClusterInfo();
+      this.loadMaterializedViews();
+    }
 
-    // Subscribe to active cluster changes
+    // Follow cluster switches; skip(1) avoids a duplicate load for the initial value
     this.clusterContextService.activeCluster$
-      .pipe(takeUntil(this.destroy$))
+      .pipe(skip(1), takeUntil(this.destroy$))
       .subscribe((cluster) => {
         this.activeCluster = cluster;
         if (cluster) {
@@ -276,12 +297,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
             this.loadMaterializedViews();
           }
         }
-        // Backend will handle "no active cluster" case
       });
-
-    // Load data - backend will get active cluster automatically
-    this.loadClusterInfo();
-    this.loadMaterializedViews();
   }
 
   ngOnDestroy() {
@@ -298,6 +314,9 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
           this.activeCluster = cluster;
         },
         error: (error) => {
+          if (!this.authService.isAuthenticated()) {
+            return;
+          }
           this.toastrService.danger(
             ErrorHandler.extractErrorMessage(error),
             '加载集群信息失败',
@@ -310,24 +329,31 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.mvService
       .getMaterializedViews()
-      .pipe(takeUntil(this.destroy$))
+      .pipe(takeUntil(this.destroy$), timeout(20000))
       .subscribe({
         next: (data) => {
           this.allMaterializedViews = data;
           this.extractDatabases();
-          this.calculateStatistics();
-          this.applyFilters().then(() => {
-            this.loading = false;
-          });
+          void this.applyFilters()
+            .finally(() => this.finishLoading())
+            .catch(() => undefined);
         },
         error: (error) => {
+          if (!this.authService.isAuthenticated()) {
+            return;
+          }
           this.toastrService.danger(
             ErrorHandler.handleClusterError(error),
             '加载物化视图失败',
           );
-          this.loading = false;
+          this.finishLoading();
         },
       });
+  }
+
+  private finishLoading(): void {
+    this.loading = false;
+    this.cdRef.detectChanges();
   }
 
   extractDatabases() {
@@ -338,12 +364,6 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
       }
     });
     this.databases = Array.from(dbSet).sort();
-  }
-
-  calculateStatistics() {
-    this.totalCount = this.allMaterializedViews.length;
-    this.activeCount = this.allMaterializedViews.filter((mv) => mv && mv.is_active).length;
-    this.inactiveCount = this.totalCount - this.activeCount;
   }
 
   applyFilters() {
@@ -384,28 +404,38 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
 
     // Advanced filters
     if (this.showAdvancedFilters) {
-      // Refresh time filter
-      if (this.refreshTimeStart) {
-        filtered = filtered.filter(
-          (mv) =>
-            mv && mv.last_refresh_finished_time &&
-            mv.last_refresh_finished_time >= this.refreshTimeStart,
-        );
+      // Refresh time filter: back-end timestamps use a space separator
+      // ('2026-09-11 09:25:50') while datetime-local emits 'T'; compare
+      // normalized minute-granularity strings so the filter actually matches.
+      const tStart = this.normalizeTime(this.refreshTimeStart);
+      const tEnd = this.normalizeTime(this.refreshTimeEnd);
+      if (tStart) {
+        filtered = filtered.filter((mv) => {
+          const t = mv.last_refresh_finished_time
+            ? this.normalizeTime(mv.last_refresh_finished_time)
+            : '';
+          return !!t && t >= tStart;
+        });
       }
-      if (this.refreshTimeEnd) {
-        filtered = filtered.filter(
-          (mv) =>
-            mv && mv.last_refresh_finished_time &&
-            mv.last_refresh_finished_time <= this.refreshTimeEnd,
-        );
+      if (tEnd) {
+        filtered = filtered.filter((mv) => {
+          const t = mv.last_refresh_finished_time
+            ? this.normalizeTime(mv.last_refresh_finished_time)
+            : '';
+          return !!t && t <= tEnd;
+        });
       }
 
-      // Row count filter
+      // Row count filter (0 is a valid row count)
       if (this.rowCountMin !== null) {
-        filtered = filtered.filter((mv) => mv && mv.rows && mv.rows >= this.rowCountMin);
+        filtered = filtered.filter(
+          (mv) => mv && mv.rows !== null && mv.rows !== undefined && mv.rows >= this.rowCountMin,
+        );
       }
       if (this.rowCountMax !== null) {
-        filtered = filtered.filter((mv) => mv && mv.rows && mv.rows <= this.rowCountMax);
+        filtered = filtered.filter(
+          (mv) => mv && mv.rows !== null && mv.rows !== undefined && mv.rows <= this.rowCountMax,
+        );
       }
 
       // Partition type filter
@@ -417,8 +447,19 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
     }
 
     this.filteredMaterializedViews = filtered;
-    this.filteredCount = filtered.length;
-    return assignTableRows(this.source, filtered);
+    return assignTableRows(this.source, filtered).then(() => {
+      // 表格内部行更新可能晚于本次变更检测，显式触发一次（变量页同款）
+      this.cdRef.detectChanges();
+    });
+  }
+
+  /**
+   * Normalize back-end timestamps ('2026-09-11 09:25:50' or '2026-09-11T09:25:50')
+   * to 'YYYY-MM-DDTHH:mm' so they compare consistently with datetime-local input.
+   */
+  private normalizeTime(value: string): string {
+    const match = value.replace(' ', 'T').match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})/);
+    return match ? match[1] : '';
   }
 
   onSearch() {
@@ -477,15 +518,6 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
   }
 
   // Check if refresh action should be shown
-  canRefresh(mv: MaterializedView): boolean {
-    return mv.refresh_type !== 'ROLLUP';
-  }
-
-  // Check if cancel action should be shown
-  canCancelRefresh(mv: MaterializedView): boolean {
-    return mv.refresh_type !== 'ROLLUP' && mv.last_refresh_state === 'RUNNING';
-  }
-
   openCreateDialog() {
     this.createSQL = '';
     this.creating = false;
@@ -517,6 +549,9 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
           this.loadMaterializedViews();
         },
         error: (error) => {
+          if (!this.authService.isAuthenticated()) {
+            return;
+          }
           this.toastrService.danger(
             ErrorHandler.extractErrorMessage(error),
             '创建物化视图失败',
@@ -533,12 +568,15 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
     // Load DDL
     this.mvService
       .getMaterializedViewDDL( mv.name)
-      .pipe(takeUntil(this.destroy$))
+      .pipe(takeUntil(this.destroy$), timeout(20000))
       .subscribe({
         next: (result) => {
           this.mvDDL = result.ddl;
         },
         error: (error) => {
+          if (!this.authService.isAuthenticated()) {
+            return;
+          }
           this.toastrService.danger(
             ErrorHandler.extractErrorMessage(error),
             '加载DDL失败',
@@ -554,6 +592,18 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
   closeDetailDialog() {
     if (this.detailDialogRef) {
       this.detailDialogRef.close();
+    }
+  }
+
+  copyDDL(): void {
+    if (!this.mvDDL) {
+      return;
+    }
+    const done = () => this.toastrService.success('DDL 已复制', '成功');
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(this.mvDDL).then(done).catch(() => done());
+    } else {
+      done();
     }
   }
 
@@ -595,6 +645,9 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
           setTimeout(() => this.loadMaterializedViews(), 1000);
         },
         error: (error) => {
+          if (!this.authService.isAuthenticated()) {
+            return;
+          }
           this.toastrService.danger(
             ErrorHandler.extractErrorMessage(error),
             '刷新失败',
@@ -623,6 +676,9 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
                 this.loadMaterializedViews();
               },
               error: (error) => {
+                if (!this.authService.isAuthenticated()) {
+                  return;
+                }
                 this.toastrService.danger(
                   ErrorHandler.extractErrorMessage(error),
                   '取消刷新失败',
@@ -644,6 +700,9 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
           this.loadMaterializedViews();
         },
         error: (error) => {
+          if (!this.authService.isAuthenticated()) {
+            return;
+          }
           this.toastrService.danger(
             ErrorHandler.extractErrorMessage(error),
             '删除失败',
@@ -676,6 +735,9 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
                 this.loadMaterializedViews();
               },
               error: (error) => {
+                if (!this.authService.isAuthenticated()) {
+                  return;
+                }
                 this.toastrService.danger(
                   ErrorHandler.extractErrorMessage(error),
                   `${action}失败`,
@@ -747,11 +809,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
           this.toastrService.warning('请输入属性名称和值', '输入错误');
           return;
         }
-        // Add session. prefix if it's a session variable
-        const key = this.editPropertyKey.startsWith('session.') 
-          ? this.editPropertyKey 
-          : this.editPropertyKey;
-        alterClause = `SET ("${key}" = "${this.editPropertyValue}")`;
+        alterClause = `SET ("${this.editPropertyKey}" = "${this.editPropertyValue}")`;
         break;
         
       case 'advanced':
@@ -774,6 +832,9 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
           this.loadMaterializedViews();
         },
         error: (error) => {
+          if (!this.authService.isAuthenticated()) {
+            return;
+          }
           this.toastrService.danger(
             ErrorHandler.extractErrorMessage(error),
             '修改失败',
@@ -781,27 +842,6 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
           this.editing = false;
         },
       });
-  }
-
-  getRefreshTypeBadge(type: string): string {
-    const badges = {
-      ASYNC: '<span class="badge badge-success">自动</span>',
-      MANUAL: '<span class="badge badge-info">手动</span>',
-      ROLLUP: '<span class="badge badge-primary">同步</span>',
-      INCREMENTAL: '<span class="badge badge-warning">增量</span>',
-    };
-    return badges[type] || `<span class="badge badge-basic">${type}</span>`;
-  }
-
-  getRefreshStateBadge(state: string): string {
-    if (!state) return '-';
-    const badges = {
-      SUCCESS: '<span class="badge badge-success">成功</span>',
-      RUNNING: '<span class="badge badge-info">运行中</span>',
-      FAILED: '<span class="badge badge-danger">失败</span>',
-      PENDING: '<span class="badge badge-warning">等待中</span>',
-    };
-    return badges[state] || `<span class="badge badge-basic">${state}</span>`;
   }
 
   formatNumber(num: number): string {
@@ -812,16 +852,4 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
     }
     return num.toString();
   }
-
-  formatSQL(sql: string): void {
-    // Simple SQL formatting
-    this.createSQL = sql
-      .replace(/\bSELECT\b/gi, '\nSELECT')
-      .replace(/\bFROM\b/gi, '\nFROM')
-      .replace(/\bWHERE\b/gi, '\nWHERE')
-      .replace(/\bGROUP BY\b/gi, '\nGROUP BY')
-      .replace(/\bORDER BY\b/gi, '\nORDER BY')
-      .trim();
-  }
 }
-

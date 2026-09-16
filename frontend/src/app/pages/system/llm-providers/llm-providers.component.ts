@@ -1,8 +1,8 @@
-import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { NbDialogService, NbToastrService, NbCardModule, NbButtonModule, NbIconModule, NbAlertModule, NbSpinnerModule } from '@nebular/theme';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
+import { takeUntil, timeout } from 'rxjs/operators';
 
 import {
   LLMProvider,
@@ -20,6 +20,7 @@ import {
   LLMProviderFormDialogResult,
 } from './llm-provider-form/llm-provider-form-dialog.component';
 import { AuthService } from '../../../@core/data/auth.service';
+import { assignTableRows } from '../../../@core/utils/table-rows';
 
 
 @Component({
@@ -42,9 +43,11 @@ export class LLMProvidersComponent implements OnInit, OnDestroy {
   private confirmDialog = inject(ConfirmDialogService);
   private toastrService = inject(NbToastrService);
   private authService = inject(AuthService);
+  private cdRef = inject(ChangeDetectorRef);
 
   source: LocalDataSource = new LocalDataSource();
   loading = false;
+  loadError = '';
   testingId: number | null = null;
   private destroy$ = new Subject<void>();
 
@@ -77,14 +80,20 @@ export class LLMProvidersComponent implements OnInit, OnDestroy {
     }
 
     this.loading = true;
-    this.llmService.listProviders().subscribe({
+    this.loadError = '';
+    this.llmService.listProviders().pipe(takeUntil(this.destroy$), timeout(20000)).subscribe({
       next: (providers) => {
-        this.source.load(providers);
         this.loading = false;
+        // 首次权限初始化时表格会在同一轮检测后创建，先完成检测再写入。
+        this.cdRef.detectChanges();
+        assignTableRows(this.source, providers).then(() => this.cdRef.detectChanges());
       },
       error: (error) => {
+        this.loadError = error.error?.message || 'LLM 提供商加载超时或服务不可用';
         ErrorHandler.handleHttpError(error, this.toastrService);
         this.loading = false;
+        this.cdRef.detectChanges();
+        assignTableRows(this.source, []).then(() => this.cdRef.detectChanges());
       },
     });
   }
@@ -131,7 +140,7 @@ export class LLMProvidersComponent implements OnInit, OnDestroy {
     if (!this.canUpdate) return;
 
     this.loading = true;
-    this.llmService.activateProvider(provider.id).subscribe({
+    this.llmService.activateProvider(provider.id).pipe(takeUntil(this.destroy$), timeout(20000)).subscribe({
       next: () => {
         this.toastrService.success(`已激活 ${provider.display_name}`, '成功');
         this.loadProviders();
@@ -148,7 +157,7 @@ export class LLMProvidersComponent implements OnInit, OnDestroy {
 
     const newEnabled = !provider.enabled;
     this.loading = true;
-    this.llmService.updateProvider(provider.id, { enabled: newEnabled }).subscribe({
+    this.llmService.updateProvider(provider.id, { enabled: newEnabled }).pipe(takeUntil(this.destroy$), timeout(20000)).subscribe({
       next: () => {
         this.toastrService.success(
           `已${newEnabled ? '启用' : '禁用'} ${provider.display_name}`,
@@ -165,7 +174,7 @@ export class LLMProvidersComponent implements OnInit, OnDestroy {
 
   testConnection(provider: LLMProvider): void {
     this.testingId = provider.id;
-    this.llmService.testConnection(provider.id).subscribe({
+    this.llmService.testConnection(provider.id).pipe(takeUntil(this.destroy$), timeout(20000)).subscribe({
       next: (result) => {
         if (result.success) {
           this.toastrService.success(
@@ -198,7 +207,7 @@ export class LLMProvidersComponent implements OnInit, OnDestroy {
     };
 
     this.loading = true;
-    this.llmService.createProvider(payload).subscribe({
+    this.llmService.createProvider(payload).pipe(takeUntil(this.destroy$), timeout(20000)).subscribe({
       next: () => {
         this.toastrService.success('LLM 提供商创建成功', '成功');
         this.loadProviders();
@@ -227,7 +236,7 @@ export class LLMProvidersComponent implements OnInit, OnDestroy {
     }
 
     this.loading = true;
-    this.llmService.updateProvider(id, payload).subscribe({
+    this.llmService.updateProvider(id, payload).pipe(takeUntil(this.destroy$), timeout(20000)).subscribe({
       next: () => {
         this.toastrService.success('LLM 提供商更新成功', '成功');
         this.loadProviders();
@@ -241,7 +250,7 @@ export class LLMProvidersComponent implements OnInit, OnDestroy {
 
   private performDelete(id: number): void {
     this.loading = true;
-    this.llmService.deleteProvider(id).subscribe({
+    this.llmService.deleteProvider(id).pipe(takeUntil(this.destroy$), timeout(20000)).subscribe({
       next: () => {
         this.toastrService.success('LLM 提供商删除成功', '成功');
         this.loadProviders();
@@ -273,17 +282,15 @@ export class LLMProvidersComponent implements OnInit, OnDestroy {
 
   private buildTableSettings(): any {
     return {
-      actions: {
-        add: false,
-        edit: false,
-        delete: false,
-        position: 'right',
-      },
+      mode: 'external',
+      hideSubHeader: true,
+      noDataMessage: '暂无 LLM 提供商',
+      actions: false,
       columns: {
         display_name: {
           title: '名称',
           type: 'string',
-          width: '15%',
+          width: '14%',
         },
         name: {
           title: '标识',
@@ -293,12 +300,12 @@ export class LLMProvidersComponent implements OnInit, OnDestroy {
         model_name: {
           title: '模型',
           type: 'string',
-          width: '15%',
+          width: '14%',
         },
         api_base: {
           title: 'API 地址',
           type: 'string',
-          width: '20%',
+          width: '18%',
           valuePrepareFunction: (cell: string) => {
             // Truncate long URLs
             return cell.length > 40 ? cell.substring(0, 40) + '...' : cell;
@@ -310,11 +317,14 @@ export class LLMProvidersComponent implements OnInit, OnDestroy {
           width: '15%',
           isFilterable: false,
           renderComponent: LLMProviderStatusCellComponent,
+          componentInitFunction: (instance: LLMProviderStatusCellComponent, cell: any) => {
+            instance.rowData = cell.getRow().getData() as LLMProvider;
+          },
         },
         priority: {
           title: '优先级',
           type: 'number',
-          width: '8%',
+          width: '10%',
         },
         actions: {
           title: '操作',
@@ -323,7 +333,8 @@ export class LLMProvidersComponent implements OnInit, OnDestroy {
           isFilterable: false,
           isSortable: false,
           renderComponent: LLMProvidersActionsCellComponent,
-          componentInitFunction: (instance: LLMProvidersActionsCellComponent) => {
+          componentInitFunction: (instance: LLMProvidersActionsCellComponent, cell: any) => {
+            instance.rowData = cell.getRow().getData() as LLMProvider;
             instance.canUpdate = this.canUpdate;
             instance.canDelete = this.canDelete;
             instance.testingId = this.testingId;

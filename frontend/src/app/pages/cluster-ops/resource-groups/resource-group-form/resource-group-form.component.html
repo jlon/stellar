@@ -1,11 +1,12 @@
-<div class="row">
-  <div class="col-12">
-    <nb-card>
-      <nb-card-header>
-        <h5>{{ isEditMode ? '编辑资源组' : '创建资源组' }}</h5>
-      </nb-card-header>
+<nb-card class="rg-form-dialog">
+  <nb-card-header class="dialog-header">
+    <span>{{ isEditMode ? '编辑资源组' : '创建资源组' }}</span>
+    <button nbButton ghost size="small" (click)="cancel()" title="关闭">
+      <nb-icon icon="close-outline"></nb-icon>
+    </button>
+  </nb-card-header>
 
-      <nb-card-body>
+  <nb-card-body class="dialog-body">
         @if (loading) {
           <div class="d-flex justify-content-center p-4">
             <nb-spinner size="large"></nb-spinner>
@@ -21,7 +22,7 @@
                   <div class="col-md-12">
                     <div class="form-group">
                       <label for="name" class="label">资源组名称 *</label>
-                      <input
+                      <input size="small"
                         nbInput
                         fullWidth
                         type="text"
@@ -55,7 +56,7 @@
                   <div class="col-md-6">
                     <div class="form-group">
                       <label for="cpu_weight" class="label">CPU 权重 (1-100)</label>
-                      <input
+                      <input size="small"
                         nbInput
                         fullWidth
                         type="number"
@@ -82,7 +83,7 @@
                   <div class="col-md-6">
                     <div class="form-group">
                       <label for="exclusive_cpu_cores" class="label">独占 CPU 核数</label>
-                      <input
+                      <input size="small"
                         nbInput
                         fullWidth
                         type="number"
@@ -110,7 +111,7 @@
                   <div class="col-md-6">
                     <div class="form-group">
                       <label for="mem_limit" class="label">内存限制</label>
-                      <input
+                      <input size="small"
                         nbInput
                         fullWidth
                         type="text"
@@ -125,7 +126,7 @@
                   <div class="col-md-6">
                     <div class="form-group">
                       <label for="spill_mem_limit_threshold" class="label">落盘内存阈值</label>
-                      <input
+                      <input size="small"
                         nbInput
                         fullWidth
                         type="text"
@@ -145,7 +146,7 @@
                   <div class="col-md-6">
                     <div class="form-group">
                       <label for="concurrency_limit" class="label">并发限制</label>
-                      <input
+                      <input size="small"
                         nbInput
                         fullWidth
                         type="number"
@@ -173,7 +174,7 @@
                   <div class="col-md-4">
                     <div class="form-group">
                       <label for="big_query_cpu_second_limit" class="label">CPU 时间上限 (秒)</label>
-                      <input
+                      <input size="small"
                         nbInput
                         fullWidth
                         type="number"
@@ -189,7 +190,7 @@
                   <div class="col-md-4">
                     <div class="form-group">
                       <label for="big_query_scan_rows_limit" class="label">扫描行数上限</label>
-                      <input
+                      <input size="small"
                         nbInput
                         fullWidth
                         type="number"
@@ -205,7 +206,7 @@
                   <div class="col-md-4">
                     <div class="form-group">
                       <label for="big_query_mem_limit" class="label">内存上限</label>
-                      <input
+                      <input size="small"
                         nbInput
                         fullWidth
                         type="text"
@@ -267,7 +268,7 @@
                           <div class="col-md-4">
                             <div class="form-group">
                               <label [for]="'user_' + i" class="label">用户名</label>
-                              <input
+                              <input size="small"
                                 nbInput
                                 fullWidth
                                 type="text"
@@ -281,7 +282,7 @@
                           <div class="col-md-4">
                             <div class="form-group">
                               <label [for]="'role_' + i" class="label">角色名</label>
-                              <input
+                              <input size="small"
                                 nbInput
                                 fullWidth
                                 type="text"
@@ -296,7 +297,7 @@
                             <div class="form-group">
                               <label [for]="'query_type_' + i" class="label">查询类型</label>
                               <nb-form-field>
-                                <nb-select
+                                <nb-select size="small"
                                   fullWidth
                                   multiple
                                   [id]="'query_type_' + i"
@@ -319,7 +320,7 @@
                           <div class="col-md-4">
                             <div class="form-group">
                               <label [for]="'source_ip_' + i" class="label">来源 IP</label>
-                              <input
+                              <input size="small"
                                 nbInput
                                 fullWidth
                                 type="text"
@@ -334,7 +335,7 @@
                           <div class="col-md-4">
                             <div class="form-group">
                               <label [for]="'db_' + i" class="label">数据库名</label>
-                              <input
+                              <input size="small"
                                 nbInput
                                 fullWidth
                                 type="text"
@@ -348,7 +349,7 @@
                           <div class="col-md-4">
                             <div class="form-group">
                               <label [for]="'weight_' + i" class="label">权重</label>
-                              <input
+                              <input size="small"
                                 nbInput
                                 fullWidth
                                 type="number"
@@ -403,6 +404,4 @@
           {{ isEditMode ? '更新' : '创建' }}
         </button>
       </nb-card-footer>
-    </nb-card>
-  </div>
-</div>
+</nb-card>

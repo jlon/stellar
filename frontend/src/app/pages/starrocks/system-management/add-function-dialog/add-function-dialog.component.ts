@@ -20,7 +20,7 @@ import { CreateFunctionRequest } from '../../../../@core/data/system-function';
             <div class="col-md-6">
               <div class="form-group">
                 <label for="category_name" class="label">分类名称 *</label>
-                <input
+                <input size="small"
                   type="text"
                   id="category_name"
                   formControlName="category_name"
@@ -45,7 +45,7 @@ import { CreateFunctionRequest } from '../../../../@core/data/system-function';
             <div class="col-md-6">
               <div class="form-group">
                 <label for="function_name" class="label">功能名称 *</label>
-                <input
+                <input size="small"
                   type="text"
                   id="function_name"
                   formControlName="function_name"
@@ -65,7 +65,7 @@ import { CreateFunctionRequest } from '../../../../@core/data/system-function';
     
           <div class="form-group">
             <label for="description" class="label">功能说明 *</label>
-            <textarea
+            <textarea size="small"
               id="description"
               formControlName="description"
               nbInput
@@ -83,7 +83,7 @@ import { CreateFunctionRequest } from '../../../../@core/data/system-function';
     
           <div class="form-group">
             <label for="sql_query" class="label">SQL查询 *</label>
-            <textarea
+            <textarea size="small"
               id="sql_query"
               formControlName="sql_query"
               nbInput

@@ -3,30 +3,29 @@
     <nb-card [nbSpinner]="loading" nbSpinnerStatus="primary" nbSpinnerMessage="加载中">
       <nb-card-header class="d-flex justify-content-between align-items-center">
         <h4>资源组使用情况</h4>
-        <div>
+        <div class="d-flex align-items-center gap-2">
           <button
             nbButton
             ghost
             status="basic"
             size="small"
-            class="me-2"
             (click)="toggleAutoRefresh()"
             [nbTooltip]="autoRefresh ? '关闭自动刷新' : '开启自动刷新'"
-            >
+            [title]="autoRefresh ? '关闭自动刷新' : '开启自动刷新'"
+            [attr.aria-pressed]="autoRefresh"
+            [class.rg-refresh-active]="autoRefresh">
             <nb-icon [icon]="autoRefresh ? 'pause-circle-outline' : 'play-circle-outline'"></nb-icon>
-            {{ autoRefresh ? '自动刷新' : '手动刷新' }}
           </button>
           <button
             nbButton
-            status="primary"
+            ghost
+            status="basic"
             size="small"
-            class="me-2"
             (click)="refreshData()"
             [disabled]="loading"
-            nbTooltip="立即刷新数据"
-            >
+            nbTooltip="刷新"
+            title="刷新">
             <nb-icon icon="refresh-outline"></nb-icon>
-            刷新
           </button>
           <button
             nbButton
@@ -35,9 +34,8 @@
             size="small"
             (click)="goBack()"
             nbTooltip="返回资源组列表"
-            >
+            title="返回资源组列表">
             <nb-icon icon="arrow-back-outline"></nb-icon>
-            返回
           </button>
         </div>
       </nb-card-header>

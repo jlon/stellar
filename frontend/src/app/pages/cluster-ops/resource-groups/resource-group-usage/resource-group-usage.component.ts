@@ -3,7 +3,7 @@ import { Router } from '@angular/router';
 import { NbToastrService, NbCardModule, NbButtonModule, NbTooltipModule, NbIconModule, NbAlertModule, NbSpinnerModule } from '@nebular/theme';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { Subject, interval } from 'rxjs';
-import { takeUntil, startWith, switchMap } from 'rxjs/operators';
+import { takeUntil, startWith, switchMap, timeout } from 'rxjs/operators';
 
 import { ResourceGroupService } from '../resource-group.service';
 import { ResourceGroupUsage } from '../models/resource-group.model';
@@ -97,7 +97,7 @@ export class ResourceGroupUsageComponent implements OnInit, OnDestroy {
   refreshData(): void {
     this.loading = true;
     this.resourceGroupService.getResourceGroupUsage()
-      .pipe(takeUntil(this.destroy$))
+      .pipe(takeUntil(this.destroy$), timeout(20000))
       .subscribe({
         next: (usage) => {
           assignTableRows(this.source, usage).then(() => {

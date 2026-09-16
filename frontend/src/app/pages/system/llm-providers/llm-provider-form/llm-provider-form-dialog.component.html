@@ -8,7 +8,7 @@
         <div class="form-row">
           <div class="form-group full">
             <label class="label">快速选择</label>
-            <nb-select placeholder="选择预设模板" fullWidth (selectedChange)="applyPreset($event)">
+            <nb-select size="small" placeholder="选择预设模板" fullWidth (selectedChange)="applyPreset($event)">
               @for (preset of presets; track preset) {
                 <nb-option [value]="preset">
                   {{ preset.display }}
@@ -23,7 +23,7 @@
       <div class="form-row">
         <div class="form-group">
           <label class="label">标识名称 <span class="required">*</span></label>
-          <input nbInput fullWidth formControlName="name" placeholder="如: openai"
+          <input nbInput size="small" fullWidth formControlName="name" placeholder="如: openai"
             [status]="form.get('name')?.invalid && form.get('name')?.touched ? 'danger' : 'basic'" />
           <span class="hint-text">仅支持小写字母、数字、下划线和连字符</span>
           @if (form.get('name')?.touched && form.get('name')?.hasError('required')) {
@@ -35,7 +35,7 @@
         </div>
         <div class="form-group">
           <label class="label">显示名称 <span class="required">*</span></label>
-          <input nbInput fullWidth formControlName="display_name" placeholder="如: OpenAI GPT-4"
+          <input nbInput size="small" fullWidth formControlName="display_name" placeholder="如: OpenAI GPT-4"
             [status]="form.get('display_name')?.invalid && form.get('display_name')?.touched ? 'danger' : 'basic'" />
           @if (form.get('display_name')?.touched && form.get('display_name')?.hasError('required')) {
             <span class="error-text">显示名称不能为空</span>
@@ -47,7 +47,7 @@
       <div class="form-row">
         <div class="form-group full">
           <label class="label">API 地址 <span class="required">*</span></label>
-          <input nbInput fullWidth formControlName="api_base" placeholder="https://api.openai.com/v1"
+          <input nbInput size="small" fullWidth formControlName="api_base" placeholder="https://api.openai.com/v1"
             [status]="form.get('api_base')?.invalid && form.get('api_base')?.touched ? 'danger' : 'basic'" />
           <span class="hint-text">必须以 http:// 或 https:// 开头</span>
           @if (form.get('api_base')?.touched && form.get('api_base')?.hasError('required')) {
@@ -63,7 +63,7 @@
       <div class="form-row">
         <div class="form-group">
           <label class="label">模型名称 <span class="required">*</span></label>
-          <input nbInput fullWidth formControlName="model_name" placeholder="如: gpt-4o"
+          <input nbInput size="small" fullWidth formControlName="model_name" placeholder="如: gpt-4o"
             [status]="form.get('model_name')?.invalid && form.get('model_name')?.touched ? 'danger' : 'basic'" />
           @if (form.get('model_name')?.touched && form.get('model_name')?.hasError('required')) {
             <span class="error-text">模型名称不能为空</span>
@@ -76,7 +76,7 @@
             <span class="hint">(留空不改)</span>
           }</label>
           <nb-form-field>
-            <input nbInput fullWidth [type]="showApiKey ? 'text' : 'password'" formControlName="api_key" placeholder="sk-..."
+            <input nbInput size="small" fullWidth [type]="showApiKey ? 'text' : 'password'" formControlName="api_key" placeholder="sk-..."
               [status]="form.get('api_key')?.invalid && form.get('api_key')?.touched ? 'danger' : 'basic'" />
             <button nbSuffix nbButton ghost size="small" type="button" (click)="toggleApiKeyVisibility()">
               <nb-icon [icon]="showApiKey ? 'eye-off-outline' : 'eye-outline'"></nb-icon>
@@ -96,22 +96,22 @@
             <div class="advanced-grid">
               <div class="form-group">
                 <label class="label">最大 Token</label>
-                <input nbInput fullWidth type="number" formControlName="max_tokens" />
+                <input nbInput size="small" fullWidth type="number" formControlName="max_tokens" />
                 <span class="hint-text">单次请求最大 Token 数 (1-128000)</span>
               </div>
               <div class="form-group">
                 <label class="label">温度</label>
-                <input nbInput fullWidth type="number" formControlName="temperature" step="0.1" />
+                <input nbInput size="small" fullWidth type="number" formControlName="temperature" step="0.1" />
                 <span class="hint-text">生成随机性，0=确定，2=随机</span>
               </div>
               <div class="form-group">
                 <label class="label">超时(秒)</label>
-                <input nbInput fullWidth type="number" formControlName="timeout_seconds" />
+                <input nbInput size="small" fullWidth type="number" formControlName="timeout_seconds" />
                 <span class="hint-text">API 请求超时时间 (5-600)</span>
               </div>
               <div class="form-group">
                 <label class="label">优先级</label>
-                <input nbInput fullWidth type="number" formControlName="priority" />
+                <input nbInput size="small" fullWidth type="number" formControlName="priority" />
                 <span class="hint-text">数值越小优先级越高 (0-100)</span>
               </div>
             </div>

@@ -4,7 +4,7 @@
       <nb-card-header>
         <div class="d-flex justify-content-between align-items-center">
           <!-- Left: Title | Cluster Name -->
-          <div class="d-flex align-items-center gap-2">
+          <div class="d-flex align-items-center gap-2 page-actions">
             <h5 class="mb-0">资源组管理</h5>
             <span class="text-hint">|</span>
             <span class="text-hint" style="font-size: 13px;">
@@ -17,31 +17,33 @@
             <button
               nbButton
               ghost
-              status="info"
+              status="basic"
               size="small"
               (click)="viewUsage()"
-              >
+              nbTooltip="使用情况"
+              title="使用情况">
               <nb-icon icon="activity-outline"></nb-icon>
-              使用情况
             </button>
             <button
               nbButton
               ghost
-              status="warning"
+              status="basic"
               size="small"
               (click)="viewAnalysis()"
-              >
+              nbTooltip="使用分析"
+              title="使用分析">
               <nb-icon icon="bar-chart-outline"></nb-icon>
-              使用分析
             </button>
             <button
               nbButton
-              status="primary"
+              ghost
+              status="basic"
               size="small"
               (click)="createResourceGroup()"
-              >
+              nbTooltip="创建资源组"
+              title="创建资源组"
+              aria-label="创建资源组">
               <nb-icon icon="plus-outline"></nb-icon>
-              创建资源组
             </button>
           </div>
         </div>

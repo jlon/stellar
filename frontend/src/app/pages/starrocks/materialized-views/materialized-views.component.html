@@ -3,10 +3,10 @@
     <nb-card [nbSpinner]="loading" nbSpinnerStatus="primary" nbSpinnerMessage="加载中">
       <nb-card-header>
         <div class="d-flex justify-content-between align-items-center">
-          <div class="d-flex align-items-center gap-2">
+          <div class="d-flex align-items-center gap-2 page-actions">
             <h5 class="mb-0">物化视图</h5>
             <span class="text-hint">|</span>
-            <span class="text-hint" style="font-size: 13px;">
+            <span class="text-hint">
               集群: <strong>{{ activeCluster?.name || '未选择' }}</strong>
             </span>
           </div>
@@ -14,49 +14,52 @@
             <button
               nbButton
               ghost
-              status="info"
+              status="basic"
               size="small"
               (click)="loadMaterializedViews()"
               [disabled]="loading || !clusterId"
-              >
+              nbTooltip="刷新"
+              title="刷新">
               <nb-icon icon="refresh-outline"></nb-icon>
-              刷新
             </button>
             <button
               nbButton
-              status="primary"
+              ghost
+              status="basic"
               size="small"
               (click)="openCreateDialog()"
               [disabled]="!clusterId"
-              >
+              nbTooltip="创建物化视图"
+              title="创建物化视图"
+              aria-label="创建物化视图">
               <nb-icon icon="plus-outline"></nb-icon>
-              创建
             </button>
           </div>
         </div>
       </nb-card-header>
 
       <nb-card-body>
-        <!-- Basic Filters -->
+        <!-- Basic Filters: 紧凑单行，按钮右对齐（审计日志同款） -->
         <div class="filter-section">
-          <div class="row">
-            <div class="col-md-3 col-sm-6 mb-2">
+          <div class="filter-row">
+            <nb-form-field class="filter-search">
               <input
                 nbInput
                 fullWidth
+                fieldSize="small"
                 type="text"
                 placeholder="搜索物化视图名称或数据库..."
                 [(ngModel)]="searchText"
                 (ngModelChange)="onSearch()"
                 />
-            </div>
-            <div class="col-md-2 col-sm-6 mb-2">
-              <nb-select
-                fullWidth
-                placeholder="选择数据库"
-                [(selected)]="selectedDatabase"
-                (selectedChange)="applyFilters()"
-                >
+            </nb-form-field>
+            <nb-select
+              class="filter-select"
+              size="small"
+              placeholder="选择数据库"
+              [(selected)]="selectedDatabase"
+              (selectedChange)="applyFilters()"
+              >
                 <nb-option value="all">所有数据库</nb-option>
                 @for (db of databases; track db) {
                   <nb-option [value]="db">
@@ -64,14 +67,13 @@
                   </nb-option>
                 }
               </nb-select>
-            </div>
-            <div class="col-md-2 col-sm-6 mb-2">
-              <nb-select
-                fullWidth
-                placeholder="刷新类型"
-                [(selected)]="selectedRefreshType"
-                (selectedChange)="applyFilters()"
-                >
+            <nb-select
+              class="filter-select"
+              size="small"
+              placeholder="刷新类型"
+              [(selected)]="selectedRefreshType"
+              (selectedChange)="applyFilters()"
+              >
                 @for (option of refreshTypeOptions; track option) {
                   <nb-option
                     [value]="option.value"
@@ -80,14 +82,13 @@
                   </nb-option>
                 }
               </nb-select>
-            </div>
-            <div class="col-md-2 col-sm-6 mb-2">
-              <nb-select
-                fullWidth
-                placeholder="状态"
-                [(selected)]="selectedActiveState"
-                (selectedChange)="applyFilters()"
-                >
+            <nb-select
+              class="filter-select"
+              size="small"
+              placeholder="状态"
+              [(selected)]="selectedActiveState"
+              (selectedChange)="applyFilters()"
+              >
                 @for (option of activeStateOptions; track option) {
                   <nb-option
                     [value]="option.value"
@@ -96,14 +97,13 @@
                   </nb-option>
                 }
               </nb-select>
-            </div>
-            <div class="col-md-2 col-sm-6 mb-2">
-              <nb-select
-                fullWidth
-                placeholder="刷新状态"
-                [(selected)]="selectedRefreshState"
-                (selectedChange)="applyFilters()"
-                >
+            <nb-select
+              class="filter-select"
+              size="small"
+              placeholder="刷新状态"
+              [(selected)]="selectedRefreshState"
+              (selectedChange)="applyFilters()"
+              >
                 @for (option of refreshStateOptions; track option) {
                   <nb-option
                     [value]="option.value"
@@ -112,79 +112,86 @@
                   </nb-option>
                 }
               </nb-select>
-            </div>
-            <div class="col-md-1 col-sm-12 mb-2">
-              <button
-                nbButton
-                fullWidth
-                status="info"
-                size="small"
-                (click)="toggleAdvancedFilters()"
-                >
-                <nb-icon
-                  [icon]="showAdvancedFilters ? 'arrow-up-outline' : 'arrow-down-outline'"
-                ></nb-icon>
-                高级筛选
+            <button
+              nbButton
+              class="filter-advanced"
+              ghost
+              size="small"
+              (click)="toggleAdvancedFilters()"
+              [attr.aria-expanded]="showAdvancedFilters"
+              aria-controls="mv-advanced-filters"
+              [attr.aria-label]="showAdvancedFilters ? '收起高级筛选' : '展开高级筛选'"
+              [title]="showAdvancedFilters ? '收起高级筛选' : '展开高级筛选'"
+              >
+                <nb-icon icon="funnel-outline"></nb-icon>
               </button>
-            </div>
           </div>
 
-          <!-- Advanced Filters -->
+          <!-- Advanced Filters: 去卡片化扁平面板 -->
           @if (showAdvancedFilters) {
-            <div class="advanced-filters mt-3">
-              <nb-card accent="info">
-                <nb-card-header>高级筛选</nb-card-header>
-                <nb-card-body>
-                  <div class="row">
-                    <div class="col-md-3 col-sm-6 mb-2">
-                      <label class="label">刷新时间起始</label>
-                      <input
-                        nbInput
-                        fullWidth
-                        type="datetime-local"
-                        [(ngModel)]="refreshTimeStart"
-                        (ngModelChange)="applyFilters()"
-                        />
-                    </div>
-                    <div class="col-md-3 col-sm-6 mb-2">
-                      <label class="label">刷新时间结束</label>
-                      <input
-                        nbInput
-                        fullWidth
-                        type="datetime-local"
-                        [(ngModel)]="refreshTimeEnd"
-                        (ngModelChange)="applyFilters()"
-                        />
-                    </div>
-                    <div class="col-md-2 col-sm-6 mb-2">
-                      <label class="label">最小行数</label>
-                      <input
-                        nbInput
-                        fullWidth
-                        type="number"
-                        placeholder="最小行数"
-                        [(ngModel)]="rowCountMin"
-                        (ngModelChange)="applyFilters()"
-                        />
-                    </div>
-                    <div class="col-md-2 col-sm-6 mb-2">
-                      <label class="label">最大行数</label>
-                      <input
-                        nbInput
-                        fullWidth
-                        type="number"
-                        placeholder="最大行数"
-                        [(ngModel)]="rowCountMax"
-                        (ngModelChange)="applyFilters()"
-                        />
-                    </div>
-                    <div class="col-md-2 col-sm-6 mb-2">
-                      <label class="label">分区类型</label>
-                      <nb-select
-                        fullWidth
-                        [(selected)]="selectedPartitionType"
-                        (selectedChange)="applyFilters()"
-                        >
+            <div id="mv-advanced-filters" class="advanced-panel">
+              <div class="advanced-row">
+                <div class="adv-field">
+                  <span class="adv-label">刷新起始</span>
+                  <nb-form-field class="advanced-time">
+                    <input
+                      nbInput
+                      fullWidth
+                      fieldSize="tiny"
+                      type="datetime-local"
+                      [(ngModel)]="refreshTimeStart"
+                      (ngModelChange)="applyFilters()"
+                      />
+                  </nb-form-field>
+                </div>
+                <div class="adv-field">
+                  <span class="adv-label">刷新结束</span>
+                  <nb-form-field class="advanced-time">
+                    <input
+                      nbInput
+                      fullWidth
+                      fieldSize="tiny"
+                      type="datetime-local"
+                      [(ngModel)]="refreshTimeEnd"
+                      (ngModelChange)="applyFilters()"
+                      />
+                  </nb-form-field>
+                </div>
+                <div class="adv-field">
+                  <span class="adv-label">行数</span>
+                  <nb-form-field class="advanced-num">
+                    <input
+                      nbInput
+                      fullWidth
+                      fieldSize="tiny"
+                      type="number"
+                      placeholder="最小"
+                      [(ngModel)]="rowCountMin"
+                      (ngModelChange)="applyFilters()"
+                      />
+                  </nb-form-field>
+                  <span class="adv-sep">–</span>
+                  <nb-form-field class="advanced-num">
+                    <input
+                      nbInput
+                      fullWidth
+                      fieldSize="tiny"
+                      type="number"
+                      placeholder="最大"
+                      [(ngModel)]="rowCountMax"
+                      (ngModelChange)="applyFilters()"
+                      />
+                  </nb-form-field>
+                </div>
+                <div class="adv-field">
+                  <span class="adv-label">分区</span>
+                  <nb-form-field class="advanced-select">
+                    <nb-select
+                      fullWidth
+                      size="tiny"
+                      [(selected)]="selectedPartitionType"
+                      (selectedChange)="applyFilters()"
+                      >
                         @for (option of partitionTypeOptions; track option) {
                           <nb-option
                             [value]="option.value"
@@ -192,15 +199,12 @@
                             {{ option.label }}
                           </nb-option>
                         }
-                      </nb-select>
-                    </div>
-                  </div>
-                </nb-card-body>
-              </nb-card>
+                    </nb-select>
+                  </nb-form-field>
+                </div>
+              </div>
             </div>
           }
-
-          <!-- Active Filters Display -->
           @if (getActiveFiltersCount() > 0) {
             <div class="active-filters mt-2">
               <span class="me-2">当前筛选:</span>
@@ -241,28 +245,26 @@
               }
               <button
                 nbButton
+                ghost
                 size="tiny"
-                status="danger"
                 (click)="clearAllFilters()"
+                title="清除全部筛选"
+                aria-label="清除全部筛选"
                 >
                 <nb-icon icon="close-outline"></nb-icon>
-                清除全部
               </button>
             </div>
           }
         </div>
 
-        <!-- Loading Indicator -->
         <!-- Data Table -->
-        @if (!loading) {
-          <angular2-smart-table
-            [settings]="settings"
-            [source]="source"
-            (edit)="onEdit($event)"
-            (delete)="onDelete($event)"
-            >
-          </angular2-smart-table>
-        }
+        <angular2-smart-table
+          [settings]="settings"
+          [source]="source"
+          (edit)="onEdit($event)"
+          (delete)="onDelete($event)"
+          >
+        </angular2-smart-table>
       </nb-card-body>
     </nb-card>
   </div>
@@ -322,7 +324,7 @@
 
       <div class="form-group mt-3">
         <label class="label">CREATE MATERIALIZED VIEW SQL 语句</label>
-        <textarea
+        <textarea nbInput size="small"
           nbInput
           fullWidth
           rows="12"
@@ -340,7 +342,9 @@
       <div class="d-flex justify-content-end gap-2">
         <button
           nbButton
+          ghost
           status="basic"
+          size="small"
           (click)="closeCreateDialog()"
           [disabled]="creating"
           >
@@ -349,6 +353,7 @@
         <button
           nbButton
           status="primary"
+          size="small"
           (click)="createMV()"
           [disabled]="creating || !createSQL.trim()"
           >
@@ -387,7 +392,15 @@
                 </div>
                 <div class="col-md-6 mb-3">
                   <label class="label">刷新类型</label>
-                  <p [innerHTML]="getRefreshTypeBadge(selectedMV.refresh_type)"></p>
+                  <p>
+                    @switch (selectedMV.refresh_type) {
+                      @case ('ASYNC') { <span class="badge badge-success">自动</span> }
+                      @case ('MANUAL') { <span class="badge badge-info">手动</span> }
+                      @case ('ROLLUP') { <span class="badge badge-primary">同步</span> }
+                      @case ('INCREMENTAL') { <span class="badge badge-warning">增量</span> }
+                      @default { <span class="text-hint">-</span> }
+                    }
+                  </p>
                 </div>
                 <div class="col-md-6 mb-3">
                   <label class="label">状态</label>
@@ -402,42 +415,54 @@
                 </div>
                 <div class="col-md-6 mb-3">
                   <label class="label">分区类型</label>
-                  <p>{{ selectedMV.partition_type || '-' }}</p>
+                  <p>{{ selectedMV.partition_type ?? '-' }}</p>
                 </div>
                 <div class="col-md-6 mb-3">
                   <label class="label">行数</label>
-                  <p>{{ selectedMV.rows || '-' }}</p>
+                  <p>{{ selectedMV.rows ?? '-' }}</p>
                 </div>
                 <div class="col-md-6 mb-3">
                   <label class="label">任务ID</label>
-                  <p>{{ selectedMV.task_id || '-' }}</p>
+                  <p>{{ selectedMV.task_id ?? '-' }}</p>
                 </div>
                 <div class="col-md-6 mb-3">
                   <label class="label">任务名称</label>
-                  <p>{{ selectedMV.task_name || '-' }}</p>
+                  <p>{{ selectedMV.task_name ?? '-' }}</p>
                 </div>
                 <div class="col-md-6 mb-3">
                   <label class="label">最后刷新开始时间</label>
-                  <p>{{ selectedMV.last_refresh_start_time || '-' }}</p>
+                  <p>{{ selectedMV.last_refresh_start_time ?? '-' }}</p>
                 </div>
                 <div class="col-md-6 mb-3">
                   <label class="label">最后刷新完成时间</label>
-                  <p>{{ selectedMV.last_refresh_finished_time || '-' }}</p>
+                  <p>{{ selectedMV.last_refresh_finished_time ?? '-' }}</p>
                 </div>
                 <div class="col-md-6 mb-3">
                   <label class="label">最后刷新耗时</label>
-                  <p>{{ selectedMV.last_refresh_duration || '-' }}</p>
+                  <p>{{ selectedMV.last_refresh_duration ?? '-' }}</p>
                 </div>
                 <div class="col-md-6 mb-3">
                   <label class="label">最后刷新状态</label>
-                  <p [innerHTML]="getRefreshStateBadge(selectedMV.last_refresh_state)"></p>
+                  <p>
+                    @if (selectedMV.refresh_type === 'ROLLUP') {
+                      <span class="text-hint">-</span>
+                    } @else {
+                      @switch (selectedMV.last_refresh_state) {
+                        @case ('SUCCESS') { <span class="badge badge-success">成功</span> }
+                        @case ('RUNNING') { <span class="badge badge-info">运行中</span> }
+                        @case ('FAILED') { <span class="badge badge-danger">失败</span> }
+                        @case ('PENDING') { <span class="badge badge-warning">等待中</span> }
+                        @default { <span class="text-hint">-</span> }
+                      }
+                    }
+                  </p>
                 </div>
                 <!-- Error information -->
                 @if (selectedMV.last_refresh_error_message) {
                   <div class="col-12 mb-3">
                     <label class="label">刷新错误信息</label>
                     <nb-alert status="danger" closable="false">
-                      <strong>错误码：</strong>{{ selectedMV.last_refresh_error_code || '-' }}<br>
+                      <strong>错误码：</strong>{{ selectedMV.last_refresh_error_code ?? '-' }}<br>
                       <strong>错误信息：</strong>{{ selectedMV.last_refresh_error_message }}
                     </nb-alert>
                   </div>
@@ -474,12 +499,30 @@
           </nb-tab>
           <nb-tab tabTitle="DDL语句">
             <div class="ddl-section">
-              <textarea
-                nbInput
-                fullWidth
-                [value]="mvDDL"
-                readonly
-              ></textarea>
+              <div class="ddl-toolbar">
+                <span class="text-hint">建表语句</span>
+                <button
+                  nbButton
+                  ghost
+                  size="tiny"
+                  (click)="copyDDL()"
+                  [disabled]="!mvDDL"
+                  title="复制 DDL"
+                  >
+                  <nb-icon icon="copy-outline"></nb-icon>
+                  复制
+                </button>
+              </div>
+              @if (!mvDDL) {
+                <div class="text-center text-hint p-4">正在加载 DDL...</div>
+              }
+              @if (mvDDL) {
+                <markdown
+                  class="ddl-markdown markdown-body"
+                  [data]="'```sql\n' + mvDDL + '\n```'"
+                  [clipboard]="true"
+                ></markdown>
+              }
             </div>
           </nb-tab>
         </nb-tabset>
@@ -487,13 +530,14 @@
       <nb-card-footer>
         <div class="d-flex justify-content-between">
           <div class="d-flex gap-2">
-            <button nbButton status="info" size="small" (click)="closeDetailDialog(); openEditDialog(selectedMV)">
+            <button nbButton ghost status="info" size="small" (click)="closeDetailDialog(); openEditDialog(selectedMV)">
               <nb-icon icon="edit-outline"></nb-icon>
               编辑
             </button>
             @if (selectedMV.refresh_type !== 'ROLLUP') {
               <button
                 nbButton
+                ghost
                 status="success"
                 size="small"
                 (click)="closeDetailDialog(); openRefreshDialog(selectedMV)"
@@ -505,6 +549,7 @@
             @if (selectedMV.refresh_type !== 'ROLLUP') {
               <button
                 nbButton
+                ghost
                 [status]="selectedMV.is_active ? 'warning' : 'success'"
                 size="small"
                 (click)="closeDetailDialog(); toggleActiveState(selectedMV)"
@@ -514,9 +559,6 @@
               </button>
             }
           </div>
-          <button nbButton status="basic" (click)="closeDetailDialog()">
-            关闭
-          </button>
         </div>
       </nb-card-footer>
     </nb-card>
@@ -538,7 +580,7 @@
       <nb-card-body>
         <div class="form-group">
           <label class="label">刷新模式</label>
-          <nb-select fullWidth [(selected)]="refreshMode">
+          <nb-select size="small" fullWidth [(selected)]="refreshMode">
             @for (option of refreshModeOptions; track option) {
               <nb-option [value]="option.value">
                 {{ option.label }}
@@ -562,7 +604,7 @@
             <label class="label">分区刷新 (可选)</label>
             <div class="row">
               <div class="col-md-6">
-                <input
+                <input size="small"
                   nbInput
                   fullWidth
                   type="text"
@@ -571,7 +613,7 @@
                   />
               </div>
               <div class="col-md-6">
-                <input
+                <input size="small"
                   nbInput
                   fullWidth
                   type="text"
@@ -591,7 +633,9 @@
         <div class="d-flex justify-content-end gap-2">
           <button
             nbButton
+            ghost
             status="basic"
+            size="small"
             (click)="closeRefreshDialog()"
             [disabled]="refreshing"
             >
@@ -600,6 +644,7 @@
           <button
             nbButton
             status="primary"
+            size="small"
             (click)="refreshMV()"
             [disabled]="refreshing"
             >
@@ -626,7 +671,7 @@
     <nb-card-body>
       <div class="form-group">
         <label class="label">操作类型</label>
-        <nb-select [(selected)]="editAction" fullWidth>
+        <nb-select size="small" [(selected)]="editAction" fullWidth>
           <nb-option value="rename">重命名</nb-option>
           <nb-option value="refresh_strategy">修改刷新策略</nb-option>
           <nb-option value="properties">修改属性</nb-option>
@@ -638,7 +683,7 @@
       @if (editAction === 'rename') {
         <div class="form-group">
           <label class="label">新名称 <span class="text-danger">*</span></label>
-          <input
+          <input size="small"
             nbInput
             fullWidth
             type="text"
@@ -657,7 +702,7 @@
         <div>
           <div class="form-group">
             <label class="label">刷新策略 <span class="text-danger">*</span></label>
-            <nb-select [(selected)]="editRefreshStrategy" fullWidth>
+            <nb-select size="small" [(selected)]="editRefreshStrategy" fullWidth>
               <nb-option value="MANUAL">手动刷新 (MANUAL)</nb-option>
               <nb-option value="ASYNC">自动刷新 (ASYNC)</nb-option>
             </nb-select>
@@ -667,7 +712,7 @@
               <div class="col-md-6">
                 <div class="form-group">
                   <label class="label">刷新间隔</label>
-                  <input
+                  <input size="small"
                     nbInput
                     fullWidth
                     type="number"
@@ -680,7 +725,7 @@
               <div class="col-md-6">
                 <div class="form-group">
                   <label class="label">时间单位</label>
-                  <nb-select [(selected)]="editRefreshUnit" fullWidth>
+                  <nb-select size="small" [(selected)]="editRefreshUnit" fullWidth>
                     <nb-option value="HOUR">小时</nb-option>
                     <nb-option value="DAY">天</nb-option>
                     <nb-option value="WEEK">周</nb-option>
@@ -711,7 +756,7 @@
         <div>
           <div class="form-group">
             <label class="label">属性名称 <span class="text-danger">*</span></label>
-            <input
+            <input size="small"
               nbInput
               fullWidth
               type="text"
@@ -721,7 +766,7 @@
           </div>
           <div class="form-group">
             <label class="label">属性值 <span class="text-danger">*</span></label>
-            <input
+            <input size="small"
               nbInput
               fullWidth
               type="text"
@@ -756,7 +801,7 @@
         <div>
           <div class="form-group">
             <label class="label">ALTER子句 <span class="text-danger">*</span></label>
-            <textarea
+            <textarea nbInput size="small"
               nbInput
               fullWidth
               rows="4"
@@ -785,7 +830,9 @@
       <div class="d-flex justify-content-end gap-2">
         <button
           nbButton
+          ghost
           status="basic"
+          size="small"
           (click)="closeEditDialog()"
           [disabled]="editing"
           >
@@ -794,6 +841,7 @@
         <button
           nbButton
           status="primary"
+          size="small"
           (click)="editMV()"
           [disabled]="editing"
           >

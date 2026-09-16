@@ -12,10 +12,9 @@
                 集群: <strong>{{ activeCluster?.name || '未选择' }}</strong>
               </span>
             </div>
-            <div class="d-flex align-items-center gap-2">
-              <button nbButton status="primary" size="small" (click)="openAddFunctionDialog()">
+            <div class="d-flex align-items-center gap-2 page-actions">
+              <button nbButton ghost status="basic" size="small" (click)="openAddFunctionDialog()" nbTooltip="添加功能" title="添加功能" aria-label="添加功能">
                 <nb-icon icon="plus-outline"></nb-icon>
-                添加功能
               </button>
             </div>
           </div>
@@ -46,6 +45,8 @@
                 size="tiny" 
                 status="success"
                 (click)="openAddFunctionDialog(category.name)"
+                title="添加功能"
+                [attr.aria-label]="'向 ' + category.name + ' 添加功能'"
               >
                 <nb-icon icon="plus-outline"></nb-icon>
               </button>
@@ -157,11 +158,11 @@
           
           <nb-card-body>
             <!-- 数据表格 -->
-            <angular2-smart-table *ngIf="!loading && functionData.length > 0"
+            <angular2-smart-table *ngIf="functionData.length > 0"
               [settings]="tableSettings" [source]="functionDataSource">
             </angular2-smart-table>
 
-            <div *ngIf="!loading && functionData.length === 0" class="text-center py-5">
+            <div *ngIf="functionData.length === 0" class="text-center py-5">
               <nb-icon icon="info-outline" status="info" class="mb-2" style="font-size: 3rem; opacity: 0.3;"></nb-icon>
               <p class="text-muted">暂无数据</p>
             </div>

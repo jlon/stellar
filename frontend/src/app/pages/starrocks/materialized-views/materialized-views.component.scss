@@ -1,9 +1,89 @@
 .filter-section {
   margin-bottom: 1rem;
+
+  // 紧凑单行：搜索收窄，各下拉固定宽，高级按钮右对齐
+  .filter-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .filter-search {
+    flex: 0 1 18rem;
+    min-width: 11rem;
+  }
+
+  .filter-select {
+    flex: 0 1 10rem;
+    min-width: 8rem;
+  }
+
+  .filter-advanced {
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+
+  // Labels aligned with size="small" filter controls
+  label.label {
+    font-size: nb-theme(text-subtitle-2-font-size);
+    margin-bottom: 0.25rem;
+  }
 }
 
-.advanced-filters {
-  animation: slideDown 0.3s ease-out;
+// 高级面板：去卡片化扁平容器
+.advanced-panel {
+  margin-top: 0.6rem;
+  padding: 0.6rem 0.75rem 0.7rem;
+  background-color: nb-theme(background-basic-color-2);
+  border: 1px solid nb-theme(border-basic-color-3);
+  border-radius: nb-theme(border-radius);
+  animation: slideDown 0.25s ease-out;
+
+  .advanced-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.4rem 1rem;
+  }
+
+  // 内联标签：一行内放下，面板高度只剩一排输入框
+  .adv-field {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .adv-label {
+    font-size: nb-theme(text-caption-font-size);
+    color: nb-theme(text-hint-color);
+    white-space: nowrap;
+  }
+
+  .adv-sep {
+    color: nb-theme(text-hint-color);
+  }
+
+  .advanced-time {
+    flex: 0 1 10rem;
+    min-width: 9rem;
+  }
+
+  .advanced-num {
+    flex: 0 1 5.5rem;
+    min-width: 5rem;
+  }
+
+  .advanced-select {
+    flex: 0 1 9rem;
+    min-width: 8rem;
+  }
+
+  label.label {
+    display: block;
+    font-size: nb-theme(text-caption-font-size);
+    color: nb-theme(text-hint-color);
+    margin-bottom: 0.2rem;
+  }
 }
 
 @keyframes slideDown {
@@ -33,7 +113,7 @@
 .detail-section {
   padding: 0.75rem 0;
   height: 350px;
-  overflow: hidden;
+  overflow-y: auto;
 
   .row {
     margin-left: 0;
@@ -67,6 +147,14 @@
   height: 350px;
   display: flex;
   flex-direction: column;
+
+  .ddl-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+    font-size: 0.8rem;
+  }
 
   textarea {
     font-family: 'Courier New', Courier, monospace;
@@ -104,13 +192,6 @@
   gap: 0.5rem;
 }
 
-.badge {
-  padding: 0.25rem 0.5rem;
-  border-radius: 0.25rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
 ::ng-deep {
   angular2-smart-table {
     table {
@@ -120,6 +201,46 @@
           vertical-align: middle;
         }
       }
+    }
+
+    // 状态徽标柔化（实心高饱和 → 淡底彩色字，与 Nebular 主题兼容）
+    .badge {
+      font-weight: 600;
+      font-size: 0.72rem;
+      padding: 0.22em 0.6em;
+      border-radius: 0.45rem;
+      border: 1px solid transparent;
+    }
+
+    .badge-success {
+      background: color-mix(in srgb, var(--color-success-500) 12%, transparent);
+      color: var(--color-success-500);
+      border-color: color-mix(in srgb, var(--color-success-500) 30%, transparent);
+    }
+
+    .badge-warning {
+      background: color-mix(in srgb, var(--color-warning-500) 14%, transparent);
+      color: var(--color-warning-500);
+      border-color: color-mix(in srgb, var(--color-warning-500) 32%, transparent);
+    }
+
+    .badge-danger {
+      background: color-mix(in srgb, var(--color-danger-500) 12%, transparent);
+      color: var(--color-danger-500);
+      border-color: color-mix(in srgb, var(--color-danger-500) 30%, transparent);
+    }
+
+    .badge-info,
+    .badge-primary {
+      background: color-mix(in srgb, var(--color-info-500) 12%, transparent);
+      color: var(--color-info-500);
+      border-color: color-mix(in srgb, var(--color-info-500) 30%, transparent);
+    }
+
+    .badge-secondary {
+      background: var(--background-basic-color-3);
+      color: var(--text-hint-color);
+      border-color: var(--border-basic-color-3);
     }
 
     .btn-xs {

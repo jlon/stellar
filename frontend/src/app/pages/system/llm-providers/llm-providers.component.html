@@ -1,41 +1,41 @@
-<nb-card>
+<nb-card [nbSpinner]="loading" nbSpinnerStatus="primary" nbSpinnerSize="medium" nbSpinnerMessage="加载中">
   <nb-card-header>
     <div class="d-flex justify-content-between align-items-center">
       <span>LLM 提供商管理</span>
-      <button
-        nbButton
-        status="primary"
-        size="small"
-        (click)="openCreateProvider()"
-        [disabled]="!canCreate"
-        >
-        <nb-icon icon="plus-outline"></nb-icon>
-        添加提供商
-      </button>
+      <div class="header-actions page-actions">
+        <button nbButton ghost status="basic" size="small" (click)="loadProviders()" [disabled]="loading || !hasListPermission" title="刷新列表">
+          <nb-icon icon="refresh-outline"></nb-icon>
+          刷新
+        </button>
+        <button nbButton ghost status="primary" size="small" (click)="openCreateProvider()" [disabled]="!canCreate" title="添加 LLM 提供商" aria-label="添加 LLM 提供商">
+          <nb-icon icon="plus-outline"></nb-icon>
+        </button>
+      </div>
     </div>
   </nb-card-header>
 
   <nb-card-body>
-    @if (!loading) {
-      <nb-alert status="info">
-        LLM 提供商用于增强 Profile 根因分析。系统会使用已激活的提供商进行分析，
-        支持 OpenAI、DeepSeek、通义千问等兼容 OpenAI API 的服务。
+    <nb-alert status="info" class="page-note info-note">
+      <nb-icon icon="info-outline"></nb-icon>
+      <span>用于增强 Profile 根因分析；系统使用已激活的提供商，兼容 OpenAI API。</span>
+    </nb-alert>
+
+    @if (!hasListPermission) {
+      <nb-alert status="warning" class="page-note permission-note">
+        <nb-icon icon="lock-outline"></nb-icon>
+        <span>您暂无查看 LLM 提供商的权限，请联系管理员获取授权。</span>
       </nb-alert>
     }
 
-    @if (loading) {
-      <div class="text-center">
-        <nb-spinner status="primary"></nb-spinner>
-      </div>
-    }
-
-    @if (!loading && !hasListPermission) {
-      <nb-alert status="warning">
-        您暂无查看 LLM 提供商的权限，请联系管理员获取授权。
+    @if (loadError) {
+      <nb-alert status="danger" class="page-note error-note">
+        <nb-icon icon="alert-circle-outline"></nb-icon>
+        <span>{{ loadError }}</span>
+        <button nbButton ghost size="tiny" status="danger" (click)="loadProviders()">重试</button>
       </nb-alert>
     }
 
-    @if (!loading && hasListPermission) {
+    @if (hasListPermission && !loadError) {
       <angular2-smart-table
         [settings]="settings"
         [source]="source"

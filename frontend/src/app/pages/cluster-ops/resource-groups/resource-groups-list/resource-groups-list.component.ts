@@ -1,9 +1,9 @@
 import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { NbToastrService, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule } from '@nebular/theme';
+import { NbToastrService, NbDialogService, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule, NbTooltipModule } from '@nebular/theme';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
+import { takeUntil, timeout } from 'rxjs/operators';
 
 import { ResourceGroupService } from '../resource-group.service';
 import { ResourceGroup } from '../models/resource-group.model';
@@ -11,6 +11,7 @@ import { withTableRow } from '../../../../@core/utils/smart-table';
 import { ClusterContextService } from '../../../../@core/data/cluster-context.service';
 import { Cluster } from '../../../../@core/data/cluster.service';
 import { ConfirmDialogService } from '../../../../@core/services/confirm-dialog.service';
+import { ResourceGroupFormComponent } from '../resource-group-form/resource-group-form.component';
 import { assignTableRows } from '../../../../@core/utils/table-rows';
 
 
@@ -23,12 +24,14 @@ import { assignTableRows } from '../../../../@core/utils/table-rows';
     NbButtonModule,
     NbIconModule,
     NbSpinnerModule,
+    NbTooltipModule,
     Angular2SmartTableModule
 ],
 })
 export class ResourceGroupsListComponent implements OnInit, OnDestroy {
   private resourceGroupService = inject(ResourceGroupService);
   private router = inject(Router);
+  private dialogService = inject(NbDialogService);
   private confirmDialog = inject(ConfirmDialogService);
   private toastrService = inject(NbToastrService);
   private clusterContext = inject(ClusterContextService);
@@ -40,18 +43,12 @@ export class ResourceGroupsListComponent implements OnInit, OnDestroy {
   activeCluster: Cluster | null = null;
 
   settings = {
-    add: {
-      addButtonContent: '<i class="nb-plus"></i>',
-      createButtonContent: '<i class="nb-checkmark"></i>',
-      cancelButtonContent: '<i class="nb-close"></i>',
-    },
     edit: {
-      editButtonContent: '<i class="nb-edit"></i>',
-      saveButtonContent: '<i class="nb-checkmark"></i>',
-      cancelButtonContent: '<i class="nb-close"></i>',
+      saveButtonContent: '<i class="nb-checkmark" title="保存"></i>',
+      cancelButtonContent: '<i class="nb-close" title="取消"></i>',
     },
     delete: {
-      deleteButtonContent: '<i class="nb-trash"></i>',
+      deleteButtonContent: '<i class="nb-trash" title="删除"></i>',
       confirmDelete: true,
     },
     actions: {
@@ -135,7 +132,7 @@ export class ResourceGroupsListComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.resourceGroupService
       .getResourceGroups()
-      .pipe(takeUntil(this.destroy$))
+      .pipe(takeUntil(this.destroy$), timeout(20000))
       .subscribe({
         next: (groups) => {
           assignTableRows(this.source, groups).then(() => {
@@ -166,11 +163,23 @@ export class ResourceGroupsListComponent implements OnInit, OnDestroy {
   }
 
   createResourceGroup(): void {
-    this.router.navigate(['/pages/cluster-ops/resource-groups/create']);
+    this.dialogService
+      .open(ResourceGroupFormComponent, { context: { groupName: null } })
+      .onClose.subscribe((saved) => {
+        if (saved) {
+          this.loadResourceGroups();
+        }
+      });
   }
 
   editResourceGroup(group: ResourceGroup): void {
-    this.router.navigate(['/pages/cluster-ops/resource-groups/edit', group.name]);
+    this.dialogService
+      .open(ResourceGroupFormComponent, { context: { groupName: group.name } })
+      .onClose.subscribe((saved) => {
+        if (saved) {
+          this.loadResourceGroups();
+        }
+      });
   }
 
   deleteResourceGroup(group: ResourceGroup): void {
@@ -180,7 +189,7 @@ export class ResourceGroupsListComponent implements OnInit, OnDestroy {
       }
       this.resourceGroupService
         .deleteResourceGroup(group.name)
-        .pipe(takeUntil(this.destroy$))
+        .pipe(takeUntil(this.destroy$), timeout(20000))
         .subscribe({
           next: () => {
             this.toastrService.success('资源组删除成功', '成功');

@@ -1,3 +1,25 @@
+.rg-form-dialog {
+  width: min(52rem, 96vw);
+  max-height: 88vh;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 0.9rem 1.2rem;
+}
+
+.dialog-body {
+  overflow-y: auto;
+  padding: 1.1rem 1.2rem;
+}
+
 .form-group {
   margin-bottom: 1.5rem;
 }

@@ -1,7 +1,6 @@
-import { Component, OnInit, OnDestroy, ViewChild, inject } from '@angular/core';
+import { Component, Input, OnInit, OnDestroy, ViewChild, inject } from '@angular/core';
 import { FormBuilder, FormGroup, FormArray, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
-import { NbToastrService, NbTabsetComponent, NbCardModule, NbSpinnerModule, NbTabsetModule, NbInputModule, NbIconModule, NbButtonModule, NbFormFieldModule, NbSelectModule, NbOptionModule } from '@nebular/theme';
+import { NbDialogRef, NbToastrService, NbTabsetComponent, NbCardModule, NbSpinnerModule, NbTabsetModule, NbInputModule, NbIconModule, NbButtonModule, NbFormFieldModule, NbSelectModule, NbOptionModule } from '@nebular/theme';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
@@ -33,9 +32,8 @@ import {
 ],
 })
 export class ResourceGroupFormComponent implements OnInit, OnDestroy {
+  private dialogRef = inject<NbDialogRef<ResourceGroupFormComponent>>(NbDialogRef);
   private fb = inject(FormBuilder);
-  private route = inject(ActivatedRoute);
-  private router = inject(Router);
   private resourceGroupService = inject(ResourceGroupService);
   private toastrService = inject(NbToastrService);
 
@@ -45,8 +43,13 @@ export class ResourceGroupFormComponent implements OnInit, OnDestroy {
 
   form: FormGroup;
   loading = false;
-  isEditMode = false;
+  /** 编辑时传入资源组名；新增时为空。 */
+  @Input() groupName: string | null = null;
   resourceGroupName: string | null = null;
+
+  get isEditMode(): boolean {
+    return this.resourceGroupName !== null;
+  }
 
   queryTypeOptions = [
     { value: 'SELECT', label: 'SELECT' },
@@ -60,8 +63,7 @@ export class ResourceGroupFormComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
-    this.resourceGroupName = this.route.snapshot.paramMap.get('name');
-    this.isEditMode = !!this.resourceGroupName;
+    this.resourceGroupName = this.groupName;
 
     if (this.isEditMode && this.resourceGroupName) {
       this.loadResourceGroup(this.resourceGroupName);
@@ -232,7 +234,7 @@ export class ResourceGroupFormComponent implements OnInit, OnDestroy {
       .subscribe({
         next: () => {
           this.toastrService.success('资源组创建成功', '成功');
-          this.router.navigate(['/pages/cluster-ops/resource-groups']);
+          this.dialogRef.close(true);
         },
         error: (error) => {
           console.error('Failed to create resource group:', error);
@@ -261,7 +263,7 @@ export class ResourceGroupFormComponent implements OnInit, OnDestroy {
       .subscribe({
         next: () => {
           this.toastrService.success('资源组更新成功', '成功');
-          this.router.navigate(['/pages/cluster-ops/resource-groups']);
+          this.dialogRef.close(true);
         },
         error: (error) => {
           console.error('Failed to update resource group:', error);
@@ -302,6 +304,6 @@ export class ResourceGroupFormComponent implements OnInit, OnDestroy {
   }
 
   cancel(): void {
-    this.router.navigate(['/pages/cluster-ops/resource-groups']);
+    this.dialogRef.close();
   }
 }
