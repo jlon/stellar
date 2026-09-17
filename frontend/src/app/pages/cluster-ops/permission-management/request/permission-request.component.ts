@@ -4,10 +4,11 @@ import { FormBuilder, FormGroup, Validators, FormsModule, ReactiveFormsModule } 
 import { Subject, forkJoin } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
+import { TablePaginationComponent } from '../../../../@theme/components/table-pagination/table-pagination.component';
 import { PermissionRequestService } from '../../../../@core/data/permission-request.service';
 import { PermissionRequestResponse, SubmitRequestDto, DbAccountDto, DbRoleDto } from '../../../../@core/data/permission-request.model';
 import { NodeService } from '../../../../@core/data/node.service';
-import { NbToastrService, NbCardModule, NbSelectModule, NbOptionModule, NbInputModule, NbIconModule, NbButtonModule, NbSpinnerModule } from '@nebular/theme';
+import { NbButtonModule, NbCardModule, NbIconModule, NbInputModule, NbOptionModule, NbSelectModule, NbSpinnerModule, NbToastrService, NbTooltipModule } from '@nebular/theme';
 
 
 /**
@@ -44,6 +45,7 @@ import { NbToastrService, NbCardModule, NbSelectModule, NbOptionModule, NbInputM
     NbIconModule,
     NbButtonModule,
     NbSpinnerModule,
+    TablePaginationComponent,
     Angular2SmartTableModule,
     CommonModule
 ],
@@ -139,12 +141,15 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
     return this.tablePermissions; // Default to table permissions
   }
 
-  // Request list
+  // Request list（服务端分页：status/page/page_size 由后端过滤）
   myRequests: PermissionRequestResponse[] = [];
-  filteredRequests: PermissionRequestResponse[] = [];
   requestsLoading = false;
   statusFilter = 'all';
   requestSource: LocalDataSource = new LocalDataSource();
+  requestPage = 1;
+  requestPageSize = 20;
+  requestTotal = 0;
+  readonly requestPageSizeOptions = [10, 20, 50, 100];
 
   // ng2-smart-table settings
   tableSettings = {
@@ -157,7 +162,7 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
       delete: false,
     },
     pager: {
-      display: true,
+      display: false,
       perPage: 10,
     },
     columns: {
@@ -587,46 +592,56 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Load user's permission requests
+   * Load user's permission requests（服务端分页：status + page + page_size）
    */
-  loadMyRequests(): void {
+  loadMyRequests(page: number = this.requestPage): void {
     this.requestsLoading = true;
 
-    this.permissionService.listMyRequests({ page: 1, page_size: 100 }).subscribe({
-      next: (response) => {
-        this.myRequests = response.data;
-        this.applyFilters();
-        this.requestsLoading = false;
-      },
-      error: (err) => {
-        console.error('Failed to load requests:', err);
-        this.toastr.danger('加载申请列表失败', '错误');
-        this.requestsLoading = false;
-      },
-    });
+    this.permissionService
+      .listMyRequests({
+        status: this.statusFilter === 'all' ? undefined : this.statusFilter,
+        page,
+        page_size: this.requestPageSize,
+      })
+      .subscribe({
+        next: (response) => {
+          this.requestPage = page;
+          this.requestTotal = response.total;
+          this.myRequests = response.data;
+          this.loadTableData();
+          this.requestsLoading = false;
+        },
+        error: (err) => {
+          console.error('Failed to load requests:', err);
+          this.toastr.danger('加载申请列表失败', '错误');
+          this.requestsLoading = false;
+        },
+      });
   }
 
   /**
-   * Apply status filter to requests
+   * Apply status filter to requests（状态切换回到第 1 页）
    */
   onStatusFilterChange(): void {
-    this.applyFilters();
+    this.loadMyRequests(1);
+  }
+
+  /** 页码变化 */
+  onRequestPageChange(page: number): void {
+    this.loadMyRequests(page);
+  }
+
+  /** 页大小变化 */
+  onRequestPageSizeChange(size: number): void {
+    this.requestPageSize = size;
+    this.loadMyRequests(1);
   }
 
   /**
-   * Apply filters to requests list
+   * Transform data for ng2-smart-table
    */
-  private applyFilters(): void {
-    if (this.statusFilter === 'all') {
-      this.filteredRequests = [...this.myRequests];
-    } else {
-      this.filteredRequests = this.myRequests.filter(
-        (req) => req.status === this.statusFilter,
-      );
-    }
-    
-    // Transform data for ng2-smart-table
-    const tableData = this.filteredRequests.map(req => ({
+  private loadTableData(): void {
+    const tableData = this.myRequests.map(req => ({
       id: req.id,
       request_type: req.request_type,
       target: this.getRequestTarget(req),

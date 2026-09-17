@@ -2,58 +2,66 @@
   <!-- Form Section -->
   <div class="form-section" *ngIf="showForm">
     <nb-card class="permission-form-card">
+      <nb-card-header>
+        <h6 class="mb-0">新建权限申请</h6>
+        <span class="text-hint">按步骤选择授权对象与资源</span>
+      </nb-card-header>
       <nb-card-body>
         <form [formGroup]="requestForm">
-          <!-- Row 1: Core Fields -->
-          <div class="form-row">
-            <div class="form-field">
-              <label class="label">申请类型 <span class="text-danger">*</span></label>
-              <nb-select fullWidth formControlName="request_type" (selectedChange)="onRequestTypeChange()">
-                <nb-option *ngFor="let type of requestTypes" [value]="type.value">{{ type.label }}</nb-option>
-              </nb-select>
-            </div>
-
-            <div class="form-field">
-              <label class="label">目标用户 <span class="text-danger">*</span></label>
-              <ng-container *ngIf="!isCreatingUser; else createUserTpl">
-                <nb-select fullWidth formControlName="target_user" [disabled]="loadingAccounts"
-                  (selectedChange)="onTargetUserChange($event)"
-                  [class.empty-value]="!requestForm.get('target_user')?.value">
-                  <nb-option *ngFor="let user of dbAccounts" [value]="user">{{ user }}</nb-option>
-                  <nb-option value="__CREATE_NEW_USER__">+ 新建账号</nb-option>
+          <!-- 第 1 步：申请对象 -->
+          <div class="form-step">
+            <div class="step-fields">
+              <div class="form-field">
+                <label class="label">申请类型 <span class="text-danger">*</span></label>
+                <nb-select size="small" fullWidth formControlName="request_type" (selectedChange)="onRequestTypeChange()">
+                  <nb-option *ngFor="let type of requestTypes" [value]="type.value">{{ type.label }}</nb-option>
                 </nb-select>
-              </ng-container>
-              <ng-template #createUserTpl>
-                <input nbInput fullWidth formControlName="new_user_name" placeholder="账户名" />
-              </ng-template>
-            </div>
+              </div>
 
-            <div class="form-field" *ngIf="isCreatingUser">
-              <label class="label">初始密码</label>
-              <input nbInput fullWidth type="password" formControlName="new_user_password" placeholder="密码" />
-            </div>
+              <div class="form-field">
+                <label class="label">目标用户 <span class="text-danger">*</span></label>
+                <ng-container *ngIf="!isCreatingUser; else createUserTpl">
+                  <nb-select size="small" fullWidth formControlName="target_user" [disabled]="loadingAccounts"
+                    (selectedChange)="onTargetUserChange($event)"
+                    [class.empty-value]="!requestForm.get('target_user')?.value">
+                    <nb-option *ngFor="let user of dbAccounts" [value]="user">{{ user }}</nb-option>
+                    <nb-option value="__CREATE_NEW_USER__">+ 新建账号</nb-option>
+                  </nb-select>
+                </ng-container>
+                <ng-template #createUserTpl>
+                  <input nbInput size="small" fullWidth formControlName="new_user_name" placeholder="账户名" />
+                </ng-template>
+              </div>
 
-            <div class="form-field" *ngIf="isGrantRole || isPermissionType">
-              <label class="label">目标角色 <span *ngIf="isGrantRole" class="text-danger">*</span></label>
-              <ng-container *ngIf="!isCreatingRole; else createRoleTpl">
-                <nb-select fullWidth formControlName="target_role" [disabled]="loadingRoles"
-                  (selectedChange)="onTargetRoleChange($event)"
-                  [class.empty-value]="!requestForm.get('target_role')?.value">
-                  <nb-option value="">不选择</nb-option>
-                  <nb-option *ngFor="let role of dbRoles" [value]="role">{{ role }}</nb-option>
-                  <nb-option value="__CREATE_NEW_ROLE__">+ 新建角色</nb-option>
-                </nb-select>
-              </ng-container>
-              <ng-template #createRoleTpl>
-                <input nbInput fullWidth formControlName="new_role_name" placeholder="角色名" />
-              </ng-template>
-            </div>
+              <div class="form-field" *ngIf="isCreatingUser">
+                <label class="label">初始密码</label>
+                <input nbInput size="small" fullWidth type="password" formControlName="new_user_password" placeholder="密码" />
+              </div>
 
-            <!-- Resource Selection for permission types -->
-            <ng-container *ngIf="isPermissionType">
+              <div class="form-field" *ngIf="isGrantRole || isPermissionType">
+                <label class="label">目标角色 <span *ngIf="isGrantRole" class="text-danger">*</span></label>
+                <ng-container *ngIf="!isCreatingRole; else createRoleTpl">
+                  <nb-select size="small" fullWidth formControlName="target_role" [disabled]="loadingRoles"
+                    (selectedChange)="onTargetRoleChange($event)"
+                    [class.empty-value]="!requestForm.get('target_role')?.value">
+                    <nb-option value="">不选择</nb-option>
+                    <nb-option *ngFor="let role of dbRoles" [value]="role">{{ role }}</nb-option>
+                    <nb-option value="__CREATE_NEW_ROLE__">+ 新建角色</nb-option>
+                  </nb-select>
+                </ng-container>
+                <ng-template #createRoleTpl>
+                  <input nbInput size="small" fullWidth formControlName="new_role_name" placeholder="角色名" />
+                </ng-template>
+              </div>
+            </div>
+          </div>
+
+          <!-- 第 2 步：资源范围 -->
+          <div class="form-step" *ngIf="isPermissionType">
+            <div class="step-fields">
               <div class="form-field">
                 <label class="label">资源类型 <span class="text-danger">*</span></label>
-                <nb-select fullWidth formControlName="resource_type"
+                <nb-select size="small" fullWidth formControlName="resource_type"
                   [class.empty-value]="!requestForm.get('resource_type')?.value">
                   <nb-option value="">请选择</nb-option>
                   <nb-option *ngFor="let type of resourceTypes" [value]="type.value">{{ type.label }}</nb-option>
@@ -62,7 +70,7 @@
 
               <div class="form-field" *ngIf="currentResourceType === 'catalog' || currentResourceType === 'database' || currentResourceType === 'table'">
                 <label class="label">Catalog <span *ngIf="currentResourceType === 'catalog'" class="text-danger">*</span></label>
-                <nb-select fullWidth formControlName="catalog" [disabled]="loadingCatalogs"
+                <nb-select size="small" fullWidth formControlName="catalog" [disabled]="loadingCatalogs"
                   [class.empty-value]="!requestForm.get('catalog')?.value">
                   <nb-option value="">{{ currentResourceType === 'catalog' ? '请选择' : '默认' }}</nb-option>
                   <nb-option value="*">* (全部)</nb-option>
@@ -72,7 +80,7 @@
 
               <div class="form-field" *ngIf="currentResourceType === 'database' || currentResourceType === 'table'">
                 <label class="label">数据库 <span class="text-danger">*</span></label>
-                <nb-select fullWidth formControlName="database" [disabled]="loadingDatabases"
+                <nb-select size="small" fullWidth formControlName="database" [disabled]="loadingDatabases"
                   [class.empty-value]="!requestForm.get('database')?.value">
                   <nb-option value="">请选择</nb-option>
                   <nb-option value="*">* (全部)</nb-option>
@@ -82,47 +90,42 @@
 
               <div class="form-field" *ngIf="currentResourceType === 'table'">
                 <label class="label">表 <span class="text-danger">*</span></label>
-                <nb-select fullWidth formControlName="table" [disabled]="loadingTables"
+                <nb-select size="small" fullWidth formControlName="table" [disabled]="loadingTables"
                   [class.empty-value]="!requestForm.get('table')?.value">
                   <nb-option value="">请选择</nb-option>
                   <nb-option value="*">* (全部)</nb-option>
                   <nb-option *ngFor="let tbl of tables" [value]="tbl">{{ tbl }}</nb-option>
                 </nb-select>
               </div>
-            </ng-container>
+            </div>
           </div>
 
-          <!-- Row 2: Permissions (for permission types) -->
-          <div class="form-row" *ngIf="isPermissionType && currentResourceType">
-            <div class="form-field-full">
-              <label class="label">权限 <span class="text-danger">*</span></label>
-              <div class="permission-chips">
-                <span *ngFor="let perm of availablePermissions"
+          <!-- 第 3 步：勾选权限（资源类型确定后渐进披露） -->
+          <div class="form-step" *ngIf="isPermissionType && requestForm.get('resource_type')?.value">
+            <div class="step-title">选择权限</div>
+            <div class="permission-chips">
+              <button type="button"
+                      *ngFor="let perm of availablePermissions"
                       class="permission-chip"
                       [class.selected]="isPermissionSelected(perm.value)"
                       (click)="togglePermission(perm.value)">
-                  <nb-icon [icon]="isPermissionSelected(perm.value) ? 'checkmark-circle-2' : 'radio-button-off'" 
-                           [status]="isPermissionSelected(perm.value) ? 'success' : 'basic'"
-                           class="chip-icon"></nb-icon>
-                  {{ perm.label }}
-                </span>
-              </div>
+                {{ perm.label }}
+              </button>
             </div>
           </div>
 
-          <!-- Row 3: Reason + Submit -->
-          <div class="form-row form-row-submit">
+          <!-- 申请原因 + 提交 -->
+          <div class="form-step form-step-submit">
             <div class="form-field-reason">
               <label class="label">申请原因 <span class="text-danger">*</span></label>
-              <input nbInput fullWidth formControlName="reason" placeholder="请简要说明申请权限的原因" />
+              <input nbInput size="small" fullWidth formControlName="reason" placeholder="请简要说明申请权限的原因" />
             </div>
             <div class="form-field-actions">
-              <button nbButton status="primary" [disabled]="!requestForm.valid || formSubmitting" (click)="onSubmitRequest()">
-                <nb-icon icon="paper-plane-outline"></nb-icon>
-                {{ formSubmitting ? '提交中...' : '提交' }}
-              </button>
-              <button nbButton ghost status="basic" class="ml-2" (click)="requestForm.reset({ request_type: 'grant_permission' })">
+              <button type="button" class="icon-btn" (click)="requestForm.reset({ request_type: 'grant_permission' })" nbTooltip="重置" nbTooltipPlacement="top" aria-label="重置">
                 <nb-icon icon="refresh-outline"></nb-icon>
+              </button>
+              <button type="button" class="icon-btn is-primary" [disabled]="!requestForm.valid || formSubmitting" (click)="onSubmitRequest()" nbTooltip="提交申请" nbTooltipPlacement="top" aria-label="提交申请">
+                <nb-icon [icon]="formSubmitting ? 'loader-outline' : 'paper-plane-outline'" [class.spin]="formSubmitting"></nb-icon>
               </button>
             </div>
           </div>
@@ -133,17 +136,15 @@
 
   <!-- My Requests Table -->
   <div class="table-section">
-    <nb-card>
+    <nb-card [nbSpinner]="requestsLoading" nbSpinnerStatus="primary" nbSpinnerSize="medium" nbSpinnerMessage="加载中">
       <nb-card-header>
         <div class="d-flex justify-content-between align-items-center">
-          <div class="d-flex align-items-center">
-            <h6 class="mb-0">我的申请</h6>
-          </div>
+          <h6 class="mb-0">我的申请</h6>
           <div class="d-flex align-items-center gap-2">
             <nb-select [(selected)]="statusFilter" (selectedChange)="onStatusFilterChange()" size="small">
               <nb-option *ngFor="let opt of statusOptions" [value]="opt.value">{{ opt.label }}</nb-option>
             </nb-select>
-            <button nbButton status="primary" size="small" (click)="loadMyRequests()">
+            <button nbButton ghost status="basic" size="small" (click)="loadMyRequests()" nbTooltip="刷新" title="刷新">
               <nb-icon icon="refresh-outline"></nb-icon>
             </button>
           </div>
@@ -151,10 +152,15 @@
       </nb-card-header>
 
       <nb-card-body>
-        <div *ngIf="requestsLoading" class="text-center p-4">
-          <nb-spinner status="primary"></nb-spinner>
-        </div>
-        <angular2-smart-table *ngIf="!requestsLoading" [settings]="tableSettings" [source]="requestSource"></angular2-smart-table>
+        <angular2-smart-table [settings]="tableSettings" [source]="requestSource"></angular2-smart-table>
+        <ngx-table-pagination
+          [page]="requestPage"
+          [total]="requestTotal"
+          [pageSize]="requestPageSize"
+          [pageSizeOptions]="requestPageSizeOptions"
+          (pageChange)="onRequestPageChange($event)"
+          (pageSizeChange)="onRequestPageSizeChange($event)">
+        </ngx-table-pagination>
       </nb-card-body>
     </nb-card>
   </div>
