@@ -1,6 +1,15 @@
 @import '../../../../@theme/styles/themes';
 
 @include nb-install-component() {
+  /* 卡片头紧凑化：标题小一号，上下留白收半 */
+  nb-card-header {
+    padding: 0.75rem 1rem;
+
+    h6 {
+      font-size: 0.9rem;
+    }
+  }
+
   .permission-request-container {
     display: flex;
     flex-direction: column;

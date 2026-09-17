@@ -1,43 +1,39 @@
 <div class="permission-management">
-  <nb-card>
-    <nb-card-body>
-      <nb-tabset
-        (changeTab)="onTabChange($event.tabId)"
-        responsive="true"
-        fullWidth="true"
-        >
-        <!-- Tab 1: 我的权限 -->
-        <nb-tab tabTitle="我的权限" tabId="0" tabIcon="shield-outline">
-          <ng-template nbTabContent>
-            <ngx-permission-dashboard-standard
-              [refresh$]="refreshDashboard$"
-              (switchToRequest)="onSwitchToRequest($event)"
-            ></ngx-permission-dashboard-standard>
-          </ng-template>
-        </nb-tab>
+  <nb-tabset
+    #tabsetRef
+    (changeTab)="onTabChange($event.tabId)"
+    responsive="true"
+    >
+    <!-- Tab 1: 我的权限 -->
+    <nb-tab tabTitle="我的权限" tabId="0">
+      <ng-template nbTabContent>
+        <ngx-permission-dashboard-standard
+          [refresh$]="refreshDashboard$"
+          (switchToRequest)="onSwitchToRequest($event)"
+        ></ngx-permission-dashboard-standard>
+      </ng-template>
+    </nb-tab>
 
-        <!-- Tab 2: 权限申请 -->
-        <nb-tab tabTitle="权限申请" tabId="1" tabIcon="plus-circle-outline">
-          <ng-template nbTabContent>
-            <ngx-permission-request
-              (submitted)="onRequestSubmitted()"
-              [refresh$]="refreshMyRequests$"
-            ></ngx-permission-request>
-          </ng-template>
-        </nb-tab>
+    <!-- Tab 2: 权限申请 -->
+    <nb-tab tabTitle="权限申请" tabId="1">
+      <ng-template nbTabContent>
+        <ngx-permission-request
+          (submitted)="onRequestSubmitted()"
+          [refresh$]="refreshMyRequests$"
+        ></ngx-permission-request>
+      </ng-template>
+    </nb-tab>
 
-        <!-- Tab 3: 权限审批 (管理员) -->
-        @if (canViewApprovalTab()) {
-          <nb-tab tabTitle="权限审批" tabId="2" tabIcon="checkmark-circle-outline">
-            <ng-template nbTabContent>
-              <ngx-permission-approval
-                (processed)="onRequestProcessed()"
-                [refresh$]="refreshPendingApprovals$"
-              ></ngx-permission-approval>
-            </ng-template>
-          </nb-tab>
-        }
-      </nb-tabset>
-    </nb-card-body>
-  </nb-card>
+    <!-- Tab 3: 权限审批 (管理员) -->
+    @if (canViewApprovalTab()) {
+      <nb-tab tabTitle="权限审批" tabId="2">
+        <ng-template nbTabContent>
+          <ngx-permission-approval
+            (processed)="onRequestProcessed()"
+            [refresh$]="refreshPendingApprovals$"
+          ></ngx-permission-approval>
+        </ng-template>
+      </nb-tab>
+    }
+  </nb-tabset>
 </div>

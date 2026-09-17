@@ -1,3 +1,34 @@
 :host {
   display: block;
 }
+
+:host {
+  display: block;
+}
+
+// Nebular 默认 tab 内边距 1rem 2rem，使下划线（贴 tab-link 底部）与
+// 文字脱开一截且悬在半空；收紧内边距让下划线贴合文字、对齐主题自带的全宽分隔线。
+// shadcn 式纯文字小 tab：去图标、小字、紧凑。
+:host ::ng-deep nb-tabset {
+  .tab-link {
+    padding: 0.625rem 0.125rem;
+    margin-right: 1.5rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: nb-theme(text-hint-color);
+  }
+
+  .tab.active .tab-link {
+    color: nb-theme(text-basic-color);
+  }
+
+  nb-icon {
+    display: none;
+  }
+}
+
+// nb-tab 内容区默认左右内边距 2rem，使卡片比上方 tab 栏窄 2×2rem；
+// 置 0 后 tab 下划线与卡片左右边缘对齐（页面内容内边距已由布局层提供）。
+:host ::ng-deep nb-tabset nb-tab {
+  padding: 0;
+}
