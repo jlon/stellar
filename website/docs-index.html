@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>部署指南 — Stellar</title>
+<meta name="description" content="Stellar 部署指南：物理机（二进制 / systemd / deb / npm）与 Kubernetes（Helm / 原生 YAML）部署步骤、命令行参数、配置文件字段、环境变量与排错。">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2312161f'/%3E%3Cpath d='M9 11 Q9 7.5 12.5 7.5 L19.5 7.5 Q23 7.5 23 11 Q23 14.5 19.5 14.5 L12.5 14.5 Q9 14.5 9 17.5 Q9 21 12.5 21 L19.5 21 Q23 21 23 24.5' fill='none' stroke='%23fabf00' stroke-width='3.6' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+@font-face{font-family:'Inter';font-style:normal;font-weight:400;font-display:swap;src:url('../inter-400.woff2') format('woff2')}
+@font-face{font-family:'Inter';font-style:normal;font-weight:500;font-display:swap;src:url('../inter-500.woff2') format('woff2')}
+@font-face{font-family:'Inter';font-style:normal;font-weight:600;font-display:swap;src:url('../inter-600.woff2') format('woff2')}
+:root{
+  --bg:#04060c; --surface:#0a0d15; --surface2:#0e1219;
+  --line:#1a1f2b; --line2:#262c3a;
+  --fg:#eef1f7; --fg2:#98a0b3; --fg3:#7f8695;
+  --gold:#fabf00; --gold-dim:rgba(250,191,0,.55); --gold-soft:rgba(250,191,0,.10); --gold-line:rgba(250,191,0,.28);
+  --nav-w:246px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth;scrollbar-color:#262c3a var(--bg);scrollbar-width:thin}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:#262c3a;border-radius:99px;border:2px solid var(--bg)}
+::selection{background:rgba(250,191,0,.28)}
+:focus-visible{outline:2px solid var(--gold);outline-offset:3px;border-radius:6px}
+body{background:var(--bg);color:var(--fg);line-height:1.75;overflow-x:hidden;-webkit-font-smoothing:antialiased;
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif}
+code,pre,.mono{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-variant-ligatures:none}
+.wordmark{font-family:'Inter',-apple-system,sans-serif}
+
+/* ---------- 顶栏 ---------- */
+.top{position:sticky;top:0;z-index:40;backdrop-filter:blur(16px);background:rgba(4,6,12,.86);
+  border-bottom:1px solid var(--line)}
+.top .in{max-width:1400px;margin:0 auto;padding:0 24px;height:60px;display:flex;align-items:center;gap:20px}
+.logo{display:flex;align-items:center;gap:9px;font-weight:600;font-size:16px;color:var(--fg);text-decoration:none}
+.logo svg{width:22px;height:22px;display:block}
+.top .crumb{color:var(--fg3);font-size:13.5px}
+.ver{font-size:11.5px;font-family:ui-monospace,monospace;color:var(--gold-dim);border:1px solid var(--gold-line);
+  border-radius:999px;padding:2px 9px;white-space:nowrap}
+/* 手机端导航：默认折叠为一行的「本页目录」，把首屏还给正文 */
+aside.nav summary{display:none}
+@media(max-width:860px){
+  aside.nav{padding:0}
+  aside.nav summary{display:block;cursor:pointer;list-style:none;padding:15px 20px;color:var(--fg2);font-size:14px;
+    display:flex;align-items:center;justify-content:space-between}
+  aside.nav summary::-webkit-details-marker{display:none}
+  aside.nav summary::after{content:"▾";color:var(--fg3);transition:transform .2s}
+  aside.nav details[open] summary::after{transform:rotate(180deg)}
+  aside.nav details:not([open]) .mob{display:none}
+  aside.nav .mob{display:block;padding:0 20px 20px}
+  aside.nav .mob > div{display:block}
+}
+/* 两列表格在窄屏堆叠，避免横向滚动 */
+@media(max-width:700px){
+  .tw.stack{border:none;border-radius:0;margin:14px 0}
+  .tw.stack table{min-width:0}
+  .tw.stack thead{display:none}
+  .tw.stack tbody,.tw.stack tr,.tw.stack td{display:block;width:auto}
+  .tw.stack tr{border-bottom:1px solid var(--line);padding:12px 0}
+  .tw.stack td{border:none;padding:2px 0}
+  .tw.stack td:first-child{color:var(--fg);font-size:13px;font-weight:600}
+  .tw.stack td code{white-space:normal}
+}
+/* 回到顶部 */
+.totop{position:fixed;right:22px;bottom:26px;z-index:30;width:38px;height:38px;border-radius:10px;
+  background:var(--surface2);border:1px solid var(--line2);color:var(--fg2);cursor:pointer;display:grid;place-items:center;
+  opacity:0;pointer-events:none;transition:opacity .2s,color .15s,border-color .15s;font-size:15px;font-family:inherit}
+.totop.on{opacity:1;pointer-events:auto}
+.totop:hover{color:var(--fg);border-color:#3a4152}
+/* 快速开始下方的路径链接 */
+.paths{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 4px}
+.paths a{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;
+  padding:6px 14px;font-size:13.5px;color:var(--fg2);text-decoration:none;transition:border-color .15s,color .15s}
+.paths a:hover{color:var(--gold);border-color:var(--gold-line);text-decoration:none}
+.top .crumb span{color:var(--fg2)}
+.top .right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.top a.ghost{color:var(--fg2);text-decoration:none;font-size:13.5px;padding:7px 14px;border:1px solid var(--line2);
+  border-radius:999px;transition:color .15s,border-color .15s}
+.top a.ghost:hover{color:var(--fg);border-color:#3a4152}
+.top a.solid{background:#f7f8f8;color:#08090a;font-size:13.5px;font-weight:500;padding:7px 15px;border-radius:999px;text-decoration:none}
+
+/* ---------- 布局 ---------- */
+.shell{max-width:1400px;margin:0 auto;display:grid;grid-template-columns:var(--nav-w) minmax(0,1fr);gap:0}
+@media(min-width:1500px){ .shell{grid-template-columns:var(--nav-w) minmax(0,1fr) 210px} }
+aside.nav{position:sticky;top:60px;align-self:start;height:calc(100vh - 60px);overflow-y:auto;
+  padding:34px 12px 60px 24px;border-right:1px solid var(--line)}
+aside.nav a{display:block;color:var(--fg2);text-decoration:none;font-size:13.5px;padding:5px 10px;border-radius:6px;
+  border-left:2px solid transparent;transition:color .15s,background .15s,border-color .15s}
+aside.nav a:hover{color:var(--fg);background:rgba(255,255,255,.04)}
+aside.nav a.sub{padding-left:22px;font-size:13px;color:var(--fg3)}
+aside.nav a.on{color:var(--gold);border-left-color:var(--gold)}
+aside.nav .grp{color:var(--fg3);font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;
+  margin:22px 0 8px;padding-left:10px}
+aside.nav .grp:first-child{margin-top:0}
+main{padding:44px 48px 120px;min-width:0}
+aside.toc{position:sticky;top:60px;align-self:start;padding:44px 24px 40px 8px;font-size:13px;display:none}
+aside.toc div{color:var(--fg3);font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:12px}
+aside.toc a{display:block;color:var(--fg3);text-decoration:none;padding:4px 0;transition:color .15s}
+aside.toc a:hover{color:var(--fg)}
+
+/* ---------- 正文排版 ---------- */
+main h1{font-size:34px;font-weight:600;letter-spacing:-.02em;line-height:1.25;margin-bottom:14px}
+main .lede{color:var(--fg2);font-size:15.5px;margin-bottom:12px;max-width:70ch}
+main h2{font-size:24px;font-weight:600;letter-spacing:-.014em;line-height:1.35;margin:64px 0 8px;
+  padding-top:20px;border-top:1px solid var(--line)}
+main h2:first-of-type{border-top:none;margin-top:40px}
+main h3{font-size:17px;font-weight:600;margin:34px 0 8px;color:var(--fg)}
+main h4{font-size:15px;font-weight:600;margin:22px 0 6px;color:var(--fg)}
+main p{color:var(--fg2);font-size:15px;margin:12px 0;max-width:74ch}
+main ul,main ol{color:var(--fg2);font-size:15px;margin:12px 0 12px 22px}
+main li{margin:6px 0}
+main strong{color:var(--fg);font-weight:600}
+main a{color:var(--gold);text-decoration:none}
+main a:hover{text-decoration:underline}
+main code:not(pre code){background:var(--surface2);border:1px solid var(--line);border-radius:5px;
+  padding:1.5px 6px;font-size:13.5px;color:#e3c98a;
+  /* 行内代码允许断行：长命令/长环境变量名在窄屏不会撑破布局 */
+  white-space:normal;overflow-wrap:anywhere;word-break:break-word}
+.anchor{margin-left:8px;color:var(--fg3);font-size:.7em;text-decoration:none;opacity:0;transition:opacity .15s}
+h2:hover .anchor,h3:hover .anchor{opacity:1}
+@media(hover:none){.anchor{display:none}}
+
+/* ---------- 代码块 ---------- */
+.codewrap{position:relative;margin:16px 0}
+pre{background:#080a10;border:1px solid var(--line);border-radius:9px;padding:16px 18px;overflow-x:auto;
+  font-size:13px;line-height:1.85;color:#c3cad8}
+pre .c{color:#5d6675}          /* 注释 */
+pre .p{color:var(--gold-dim)}  /* 提示符 */
+pre .k{color:#e3c98a}          /* 关键字/路径 */
+.codewrap .copy{position:absolute;top:9px;right:9px;background:var(--surface2);border:1px solid var(--line2);
+  color:var(--fg3);font-size:11.5px;padding:4px 10px;border-radius:6px;cursor:pointer;font-family:inherit;
+  opacity:0;transition:opacity .15s,color .15s}
+.codewrap:hover .copy{opacity:1}
+.codewrap .copy:hover{color:var(--fg)}
+.codewrap .copy.done{color:var(--gold)}
+@media(hover:none){.codewrap .copy{opacity:1}}
+
+/* ---------- 表格 ---------- */
+.tw{overflow-x:auto;margin:18px 0;border:1px solid var(--line);border-radius:9px}
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:520px}
+th,td{text-align:left;padding:11px 16px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:var(--surface2);color:var(--fg3);font-size:12px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+td{color:var(--fg2)}
+td code{color:#e3c98a;font-size:13px;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+
+/* ---------- 提示块 ---------- */
+.note{border:1px solid var(--line2);border-left:2px solid var(--gold);border-radius:8px;background:var(--surface);
+  padding:14px 18px;margin:18px 0;font-size:14.5px;color:var(--fg2)}
+.note.warn{border-left-color:#e2604f}
+.note b{color:var(--fg)}
+.note code{background:transparent;border:none;color:#e3c98a;padding:0}
+
+/* ---------- 步骤序号 ---------- */
+.step{display:flex;gap:14px;margin:18px 0}
+.step .n{flex-shrink:0;width:24px;height:24px;border-radius:6px;background:var(--gold-soft);border:1px solid var(--gold-line);
+  color:var(--gold);font-size:12px;font-weight:600;display:grid;place-items:center;margin-top:3px}
+.step .b{min-width:0;flex:1}
+.step .b p{margin-top:2px}
+
+/* ---------- 包选择卡 ---------- */
+.pkg{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:20px 0}
+.pkg a{display:block;border:1px solid var(--line);border-radius:9px;padding:16px 18px;text-decoration:none;
+  background:var(--surface);transition:border-color .15s,background .15s}
+.pkg a:hover{border-color:var(--line2);background:var(--surface2)}
+.pkg .t{display:flex;align-items:baseline;justify-content:space-between;gap:10px;color:var(--fg);font-size:15px;font-weight:600}
+.pkg .t em{font-style:normal;font-family:ui-monospace,monospace;font-size:11.5px;color:var(--fg3)}
+.pkg p{font-size:13.5px;color:var(--fg2);margin-top:6px}
+
+/* ---------- 页脚 ---------- */
+footer{border-top:1px solid var(--line);padding:32px 24px;color:var(--fg3);font-size:13px}
+footer .in{max-width:1400px;margin:0 auto;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+footer a{color:var(--fg2);text-decoration:none}
+footer a:hover{color:var(--gold)}
+
+/* ---------- 响应式 ---------- */
+@media(min-width:1500px){ aside.toc{display:block} }
+@media(max-width:860px){
+  .shell{display:block}
+  aside.nav{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line);
+    padding:18px 20px 22px;overflow:visible}
+  aside.nav .mob{display:grid;grid-template-columns:repeat(2,1fr);gap:2px}
+  main{padding:26px 20px 90px}
+  main h1{font-size:27px}
+  main h2{font-size:20px;margin-top:46px}
+  .pkg{grid-template-columns:1fr}
+  .top .crumb{display:none}
+  main p,main li{font-size:14.5px}
+}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="in">
+    <a class="logo" href="../">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M8 10 Q8 6 12 6 L20 6 Q24 6 24 10 Q24 14 20 14 L12 14 Q8 14 8 18 Q8 22 12 22 L20 22 Q24 22 24 26" fill="none" stroke="#fabf00" stroke-width="2.5" stroke-linecap="round"/></svg>
+      Stellar
+    </a>
+    <span class="crumb">/ <span>部署指南</span></span>
+    <span class="ver">v1.0.0</span>
+    <div class="right">
+      <a class="ghost" href="https://github.com/jlon/stellar/releases">下载</a>
+      <a class="solid" href="../">返回首页</a>
+    </div>
+  </div>
+</div>
+
+<div class="shell">
+  <aside class="nav">
+   <details id="navBox" open>
+    <summary>本页目录</summary>
+    <div class="mob">
+    <div>
+      <div class="grp">开始</div>
+      <a href="#quick">5 分钟快速开始</a>
+      <a href="#requirements">系统要求</a>
+      <a href="#packages">安装包选择</a>
+      <a href="#first-run">首次启动必读</a>
+      <div class="grp">物理机部署</div>
+      <a href="#binary">二进制压缩包（裸布）</a>
+      <a href="#systemd">systemd 托管</a>
+      <a href="#deb">Debian / Ubuntu</a>
+      <a href="#npm">npm 分发</a>
+      <a href="#firewall">防火墙与 SELinux</a>
+      <a href="#offline">离线环境</a>
+    </div>
+    <div>
+      <div class="grp">容器与 Kubernetes</div>
+      <a href="#docker">Docker</a>
+      <a href="#helm">Helm 部署</a>
+      <a href="#k8s-yaml">原生 YAML</a>
+      <a href="#k8s-detail">持久化与探针</a>
+      <div class="grp">参考</div>
+      <a href="#cli">命令行参数</a>
+      <a href="#env">环境变量</a>
+      <a href="#config">配置文件字段</a>
+      <div class="grp">运维</div>
+      <a href="#after">部署之后</a>
+      <a href="#ops">数据、备份、升级</a>
+      <a href="#trouble">排障</a>
+      <a href="#uninstall">卸载</a>
+    </div>
+    </div>
+   </details>
+  </aside>
+
+  <main>
+    <h1>部署指南</h1>
+    <p class="lede">Stellar 是一个静态链接的单二进制服务：Web 控制台、数据库迁移和内置数据库都在二进制里。本文覆盖物理机（二进制 / systemd / deb / npm）与 Kubernetes（Helm / 原生 YAML）两种场景，以及全部参数、目录结构和排错方法。</p>
+    <div class="note">本文所有命令都以 <code>admin</code> 或 <code>root</code> 在 Linux x86_64 上执行；把 <code>1.0.0</code> 替换成你要安装的版本号。</div>
+
+    <!-- ============ 开始之前 ============ -->
+
+    <h2 id="quick">5 分钟快速开始<a class="anchor" href="#quick">#</a></h2>
+    <p>手里已经有安装包，或者只想先把服务跑起来看一眼？物理机三步就够。安装包在 <a href="https://github.com/jlon/stellar/releases">Releases 页面</a>，把下面命令里的 <code>VERSION</code> 换成实际版本号。</p>
+    <div class="codewrap"><pre><span class="c"># 1. 下载并解压（先在 releases 页确认最新版本号，再填到 VERSION）</span>
+<span class="p">$</span> VERSION=1.0.0
+<span class="p">$</span> wget https://github.com/jlon/stellar/releases/download/v${VERSION}/stellar-${VERSION}-linux-amd64-musl.tar.gz
+<span class="p">$</span> tar xzf stellar-${VERSION}-linux-amd64-musl.tar.gz
+
+<span class="c"># 2. 启动（数据目录不存在会自动创建）</span>
+<span class="p">$</span> cd stellar &amp;&amp; ./bin/stellar server ./data
+<span class="c"># ↳ 控制台会打印一次性管理员密码，记下来</span>
+
+<span class="c"># 3. 打开浏览器，用 admin + 上面的密码登录</span>
+<span class="c"># http://&lt;服务器IP&gt;:9527</span></pre><button class="copy">复制</button></div>
+    <p style="font-size:13.5px;color:var(--fg3)">这是临时验证用的最小步骤。生产部署请继续看对应章节：</p>
+    <div class="paths">
+      <a href="#binary">物理机 · 二进制</a>
+      <a href="#systemd">物理机 · systemd</a>
+      <a href="#deb">Debian 包</a>
+      <a href="#npm">npm</a>
+      <a href="#docker">Docker</a>
+      <a href="#helm">Kubernetes · Helm</a>
+      <a href="#k8s-yaml">Kubernetes · YAML</a>
+    </div>
+
+    <h2 id="before">开始之前<a class="anchor" href="#before">#</a></h2>
+    <p>Stellar 只需一个二进制和一块可写磁盘，但下面这几条决定了你会不会在部署过程中卡住。</p>
+
+    <h3 id="requirements">系统要求<a class="anchor" href="#requirements">#</a></h3>
+    <div class="tw stack"><table>
+      <tr><th>项目</th><th>要求</th></tr>
+      <tr><td>操作系统</td><td>64 位 Linux（内核 3.10+，含 CentOS 7 等老发行版）</td></tr>
+      <tr><td>硬件</td><td>2 核 / 2 GB 内存 / 10 GB 磁盘起步</td></tr>
+      <tr><td>网络</td><td>能访问被管理集群的 FE：<code>9030</code>（MySQL 协议）与 <code>8030</code>（HTTP，用于取指标）</td></tr>
+      <tr><td>端口</td><td>对外提供 <code>9527</code>；可改</td></tr>
+      <tr><td>数据库</td><td>无需另装：内置 SQLite；也可指定外部 MySQL / PostgreSQL</td></tr>
+      <tr><td>运行时依赖</td><td>无。二进制全静态链接，目标机不需要 glibc 匹配、不需要 Node、不需要 JDK</td></tr>
+    </table></div>
+
+    <h3 id="packages">安装包选择<a class="anchor" href="#packages">#</a></h3>
+    <p>每个版本发布四种安装包，<strong>装的是同一个二进制</strong>，按环境选即可：</p>
+    <div class="pkg">
+      <a href="https://github.com/jlon/stellar/releases">
+        <div class="t">静态二进制压缩包 <em>.tar.gz</em></div>
+        <p>任意 Linux，解压即用。物理机裸布首选。</p>
+      </a>
+      <a href="https://github.com/jlon/stellar/releases">
+        <div class="t">Debian 包 <em>.deb</em></div>
+        <p>Debian / Ubuntu，自动建用户并注册 systemd 服务。</p>
+      </a>
+      <a href="https://github.com/jlon/stellar/releases">
+        <div class="t">容器镜像 <em>ghcr.io/jlon/stellar</em></div>
+        <p>已有 Docker / Kubernetes 环境。</p>
+      </a>
+      <a href="https://github.com/jlon/stellar/releases">
+        <div class="t">npm 包 <em>.tgz</em></div>
+        <p>已有 Node 环境的机器；服务本身不需要 Node。</p>
+      </a>
+    </div>
+    <div class="note">安全要求高的环境先校验 Release 附带的 <code>SHA256SUMS</code>：<code>sha256sum -c SHA256SUMS --ignore-missing</code>。npm 与 DEB 包各自附带 <code>.sha256</code> 文件。</div>
+
+    <h3 id="first-run">首次启动必读<a class="anchor" href="#first-run">#</a></h3>
+    <p>所有安装方式共用同一套首次启动逻辑：</p>
+    <div class="step"><div class="n">1</div><div class="b"><p><strong>自动创建管理员</strong>并在控制台打印<strong>一次性随机密码</strong>：</p>
+      <div class="codewrap"><pre>Created initial user 'admin' with password: dZ6b8V5wDTnCnVaQ
+
+This is shown once. Change it after first login.</pre></div>
+    </div></div>
+    <div class="step"><div class="n">2</div><div class="b"><p>登录后<strong>立刻改密码</strong>（右上角用户菜单 → 用户设置）。</p></div></div>
+    <div class="step"><div class="n">3</div><div class="b"><p>所有状态都在<strong>一个数据目录</strong>里，备份它就是备份全部：</p>
+      <div class="codewrap"><pre>&lt;数据目录&gt;/
+├── stellar.db              <span class="c"># 平台库（SQLite；WAL 模式，同目录有 -wal/-shm 文件）</span>
+├── .jwt-secret             <span class="c"># 登录签名密钥，首次启动自动生成，权限 0600</span>
+└── logs/
+    └── stellar.2026-09-17  <span class="c"># 按天轮转的运行日志</span></pre></div>
+    </div></div>
+    <div class="note">想跳过随机密码？启动前设置环境变量 <code>STELLAR_ROOT_PASSWORD=你的密码</code>。<br>
+    密码只在数据目录为空时创建一次；已有数据的库不会被覆盖或重置。</div>
+
+    <!-- ============ 物理机 ============ -->
+    <h2 id="binary">物理机部署：二进制压缩包（裸布）<a class="anchor" href="#binary">#</a></h2>
+    <p>最直接的方式：下载、解压、指定数据目录启动。</p>
+
+    <div class="codewrap"><pre><span class="p"># 1.</span> 下载并解压（VERSION 换成 releases 页里的版本号）
+<span class="p">$</span> VERSION=1.0.0
+<span class="p">$</span> wget https://github.com/jlon/stellar/releases/download/v${VERSION}/stellar-${VERSION}-linux-amd64-musl.tar.gz
+<span class="p">$</span> tar xzf stellar-${VERSION}-linux-amd64-musl.tar.gz
+<span class="p">$</span> cd stellar
+
+<span class="p"># 2.</span> 准备数据目录（目录不存在时会自动创建，但父目录权限要对）
+<span class="p">$</span> sudo mkdir -p /var/lib/stellar
+<span class="p">$</span> sudo chown $(whoami) /var/lib/stellar
+
+<span class="p"># 3.</span> 启动，指定数据目录
+<span class="p">$</span> ./bin/stellar server /var/lib/stellar
+<span class="c"># 控制台会打印一次性管理员密码，记下来</span>
+
+<span class="p"># 4.</span> 另开一个终端验证
+<span class="p">$</span> curl http://127.0.0.1:9527/health
+OK</pre><button class="copy">复制</button></div>
+
+    <h4>压缩包内容</h4>
+    <div class="tw stack"><table>
+      <tr><th>路径</th><th>说明</th></tr>
+      <tr><td><code>bin/stellar</code></td><td>服务主程序（内含 Web 控制台与数据库迁移）</td></tr>
+      <tr><td><code>bin/stellar.sh</code></td><td>简易启停脚本：<code>start</code> / <code>stop</code> / <code>status</code> / <code>restart</code> / <code>logs</code></td></tr>
+      <tr><td><code>conf/config.toml</code></td><td>参考配置（用 <code>--config</code> 指定才会生效）</td></tr>
+      <tr><td><code>data/</code>、<code>logs/</code></td><td>空目录占位，供 cwd 相对路径使用</td></tr>
+    </table></div>
+
+    <h4>启动方式对照</h4>
+    <div class="codewrap"><pre><span class="c"># 零配置：数据落在当前目录的 data/ 下（适合试用）</span>
+<span class="p">$</span> ./bin/stellar server
+
+<span class="c"># 显式数据目录（生产推荐，避免"在哪个目录启动"影响数据位置）</span>
+<span class="p">$</span> ./bin/stellar server /var/lib/stellar
+
+<span class="c"># 环境变量方式（等价）</span>
+<span class="p">$</span> STELLAR_DATA_DIR=/var/lib/stellar ./bin/stellar server
+
+<span class="c"># 用配置文件（配置文件模式：数据路径由配置文件决定）</span>
+<span class="p">$</span> ./bin/stellar server --config /etc/stellar/config.toml
+
+<span class="c"># 用命令行覆盖单项参数</span>
+<span class="p">$</span> ./bin/stellar server /var/lib/stellar --server-port 9090</pre><button class="copy">复制</button></div>
+
+    <div class="note"><b>裸布的生产要点</b>：<code>nohup</code> 只适合临时验证。生产请用 systemd 托管（下一节），否则进程崩溃不会自动拉起、开机也不会自启。</div>
+
+    <h2 id="systemd">物理机部署：systemd 托管<a class="anchor" href="#systemd">#</a></h2>
+    <p>推荐的生产做法：专用系统用户 + 固定数据目录 + 崩溃自动重启。</p>
+
+    <div class="codewrap"><pre><span class="p"># 1.</span> 安装二进制到 /usr/local/bin
+<span class="p">$</span> sudo install -m755 stellar/bin/stellar /usr/local/bin/stellar
+
+<span class="p"># 2.</span> 建专用用户与数据目录
+<span class="p">$</span> sudo useradd --system --home /var/lib/stellar --shell /usr/sbin/nologin stellar
+<span class="p">$</span> sudo mkdir -p /var/lib/stellar
+<span class="p">$</span> sudo chown -R stellar:stellar /var/lib/stellar
+
+<span class="p"># 3.</span> 安装 systemd 单元（默认走数据目录模式，无需配置文件）
+<span class="p">$</span> sudo cp deploy/systemd/stellar.service /etc/systemd/system/
+<span class="p">$</span> sudo systemctl daemon-reload
+<span class="p">$</span> sudo systemctl enable --now stellar
+
+<span class="p"># 4.</span> 取一次性密码
+<span class="p">$</span> sudo journalctl -u stellar | grep 'password:'</pre><button class="copy">复制</button></div>
+
+    <h4>随包提供的 unit 文件</h4>
+    <div class="codewrap"><pre>[Unit]
+Description=Stellar - OLAP Cluster Management Platform
+After=network.target
+
+[Service]
+Type=simple
+User=stellar
+Group=stellar
+WorkingDirectory=/var/lib/stellar
+ExecStart=/usr/local/bin/stellar server /var/lib/stellar
+Restart=on-failure
+RestartSec=3
+LimitNOFILE=65536
+<span class="c"># 可选：固定首次管理员密码（不设则日志中打印一次性随机密码）</span>
+<span class="c"># Environment=STELLAR_ROOT_PASSWORD=change-me</span>
+<span class="c"># Environment=APP_SERVER_PORT=9527</span>
+
+[Install]
+WantedBy=multi-user.target</pre><button class="copy">复制</button></div>
+
+    <div class="note">默认 unit 使用数据目录模式：数据库、<code>.jwt-secret</code> 与日志都在 <code>/var/lib/stellar/</code> 下。需要外部数据库或其他高级配置时，再显式改为 <code>--config</code>；配置模式必须提供 <code>auth.jwt_secret</code> 或 <code>APP_JWT_SECRET</code>。</div>
+
+    <h2 id="deb">物理机部署：Debian / Ubuntu（.deb）<a class="anchor" href="#deb">#</a></h2>
+    <p>一条命令完成安装、建用户、注册并启用 systemd 服务。</p>
+
+    <div class="codewrap"><pre><span class="p">$</span> VERSION=1.0.0
+<span class="p">$</span> wget https://github.com/jlon/stellar/releases/download/v${VERSION}/stellar-server-${VERSION}-amd64.deb
+<span class="p">$</span> sudo apt install ./stellar-server-${VERSION}-amd64.deb
+<span class="p">$</span> sudo systemctl start stellar
+
+<span class="c"># 查看一次性管理员密码</span>
+<span class="p">$</span> sudo journalctl -u stellar | grep 'password:'</pre><button class="copy">复制</button></div>
+
+    <h4>安装后的文件布局</h4>
+    <div class="tw"><table>
+      <tr><th>路径</th><th>说明</th></tr>
+      <tr><td><code>/opt/stellar/bin/stellar</code></td><td>主程序</td></tr>
+      <tr><td><code>/opt/stellar/conf/config.toml</code></td><td>配置（注册为 conffile，升级不会被覆盖）</td></tr>
+      <tr><td><code>/opt/stellar/data/</code>、<code>/opt/stellar/logs/</code></td><td>数据与日志（属主 <code>stellar:stellar</code>，权限 750）</td></tr>
+      <tr><td><code>/usr/bin/stellar</code></td><td>软链，任意目录可直接敲 <code>stellar</code></td></tr>
+      <tr><td><code>/lib/systemd/system/stellar.service</code></td><td>systemd 单元（<code>WorkingDirectory=/opt/stellar</code>）</td></tr>
+    </table></div>
+
+    <p>升级：下载新版 <code>.deb</code> 后再次 <code>sudo apt install ./stellar-server-&lt;新版本&gt;-amd64.deb</code>，数据和配置都会保留。</p>
+
+    <h2 id="npm">物理机部署：npm 分发<a class="anchor" href="#npm">#</a></h2>
+    <p>适合机器上已有 Node 环境的情况。<strong>npm 只是分发通道，服务端本身不依赖 Node</strong>。</p>
+
+    <div class="codewrap"><pre><span class="p">$</span> VERSION=1.0.0
+<span class="p">$</span> wget https://github.com/jlon/stellar/releases/download/v${VERSION}/stellar-server-${VERSION}.tgz
+<span class="p">$</span> sudo npm install -g ./stellar-server-${VERSION}.tgz
+<span class="p">$</span> stellar --version
+
+<span class="c"># 启动（数据目录模式）</span>
+<span class="p">$</span> stellar server /var/lib/stellar</pre><button class="copy">复制</button></div>
+
+    <div class="note">npm 全局安装只释放文件与命令软链，<strong>不会注册也不会自动启动系统服务</strong>。生产环境请配合 systemd 使用：unit 的 <code>ExecStart</code> 指向 <code>/usr/local/bin/stellar server /var/lib/stellar</code>（npm 默认 prefix 为 <code>/usr/local</code>，可用 <code>npm config get prefix</code> 确认）。</div>
+
+    <h2 id="firewall">物理机部署：防火墙与 SELinux<a class="anchor" href="#firewall">#</a></h2>
+    <p>物理机上最常见的两个"服务起来了但访问不了"的原因，先在这里解决掉。</p>
+
+    <h3 id="放行端口">放行端口<a class="anchor" href="#放行端口">#</a></h3>
+    <div class="codewrap"><pre><span class="c"># firewalld（CentOS / RHEL / 麒麟）</span>
+<span class="p">$</span> sudo firewall-cmd --permanent --add-port=9527/tcp
+<span class="p">$</span> sudo firewall-cmd --reload
+
+<span class="c"># ufw（Debian / Ubuntu）</span>
+<span class="p">$</span> sudo ufw allow 9527/tcp
+
+<span class="c"># 云主机还要在控制台的安全组里放行同一个端口</span></pre><button class="copy">复制</button></div>
+    <div class="note">如果 Stellar 只给内网或本机用，也可以只监听回环：<code>--server-host 127.0.0.1</code>，再交给 Nginx 反代。</div>
+
+    <h3 id="SELinux-CentOS-RHEL-系">SELinux（CentOS / RHEL 系）<a class="anchor" href="#SELinux-CentOS-RHEL-系">#</a></h3>
+    <p>症状：<code>chown</code> 之后服务仍然报 <code>Permission denied</code>，写不了数据库或日志。</p>
+    <div class="codewrap"><pre><span class="c"># 1. 确认是不是 SELinux 拦的</span>
+<span class="p">$</span> sudo ausearch -m AVC -ts recent | tail -5
+
+<span class="c"># 2. 看数据目录当前的标签</span>
+<span class="p">$</span> ls -Zd /var/lib/stellar
+
+<span class="c"># 3. 让目录回到标准标签（默认应该就是 var_lib_t）</span>
+<span class="p">$</span> sudo restorecon -Rv /var/lib/stellar
+
+<span class="c"># 4. 若数据目录放在了非标准路径（如 /data、/opt），给它打标签</span>
+<span class="p">$</span> sudo semanage fcontext -a -t var_lib_t "/data/stellar(/.*)?"
+<span class="p">$</span> sudo restorecon -Rv /data/stellar</pre><button class="copy">复制</button></div>
+    <div class="note warn">不要把 <code>setenforce 0</code> 当常规手段（重启即失效，且降低整机安全性）。上面的标签方式可以长期生效。</div>
+
+    <h2 id="offline">物理机部署：完全离线环境<a class="anchor" href="#offline">#</a></h2>
+    <p>Stellar 运行时没有任何外呼，离线安装只需把文件搬进去。</p>
+    <div class="codewrap"><pre><span class="c"># 在有网的机器上下载（连同校验文件）</span>
+<span class="p">$</span> VERSION=1.0.0
+<span class="p">$</span> wget https://github.com/jlon/stellar/releases/download/v${VERSION}/stellar-${VERSION}-linux-amd64-musl.tar.gz
+<span class="p">$</span> wget https://github.com/jlon/stellar/releases/download/v${VERSION}/SHA256SUMS
+
+<span class="c"># 拷进内网机器，先校验</span>
+<span class="p">$</span> sha256sum -c SHA256SUMS --ignore-missing
+
+<span class="c"># 解压启动，流程同上</span>
+<span class="p">$</span> tar xzf stellar-1.0.0-linux-amd64-musl.tar.gz &amp;&amp; cd stellar
+<span class="p">$</span> ./bin/stellar server /var/lib/stellar</pre><button class="copy">复制</button></div>
+    <div class="note">AI 助手是可选能力：<strong>不配置模型端点就不会发起任何外部请求</strong>，其余功能完全离线可用。</div>
+
+    <!-- ============ K8s ============ -->
+    <h2 id="docker">Docker 部署<a class="anchor" href="#docker">#</a></h2>
+    <p>镜像里装的是同一个静态二进制，运行时以非 root 用户执行。数据、密钥、日志都在容器内 <code>/data</code>。</p>
+
+    <div class="codewrap"><pre><span class="c"># 1. 启动（宿主目录 ./data 持久化全部状态）</span>
+<span class="c">#    VERSION 用发布版本号；只想要最新版可换成 ghcr.io/jlon/stellar:latest</span>
+<span class="p">$</span> VERSION=1.0.0
+<span class="p">$</span> docker run -d --name stellar \
+    -p 9527:9527 \
+    -v $(pwd)/data:/data \
+    --restart unless-stopped \
+    ghcr.io/jlon/stellar:${VERSION}
+
+<span class="c"># 2. 取一次性管理员密码</span>
+<span class="p">$</span> docker logs stellar 2&gt;&amp;1 | grep 'password:'
+
+<span class="c"># 3. 验证</span>
+<span class="p">$</span> curl -f http://127.0.0.1:9527/health</pre><button class="copy">复制</button></div>
+
+    <h3 id="docker-compose">docker compose<a class="anchor" href="#docker-compose">#</a></h3>
+    <div class="codewrap"><pre>services:
+  stellar:
+    image: ghcr.io/jlon/stellar:1.0.0   # 或 :latest
+    container_name: stellar
+    ports:
+      - "9527:9527"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9527/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s</pre><button class="copy">复制</button></div>
+
+    <h3 id="常用参数与变量">常用参数与变量<a class="anchor" href="#常用参数与变量">#</a></h3>
+    <div class="tw"><table>
+      <tr><th>项</th><th>说明</th></tr>
+      <tr><td>数据目录</td><td>容器内固定 <code>/data</code>，用卷挂出来即可；<strong>必须持久化</strong>，否则容器重建即丢数据与密钥</td></tr>
+      <tr><td><code>APP_SERVER_PORT</code></td><td>容器内监听端口，默认 9527；改端口时记得同步映射</td></tr>
+      <tr><td><code>APP_JWT_SECRET</code></td><td>固定登录密钥；不设则自动生成 <code>/data/.jwt-secret</code> 随卷持久</td></tr>
+      <tr><td><code>STELLAR_ROOT_PASSWORD</code></td><td>指定初始管理员密码，省去查日志</td></tr>
+      <tr><td><code>APP_DATABASE_URL</code></td><td>指向外部 MySQL / PostgreSQL（容器内无需装库）</td></tr>
+    </table></div>
+
+    <h3 id="升级与清理">升级与清理<a class="anchor" href="#升级与清理">#</a></h3>
+    <div class="codewrap"><pre><span class="p">$</span> VERSION=1.0.0
+<span class="p">$</span> docker pull ghcr.io/jlon/stellar:${VERSION}
+<span class="p">$</span> docker rm -f stellar
+<span class="p">$</span> docker run -d --name stellar -p 9527:9527 -v $(pwd)/data:/data ghcr.io/jlon/stellar:${VERSION}
+<span class="c"># 数据卷不动，升级就是重建容器</span>
+
+<span class="c"># 确认不再需要后再删数据</span>
+<span class="p">$</span> rm -rf ./data</pre><button class="copy">复制</button></div>
+    <div class="note">镜像发布在 GitHub Container Registry，稳定版本会打 <code>1.0.0</code> / <code>1.0</code> / <code>1</code> / <code>latest</code> 四个标签。<br>
+    私有化环境可先 <code>docker save</code> 导出 tar，拷进内网后 <code>docker load</code>。</div>
+
+    <h2 id="helm">Kubernetes 部署：Helm（推荐）<a class="anchor" href="#helm">#</a></h2>
+    <p>Chart 位于仓库 <code>deploy/chart/</code>，已预置探针、资源限额、Ingress 与持久化。</p>
+
+    <div class="codewrap"><pre><span class="c"># 从源码目录安装</span>
+<span class="p">$</span> git clone https://github.com/jlon/stellar.git &amp;&amp; cd stellar
+<span class="p">$</span> helm install stellar deploy/chart --namespace stellar --create-namespace
+
+<span class="c"># 或使用发布出来的 chart 包</span>
+<span class="p">$</span> helm install stellar https://github.com/jlon/stellar/releases/download/v1.0.0/stellar-1.0.0.tgz \
+    --namespace stellar --create-namespace
+
+<span class="c"># 取一次性管理员密码</span>
+<span class="p">$</span> kubectl logs -n stellar deploy/stellar | grep 'password:'</pre><button class="copy">复制</button></div>
+
+    <h4>常用 values</h4>
+    <div class="tw"><table>
+      <tr><th>键</th><th>默认</th><th>说明</th></tr>
+      <tr><td><code>replicaCount</code></td><td>1</td><td>固定为 1：内置 SQLite 只支持单写者。需要多副本请改用外部 MySQL / PostgreSQL</td></tr>
+      <tr><td><code>image.repository</code> / <code>tag</code></td><td>ghcr.io/jlon/stellar / Chart.AppVersion</td><td>镜像地址与版本</td></tr>
+      <tr><td><code>service.port</code></td><td>9527</td><td>Service 端口</td></tr>
+      <tr><td><code>ingress.enabled</code> / <code>ingress.hosts</code></td><td>false / —</td><td>外部访问入口</td></tr>
+      <tr><td><code>persistence.enabled</code> / <code>size</code></td><td>true / 10Gi</td><td>PVC 大小；<code>existingClaim</code> 可复用已有 PVC</td></tr>
+      <tr><td><code>resources</code></td><td>{}</td><td>requests/limits</td></tr>
+      <tr><td><code>readinessProbe</code> / <code>livenessProbe</code></td><td>已配置</td><td>默认探测 <code>/health</code></td></tr>
+      <tr><td><code>jwtSecret</code></td><td>""</td><td>留空时由 Chart 随机生成 32 位密钥写入 Secret。<strong>注意：每次 <code>helm upgrade</code> 都会重新随机 → 所有登录态失效</strong>，生产建议显式设置</td></tr>
+      <tr><td><code>configuration</code></td><td>内置默认</td><td>渲染成 ConfigMap 挂到 <code>/app/conf/config.toml</code></td></tr>
+    </table></div>
+
+    <div class="codewrap"><pre><span class="c"># 生产常用：指定镜像、加大存储、开 Ingress，并把 secrets 放 values 文件</span>
+<span class="p">$</span> cat &gt; stellar-values.yaml &lt;&lt;'EOF'
+image:
+  tag: "1.0.0"
+persistence:
+  size: 50Gi
+ingress:
+  enabled: true
+  hosts:
+    - host: stellar.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+resources:
+  requests: { cpu: "500m", memory: "512Mi" }
+  limits:   { cpu: "2",    memory: "2Gi" }
+EOF
+<span class="p">$</span> helm install stellar deploy/chart -n stellar --create-namespace -f stellar-values.yaml
+
+<span class="c"># 升级与回滚</span>
+<span class="p">$</span> helm upgrade stellar deploy/chart -n stellar -f stellar-values.yaml
+<span class="p">$</span> helm rollback stellar 1 -n stellar
+<span class="p">$</span> helm uninstall stellar -n stellar        <span class="c"># PVC 默认保留</span></pre><button class="copy">复制</button></div>
+
+    <h2 id="k8s-yaml">Kubernetes 部署：原生 YAML<a class="anchor" href="#k8s-yaml">#</a></h2>
+    <p>不想引入 Helm 时，用仓库里的单文件清单，包含 6 类资源：</p>
+    <div class="tw"><table>
+      <tr><th>资源</th><th>名称</th><th>作用</th></tr>
+      <tr><td>Namespace</td><td><code>stellar</code></td><td>独立命名空间</td></tr>
+      <tr><td>ConfigMap</td><td><code>stellar-config</code></td><td>渲染 <code>config.toml</code>，挂到 <code>/app/conf</code></td></tr>
+      <tr><td>Secret</td><td><code>stellar-secret</code></td><td>JWT 密钥（<code>APP_JWT_SECRET</code>）</td></tr>
+      <tr><td>PersistentVolumeClaim</td><td><code>stellar-data</code></td><td>数据卷，挂到容器 <code>/data</code></td></tr>
+      <tr><td>Deployment</td><td><code>stellar</code></td><td>工作负载（单副本）</td></tr>
+      <tr><td>Service / Ingress</td><td><code>stellar</code></td><td>集群内访问与外部入口</td></tr>
+    </table></div>
+
+    <div class="codewrap"><pre><span class="c"># 一键部署</span>
+<span class="p">$</span> kubectl apply -f deploy/k8s/deploy-all.yaml
+
+<span class="c"># 等待就绪并取密码</span>
+<span class="p">$</span> kubectl -n stellar rollout status deploy/stellar
+<span class="p">$</span> kubectl -n stellar logs deploy/stellar | grep 'password:'
+
+<span class="c"># 本地验证</span>
+<span class="p">$</span> kubectl -n stellar port-forward svc/stellar 9527:9527
+<span class="p">$</span> curl http://127.0.0.1:9527/health</pre><button class="copy">复制</button></div>
+
+    <div class="note warn"><b>部署前务必修改两处</b>：<code>Secret</code> 里的 <code>jwt-secret</code>（用 <code>openssl rand -base64 32</code> 生成），以及 <code>Ingress</code> 里的 <code>host</code> 域名。</div>
+
+    <h2 id="k8s-detail">Kubernetes：持久化、探针与数据路径<a class="anchor" href="#k8s-detail">#</a></h2>
+    <ul>
+      <li><strong>数据卷</strong>：容器内一切状态都在 <code>/data</code>（<code>stellar.db</code>、<code>.jwt-secret</code>、<code>logs/</code>）。清单与 Chart 都把它挂到 PVC，<strong>不要用 <code>emptyDir</code></strong>，否则 Pod 重建即丢数据。</li>
+      <li><strong>副本数</strong>：内置 SQLite 只允许单写者，因此 <code>replicas</code> 固定为 1。需要高可用时把 <code>database.url</code> 指向外部 MySQL/PostgreSQL，再自行放开副本数。</li>
+      <li><strong>探针</strong>：<code>/health</code> 用于存活与就绪；数据库迁移发生在启动阶段，首次启动给足 <code>initialDelaySeconds</code>（清单默认 30s）。</li>
+      <li><strong>配置来源</strong>：ConfigMap 提供 <code>config.toml</code> 时走配置文件模式；不提供则完全零配置启动，数据落在数据目录默认位置。</li>
+      <li><strong>日志</strong>：写在 <code>/data/logs</code> 的同时输出到 stdout，所以 <code>kubectl logs</code> 与 PVC 里都能看到；<code>kubectl logs</code> 取一次性密码最方便。</li>
+      <li><strong>PVC 扩容</strong>：<code>kubectl -n stellar patch pvc stellar-data -p '{"spec":{"resources":{"requests":{"storage":"50Gi"}}}}'</code>（需 StorageClass 支持在线扩容）。</li>
+    </ul>
+
+    <!-- ============ 参考 ============ -->
+    <h2 id="cli">命令行参数<a class="anchor" href="#cli">#</a></h2>
+    <p>命令形式为 <code>stellar server [数据目录] [参数]</code>。<strong>不写 <code>server</code> 时等价于 <code>stellar server</code></strong>。</p>
+    <div class="tw"><table>
+      <tr><th>参数</th><th>作用</th><th>示例</th></tr>
+      <tr><td><code>[数据目录]</code></td><td>位置参数。库、密钥、日志都放这里；默认 <code>$STELLAR_DATA_DIR</code> 或 <code>./data</code></td><td><code>server /var/lib/stellar</code></td></tr>
+      <tr><td><code>--config &lt;PATH&gt;</code></td><td>指定配置文件，走配置文件模式（数据路径由文件决定）</td><td><code>--config /etc/stellar/config.toml</code></td></tr>
+      <tr><td><code>--server-host &lt;HOST&gt;</code></td><td>监听地址，默认 <code>0.0.0.0</code></td><td><code>--server-host 127.0.0.1</code></td></tr>
+      <tr><td><code>--server-port &lt;PORT&gt;</code></td><td>监听端口，默认 <code>9527</code></td><td><code>--server-port 9090</code></td></tr>
+      <tr><td><code>--database-url &lt;URL&gt;</code></td><td>数据库连接串（sqlite / mysql / postgres）</td><td><code>--database-url mysql://u:p@db:3306/stellar</code></td></tr>
+      <tr><td><code>--jwt-secret &lt;SECRET&gt;</code></td><td>登录签名密钥；不设则自动生成并持久化</td><td><code>--jwt-secret "$(openssl rand -hex 32)"</code></td></tr>
+      <tr><td><code>--jwt-expires-in &lt;DURATION&gt;</code></td><td>登录有效期，默认 <code>24h</code></td><td><code>--jwt-expires-in 8h</code></td></tr>
+      <tr><td><code>--log-level &lt;LEVEL&gt;</code></td><td>日志级别</td><td><code>--log-level info,stellar_backend=debug</code></td></tr>
+      <tr><td><code>--metrics-interval-secs &lt;DURATION&gt;</code></td><td>指标采集间隔，默认 30s</td><td><code>--metrics-interval-secs 1m</code></td></tr>
+      <tr><td><code>--metrics-retention-days &lt;DAYS&gt;</code></td><td>指标保留天数，默认 7d</td><td><code>--metrics-retention-days 30d</code></td></tr>
+      <tr><td><code>--metrics-enabled &lt;BOOL&gt;</code></td><td>是否启用采集</td><td><code>--metrics-enabled false</code></td></tr>
+      <tr><td><code>--audit-database &lt;DB&gt;</code></td><td>StarRocks 审计库名，默认 <code>starrocks_audit_db__</code></td><td><code>--audit-database audit_db</code></td></tr>
+      <tr><td><code>--audit-table &lt;TABLE&gt;</code></td><td>审计表名，默认 <code>starrocks_audit_tbl__</code></td><td><code>--audit-table audit_tbl</code></td></tr>
+      <tr><td><code>--help</code> / <code>--version</code></td><td>查看帮助与版本</td><td><code>stellar server --help</code></td></tr>
+    </table></div>
+
+    <h2 id="env">环境变量<a class="anchor" href="#env">#</a></h2>
+    <p>适合容器与 systemd（<code>Environment=</code>）场景。<strong>优先级：命令行 &gt; 环境变量 &gt; 配置文件 &gt; 默认值。</strong></p>
+    <div class="tw"><table>
+      <tr><th>变量</th><th>对应配置</th><th>说明</th></tr>
+      <tr><td><code>STELLAR_DATA_DIR</code></td><td>数据目录</td><td>等价于 <code>server</code> 后的位置参数</td></tr>
+      <tr><td><code>STELLAR_ROOT_PASSWORD</code></td><td>首次启动</td><td>指定初始管理员密码，避免随机密码</td></tr>
+      <tr><td><code>APP_SERVER_HOST</code></td><td>server.host</td><td>监听地址</td></tr>
+      <tr><td><code>APP_SERVER_PORT</code></td><td>server.port</td><td>监听端口</td></tr>
+      <tr><td><code>APP_DATABASE_URL</code></td><td>database.url</td><td>数据库连接串</td></tr>
+      <tr><td><code>APP_JWT_SECRET</code></td><td>auth.jwt_secret</td><td>登录签名密钥</td></tr>
+      <tr><td><code>APP_JWT_EXPIRES_IN</code></td><td>auth.jwt_expires_in</td><td>登录有效期</td></tr>
+      <tr><td><code>APP_PERMISSION_REQUEST_ENCRYPTION_KEY</code></td><td>security.permission_request_encryption_key</td><td>加密权限申请中的数据库账号密码。<strong>必须与 JWT 密钥不同</strong>；不配置则"新建数据库用户"这类申请会拒绝提交</td></tr>
+      <tr><td><code>APP_LOG_LEVEL</code></td><td>logging.level</td><td>日志级别</td></tr>
+      <tr><td><code>APP_METRICS_ENABLED</code></td><td>metrics.enabled</td><td>采集开关</td></tr>
+      <tr><td><code>APP_METRICS_INTERVAL_SECS</code></td><td>metrics.interval_secs</td><td>采集间隔（支持 <code>30s</code>/<code>5m</code>/<code>1h</code>）</td></tr>
+      <tr><td><code>APP_METRICS_RETENTION_DAYS</code></td><td>metrics.retention_days</td><td>保留天数（支持 <code>7d</code>/<code>2w</code>）</td></tr>
+      <tr><td><code>APP_AUDIT_DATABASE</code></td><td>audit.database</td><td>审计库名</td></tr>
+      <tr><td><code>APP_AUDIT_TABLE</code></td><td>audit.table</td><td>审计表名</td></tr>
+    </table></div>
+
+    <h2 id="config">配置文件字段<a class="anchor" href="#config">#</a></h2>
+    <p>只在显式传入 <code>--config</code> 时读取。完整示例（含默认值）：</p>
+    <div class="codewrap"><pre>[server]
+host = "0.0.0.0"                          <span class="c"># 监听地址</span>
+port = 9527                               <span class="c"># 监听端口</span>
+
+[database]
+url = "sqlite://data/stellar.db"          <span class="c"># 内置 SQLite（相对 WorkingDirectory）</span>
+<span class="c"># url = "sqlite:///var/lib/stellar/stellar.db"</span>
+<span class="c"># url = "mysql://user:pass@127.0.0.1:3306/stellar?charset=utf8mb4"</span>
+<span class="c"># url = "postgres://user:pass@127.0.0.1:5432/stellar"</span>
+
+[auth]
+jwt_secret = ""                           <span class="c"># --config 模式必须填写，或设置 APP_JWT_SECRET</span>
+jwt_expires_in = "24h"                    <span class="c"># 登录有效期</span>
+
+[security]
+permission_request_encryption_key = ""    <span class="c"># 加密权限申请里的数据库密码；留空则该功能拒绝执行（见下文）</span>
+
+[logging]
+level = "info,stellar_backend=debug"      <span class="c"># 日志级别</span>
+file = "logs/stellar.log"                 <span class="c"># 日志文件；删除此行则只输出到控制台</span>
+
+[static_config]
+enabled = true                            <span class="c"># 是否提供 Web 控制台（内嵌资源）</span>
+web_root = "web"
+
+[metrics]
+interval_secs = "30s"                     <span class="c"># 指标采集间隔</span>
+retention_days = "7d"                     <span class="c"># 指标保留时长</span>
+enabled = true                            <span class="c"># 采集开关</span>
+
+[audit]
+database = "starrocks_audit_db__"         <span class="c"># StarRocks 审计库</span>
+table = "starrocks_audit_tbl__"           <span class="c"># StarRocks 审计表</span>
+
+[agent]
+enabled = true                            <span class="c"># AI 运维事件循环；离线环境可关</span>
+interval_secs = "30s"                     <span class="c"># 循环周期</span>
+event_retention_days = 14                 <span class="c"># 事件保留天数</span></pre><button class="copy">复制</button></div>
+
+    <div class="note warn">启动时会校验：端口不能为 0、数据库连接串不能为空、<code>metrics.interval_secs</code> 与 <code>retention_days</code> 必须大于 0。配置错误会直接拒绝启动并在日志里说明原因。</div>
+
+    <!-- ============ 运维 ============ -->
+    <h2 id="after">部署之后：让平台真正可用<a class="anchor" href="#after">#</a></h2>
+    <p>服务跑起来只是第一步。下面四步决定这个平台能不能日常用起来。</p>
+
+    <h3 id="1-登录并改掉初始密码">1. 登录并改掉初始密码<a class="anchor" href="#1-登录并改掉初始密码">#</a></h3>
+    <p>浏览器打开 <code>http://&lt;服务器IP&gt;:9527</code>，用 <code>admin</code> 与一次性密码登录，随后在右上角用户菜单 → 用户设置里修改密码。</p>
+
+    <h3 id="2-添加被管理集群">2. 添加被管理集群<a class="anchor" href="#2-添加被管理集群">#</a></h3>
+    <p>进入「集群管理 → 添加集群」，填写：</p>
+    <div class="tw stack"><table>
+      <tr><th>字段</th><th>说明</th></tr>
+      <tr><td>部署模式</td><td>存算一体（shared-nothing）或存算分离（shared-data），选错会导致节点页与容量信息不匹配</td></tr>
+      <tr><td>集群类型</td><td>StarRocks 或 Apache Doris</td></tr>
+      <tr><td>FE 地址</td><td>FE 节点的 IP 或域名</td></tr>
+      <tr><td>HTTP 端口 / 查询端口</td><td>默认 8030 / 9030；改了端口要按实际填</td></tr>
+      <tr><td>账号</td><td>用于管理操作的账号；建议先用监控账号连通测试，再按需授权</td></tr>
+    </table></div>
+    <div class="note">Stellar 需要同时访问 FE 的 <strong>9030（MySQL 协议）</strong>与 <strong>8030（HTTP）</strong>；后者用于拉取指标，不通会导致监控图全为 0。</div>
+
+    <h3 id="3-用只读监控账号-不要用-root">3. 用只读监控账号，不要用 root<a class="anchor" href="#3-用只读监控账号-不要用-root">#</a></h3>
+    <p>在 StarRocks / Doris 侧创建一个专用只读账号，再把它填到集群配置里。脚本与所需权限见
+      <a href="https://github.com/jlon/stellar/blob/main/scripts/permissions/README_PERMISSIONS.md">监控账号配置说明</a>。</p>
+
+    <h3 id="4-可选但建议">4. 可选但建议<a class="anchor" href="#4-可选但建议">#</a></h3>
+    <ul>
+      <li><strong>开启审计</strong>：在 StarRocks 侧配置审计插件后，「审计日志」页面才有数据（库表名对应 <code>[audit]</code> 配置）。</li>
+      <li><strong>外部数据库</strong>：单机 SQLite 足够；需要高可用或多人并发写入时切到 MySQL / PostgreSQL，参见 <a href="https://github.com/jlon/stellar/blob/main/docs/MYSQL_SUPPORT_DESIGN.md">外部数据库说明</a>。</li>
+      <li><strong>日志轮转</strong>：内置日志不自动删除，按前文配置 logrotate。</li>
+      <li><strong>组织与角色</strong>：多团队使用时先建组织，再按组织分配集群与用户，避免所有人挤在默认组织里。</li>
+    </ul>
+
+    <h2 id="ops">数据、备份、升级<a class="anchor" href="#ops">#</a></h2>
+
+    <h3 id="备份与恢复">备份与恢复<a class="anchor" href="#备份与恢复">#</a></h3>
+    <div class="codewrap"><pre><span class="c"># 备份：整个数据目录（停服后最稳）</span>
+<span class="p">$</span> sudo systemctl stop stellar
+<span class="p">$</span> sudo tar czf stellar-backup-$(date +%F).tgz -C /var/lib stellar
+<span class="p">$</span> sudo systemctl start stellar
+
+<span class="c"># Kubernetes</span>
+<span class="p">$</span> kubectl -n stellar exec deploy/stellar -- tar czf - -C /data . &gt; stellar-backup.tgz
+
+<span class="c"># 恢复：解回原路径后启动即可</span></pre><button class="copy">复制</button></div>
+
+    <h3 id="升级">升级<a class="anchor" href="#升级">#</a></h3>
+    <p>原则：<strong>替换程序，不动数据目录</strong>。启动时数据库结构变更会自动执行。</p>
+    <div class="tw stack"><table>
+      <tr><th>方式</th><th>操作</th></tr>
+      <tr><td>压缩包</td><td>停服 → 用新版 <code>bin/stellar</code> 覆盖 → 启服</td></tr>
+      <tr><td>deb</td><td><code>sudo apt install ./stellar-server-&lt;新版本&gt;-amd64.deb</code></td></tr>
+      <tr><td>npm</td><td><code>sudo npm install -g ./stellar-server-&lt;新版本&gt;.tgz</code></td></tr>
+      <tr><td>Docker</td><td><code>docker pull</code> 新镜像 → 用同一个数据卷重建容器</td></tr>
+      <tr><td>Helm</td><td><code>helm upgrade stellar deploy/chart -n stellar --set image.tag=&lt;新版本&gt;</code></td></tr>
+    </table></div>
+
+    <h3 id="日志">日志<a class="anchor" href="#日志">#</a></h3>
+    <ul>
+      <li>按天轮转，文件名形如 <code>stellar.2026-09-17</code>；<strong>不会自动删除</strong>，请用 logrotate 或定时任务清理。</li>
+      <li>日志目录不可写时<strong>不会崩溃</strong>：自动降级为只输出到 stdout 并打印一行告警。</li>
+      <li>控制台（右上角）可在「系统管理 → 操作日志」一键打包当前全部日志为 zip，含审计留痕。</li>
+      <li>logrotate 示例（必须用 <code>copytruncate</code>，因为进程持有文件句柄）：</li>
+    </ul>
+    <div class="codewrap"><pre>/var/lib/stellar/logs/stellar.* {
+    daily
+    rotate 14
+    compress
+    missingok
+    notifempty
+    copytruncate
+}</pre><button class="copy">复制</button></div>
+
+    <h3 id="健康检查">健康检查<a class="anchor" href="#健康检查">#</a></h3>
+    <div class="codewrap"><pre><span class="p">$</span> curl -f http://127.0.0.1:9527/health   <span class="c"># 就绪返回 OK</span>
+<span class="p">$</span> curl -f http://127.0.0.1:9527/ready    <span class="c"># 就绪探针</span></pre><button class="copy">复制</button></div>
+
+    <!-- ============ 排障 ============ -->
+    <h2 id="trouble">排障<a class="anchor" href="#trouble">#</a></h2>
+
+    <h3 id="启动失败怎么查">启动失败怎么查<a class="anchor" href="#启动失败怎么查">#</a></h3>
+    <div class="codewrap"><pre><span class="p">$</span> sudo systemctl status stellar -l        <span class="c"># 状态与最近输出</span>
+<span class="p">$</span> sudo journalctl -u stellar -n 80 --no-pager
+<span class="p">$</span> kubectl -n stellar logs deploy/stellar --tail=80</pre><button class="copy">复制</button></div>
+
+    <div class="tw stack"><table>
+      <tr><th>现象</th><th>原因与处理</th></tr>
+      <tr><td><code>Address already in use</code></td><td>端口被占用。换端口：<code>--server-port 9090</code> 或改配置里的 <code>server.port</code></td></tr>
+      <tr><td><code>Permission denied</code>（写日志/库）</td><td>数据目录属主不对。执行 <code>chown -R stellar:stellar /var/lib/stellar</code></td></tr>
+      <tr><td>页面 404 但 <code>/health</code> 正常</td><td>前端资源未启用或未构建进二进制：确认配置里 <code>static_config.enabled = true</code>，并使用官方发布的二进制</td></tr>
+      <tr><td>数据库连不上</td><td>检查 <code>database.url</code> 协议、账号权限与网络连通；外部库需提前建库</td></tr>
+      <tr><td>指标图都是 0</td><td>FE 的 <code>8030</code> 端口不通，或监控账号无权限。<code>/metrics</code> 只导出 FE 指标，BE 容量取自 <code>SHOW BACKENDS</code></td></tr>
+      <tr><td>忘记管理员密码</td><td>若数据目录为空时丢过密码：停服后删除 <code>stellar.db*</code> 会清空平台数据并重新生成密码；有数据时请从备份恢复</td></tr>
+      <tr><td>磁盘写满</td><td>内置 SQLite 与日志同在一处。清理 <code>logs/</code> 旧文件，或把 <code>database.url</code> 迁到外部库</td></tr>
+    </table></div>
+
+    <h3 id="关于审计数据">关于审计数据<a class="anchor" href="#关于审计数据">#</a></h3>
+    <p>「审计日志」页面读取的是 StarRocks 侧已开启的审计表（默认库 <code>starrocks_audit_db__</code>、表 <code>starrocks_audit_tbl__</code>）。<strong>需要在 StarRocks 集群上先配置审计插件</strong>，并把库表名对应到 Stellar 的 <code>[audit]</code> 配置；未配置时该页面为空，不影响其他功能。</p>
+
+    <h2 id="uninstall">卸载<a class="anchor" href="#uninstall">#</a></h2>
+    <div class="codewrap"><pre><span class="c"># deb</span>
+<span class="p">$</span> sudo systemctl disable --now stellar
+<span class="p">$</span> sudo apt remove stellar-server        <span class="c"># 保留 /opt/stellar 数据</span>
+<span class="p">$</span> sudo apt purge stellar-server         <span class="c"># 连配置一起删除</span>
+<span class="p">$</span> sudo rm -rf /opt/stellar              <span class="c"># 确认不再需要数据后再删</span>
+
+<span class="c"># 压缩包 / npm</span>
+<span class="p">$</span> sudo systemctl disable --now stellar
+<span class="p">$</span> sudo rm -f /etc/systemd/system/stellar.service &amp;&amp; sudo systemctl daemon-reload
+<span class="p">$</span> sudo rm -f /usr/local/bin/stellar
+<span class="p">$</span> sudo rm -rf /var/lib/stellar          <span class="c"># 数据目录，谨慎</span>
+
+<span class="c"># Kubernetes</span>
+<span class="p">$</span> helm uninstall stellar -n stellar     <span class="c"># PVC 会保留</span>
+<span class="p">$</span> kubectl -n stellar delete pvc stellar-data   <span class="c"># 确认后再删数据</span></pre><button class="copy">复制</button></div>
+
+    <div class="note">相关文档：<a href="https://github.com/jlon/stellar/blob/main/docs/deploy/DEPLOYMENT_GUIDE.md">部署指南（Markdown 版）</a> ·
+    <a href="https://github.com/jlon/stellar/blob/main/docs/GHCR_GUIDE.md">容器镜像说明</a> ·
+    <a href="https://github.com/jlon/stellar/blob/main/docs/MYSQL_SUPPORT_DESIGN.md">外部数据库（MySQL / PostgreSQL）</a> ·
+    <a href="https://github.com/jlon/stellar/blob/main/scripts/permissions/README_PERMISSIONS.md">StarRocks 监控账号配置</a></div>
+  </main>
+
+  <aside class="toc">
+    <div>本页目录</div>
+    <a href="#before">开始之前</a>
+    <a href="#binary">二进制裸布</a>
+    <a href="#systemd">systemd 托管</a>
+    <a href="#deb">Debian 包</a>
+    <a href="#npm">npm</a>
+    <a href="#offline">离线环境</a>
+    <a href="#helm">Helm</a>
+    <a href="#k8s-yaml">原生 YAML</a>
+    <a href="#cli">命令行参数</a>
+    <a href="#env">环境变量</a>
+    <a href="#config">配置文件</a>
+    <a href="#ops">备份与升级</a>
+    <a href="#trouble">排障</a>
+    <a href="#uninstall">卸载</a>
+  </aside>
+</div>
+
+<footer>
+  <div class="in">
+    <span>© 2026 Stellar · Apache License 2.0</span>
+    <span><a href="../">首页</a> · <a href="https://github.com/jlon/stellar">GitHub</a> · <a href="https://github.com/jlon/stellar/releases">版本发布</a></span>
+  </div>
+</footer>
+
+<button class="totop" id="totop" aria-label="回到顶部">↑</button>
+
+<script>
+// 代码块复制
+document.querySelectorAll('.codewrap').forEach(w => {
+  const btn = w.querySelector('.copy'); if (!btn) return;
+  btn.addEventListener('click', async () => {
+    const pre = w.querySelector('pre');
+    const text = pre.innerText.split('\n')
+      .map(l => l.replace(/^\$\s*/, ''))            // 去掉命令前缀 $
+      .filter(l => l.trim() && !/^[#\u21b3]/.test(l.trim())) // 整行剔除注释、↳ 提示、空行
+      .join('\n');
+    try { await navigator.clipboard.writeText(text); btn.textContent = '已复制'; btn.classList.add('done'); }
+    catch (e) { btn.textContent = '复制失败'; }
+    setTimeout(() => { btn.textContent = '复制'; btn.classList.remove('done'); }, 1800);
+  });
+});
+
+// 回到顶部
+const totop = document.getElementById('totop');
+const onTop = () => totop.classList.toggle('on', window.scrollY > 700);
+onTop(); addEventListener('scroll', onTop, { passive: true });
+totop.addEventListener('click', () => scrollTo({ top: 0 }));
+
+// 手机端默认收起目录（桌面端 summary 被 CSS 隐藏，保持展开）
+if (matchMedia('(max-width:860px)').matches) document.getElementById('navBox').open = false;
+
+// 侧栏与 TOC 高亮当前章节
+const heads = [...document.querySelectorAll('main h2[id]')];
+const links = [...document.querySelectorAll('aside a[href^="#"], aside.toc a[href^="#"]')];
+const mark = () => {
+  const y = window.scrollY + 120;
+  let cur = heads[0]?.id;
+  for (const h of heads) if (h.offsetTop <= y) cur = h.id;
+  links.forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + cur));
+
+  // 右侧目录只列当前章节的小节，避免与左栏重复
+  const toc = document.querySelector('aside.toc');
+  if (toc && cur) {
+    const h2 = document.getElementById(cur);
+    const subs = [];
+    let n = h2.nextElementSibling;
+    while (n && n.tagName !== 'H2') { if (n.tagName === 'H3' && n.id) subs.push(n); n = n.nextElementSibling; }
+    if (toc.dataset.cur !== cur) {
+      toc.dataset.cur = cur;
+      toc.innerHTML = '<div>' + h2.textContent.replace('#','').trim() + '</div>' +
+        subs.map(s => `<a href="#${s.id}">${s.textContent.replace('#','').trim()}</a>`).join('');
+    }
+  }
+};
+mark(); addEventListener('scroll', mark, { passive: true });
+</script>
+</body>
+</html>
