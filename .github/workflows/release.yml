@@ -105,7 +105,9 @@ jobs:
             sha256sum --check ./*.tgz.sha256 ./*.deb.sha256
           )
           dpkg-deb --info build/dist/*.deb >/dev/null
-          dpkg-deb --contents build/dist/*.deb | grep -q '/lib/systemd/system/stellar.service'
+          # grep -q would exit early and SIGPIPE dpkg-deb's tar under pipefail;
+          # consume the full listing instead.
+          dpkg-deb --contents build/dist/*.deb | grep '/lib/systemd/system/stellar.service' >/dev/null
 
       - name: Smoke test npm and tarball packages
         run: make npm-e2e
