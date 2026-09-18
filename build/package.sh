@@ -63,8 +63,13 @@ echo -e "\033[1;33m[package]\033[0m Packaging $DIST_DIR -> ${PACKAGE_NAME}.tar.g
 find "$DIST_DIR/data" "$DIST_DIR/logs" "$DIST_DIR/lib" -mindepth 1 -delete 2>/dev/null || true
 rm -rf "$DIST_DIR/migrations"
 
+# Ship the systemd unit inside the tarball so tar users can follow the
+# deployment guide without cloning the source tree (deploy/systemd/).
+mkdir -p "$DIST_DIR/deploy/systemd"
+cp "$PROJECT_ROOT/deploy/systemd/stellar.service" "$DIST_DIR/deploy/systemd/" 2>/dev/null || true
+
 cd "$DIST_DIR"
-tar -czf "${PACKAGE_NAME}.tar.gz" --transform 's,^,stellar/,' bin conf lib data logs
+tar -czf "${PACKAGE_NAME}.tar.gz" --transform 's,^,stellar/,' bin conf lib data logs deploy
 
 sha256sum "${PACKAGE_NAME}.tar.gz" > SHA256SUMS
 
