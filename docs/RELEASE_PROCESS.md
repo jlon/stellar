@@ -115,15 +115,15 @@ make build
 
 # 4. 测试启动
 ./build/dist/bin/stellar.sh start
-curl http://localhost:8080/health
+curl http://localhost:9527/health
 ./build/dist/bin/stellar.sh stop
 
 # 5. 测试 Docker 构建（可选）
 make docker-build
-docker run -d -p 8080:8080 \
+docker run -d -p 9527:9527 \
   -e APP_JWT_SECRET="$(openssl rand -hex 32)" \
   stellar:latest
-curl http://localhost:8080/health
+curl http://localhost:9527/health
 docker stop $(docker ps -q --filter ancestor=stellar:latest)
 ```
 
@@ -235,10 +235,10 @@ docker pull ghcr.io/YOUR_USERNAME/stellar:latest
 docker run --rm ghcr.io/YOUR_USERNAME/stellar:1.2.3 --version
 
 # 3. 测试运行
-docker run -d -p 8080:8080 \
+docker run -d -p 9527:9527 \
   -e APP_JWT_SECRET="$(openssl rand -hex 32)" \
   ghcr.io/YOUR_USERNAME/stellar:1.2.3
-curl http://localhost:8080/health
+curl http://localhost:9527/health
 ```
 
 #### 检查 Helm Chart
@@ -357,7 +357,7 @@ vim backend/Cargo.toml frontend/package.json deploy/chart/Chart.yaml CHANGELOG.m
 # 2. 本地测试
 make clean && make build
 ./build/dist/bin/stellar.sh start
-curl http://localhost:8080/health
+curl http://localhost:9527/health
 ./build/dist/bin/stellar.sh stop
 
 # 3. 提交

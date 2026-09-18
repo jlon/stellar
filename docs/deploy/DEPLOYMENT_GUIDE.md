@@ -46,7 +46,7 @@
 |-----|------|
 | 操作系统 | 64 位 Linux（内核 3.10+） |
 | 硬件 | 2 核 CPU / 2 GB 内存 / 10 GB 磁盘（最低） |
-| 端口 | TCP 8080（Web 界面与 API，可改） |
+| 端口 | TCP 9527（Web 界面与 API，可改） |
 | 数据库 | 无需安装：内置 SQLite；生产也可选 MySQL / PostgreSQL |
 | 被管理集群 | StarRocks 或 Apache Doris 的 FE 地址与账号（安装后再在界面上添加） |
 
@@ -98,7 +98,7 @@ sudo journalctl -u stellar | grep 'password:'
 | 项目 | 值 |
 |-----|-----|
 | 服务 | `systemctl status stellar` |
-| 访问地址 | http://<服务器IP>:8080 |
+| 访问地址 | http://<服务器IP>:9527 |
 | 程序 | `/opt/stellar/bin/stellar` |
 | 数据目录 | `/opt/stellar`（数据库与日志在 `data/`、`logs/` 子目录） |
 | 配置文件 | `/opt/stellar/conf/config.toml` |
@@ -130,7 +130,7 @@ nohup ./bin/stellar server /var/lib/stellar > /var/lib/stellar/console.log 2>&1 
 grep 'password:' /var/lib/stellar/console.log
 ```
 
-访问 http://<服务器IP>:8080。
+访问 http://<服务器IP>:9527。
 
 > 上面用 `nohup` 是为了快速体验；**生产环境请务必用 systemd 托管**（进程崩溃自动拉起、开机自启）。
 > 参考服务文件已在压缩包外的仓库中提供：[deploy/systemd/stellar.service](https://github.com/jlon/stellar/blob/main/deploy/systemd/stellar.service)。
@@ -147,7 +147,7 @@ grep 'password:' /var/lib/stellar/console.log
 # 1. 启动（数据持久化在宿主目录 ./data）
 docker run -d \
   --name stellar \
-  -p 8080:8080 \
+  -p 9527:9527 \
   -v $(pwd)/data:/data \
   --restart unless-stopped \
   ghcr.io/jlon/stellar:1.0.0
@@ -156,7 +156,7 @@ docker run -d \
 docker logs stellar 2>&1 | grep 'password:'
 ```
 
-访问 http://<服务器IP>:8080。
+访问 http://<服务器IP>:9527。
 
 升级：`docker pull` 新版本镜像 → `docker rm -f stellar` → 用同一 `-v` 卷重新 `docker run`。
 
@@ -168,12 +168,12 @@ services:
     image: ghcr.io/jlon/stellar:1.0.0
     container_name: stellar
     ports:
-      - "8080:8080"
+      - "9527:9527"
     volumes:
       - ./data:/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:9527/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -237,7 +237,7 @@ stellar server /var/lib/stellar
 ```toml
 [server]
 host = "0.0.0.0"          # 监听地址
-port = 8080               # 监听端口
+port = 9527               # 监听端口
 
 [database]
 # 内置 SQLite（默认）；也可指向外部 MySQL / PostgreSQL
@@ -282,7 +282,7 @@ enabled = true            # 是否启用采集
 ### 健康检查
 
 ```bash
-curl http://127.0.0.1:8080/health     # 返回 OK 即正常
+curl http://127.0.0.1:9527/health     # 返回 OK 即正常
 ```
 
 ### 查看与打包日志
@@ -292,11 +292,11 @@ curl http://127.0.0.1:8080/health     # 返回 OK 即正常
 命令行：
 
 ```bash
-TOKEN=$(curl -s -X POST http://127.0.0.1:8080/api/auth/login \
+TOKEN=$(curl -s -X POST http://127.0.0.1:9527/api/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"***"}' | jq -r .token)
 curl -f -H "Authorization: Bearer $TOKEN" -o stellar-logs.zip \
-  http://127.0.0.1:8080/api/system/logs/archive
+  http://127.0.0.1:9527/api/system/logs/archive
 ```
 
 ### 备份与恢复
@@ -370,4 +370,4 @@ stellar server /var/lib/stellar --server-port 9090
 - [版本发布页（全部安装包）](https://github.com/jlon/stellar/releases)
 - [Docker 镜像（GHCR）](https://github.com/jlon/stellar/pkgs/container/stellar)
 - [操作审计与权限说明](https://github.com/jlon/stellar/blob/main/docs/PERMISSION_MANAGEMENT_DESIGN.md)
-- [API 文档](https://github.com/jlon/stellar#api-文档)：服务启动后访问 `http://<host>:8080/swagger-ui/`
+- [API 文档](https://github.com/jlon/stellar#api-文档)：服务启动后访问 `http://<host>:9527/swagger-ui/`

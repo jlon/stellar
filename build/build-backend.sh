@@ -118,7 +118,7 @@ echo -e "${YELLOW}[3/4]${NC} Creating production configuration file..."
 cat > "$DIST_DIR/conf/config.toml" << 'EOF'
 [server]
 host = "0.0.0.0"
-port = 8080
+port = 9527
 
 [database]
 url = "sqlite://data/stellar.db"
@@ -237,7 +237,7 @@ start_service() {
     echo -e "${YELLOW}[INFO]${NC} 创建必要的目录..."
     mkdir -p "$LOG_DIR"
     HOST="${HOST:-0.0.0.0}"
-    PORT="${PORT:-8080}"
+    PORT="${PORT:-9527}"
 
     echo -e "${GREEN}[CONFIG]${NC} 配置信息:"
     echo "  - 二进制文件: $BINARY_PATH"
@@ -270,8 +270,11 @@ echo ""
             echo -e "${YELLOW}[警告]${NC} Backend已启动但健康检查失败，请查看日志"
         fi
     else
-        echo -e "${RED}[ERROR]${NC} 后端启动失败，请查看日志:"
-        echo "  tail -f $LOG_FILE"
+        echo -e "${RED}[ERROR]${NC} 后端启动失败，最近 10 行日志:"
+        echo "  ----------------------------------------"
+        tail -n 10 "$LOG_FILE" 2>/dev/null || echo "  (无日志输出: $LOG_FILE)"
+        echo "  ----------------------------------------"
+        echo -e "${YELLOW}完整日志:${NC} tail -f $LOG_FILE"
         rm -f "$PID_FILE"
         exit 1
     fi
@@ -332,11 +335,11 @@ show_status() {
         echo "  - 二进制文件: $BINARY_PATH"
         echo "  - 日志文件: $LOG_FILE"
         echo "  - 数据目录: $DATA_DIR"
-        echo "  - 健康检查: http://${HOST:-0.0.0.0}:${PORT:-8080}/health"
-        echo "  - Web UI: http://${HOST:-0.0.0.0}:${PORT:-8080}"
+        echo "  - 健康检查: http://${HOST:-0.0.0.0}:${PORT:-9527}/health"
+        echo "  - Web UI: http://${HOST:-0.0.0.0}:${PORT:-9527}"
         
         # 测试健康检查
-        if curl -s "http://${HOST:-0.0.0.0}:${PORT:-8080}/health" > /dev/null 2>&1; then
+        if curl -s "http://${HOST:-0.0.0.0}:${PORT:-9527}/health" > /dev/null 2>&1; then
             echo -e "  - 健康状态: ${GREEN}✅ 正常${NC}"
         else
             echo -e "  - 健康状态: ${RED}❌ 异常${NC}"

@@ -229,7 +229,7 @@ impl Config {
     ///
     /// Supported environment variables:
     /// - APP_SERVER_HOST: Server host (default: 0.0.0.0)
-    /// - APP_SERVER_PORT: Server port (default: 8080)
+    /// - APP_SERVER_PORT: Server port (default: 9527)
     /// - APP_DATABASE_URL: Database URL (default: sqlite://data/stellar.db)
     /// - APP_JWT_SECRET: JWT secret key
     /// - APP_JWT_EXPIRES_IN: JWT expiration time (e.g., "24h")
@@ -454,7 +454,7 @@ impl Config {
 
 impl Default for ServerConfig {
     fn default() -> Self {
-        Self { host: "0.0.0.0".to_string(), port: 8080 }
+        Self { host: "0.0.0.0".to_string(), port: 9527 }
     }
 }
 

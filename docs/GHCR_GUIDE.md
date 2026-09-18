@@ -95,7 +95,7 @@ echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
 ```bash
 docker run -d \
   --name stellar \
-  -p 8080:8080 \
+  -p 9527:9527 \
   -v $(pwd)/data:/data \
   ghcr.io/jlon/stellar:latest
 ```
@@ -198,7 +198,7 @@ docker run -d \
 ```bash
 # 使用 GitHub Container Registry 镜像（推荐）
 docker pull ghcr.io/jlon/stellar:latest
-docker run -d -p 8080:8080 --name stellar \
+docker run -d -p 9527:9527 --name stellar \
   -v $(pwd)/data:/data \
   ghcr.io/jlon/stellar:latest
 

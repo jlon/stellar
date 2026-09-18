@@ -79,7 +79,7 @@ COPY --chmod=755 deploy/docker/entrypoint.sh /usr/local/bin/stellar-entrypoint
 RUN printf '%s\n' \
     '[server]' \
     'host = "0.0.0.0"' \
-    'port = 8080' \
+    'port = 9527' \
     '' \
     '[database]' \
     'url = "sqlite://data/stellar.db"' \
@@ -105,10 +105,10 @@ RUN printf '%s\n' \
     && chown -R starrocks:starrocks /app
 
 # Entrypoint normalizes /data ownership then drops to this user via setpriv.
-EXPOSE 8080
+EXPOSE 9527
 # Everything (SQLite, .jwt-secret, logs) lives in one volume; the entrypoint
 # defaults to `stellar server /data` when no command is given.
 VOLUME "/data"
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+    CMD curl -f http://localhost:9527/health || exit 1
 ENTRYPOINT ["/usr/local/bin/stellar-entrypoint"]

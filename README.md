@@ -47,7 +47,7 @@ cd build/dist
 ./bin/stellar.sh start
 
 # 4. Access the application
-open http://localhost:8080
+open http://localhost:9527
 ```
 
 ### Method 2: Docker Deployment (Recommended)
@@ -55,7 +55,7 @@ open http://localhost:8080
 ```bash
 # Option 1: Use pre-built image from GHCR
 docker pull ghcr.io/jlon/stellar:latest
-docker run -d -p 8080:8080 --name stellar \
+docker run -d -p 9527:9527 --name stellar \
   -v $(pwd)/data:/data \
   ghcr.io/jlon/stellar:latest
 # 首次启动用 docker logs stellar 查看一次性管理员密码
@@ -68,7 +68,7 @@ make docker-build  # Build Docker image
 make docker-up     # Start Docker container
 
 # Access the application
-open http://localhost:8080
+open http://localhost:9527
 ```
 
 ### More Deployment Options
@@ -230,7 +230,7 @@ For detailed permission configuration guide, see [scripts/permissions/README_PER
 ```toml
 [server]
 host = "0.0.0.0"
-port = 8080
+port = 9527
 
 [database]
 # SQLite (default, zero-configuration)
@@ -345,7 +345,7 @@ cd build/dist
 ./bin/stellar.sh start
 
 # 4. 访问应用
-open http://localhost:8080
+open http://localhost:9527
 ```
 
 ### 方式二：Docker 部署（推荐）
@@ -353,7 +353,7 @@ open http://localhost:8080
 ```bash
 # 方式1: 使用 GHCR 预构建镜像
 docker pull ghcr.io/jlon/stellar:latest
-docker run -d -p 8080:8080 --name stellar \
+docker run -d -p 9527:9527 --name stellar \
   -v $(pwd)/data:/data \
   ghcr.io/jlon/stellar:latest
 # 首次启动用 docker logs stellar 查看一次性管理员密码
@@ -366,7 +366,7 @@ make docker-build  # 构建 Docker 镜像
 make docker-up     # 启动 Docker 容器
 
 # 访问应用
-open http://localhost:8080
+open http://localhost:9527
 ```
 
 ### 更多部署方式
@@ -473,7 +473,7 @@ mysql -h <fe_host> -P 9030 -u starrocks_monitor -p < verify_permissions.sql
 ```toml
 [server]
 host = "0.0.0.0"
-port = 8080
+port = 9527
 
 [database]
 # SQLite (default, zero-configuration)

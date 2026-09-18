@@ -78,9 +78,9 @@ start_service() {
         echo -e "${BLUE}Config: $CONFIG_PATH${NC}"
         echo ""
         echo -e "${GREEN}Access URLs:${NC}"
-        echo -e "  Web UI: ${GREEN}http://localhost:8080${NC}"
-        echo -e "  API Docs: ${GREEN}http://localhost:8080/api-docs${NC}"
-        echo -e "  Health: ${GREEN}http://localhost:8080/health${NC}"
+        echo -e "  Web UI: ${GREEN}http://localhost:9527${NC}"
+        echo -e "  API Docs: ${GREEN}http://localhost:9527/api-docs${NC}"
+        echo -e "  Health: ${GREEN}http://localhost:9527/health${NC}"
     else
         echo -e "${RED}✗ Failed to start service${NC}"
         echo -e "${YELLOW}Check logs: $LOG_FILE${NC}"
@@ -137,7 +137,7 @@ show_status() {
         echo -e "${GREEN}✓ Service is running (PID: $pid)${NC}"
         echo -e "${BLUE}Config: $CONFIG_PATH${NC}"
         echo -e "${BLUE}Logs: $LOG_FILE${NC}"
-        echo -e "${BLUE}Web UI: http://localhost:8080${NC}"
+        echo -e "${BLUE}Web UI: http://localhost:9527${NC}"
         
         # Show recent log entries
         if [ -f "$LOG_FILE" ]; then

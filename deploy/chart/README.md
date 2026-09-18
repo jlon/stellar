@@ -37,7 +37,7 @@ The following table lists the configurable parameters of the Stellar chart and t
 | `image.pullPolicy` | Image pull policy | `IfNotPresent` |
 | `image.tag` | Image tag (defaults to chart appVersion) | `"latest"` |
 | `service.type` | Kubernetes service type | `ClusterIP` |
-| `service.port` | Service port | `8080` |
+| `service.port` | Service port | `9527` |
 | `ingress.enabled` | Enable ingress | `true` |
 | `ingress.hosts` | Ingress hosts configuration | `[host: stellar-example.local, paths: [{path: /stellar(/|$)(.*), pathType: Prefix}]` |
 | `persistence.enabled` | Enable persistence | `true` |
@@ -127,9 +127,9 @@ After deploying the chart, you can access the application in several ways depend
 
 1. **Using Port Forwarding**:
    ```bash
-   kubectl port-forward svc/<release-name>-stellar 8080:8080
+   kubectl port-forward svc/<release-name>-stellar 9527:9527
    ```
-   Then open http://localhost:8080
+   Then open http://localhost:9527
 
 2. **Using Ingress** (if configured):
    If you have configured ingress, you can access the application using the configured hostname and path.

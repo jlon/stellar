@@ -207,12 +207,12 @@ docker pull ghcr.io/jlon/stellar:latest
 docker pull ghcr.io/jlon/stellar:latest
 
 # 运行容器（首次启动在 docker logs 中打印一次性管理员密码）
-docker run -d -p 8080:8080 --name stellar \
+docker run -d -p 9527:9527 --name stellar \
   -v $(pwd)/data:/data \
   ghcr.io/jlon/stellar:latest
 
 # 访问应用
-open http://localhost:8080
+open http://localhost:9527
 \`\`\`
 
 ### 版本说明
