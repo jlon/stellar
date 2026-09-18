@@ -69,7 +69,9 @@ mkdir -p "$DIST_DIR/deploy/systemd"
 cp "$PROJECT_ROOT/deploy/systemd/stellar.service" "$DIST_DIR/deploy/systemd/" 2>/dev/null || true
 
 cd "$DIST_DIR"
-tar -czf "${PACKAGE_NAME}.tar.gz" --transform 's,^,stellar/,' bin conf lib data logs deploy
+# Top-level directory carries the version (stellar-<ver>/) so that newer
+# releases extract alongside - not on top of - older ones.
+tar -czf "${PACKAGE_NAME}.tar.gz" --transform "s,^,stellar-${VERSION}/," bin conf lib data logs deploy
 
 sha256sum "${PACKAGE_NAME}.tar.gz" > SHA256SUMS
 

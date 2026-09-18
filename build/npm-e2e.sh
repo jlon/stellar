@@ -78,7 +78,7 @@ if [ -f "$TGZ_TAR" ]; then
     TAR_DIR=$(mktemp -d)
     echo "[e2e] tarball smoke: $TGZ_TAR"
     tar -xzf "$TGZ_TAR" -C "$TAR_DIR"
-    cd "$TAR_DIR/stellar"
+    cd "$TAR_DIR/stellar-$VERSION"
     PORT=$TGZ_PORT ./bin/stellar.sh start
     cd "$PROJECT_ROOT"
     TAR_HEALTH=""
@@ -86,9 +86,9 @@ if [ -f "$TGZ_TAR" ]; then
         if curl -sf "http://127.0.0.1:$TGZ_PORT/health" >/dev/null 2>&1; then TAR_HEALTH=ok; break; fi
         sleep 1
     done
-    [ "$TAR_HEALTH" = ok ] || { echo "FAIL: tarball /health not ready" >&2; tail -20 "$TAR_DIR/stellar/data/logs/console.log" >&2; PORT=$TGZ_PORT "$TAR_DIR/stellar/bin/stellar.sh" stop || true; exit 1; }
+    [ "$TAR_HEALTH" = ok ] || { echo "FAIL: tarball /health not ready" >&2; tail -20 "$TAR_DIR/stellar-$VERSION/data/logs/console.log" >&2; PORT=$TGZ_PORT "$TAR_DIR/stellar-$VERSION/bin/stellar.sh" stop || true; exit 1; }
     echo "[e2e] tarball /health OK (port $TGZ_PORT)"
-    PORT=$TGZ_PORT "$TAR_DIR/stellar/bin/stellar.sh" stop
+    PORT=$TGZ_PORT "$TAR_DIR/stellar-$VERSION/bin/stellar.sh" stop
     rm -rf "$TAR_DIR"
 fi
 
