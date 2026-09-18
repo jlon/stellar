@@ -98,9 +98,12 @@ jobs:
           done
           file build/dist/bin/stellar
           file build/dist/bin/stellar | grep -q 'statically linked'
-          sha256sum --check build/dist/SHA256SUMS
-          sha256sum --check build/dist/*.tgz.sha256
-          sha256sum --check build/dist/*.deb.sha256
+          # Checksum files reference bare artifact names, so verify inside dist/.
+          (
+            cd build/dist
+            sha256sum --check SHA256SUMS
+            sha256sum --check ./*.tgz.sha256 ./*.deb.sha256
+          )
           dpkg-deb --info build/dist/*.deb >/dev/null
           dpkg-deb --contents build/dist/*.deb | grep -q '/lib/systemd/system/stellar.service'
 
