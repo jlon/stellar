@@ -126,45 +126,57 @@ jobs:
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
-      # The release stays private until the Helm chart has been uploaded too.
+      # Create the draft and upload binary packages via gh CLI: it resolves
+      # draft releases correctly, while softprops' getReleaseByTag ignores
+      # drafts and would create a second, published release for the same tag
+      # when publish-helm-chart runs.
       - name: Create draft release and upload binary packages
-        uses: softprops/action-gh-release@v1
-        with:
-          name: Stellar ${{ github.ref_name }}
-          draft: true
-          prerelease: ${{ contains(github.ref_name, '-') }}
-          body: |
-            ## Stellar ${{ github.ref_name }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          PRERELEASE=""
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            PRERELEASE="--prerelease"
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            --draft $PRERELEASE \
+            --title "Stellar $GITHUB_REF_NAME" \
+            --notes "$(cat <<EOF
+          ## Stellar $GITHUB_REF_NAME
 
-            ### What's New
+          ### What's New
 
-            ${{ steps.changelog.outputs.content }}
+          ${{ steps.changelog.outputs.content }}
 
-            ### Installation
+          ### Installation
 
-            #### Static Linux x86_64 package
-            ```bash
-            wget https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/stellar-${{ needs.verify-version.outputs.version }}-linux-amd64-musl.tar.gz
-            tar -xzf stellar-${{ needs.verify-version.outputs.version }}-linux-amd64-musl.tar.gz
-            cd stellar
-            ./bin/stellar.sh start
-            ```
+          #### Static Linux x86_64 package
+          \`\`\`bash
+          wget https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/stellar-${VERSION}-linux-amd64-musl.tar.gz
+          tar -xzf stellar-${VERSION}-linux-amd64-musl.tar.gz
+          cd stellar
+          ./bin/stellar.sh start
+          \`\`\`
 
-            #### Docker (static binary; amd64/arm64)
-            ```bash
-            docker run -d -p 8080:8080 \
-              -v "$(pwd)/data:/data" \
-              ghcr.io/${{ github.repository }}:${{ needs.verify-version.outputs.version }}
-            ```
+          #### Docker (static binary; amd64/arm64)
+          \`\`\`bash
+          docker run -d -p 8080:8080 \\
+            -v "\$(pwd)/data:/data" \\
+            ghcr.io/${{ github.repository }}:${VERSION}
+          \`\`\`
 
-            Persist `/data` with a volume or PVC. In zero-configuration mode, Stellar creates its database, logs, and signing secret there on first startup.
-          files: |
-            build/dist/stellar-${{ needs.verify-version.outputs.version }}-linux-amd64-musl.tar.gz
-            build/dist/SHA256SUMS
-            build/dist/stellar-server-${{ needs.verify-version.outputs.version }}.tgz
-            build/dist/stellar-server-${{ needs.verify-version.outputs.version }}.tgz.sha256
-            build/dist/stellar-server-${{ needs.verify-version.outputs.version }}-amd64.deb
-            build/dist/stellar-server-${{ needs.verify-version.outputs.version }}-amd64.deb.sha256
+          Persist \`/data\` with a volume or PVC. In zero-configuration mode, Stellar creates its database, logs, and signing secret there on first startup.
+          EOF
+          )" \
+            "build/dist/stellar-${VERSION}-linux-amd64-musl.tar.gz" \
+            "build/dist/SHA256SUMS" \
+            "build/dist/stellar-server-${VERSION}.tgz" \
+            "build/dist/stellar-server-${VERSION}.tgz.sha256" \
+            "build/dist/stellar-server-${VERSION}-amd64.deb" \
+            "build/dist/stellar-server-${VERSION}-amd64.deb.sha256"
 
   publish-helm-chart:
     name: Publish Helm Chart
@@ -187,10 +199,14 @@ jobs:
           cd deploy/chart
           helm package . --version ${{ needs.verify-version.outputs.version }}
 
+      # Upload via gh CLI: it resolves draft releases correctly, while
+      # softprops' getReleaseByTag ignores drafts and would create a second,
+      # published release for the same tag.
       - name: Upload Helm chart to draft release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: deploy/chart/stellar-${{ needs.verify-version.outputs.version }}.tgz
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release upload "$GITHUB_REF_NAME" "deploy/chart/stellar-${{ needs.verify-version.outputs.version }}.tgz" --clobber
 
   publish-release:
     name: Publish Verified Release
@@ -200,9 +216,11 @@ jobs:
     permissions:
       contents: write
     steps:
+      # GH_REPO lets gh operate without a git checkout.
       - name: Publish the completed draft
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           if [[ "$GITHUB_REF_NAME" == *-* ]]; then
             gh release edit "$GITHUB_REF_NAME" --draft=false --prerelease
