@@ -230,8 +230,12 @@ html[lang="zh-CN"] .step p,html[lang="zh-CN"] .dep p{line-height:1.85}
   .hero{padding-top:92px;padding-bottom:56px}
   .hero .actions{flex-direction:column;align-items:center}
   .btn{width:100%;max-width:290px;justify-content:center}
-  .cards,.steps,.deploy,.fgrid{grid-template-columns:1fr}
+  .cards,.steps,.deploy{grid-template-columns:1fr}
   .btn+.btn{margin-top:0}
+  /* footer：窄屏两列，品牌块独占一行 */
+  .fgrid{grid-template-columns:1fr 1fr;gap:28px 20px}
+  .fgrid > div:first-child{grid-column:1 / -1}
+  footer{padding:44px 0 32px}
 }
 </style>
 </head>
