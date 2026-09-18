@@ -77,3 +77,5 @@ target
 .kilocode
 .kiro
 .impeccable/
+# AI 助手本地配置（不入库）
+CLAUDE.md
