@@ -51,9 +51,9 @@ WORKDIR /app
 COPY backend/ ./backend/
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 WORKDIR /app/backend
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/app/backend/target \
+RUN --mount=type=cache,id=cargo-registry-${TARGETARCH},target=/usr/local/cargo/registry \
+    --mount=type=cache,id=cargo-git-${TARGETARCH},target=/usr/local/cargo/git \
+    --mount=type=cache,id=cargo-target-${TARGETARCH},target=/app/backend/target \
     case "$TARGETARCH" in \
         amd64) RUST_TARGET=x86_64-unknown-linux-musl ;; \
         arm64) RUST_TARGET=aarch64-unknown-linux-musl ;; \
