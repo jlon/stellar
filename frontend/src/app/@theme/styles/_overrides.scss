@@ -6,6 +6,34 @@
   @include ngx-smart-table-theme();
   @include ngx-table-pagination-theme();
 
+  // Nebular 的 layout 在浮层重定位时短暂露出宿主背景；宿主必须跟随当前主题，
+  // 不能继承浏览器默认白色。
+  html,
+  body {
+    background-color: nb-theme(background-basic-color-1);
+  }
+
+  // Tabs: quiet typography per Linear/Vercel/Stripe — both states semibold
+  // (contrast comes from brightness, not weight), gentle color transition.
+  nb-tabset .tabset .tab a {
+    font-weight: 600;
+    transition: color 0.15s ease;
+
+    &:hover {
+      background: transparent;
+    }
+  }
+
+  // Card toolbar: the slim action row that replaces an empty card header.
+  // Sits at the top of nb-card-body, right-aligned, flush with the content.
+  nb-card-body > .card-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0 0 0.5rem;
+  }
+
   nb-select.size-medium button {
     padding: 0.4375rem 2.2rem 0.4375rem 1.125rem !important;
 
@@ -45,16 +73,27 @@
       overflow-x: auto;
     }
 
+    // Natural column sizing at every width: headers stay fully readable
+    // instead of collapsing into ellipsis; the container scrolls when the
+    // content demands more room than the viewport gives.
     table {
-      table-layout: fixed;
+      table-layout: auto;
       width: 100%;
     }
 
-    th, td {
+    th {
+      white-space: nowrap;
+      min-width: 0;
+      overflow: visible;
+      text-overflow: clip;
+    }
+
+    td {
       white-space: nowrap;
       min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
+      max-width: 22rem;
     }
 
     // 列名截断时省略号展示；完整列名由 AppComponent 全局同步器写入 data-th-title，
@@ -148,15 +187,147 @@
 
     angular2-smart-table {
       table {
-        table-layout: auto;
         min-width: 44rem;
       }
 
       th, td {
         min-width: 7rem;
-        overflow: visible;
-        text-overflow: clip;
       }
+    }
+  }
+
+  // ===== iOS 风格入场动效（全站 overlay/浮层） =====
+  // 只动 opacity/transform；尊重系统“减弱动态效果”。
+  // 弹窗：遮罩淡入 + 内容卡上浮缩放
+  .cdk-overlay-pane nb-dialog-container > nb-card {
+    animation: dialog-enter 240ms cubic-bezier(0.2, 0, 0, 1) both;
+  }
+
+  // ===== 侧边抽屉（shadcn Sheet 同款交互，Nebular dialog 实现形态） =====
+  // 用法：dialogService.open(X, { hasBackdrop: true, dialogClass: 'side-sheet' })
+  // Nebular 给 pane 写了 inline position:static，靠 CDK wrapper（flex 居中）定位；
+  // 因此用 margin-left:auto 推到右缘，不对抗 inline style。
+  .cdk-overlay-pane.side-sheet {
+    margin-left: auto;
+    margin-right: 0;
+    align-self: stretch;
+    width: min(32rem, 92vw);
+    max-width: unset !important;
+    max-height: unset !important;
+    border-radius: 0;
+    box-shadow: -12px 0 40px rgba(0, 0, 0, 0.28);
+    animation: sheet-enter 400ms cubic-bezier(0.2, 0, 0, 1) both;
+  }
+
+  // 卡片与 host、container 逐层铺满（组件 host 隔断了 > 选择器）
+  .cdk-overlay-pane.side-sheet nb-dialog-container,
+  .cdk-overlay-pane.side-sheet nb-dialog-container > * {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .cdk-overlay-pane.side-sheet nb-card {
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    border-radius: 0;
+    border: none;
+    margin: 0;
+    animation: none; // 滑入由 pane 负责，卡片不再上浮缩放
+  }
+
+  @keyframes sheet-enter {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+  }
+
+  // sheet 打开时的遮罩：半透明 + 背景毛玻璃虚化（shadcn 同款）。
+  // backdrop 与 pane 是兄弟节点，用 :has() 限定只在侧边抽屉打开时生效。
+  .cdk-overlay-container:has(.cdk-overlay-pane.side-sheet) .cdk-overlay-backdrop {
+    background-color: nb-theme(overlay-backdrop-background-color);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+
+  @keyframes dialog-enter {
+    from {
+      opacity: 0;
+      transform: translateY(12px) scale(0.96);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  // 下拉/浮层面板：淡入 + 4px 下沉（从触发器方向展开的感觉）
+  .cdk-overlay-container nb-option-list,
+  .cdk-overlay-container nb-select ~ nb-option-list {
+    animation: panel-enter 180ms cubic-bezier(0.2, 0, 0, 1) both;
+  }
+
+  @keyframes panel-enter {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  // toast：右侧滑入淡入
+  nb-toast {
+    animation: toast-enter 200ms cubic-bezier(0.2, 0, 0, 1) both;
+  }
+
+  @keyframes toast-enter {
+    from {
+      opacity: 0;
+      transform: translateX(12px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  // 表格行：首屏错峰淡入（前 8 行，其余直接显示避免长列表延迟）
+  @keyframes row-enter {
+    from {
+      opacity: 0;
+    }
+
+    to {
+      opacity: 1;
+    }
+  }
+
+  angular2-smart-table tbody tr {
+    animation: row-enter 160ms ease-out both;
+  }
+
+  angular2-smart-table tbody tr:nth-child(2) { animation-delay: 24ms; }
+  angular2-smart-table tbody tr:nth-child(3) { animation-delay: 48ms; }
+  angular2-smart-table tbody tr:nth-child(4) { animation-delay: 72ms; }
+  angular2-smart-table tbody tr:nth-child(5) { animation-delay: 96ms; }
+  angular2-smart-table tbody tr:nth-child(6) { animation-delay: 120ms; }
+  angular2-smart-table tbody tr:nth-child(7) { animation-delay: 144ms; }
+  angular2-smart-table tbody tr:nth-child(8) { animation-delay: 168ms; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cdk-overlay-pane nb-dialog-container > nb-card,
+    .cdk-overlay-pane.side-sheet,
+    .cdk-overlay-container nb-option-list,
+    nb-toast,
+    angular2-smart-table tbody tr {
+      animation: none;
     }
   }
 
@@ -180,13 +351,6 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
-  }
-
-  // 下拉面板高度完全自适应内容，永不出现滚动条
-  // （本项目下拉选项数可控，全球统一无滚动更干净）
-  nb-option-list .option-list {
-    max-height: none;
-    overflow: visible;
   }
 
   // 无固定 class 的通用弹窗：矮屏（14寸@150% 等）限高内滚，保证头部/底部按钮始终可达
@@ -369,21 +533,21 @@
       cursor: not-allowed;
     }
 
-  /* 主操作：工具栏里唯一的常亮色 */
-    &.is-primary {
+  /* 主操作：工具栏里唯一的常亮色；禁用时让位给 .icon-btn:disabled 的灰 */
+    &.is-primary:not(:disabled) {
       color: nb-theme(color-primary-default);
 
-      &:hover:not(:disabled) {
+      &:hover {
         color: nb-theme(color-primary-hover);
         background-color: nb-theme(color-primary-transparent-100);
       }
     }
 
   /* 常亮绿（审批通过类语义） */
-  &.is-success {
+  &.is-success:not(:disabled) {
     color: nb-theme(color-success-default);
 
-    &:hover:not(:disabled) {
+    &:hover {
       color: nb-theme(color-success-hover);
       background-color: nb-theme(color-success-transparent-100);
     }

@@ -1,7 +1,7 @@
-<nb-card [nbSpinner]="loading" nbSpinnerStatus="primary" nbSpinnerSize="medium" nbSpinnerMessage="加载中">
+<nb-card [nbSpinner]="loading" nbSpinnerStatus="primary" nbSpinnerSize="medium" [nbSpinnerMessage]="'加载中' | translate">
   <nb-card-header>
     <div class="d-flex justify-content-between align-items-center">
-      <span>用户管理</span>
+      <span>{{  '用户管理' | translate }}</span>
       <button
         nbButton
         ghost
@@ -10,8 +10,8 @@
         (click)="openCreateUser()"
         [disabled]="!canCreateUser"
         ngxHasPermission="api:users:create"
-        title="新增用户"
-        aria-label="新增用户"
+        [title]="'新增用户' | translate"
+        [aria-label]="'新增用户' | translate"
         >
         <nb-icon icon="person-add-outline"></nb-icon>
       </button>
@@ -21,7 +21,7 @@
   <nb-card-body>
     @if (!hasListPermission) {
       <nb-alert status="warning">
-        您暂无查看用户的权限，请联系管理员进行授权。
+        {{ '您暂无查看用户的权限，请联系管理员进行授权。' | translate }}
       </nb-alert>
     }
 

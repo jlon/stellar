@@ -187,7 +187,8 @@ impl OperatorParser {
 
                 // Stop if we encounter a line at same or smaller indent that's not part of this operator
                 // But allow metrics lines (starting with "-") at any indent level
-                if !trimmed.is_empty() && current_indent <= base_indent && !trimmed.starts_with("-") {
+                if !trimmed.is_empty() && current_indent <= base_indent && !trimmed.starts_with("-")
+                {
                     // Check if it's a Pipeline or Fragment header (end of current pipeline)
                     if trimmed.starts_with("Pipeline") || trimmed.starts_with("Fragment") {
                         break;
@@ -265,7 +266,9 @@ mod tests {
             Some(21)
         );
         assert_eq!(
-            OperatorParser::parse_starrocks_plan_node_id("LIMIT (plan_node_id=-10) (operator id=3):"),
+            OperatorParser::parse_starrocks_plan_node_id(
+                "LIMIT (plan_node_id=-10) (operator id=3):"
+            ),
             Some(-10)
         );
         assert_eq!(OperatorParser::parse_starrocks_plan_node_id("OLAP_SCAN:"), None);

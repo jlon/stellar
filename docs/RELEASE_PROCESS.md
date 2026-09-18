@@ -118,9 +118,11 @@ make build
 curl http://localhost:8080/health
 ./build/dist/bin/stellar.sh stop
 
-# 5. 测试Docker构建（可选）
+# 5. 测试 Docker 构建（可选）
 make docker-build
-docker run -d -p 8080:8080 stellar:latest
+docker run -d -p 8080:8080 \
+  -e APP_JWT_SECRET="$(openssl rand -hex 32)" \
+  stellar:latest
 curl http://localhost:8080/health
 docker stop $(docker ps -q --filter ancestor=stellar:latest)
 ```
@@ -187,6 +189,20 @@ git push origin v1.2.3
 - macOS x86_64
 - macOS ARM64 (Apple Silicon)
 
+#### 3.1 打包 NPM 安装包（Linux）
+- **已固化在 `make build` 一键链路中**（步骤 5）：prod 前端（已精简）→ musl 静态二进制 → tar.gz/SHA256SUMS → `stellar-server-<version>.tgz` + `.tgz.sha256`
+- CI 已自动执行该步骤并上传 `stellar-server-<version>.tgz` + `.tgz.sha256` 到 Release Assets（release.yml）
+- npm 仅作为打包/安装器，**客户机器不需要 Node 运行时**；离线安装：`npm install -g stellar-server-<version>.tgz`
+- 配置指定（优先级：CLI > `APP_*` 环境变量 > config.toml > 默认值）：`stellar server --config /etc/stellar/config.toml`；零配置启动 `stellar server /data`（一个目录容纳 stellar.db、.jwt-secret、logs/，首次启动打印一次性管理员密码），详见 `stellar --help`
+- 单独操作：`make npm-package`（打现有 dist）、`make npm-e2e`（本地完整验证：打包 → 安装 → 启动 → /health 与 API 冒烟 → 优雅停止）
+
+#### 3.2 打包 Debian 安装包（.deb）
+- **已固化在 `make build` 一键链路中**（步骤 6）：产出 `stellar-server-<version>-amd64.deb` + `.deb.sha256`，上传 Release Assets
+- 布局：`/opt/stellar/{bin,conf,data,logs}` + `/usr/bin/stellar` 软链 + systemd 单元（用户 `stellar`，WorkingDirectory=/opt/stellar），与 Docker/tar.gz 同构
+- 安装：`dpkg -i stellar-server-<version>-amd64.deb` 或 `apt install ./...deb`；`systemctl start stellar` 启用
+- 卸载：`dpkg -r` 保留运行数据（/opt/stellar/data）；`dpkg -P` 连配置一起清除
+- 单独操作：`make deb-package`（打现有 dist）
+
 #### 4. 构建 Docker 镜像（并行）
 - 多平台：linux/amd64, linux/arm64
 - 推送到 ghcr.io
@@ -212,14 +228,16 @@ git push origin v1.2.3
 #### 检查 Docker 镜像
 ```bash
 # 1. 拉取镜像
-docker pull ghcr.io/YOUR_USERNAME/stellar:v1.2.3
+docker pull ghcr.io/YOUR_USERNAME/stellar:1.2.3
 docker pull ghcr.io/YOUR_USERNAME/stellar:latest
 
-# 2. 验证版本
-docker run --rm ghcr.io/YOUR_USERNAME/stellar:v1.2.3 --version
+# 2. 验证版本（无需服务密钥）
+docker run --rm ghcr.io/YOUR_USERNAME/stellar:1.2.3 --version
 
 # 3. 测试运行
-docker run -d -p 8080:8080 ghcr.io/YOUR_USERNAME/stellar:v1.2.3
+docker run -d -p 8080:8080 \
+  -e APP_JWT_SECRET="$(openssl rand -hex 32)" \
+  ghcr.io/YOUR_USERNAME/stellar:1.2.3
 curl http://localhost:8080/health
 ```
 
@@ -354,7 +372,7 @@ git push origin v1.2.3
 # 5. 等待自动发布完成（约10-15分钟）
 
 # 6. 验证
-docker pull ghcr.io/YOUR_USERNAME/stellar:v1.2.3
+docker pull ghcr.io/YOUR_USERNAME/stellar:1.2.3
 ```
 
 ---

@@ -1,4 +1,6 @@
+import { I18nService } from '../../../@core/i18n/i18n.service';
 import { CommonModule } from '@angular/common';
+import { TranslatePipe } from '@ngx-translate/core';
 import { Component, OnInit, OnDestroy, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Subject, interval } from 'rxjs';
@@ -29,17 +31,18 @@ interface ClusterCard {
     styleUrls: ['./dashboard.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
+    TranslatePipe,
     CommonModule,
     NbIconModule,
     NbButtonModule,
     NbSpinnerModule,
     NbCardModule,
-    NbTooltipModule,
     NbTagModule
 ],
 })
 export class DashboardComponent implements OnInit, OnDestroy {
-  private clusterService = inject(ClusterService);
+  private clusterService = inject(ClusterService)
+  private i18n = inject(I18nService);
   private clusterContext = inject(ClusterContextService);
   private organizationService = inject(OrganizationService);
   private toastrService = inject(NbToastrService);
@@ -69,6 +72,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
 
   ngOnInit(): void {
+    // 语言切换时强制重绘（OnPush 下 TS instant() 返回值不会自动刷新）
+    this.i18n.lang$.subscribe(() => this.cdr.markForCheck());
+
     this.clusterContext.activeCluster$
       .pipe(takeUntil(this.destroy$))
       .subscribe(cluster => {
@@ -161,12 +167,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   toggleActiveCluster(clusterCard: ClusterCard) {
     if (!this.canActivateCluster) {
-      this.toastrService.warning('您没有激活集群的权限', '提示');
+      this.toastrService.warning(this.i18n.instant('您没有激活集群的权限'), this.i18n.instant('提示'));
       return;
     }
 
     if (clusterCard.isActive) {
-      this.toastrService.warning('此集群已是活跃状态', '提示');
+      this.toastrService.warning(this.i18n.instant('此集群已是活跃状态'), this.i18n.instant('提示'));
       return;
     }
     this.clusterContext.setActiveCluster(clusterCard.cluster);
@@ -257,16 +263,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   getHealthBadgeText(clusterCard: ClusterCard): string {
     if (!clusterCard.health) {
-      return '未知';
+      return this.i18n.instant('未知');
     }
     const status = clusterCard.health.status;
     if (status === 'healthy') {
-      return '运行中';
+      return this.i18n.instant('运行中');
     }
     if (status === 'warning') {
-      return '警告';
+      return this.i18n.instant('警告');
     }
-    return '异常';
+    return this.i18n.instant('异常');
   }
 
   toggleHealthDetails(clusterCard: ClusterCard): void {
@@ -351,7 +357,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   navigateToClusterOverview(clusterCard: ClusterCard): void {
     if (!this.permissionService.hasPermission('menu:overview')) {
-      this.toastrService.warning('您没有查看集群概览的权限', '提示');
+      this.toastrService.warning(this.i18n.instant('您没有查看集群概览的权限'), this.i18n.instant('提示'));
       return;
     }
 
@@ -362,7 +368,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
 
     if (!this.canActivateCluster) {
-      this.toastrService.warning('请先切换到该集群后再查看概览', '提示');
+      this.toastrService.warning(this.i18n.instant('请先切换到该集群后再查看概览'), this.i18n.instant('提示'));
       return;
     }
 
@@ -393,7 +399,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   navigateToBackends(clusterId?: number): void {
     if (!this.canViewBackends) {
-      this.toastrService.warning('您没有查看计算节点的权限', '提示');
+      this.toastrService.warning(this.i18n.instant('您没有查看计算节点的权限'), this.i18n.instant('提示'));
       return;
     }
     
@@ -417,7 +423,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   navigateToFrontends(clusterId?: number): void {
     if (!this.canViewFrontends) {
-      this.toastrService.warning('您没有查看 Frontend 节点的权限', '提示');
+      this.toastrService.warning(this.i18n.instant('您没有查看 Frontend 节点的权限'), this.i18n.instant('提示'));
       return;
     }
     
@@ -441,11 +447,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   addCluster(): void {
     if (!this.canCreateCluster) {
-      this.toastrService.warning('您没有创建集群的权限', '提示');
+      this.toastrService.warning(this.i18n.instant('您没有创建集群的权限'), this.i18n.instant('提示'));
       return;
     }
     this.dialogService
-      .open(ClusterFormComponent, { context: { clusterId: null } })
+      .open(ClusterFormComponent, { context: { clusterId: null }, dialogClass: 'side-sheet' })
       .onClose.subscribe((saved) => {
         if (saved) {
           this.loadClusters();
@@ -455,11 +461,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   editCluster(cluster: Cluster): void {
     if (!this.canUpdateCluster) {
-      this.toastrService.warning('您没有编辑集群的权限', '提示');
+      this.toastrService.warning(this.i18n.instant('您没有编辑集群的权限'), this.i18n.instant('提示'));
       return;
     }
     this.dialogService
-      .open(ClusterFormComponent, { context: { clusterId: cluster.id } })
+      .open(ClusterFormComponent, { context: { clusterId: cluster.id }, dialogClass: 'side-sheet' })
       .onClose.subscribe((saved) => {
         if (saved) {
           this.loadClusters();
@@ -469,7 +475,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   deleteCluster(cluster: Cluster): void {
     if (!this.canDeleteCluster) {
-      this.toastrService.warning('您没有删除集群的权限', '提示');
+      this.toastrService.warning(this.i18n.instant('您没有删除集群的权限'), this.i18n.instant('提示'));
       return;
     }
     this.confirmDialogService.confirmDelete(cluster.name)

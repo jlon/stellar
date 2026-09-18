@@ -1,24 +1,7 @@
 import { NgModule } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
-import {
-  NbActionsModule,
-  NbButtonModule,
-  NbCardModule,
-  NbCheckboxModule,
-  NbDialogModule,
-  NbFormFieldModule,
-  NbIconModule,
-  NbInputModule,
-  NbListModule,
-  NbSelectModule,
-  NbSpinnerModule,
-  NbTabsetModule,
-  NbTagModule,
-  NbTooltipModule,
-  NbAlertModule,
-  NbProgressBarModule,
-} from '@nebular/theme';
+import { NbActionsModule, NbButtonModule, NbCardModule, NbCheckboxModule, NbDialogModule, NbFormFieldModule, NbIconModule, NbInputModule, NbListModule, NbSelectModule, NbSpinnerModule, NbTabsetModule, NbTagModule, NbTooltipModule, NbAlertModule, NbProgressBarModule } from '@nebular/theme';
 import { Angular2SmartTableModule } from 'angular2-smart-table';
 
 import { ResourceGroupsRoutingModule } from './resource-groups-routing.module';

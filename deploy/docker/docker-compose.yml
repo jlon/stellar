@@ -8,9 +8,20 @@ services:
     ports:
       - "6060:8080"
     restart: unless-stopped
+    # MinIO-style: everything lives in one data volume (stellar.db,
+    # .jwt-secret, logs/). First startup prints a one-time admin password.
+    # Optional: pin the JWT secret or the initial admin password.
+    # environment:
+    #   APP_JWT_SECRET: change-me-in-production
+    #   STELLAR_ROOT_PASSWORD: change-me-too
+    volumes:
+      - stellar-data:/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+
+volumes:
+  stellar-data:

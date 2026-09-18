@@ -133,37 +133,19 @@
       angular2-st-tbody-create-cancel,
       angular2-st-actions {
         display: flex;
-        height: 100%;
-      }
-
-      a.angular2-smart-action {
-        display: flex;
         align-items: center;
         justify-content: center;
         height: 100%;
-        width: 100%;
-        font-size: 2rem !important;
-        color: nb-theme(smart-table-fg-secondary);
+      }
 
-        &:not(:last-child) {
-          border-right: 1px solid nb-theme(smart-table-separator);
-        }
+      // 图标视觉细节由 _overrides.scss 统一控制（描边小按钮 + hover 着色）。
+      a.angular2-smart-action {
+        height: auto;
+        width: auto;
 
         &:hover {
           text-decoration: none;
         }
-      }
-
-      .angular2-smart-action-add-create:hover,
-      .angular2-smart-action-edit-edit:hover,
-      .angular2-smart-action-edit-save:hover {
-        color: nb-theme(smart-table-action-add-edit-hover-text-color);
-      }
-
-      .angular2-smart-action-add-cancel:hover,
-      .angular2-smart-action-delete-delete:hover,
-      .angular2-smart-action-edit-cancel:hover {
-        color: nb-theme(smart-table-action-cancel-delete-hover-text-color);
       }
     }
 

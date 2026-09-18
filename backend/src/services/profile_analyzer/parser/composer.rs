@@ -123,7 +123,8 @@ impl ProfileComposer {
                 .and_then(|json| TopologyParser::parse_with_fragments(&json, text, &fragments))
             {
                 Ok(topology) => {
-                    let nodes = self.build_nodes_from_topology_and_fragments(&topology, &fragments)?;
+                    let nodes =
+                        self.build_nodes_from_topology_and_fragments(&topology, &fragments)?;
                     TreeBuilder::build_from_topology(&topology, nodes, &fragments, &summary)?
                 },
                 Err(err) => {
@@ -145,12 +146,11 @@ impl ProfileComposer {
         if topology_degraded {
             summary.is_profile_complete = Some(false);
             let msg = "执行计划 Topology 缺失或无法解析，节点已展示但边关系不可用，请勿按图中连线理解数据流";
-            summary.profile_completeness_warning = Some(
-                match summary.profile_completeness_warning.take() {
+            summary.profile_completeness_warning =
+                Some(match summary.profile_completeness_warning.take() {
                     Some(existing) => format!("{existing}；{msg}"),
                     None => msg.to_string(),
-                },
-            );
+                });
         }
 
         Ok(Profile {
@@ -387,14 +387,16 @@ impl ProfileComposer {
                         // For Doris profiles, always include fragment and pipeline to ensure uniqueness
                         // For StarRocks, plan_node_id is unique, so we can use it directly
                         let base_id = format!("node_{}", plan_id);
-                        
+
                         // For Doris, always use fragment+pipeline to ensure uniqueness
                         // because multiple operators can have the same plan_node_id in different fragments/pipelines
                         // For StarRocks, plan_node_id is unique, so we can use it directly unless duplicate found
                         if is_doris_format {
                             // Always use fragment and pipeline for Doris to ensure uniqueness
                             format!("node_{}_{}_{}", plan_id, fragment.id, pipeline.id)
-                        } else if nodes.iter().any(|n: &ExecutionTreeNode| n.id == base_id && n.plan_node_id == Some(plan_id)) {
+                        } else if nodes.iter().any(|n: &ExecutionTreeNode| {
+                            n.id == base_id && n.plan_node_id == Some(plan_id)
+                        }) {
                             // Duplicate found in StarRocks (shouldn't happen, but handle it)
                             format!("node_{}_{}_{}", plan_id, fragment.id, pipeline.id)
                         } else {
@@ -486,19 +488,14 @@ impl ProfileComposer {
             // Doris format: OPERATOR_NAME (LOCAL_MERGE_SORT) or OPERATOR_NAME (PASSTHROUGH) - handle parentheses with additional info
             else if let Some(pos) = full_name.find(" (") {
                 full_name[..pos].trim().to_string()
-            }
-            else {
+            } else {
                 full_name.trim().to_string()
             }
         };
 
         // Remove "_OPERATOR" suffix for Doris format (e.g., "RESULT_SINK_OPERATOR" -> "RESULT_SINK", "OLAP_SCAN_OPERATOR" -> "OLAP_SCAN")
         // Also handles "LOCAL_EXCHANGE_OPERATOR" -> "LOCAL_EXCHANGE", "LOCAL_EXCHANGE_SINK_OPERATOR" -> "LOCAL_EXCHANGE_SINK"
-        if name.ends_with("_OPERATOR") {
-            name[..name.len() - 9].to_string()
-        } else {
-            name
-        }
+        if name.ends_with("_OPERATOR") { name[..name.len() - 9].to_string() } else { name }
     }
 
     /// Aggregate metrics from multiple operator instances
@@ -573,11 +570,7 @@ impl ProfileComposer {
                     OperatorParser::contributes_output_rows(&Self::extract_operator_name(&op.name))
                 })
                 .collect();
-            if contributing.is_empty() {
-                matching_operators.clone()
-            } else {
-                contributing
-            }
+            if contributing.is_empty() { matching_operators.clone() } else { contributing }
         };
 
         let mut base_operator = row_operators
@@ -827,7 +820,11 @@ mod tests {
         let profile = composer.parse(&sample_starrocks_profile(true)).unwrap();
         let tree = profile.execution_tree.expect("tree");
 
-        let limit = tree.nodes.iter().find(|n| n.operator_name == "LIMIT").expect("LIMIT");
+        let limit = tree
+            .nodes
+            .iter()
+            .find(|n| n.operator_name == "LIMIT")
+            .expect("LIMIT");
         assert_eq!(limit.plan_node_id, Some(7));
         assert!(limit.metrics.operator_total_time.unwrap_or(0) > 0);
         assert_eq!(limit.rows, Some(7));
@@ -859,7 +856,10 @@ mod tests {
         let mut composer = ProfileComposer::new();
         let profile = composer.parse(&sample_starrocks_profile(false)).unwrap();
         assert_eq!(profile.summary.is_profile_complete, Some(false));
-        let warning = profile.summary.profile_completeness_warning.unwrap_or_default();
+        let warning = profile
+            .summary
+            .profile_completeness_warning
+            .unwrap_or_default();
         assert!(warning.contains("Topology"));
 
         let tree = profile.execution_tree.expect("tree");

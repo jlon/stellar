@@ -133,6 +133,7 @@ pub trait ClusterAdapter: Send + Sync {
         principal_name: &str,
         permissions: &[&str],
         resource_type: &str, // "DATABASE" or "TABLE"
+        catalog: Option<&str>,
         database: &str,
         table: Option<&str>,
         with_grant_option: bool,
@@ -145,6 +146,7 @@ pub trait ClusterAdapter: Send + Sync {
         principal_name: &str,
         permissions: &[&str],
         resource_type: &str, // "DATABASE" or "TABLE"
+        catalog: Option<&str>,
         database: &str,
         table: Option<&str>,
     ) -> ApiResult<String>;
@@ -172,6 +174,12 @@ pub trait ClusterAdapter: Send + Sync {
 }
 
 /// Create adapter based on cluster type (factory method)
+/// 集群实时查询统一超时（列表页防 hung 入口）。
+/// 用法：`MySQLClient::from_pool(pool).with_timeout(cluster_timeout(&cluster))`。
+pub fn cluster_timeout(cluster: &Cluster) -> std::time::Duration {
+    std::time::Duration::from_secs(cluster.connection_timeout.max(1) as u64)
+}
+
 pub fn create_adapter(
     cluster: Cluster,
     pool_manager: Arc<MySQLPoolManager>,

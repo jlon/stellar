@@ -4,18 +4,21 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
 };
+use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
 use std::time::Instant;
 use stellar_macros::app_db;
 
 use crate::AppState;
+use crate::db::AppDb;
 use crate::models::{
     AddSqlBlacklistRequest, CatalogWithDatabases, CatalogsWithDatabasesResponse, Query,
     QueryExecuteRequest, QueryExecuteResponse, SingleQueryResult, SqlBlacklistItem, TableMetadata,
     TableObjectType,
 };
 use crate::services::QueryExecutionHistoryService;
+use crate::services::cluster_timeout;
 use crate::services::create_adapter;
 use crate::services::mysql_client::MySQLClient;
 use crate::services::query_execution_history_service::ExecutionRecord;
@@ -422,12 +425,144 @@ pub async fn kill_query(
     }
 
     let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
-    let mysql_client = MySQLClient::from_pool(pool);
+    let mysql_client = MySQLClient::from_pool(pool).with_timeout(cluster_timeout(&cluster));
 
     let sql = format!("KILL QUERY '{}'", query_id);
     mysql_client.execute(&sql).await?;
 
     Ok((StatusCode::OK, Json(json!({ "message": "Query killed successfully" }))))
+}
+
+/// SQL 指纹归一化（前后端同算法）：压空白，前 300 字。
+fn sql_fingerprint(sql: &str) -> String {
+    const LIMIT: usize = 300;
+    let mut out = String::with_capacity(LIMIT);
+    let mut last_space = true;
+    for c in sql.chars() {
+        if c.is_whitespace() {
+            if !last_space && out.len() < LIMIT {
+                out.push(' ');
+            }
+            last_space = true;
+        } else {
+            if out.len() >= LIMIT {
+                break;
+            }
+            out.push(c);
+            last_space = false;
+        }
+    }
+    out.trim_end().to_string()
+}
+
+/// 按指纹取消在跑查询（工作台“取消执行”按钮）。
+///
+/// 背景：同步执行接口拿不到 FE 分配的 query_id，且 SHOW PROC '/current_queries'
+/// 在部分版本上为空；可靠来源是 SHOW FULL PROCESSLIST（Command=Query 的行），
+/// 用“归一化 SQL 前缀 + 连接启动时间窗口”定位本次提交，再用 `KILL <连接号>` 终止
+/// （已实测：`KILL <id>` OK，`KILL QUERY <数字>`/`KILL CONNECTION <数字>` 报错）。
+/// 同一文本的并发重复会被一并终止，影响面限于相同 SQL；找不到目标返回空数组。
+#[derive(Deserialize)]
+pub struct CancelQueryRequest {
+    pub fingerprint: String,
+    /// 前端提交时间戳（毫秒）。解析失败则忽略时间、只按文本匹配。
+    #[serde(default)]
+    pub started_after_ms: i64,
+}
+
+#[app_db]
+pub async fn cancel_running_query<DB: AppDb>(
+    State(state): State<Arc<AppState<DB>>>,
+    axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
+    Json(req): Json<CancelQueryRequest>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let cluster = if org_ctx.is_super_admin {
+        state.cluster_service.get_active_cluster().await?
+    } else {
+        state
+            .cluster_service
+            .get_active_cluster_by_org(org_ctx.organization_id)
+            .await?
+    };
+    let fp = sql_fingerprint(&req.fingerprint);
+    if fp.is_empty() {
+        return Err(ApiError::invalid_data("fingerprint 不能为空"));
+    }
+    let cutoff_ms = req.started_after_ms.saturating_sub(60_000);
+    let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
+    let mysql_client = MySQLClient::from_pool(pool).with_timeout(cluster_timeout(&cluster));
+    // 同一会话内：先拿自身连接号，再拉全量 PROCESSLIST。自身行所在的 ServerName
+    // 即 fe_host 的身份（KILL 只能发给拥有该连接的 FE，跨 FE 会报 Unknown thread id）。
+    let mut session = mysql_client.create_session().await?;
+    let (_, id_rows, _) = session.execute("SELECT CONNECTION_ID()").await?;
+    let own_id = id_rows
+        .first()
+        .and_then(|r| r.first())
+        .cloned()
+        .unwrap_or_default();
+    let (columns, rows, _) = session.execute("SHOW FULL PROCESSLIST").await?;
+    let pos = |name: &str| columns.iter().position(|c| c == name);
+    let (id_i, cmd_i, start_i, info_i, server_i) = match (
+        pos("Id"),
+        pos("Command"),
+        pos("ConnectionStartTime"),
+        pos("Info"),
+        pos("ServerName"),
+    ) {
+        (Some(a), Some(b), Some(c), Some(d), server) => (a, b, c, d, server),
+        _ => return Err(ApiError::internal_error("PROCESSLIST 列缺失，无法定位在跑查询")),
+    };
+    fn cell(row: &[String], i: usize) -> &str {
+        row.get(i).map(String::as_str).unwrap_or("")
+    }
+    let local_server: Option<String> = rows
+        .iter()
+        .filter_map(|row| {
+            if cell(row, id_i) != own_id {
+                return None;
+            }
+            server_i
+                .map(|s| cell(row, s))
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        })
+        .next();
+    let mut killed: Vec<String> = Vec::new();
+    for row in &rows {
+        if cell(row, cmd_i) != "Query" {
+            continue;
+        }
+        if !sql_fingerprint(cell(row, info_i)).starts_with(fp.as_str()) {
+            continue;
+        }
+        if let (Some(si), Some(local)) = (server_i, local_server.as_deref()) {
+            if cell(row, si) != local {
+                continue;
+            }
+        }
+        // 启动时间窗口：解析失败则不过滤（宁可多杀一个同文本，不漏杀）。
+        // 注意 FE 输出本地时间、后端按 UTC 解析会有固定偏移；偏移只会让时间“偏新”
+        //（不过滤），不会误杀旧查询；60s 裕度兜底。
+        let too_old =
+            chrono::NaiveDateTime::parse_from_str(cell(row, start_i), "%Y-%m-%d %H:%M:%S")
+                .ok()
+                .map(|t| t.and_utc().timestamp_millis() < cutoff_ms)
+                .unwrap_or(false);
+        if too_old {
+            continue;
+        }
+        let conn_id = cell(row, id_i);
+        if conn_id.is_empty() || !conn_id.chars().all(|c| c.is_ascii_digit()) {
+            continue;
+        }
+        // KILL 与定位同一会话发出，必定位于 fe_host 上（连接拥有方），不会跨 FE。
+        let sql = format!("KILL {}", conn_id);
+        match session.execute(&sql).await {
+            Ok(_) => killed.push(conn_id.to_string()),
+            Err(e) => tracing::warn!("取消查询（连接 {}）失败: {}", conn_id, e),
+        }
+    }
+    Ok(Json(json!({ "killed": killed })))
 }
 
 // Execute SQL query
@@ -574,20 +709,24 @@ pub async fn execute_sql(
     }
 
     let history_service = QueryExecutionHistoryService::new(state.db.clone());
-    for result in &results {
-        let _ = history_service
-            .record_execution(ExecutionRecord {
-                user_id: org_ctx.user_id,
-                cluster_id: cluster.id,
-                catalog: request.catalog.as_deref(),
-                database_name: request.database.as_deref(),
-                sql_statement: &result.sql,
-                execution_time_ms: Some(result.execution_time_ms as i64),
-                row_count: Some(result.row_count as i64),
-                success: result.success,
-                error_message: result.error.as_deref(),
-            })
-            .await;
+    // 只记录 SQL 工作台编辑器执行的语句（record_history=true）。
+    // 页面内部诊断/元数据查询走同一接口但不属于用户输入，不入历史。
+    if request.record_history {
+        for result in &results {
+            let _ = history_service
+                .record_execution(ExecutionRecord {
+                    user_id: org_ctx.user_id,
+                    cluster_id: cluster.id,
+                    catalog: request.catalog.as_deref(),
+                    database_name: request.database.as_deref(),
+                    sql_statement: &result.sql,
+                    execution_time_ms: Some(result.execution_time_ms as i64),
+                    row_count: Some(result.row_count as i64),
+                    success: result.success,
+                    error_message: result.error.as_deref(),
+                })
+                .await;
+        }
     }
 
     let total_execution_time_ms = total_start.elapsed().as_millis();
@@ -652,7 +791,9 @@ fn should_apply_select_limit(sql: &str) -> bool {
     }
 
     let upper = sql.to_ascii_uppercase();
-    !upper.contains("GET_QUERY_PROFILE") && !upper.contains("SHOW_PROFILE") && !upper.contains("EXPLAIN")
+    !upper.contains("GET_QUERY_PROFILE")
+        && !upper.contains("SHOW_PROFILE")
+        && !upper.contains("EXPLAIN")
 }
 
 fn has_outer_limit_clause(sql: &str) -> bool {
@@ -1169,22 +1310,13 @@ mod tests {
 
     #[test]
     fn apply_limit_appends_when_select_has_none() {
-        assert_eq!(
-            apply_query_limit("SELECT * FROM t", 1000),
-            "SELECT * FROM t LIMIT 1000"
-        );
-        assert_eq!(
-            apply_query_limit("select * from t;", 50),
-            "select * from t LIMIT 50"
-        );
+        assert_eq!(apply_query_limit("SELECT * FROM t", 1000), "SELECT * FROM t LIMIT 1000");
+        assert_eq!(apply_query_limit("select * from t;", 50), "select * from t LIMIT 50");
     }
 
     #[test]
     fn apply_limit_keeps_existing_outer_limit() {
-        assert_eq!(
-            apply_query_limit("SELECT * FROM t LIMIT 10", 1000),
-            "SELECT * FROM t LIMIT 10"
-        );
+        assert_eq!(apply_query_limit("SELECT * FROM t LIMIT 10", 1000), "SELECT * FROM t LIMIT 10");
         assert_eq!(
             apply_query_limit("SELECT * FROM t LIMIT 10, 20", 1000),
             "SELECT * FROM t LIMIT 10, 20"
@@ -1205,10 +1337,7 @@ mod tests {
             apply_query_limit("SELECT * FROM t WHERE name = 'LIMIT'", 20),
             "SELECT * FROM t WHERE name = 'LIMIT' LIMIT 20"
         );
-        assert_eq!(
-            apply_query_limit("SELECT limit FROM t", 8),
-            "SELECT limit FROM t LIMIT 8"
-        );
+        assert_eq!(apply_query_limit("SELECT limit FROM t", 8), "SELECT limit FROM t LIMIT 8");
     }
 
     #[test]

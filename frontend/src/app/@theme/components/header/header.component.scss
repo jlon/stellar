@@ -13,12 +13,6 @@
     width: calc(#{nb-theme(sidebar-width)} - #{nb-theme(header-padding)});
   }
 
-  nb-action {
-    height: auto;
-    display: flex;
-    align-content: center;
-  }
-
   nb-user {
     cursor: pointer;
   }
@@ -93,11 +87,45 @@
     }
   }
 
+  // Keep Nebular's small action height and only tighten this header's spacing.
+  // Icons drop from the native 24px (actions-small-height) to body-text size:
+  // flat, quiet toolbar icons matching the surrounding typography. ::ng-deep
+  // reaches icons inside NbActionComponent; the .header-actions prefix keeps
+  // the rule scoped to this header.
+  nb-actions.header-actions.size-small nb-action {
+    padding: 0 0.625rem;
+    font-size: 0.9375rem;
+
+    ::ng-deep nb-icon {
+      font-size: 0.9375rem;
+    }
+  }
+
+  .header-actions .theme-action {
+    cursor: pointer;
+  }
+
+  .header-actions .lang-action {
+    cursor: pointer;
+
+    .lang-label {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--text-hint-color);
+      transition: color 0.15s ease;
+    }
+
+    &:hover .lang-label {
+      color: var(--text-basic-color);
+    }
+  }
+
   @include media-breakpoint-down(sm) {
     .control-item {
       display: none;
     }
-    .user-action {
+    // Must out-rank `nb-actions.header-actions.size-small nb-action` above.
+    nb-actions.header-actions.size-small .user-action {
       border: none;
       padding: 0;
     }
@@ -107,22 +135,5 @@
     nb-select {
       display: none;
     }
-  }
-}
-
-ngx-header .action-email nb-icon {
-  color: nb-theme(color-info-default) !important;
-}
-
-ngx-header .action-bell nb-icon {
-  color: nb-theme(color-warning-default) !important;
-}
-
-ngx-header .theme-action {
-  cursor: pointer;
-
-  nb-icon {
-    font-size: 1.25rem;
-    color: nb-theme(color-primary-default) !important;
   }
 }

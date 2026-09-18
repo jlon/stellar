@@ -1,3 +1,4 @@
+import { TranslatePipe } from '@ngx-translate/core';
 import { Component, Input, OnInit, OnDestroy, inject } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { NbDialogRef, NbCardModule, NbInputModule, NbSelectModule, NbOptionModule, NbButtonModule, NbTooltipModule, NbIconModule } from '@nebular/theme';
@@ -22,6 +23,7 @@ export interface OrganizationFormDialogResult {
     templateUrl: './organization-form-dialog.component.html',
     styleUrls: ['./organization-form-dialog.component.scss'],
     imports: [
+    TranslatePipe,
     NbCardModule,
     FormsModule,
     ReactiveFormsModule,

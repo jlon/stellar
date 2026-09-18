@@ -1,6 +1,8 @@
+import { I18nService } from '../../../../@core/i18n/i18n.service';
+import { TranslatePipe } from '@ngx-translate/core';
 import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { NbToastrService, NbCardModule, NbButtonModule, NbTooltipModule, NbIconModule, NbAlertModule, NbSpinnerModule } from '@nebular/theme';
+import { NbAlertModule, NbButtonModule, NbCardModule, NbIconModule, NbSpinnerModule, NbToastrService, NbTooltipModule } from '@nebular/theme';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { Subject, interval } from 'rxjs';
 import { takeUntil, startWith, switchMap, timeout } from 'rxjs/operators';
@@ -15,6 +17,7 @@ import { assignTableRows } from '../../../../@core/utils/table-rows';
     templateUrl: './resource-group-usage.component.html',
     styleUrls: ['./resource-group-usage.component.scss'],
     imports: [
+    TranslatePipe,
     NbCardModule,
     NbButtonModule,
     NbTooltipModule,
@@ -25,7 +28,8 @@ import { assignTableRows } from '../../../../@core/utils/table-rows';
 ],
 })
 export class ResourceGroupUsageComponent implements OnInit, OnDestroy {
-  private resourceGroupService = inject(ResourceGroupService);
+  private resourceGroupService = inject(ResourceGroupService)
+  private i18n = inject(I18nService);
   private router = inject(Router);
   private toastrService = inject(NbToastrService);
 
@@ -40,25 +44,25 @@ export class ResourceGroupUsageComponent implements OnInit, OnDestroy {
     actions: false,
     columns: {
       id: {
-        title: '资源组 ID',
+        title: this.i18n.instant('资源组 ID'),
         type: 'number',
       },
       backend: {
-        title: 'BE 节点',
+        title: this.i18n.instant('BE 节点'),
         type: 'string',
       },
       be_in_use_cpu_cores: {
-        title: 'CPU 使用核数',
+        title: this.i18n.instant('CPU 使用核数'),
         type: 'number',
         valuePrepareFunction: (value: number) => value.toFixed(2),
       },
       be_in_use_mem_bytes: {
-        title: '内存使用量',
+        title: this.i18n.instant('内存使用量'),
         type: 'string',
         valuePrepareFunction: (value: number) => this.formatBytes(value),
       },
       be_running_queries: {
-        title: '运行中查询数',
+        title: this.i18n.instant('运行中查询数'),
         type: 'number',
       },
     },
@@ -88,7 +92,7 @@ export class ResourceGroupUsageComponent implements OnInit, OnDestroy {
         },
         error: (error) => {
           console.error('Failed to load resource group usage:', error);
-          this.toastrService.danger('加载资源组使用情况失败', '错误');
+          this.toastrService.danger(this.i18n.instant('加载资源组使用情况失败'), this.i18n.instant('错误'));
           this.loading = false;
         },
       });
@@ -106,7 +110,7 @@ export class ResourceGroupUsageComponent implements OnInit, OnDestroy {
         },
         error: (error) => {
           console.error('Failed to load resource group usage:', error);
-          this.toastrService.danger('加载资源组使用情况失败', '错误');
+          this.toastrService.danger(this.i18n.instant('加载资源组使用情况失败'), this.i18n.instant('错误'));
           this.loading = false;
         },
       });

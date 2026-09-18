@@ -28,7 +28,7 @@ pub async fn get_system_functions(
     };
     let functions = state
         .system_function_service
-        .get_functions(cluster.id)
+        .get_functions(&cluster)
         .await?;
     Ok(Json(functions))
 }
@@ -77,7 +77,7 @@ pub async fn execute_system_function(
     };
     let result = state
         .system_function_service
-        .execute_function(cluster.id, function_id)
+        .execute_function(&cluster, function_id)
         .await?;
     Ok(Json(result))
 }
@@ -121,7 +121,7 @@ pub async fn toggle_function_favorite(
     };
     let function = state
         .system_function_service
-        .toggle_favorite(cluster.id, function_id)
+        .toggle_favorite(&cluster, function_id)
         .await?;
     Ok(Json(function))
 }
@@ -170,7 +170,7 @@ pub async fn update_function(
     };
     let function = state
         .system_function_service
-        .update_function(cluster.id, function_id, req)
+        .update_function(&cluster, function_id, req)
         .await?;
     Ok(Json(function))
 }

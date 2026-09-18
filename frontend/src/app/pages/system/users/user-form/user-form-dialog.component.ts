@@ -1,3 +1,4 @@
+import { TranslatePipe } from '@ngx-translate/core';
 import { Component, Input, OnInit, inject } from '@angular/core';
 import { AbstractControl, FormBuilder, FormGroup, ValidationErrors, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { NbDialogRef, NbCardModule, NbSelectModule, NbOptionModule, NbInputModule, NbButtonModule, NbTooltipModule, NbIconModule } from '@nebular/theme';
@@ -25,6 +26,7 @@ export interface UserFormDialogResult {
     templateUrl: './user-form-dialog.component.html',
     styleUrls: ['./user-form-dialog.component.scss'],
     imports: [
+    TranslatePipe,
     NbCardModule,
     FormsModule,
     ReactiveFormsModule,

@@ -1,28 +1,12 @@
 import { ModuleWithProviders, NgModule } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import {
-  NbActionsModule,
-  NbLayoutModule,
-  NbMenuModule,
-  NbSearchModule,
-  NbSidebarModule,
-  NbUserModule,
-  NbContextMenuModule,
-  NbButtonModule,
-  NbSelectModule,
-  NbIconModule,
-  NbThemeModule,
-  NbTooltipModule,
-  NbSpinnerModule,
-} from '@nebular/theme';
+import { NbActionsModule, NbLayoutModule, NbMenuModule, NbSidebarModule, NbUserModule, NbContextMenuModule, NbButtonModule, NbSelectModule, NbIconModule, NbThemeModule, NbTooltipModule, NbSpinnerModule } from '@nebular/theme';
 import { NbEvaIconsModule } from '@nebular/eva-icons';
 import { NbSecurityModule } from '@nebular/security';
 
 import {
   FooterComponent,
   HeaderComponent,
-  SearchInputComponent,
-  TinyMCEComponent,
 } from './components';
 import { ClusterSelectorComponent } from './components/cluster-selector/cluster-selector.component';
 import { TabBarComponent } from './components/tab-bar/tab-bar.component';
@@ -49,7 +33,6 @@ const NB_MODULES = [
   NbMenuModule,
   NbUserModule,
   NbActionsModule,
-  NbSearchModule,
   NbSidebarModule,
   NbContextMenuModule,
   NbSecurityModule,
@@ -63,8 +46,6 @@ const NB_MODULES = [
 const COMPONENTS = [
   HeaderComponent,
   FooterComponent,
-  SearchInputComponent,
-  TinyMCEComponent,
   ClusterSelectorComponent,
   TabBarComponent,
   OneColumnLayoutComponent,

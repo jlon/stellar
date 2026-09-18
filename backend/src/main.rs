@@ -20,8 +20,7 @@ use stellar::models;
 use stellar::services::{
     AgentRuntimeService, AuditLogService, AuthService, CasbinService, ClusterService,
     DataStatisticsService, DbAuthQueryService, LLMServiceImpl, MetricsCollectorService,
-    NotificationService,
-    MySQLPoolManager, OpsAgentService, OrganizationService, OverviewService,
+    MySQLPoolManager, NotificationService, OpsAgentService, OrganizationService, OverviewService,
     PermissionRequestService, PermissionService, RoleService, SystemFunctionService,
     UserRoleService, UserService,
 };
@@ -90,6 +89,7 @@ use stellar::{AppState, handlers, middleware, services};
         handlers::system_management::get_system_functions,
         handlers::system_management::get_system_function_detail,
         handlers::system::get_runtime_info,
+        handlers::log_archive::download,
 
         handlers::overview::get_cluster_overview,
         handlers::overview::get_health_cards,
@@ -283,50 +283,21 @@ impl utoipa::Modify for SecurityAddon {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = Config::load()?;
+    let mut config = Config::load()?;
 
-    let log_filter = tracing_subscriber::EnvFilter::new(&config.logging.level);
-
-    let registry = tracing_subscriber::registry().with(log_filter);
-
-    if let Some(log_file) = &config.logging.file {
-        let log_path = std::path::Path::new(log_file);
-        if let Some(parent) = log_path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-
-        let log_dir = log_path.parent().and_then(|p| p.to_str()).unwrap_or("logs");
-        let file_name = log_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("stellar.log");
-
-        let file_prefix = file_name.strip_suffix(".log").unwrap_or(file_name);
-
-        // Unwritable log dir must degrade to stdout, never panic: services run
-        // as dedicated users from arbitrary cwds (e.g. systemd) where creating
-        // ./logs may be denied. Probe-write before initializing the appender.
-        let probe = format!("{log_dir}/.stellar-write-test-{}", std::process::id());
-        let probe_path = std::path::Path::new(&probe);
-        if std::fs::write(probe_path, b"")
-            .and_then(|_| std::fs::remove_file(probe_path))
-            .is_err()
-        {
-            eprintln!(
-                "[stellar] WARNING: log directory '{log_dir}' is not writable, falling back to stdout logging"
-            );
-            registry.with(tracing_subscriber::fmt::layer()).init();
-        } else {
-            let file_appender = tracing_appender::rolling::daily(log_dir, file_prefix);
-            let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
-            registry
-                .with(tracing_subscriber::fmt::layer().with_writer(non_blocking))
-                .with(tracing_subscriber::fmt::layer())
-                .init();
-        }
-    } else {
-        registry.with(tracing_subscriber::fmt::layer()).init();
+    // Zero-config mode: persist a generated JWT secret so restarts keep
+    // sessions valid. Explicitly provided secrets always win.
+    if let Some(secret) = stellar::db::bootstrap::ensure_jwt_secret(
+        config.data_dir.as_deref(),
+        &config.auth.jwt_secret,
+    )? {
+        config.auth.jwt_secret = secret;
     }
+
+    // The guard must outlive every log call, so it stays bound in `main` for the
+    // whole process lifetime.
+    let _log_guard = init_logging(&config.logging);
+
     tracing::info!("Stellar starting up");
     tracing::info!("Configuration loaded successfully");
 
@@ -339,6 +310,62 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+/// Initializes tracing with optional daily-rotated file logging.
+///
+/// The returned guard owns the non-blocking writer thread: dropping it stops the
+/// writer and silently discards every later log record, so the caller must keep
+/// it alive for the entire process. Returns `None` when logging goes to stdout
+/// only (no `logging.file`, or an unwritable log directory).
+fn init_logging(
+    logging: &stellar::config::LoggingConfig,
+) -> Option<tracing_appender::non_blocking::WorkerGuard> {
+    let log_filter = tracing_subscriber::EnvFilter::new(&logging.level);
+    let registry = tracing_subscriber::registry().with(log_filter);
+
+    let Some(log_file) = &logging.file else {
+        registry.with(tracing_subscriber::fmt::layer()).init();
+        return None;
+    };
+
+    let log_path = std::path::Path::new(log_file);
+    if let Some(parent) = log_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+
+    let log_dir = log_path.parent().and_then(|p| p.to_str()).unwrap_or("logs");
+    let file_name = log_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("stellar.log");
+    let file_prefix = file_name.strip_suffix(".log").unwrap_or(file_name);
+
+    // Unwritable log dir must degrade to stdout, never panic: services run
+    // as dedicated users from arbitrary cwds (e.g. systemd) where creating
+    // ./logs may be denied. Probe-write before initializing the appender.
+    let probe = format!("{log_dir}/.stellar-write-test-{}", std::process::id());
+    let probe_path = std::path::Path::new(&probe);
+    if std::fs::write(probe_path, b"")
+        .and_then(|_| std::fs::remove_file(probe_path))
+        .is_err()
+    {
+        eprintln!(
+            "[stellar] WARNING: log directory '{log_dir}' is not writable, falling back to stdout logging"
+        );
+        registry.with(tracing_subscriber::fmt::layer()).init();
+        return None;
+    }
+
+    let file_appender = tracing_appender::rolling::daily(log_dir, file_prefix);
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+    registry
+        .with(tracing_subscriber::fmt::layer().with_writer(non_blocking))
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+
+    tracing::info!("File logging enabled: {log_dir}/{file_prefix}.<YYYY-MM-DD> (daily rotation)");
+    Some(guard)
 }
 
 /// 泛型应用主流程：DB 由 main 的分发处具体化，全部代码路径在此单态化。
@@ -378,6 +405,15 @@ where
 {
     let pool = db::create_pool::<DB>(&config.database.url).await?;
     tracing::info!("Database pool created successfully");
+
+    // First run on an empty database: create the initial admin user (MinIO
+    // style one-time password) before anything else can log in.
+    if db::bootstrap::ensure_root_user::<DB>(&pool, std::env::var("STELLAR_ROOT_PASSWORD").ok())
+        .await?
+        .is_some()
+    {
+        tracing::info!("Initial admin user created (see console output for the one-time password)");
+    }
 
     let jwt_util = Arc::new(JwtUtil::new(&config.auth.jwt_secret, &config.auth.jwt_expires_in));
     let mysql_pool_manager = Arc::new(MySQLPoolManager::new());
@@ -453,10 +489,14 @@ where
     ));
     tracing::info!("DbAuthQueryService initialized with real cluster query support");
 
-    let permission_request_service = Arc::new(PermissionRequestService::new(pool.clone()));
+    let permission_request_service = Arc::new(PermissionRequestService::new(
+        pool.clone(),
+        &config.security.permission_request_encryption_key,
+    ));
     tracing::info!("PermissionRequestService initialized");
 
-    let profile_analysis_cache = Arc::new(stellar::services::profile_analyzer::ProfileAnalysisCache::new());
+    let profile_analysis_cache =
+        Arc::new(stellar::services::profile_analyzer::ProfileAnalysisCache::new());
 
     let notification_service = Arc::new(NotificationService::new(pool.clone()));
     let ops_agent_service = Arc::new(OpsAgentService::new(
@@ -468,10 +508,8 @@ where
     ));
     tracing::info!("OpsAgentService initialized");
 
-    let audit_service = Arc::new(AuditLogService::new(
-        Arc::clone(&mysql_pool_manager),
-        config.audit.clone(),
-    ));
+    let audit_service =
+        Arc::new(AuditLogService::new(Arc::clone(&mysql_pool_manager), config.audit.clone()));
     let agent_runtime_service = Arc::new(AgentRuntimeService::new(
         pool.clone(),
         Arc::clone(&mysql_pool_manager),
@@ -486,6 +524,7 @@ where
         mysql_pool_manager: Arc::clone(&mysql_pool_manager),
         jwt_util: Arc::clone(&jwt_util),
         audit_config: config.audit.clone(),
+        log_file: config.logging.file.clone().map(std::path::PathBuf::from),
         auth_service: Arc::clone(&auth_service),
         cluster_service: Arc::clone(&cluster_service),
         organization_service: Arc::clone(&organization_service),
@@ -538,10 +577,7 @@ where
 
     if config.agent.enabled {
         let interval = std::time::Duration::from_secs(config.agent.interval_secs);
-        tracing::info!(
-            "Agent runtime loop started with interval: {}s",
-            config.agent.interval_secs
-        );
+        tracing::info!("Agent runtime loop started with interval: {}s", config.agent.interval_secs);
         let executor = ScheduledExecutor::new("agent-runtime", interval);
         let service = Arc::clone(&agent_runtime_service);
         tokio::spawn(async move {
@@ -830,30 +866,16 @@ where
         )
         .route("/api/notifications", get(handlers::notification::list))
         .route("/api/notifications", post(handlers::notification::create))
-        .route(
-            "/api/notifications/:id/read",
-            post(handlers::notification::mark_read),
-        )
+        .route("/api/notifications/:id/read", post(handlers::notification::mark_read))
         .route("/api/op-audit-logs", get(handlers::op_audit::list))
+        .route("/api/system/logs/archive", get(handlers::log_archive::download))
         .route("/api/agent/chat", post(handlers::agent_chat::chat))
-        .route(
-            "/api/agent/chat/stream",
-            post(handlers::agent_chat::stream_chat),
-        )
+        .route("/api/agent/chat/stream", post(handlers::agent_chat::stream_chat))
         .route("/api/agent/incidents", get(handlers::agent_incident::list_incidents))
         .route("/api/agent/incidents/:id", get(handlers::agent_incident::get_incident))
-        .route(
-            "/api/agent/incidents/:id/investigate",
-            post(handlers::agent_incident::investigate),
-        )
-        .route(
-            "/api/agent/incidents/:id/analyze",
-            post(handlers::agent_incident::analyze),
-        )
-        .route(
-            "/api/agent/incidents/:id/close",
-            post(handlers::agent_incident::close_incident),
-        )
+        .route("/api/agent/incidents/:id/investigate", post(handlers::agent_incident::investigate))
+        .route("/api/agent/incidents/:id/analyze", post(handlers::agent_incident::analyze))
+        .route("/api/agent/incidents/:id/close", post(handlers::agent_incident::close_incident))
         .route("/api/agent/events", get(handlers::agent_incident::list_events))
         .route(
             "/api/agent/chat-actions/:id/confirm",
@@ -863,13 +885,11 @@ where
             "/api/agent/chat-actions/:id/cancel",
             post(handlers::chat_action::cancel_chat_action),
         )
-        .route(
-            "/api/agent/chat-actions",
-            get(handlers::chat_action::list_chat_actions),
-        )
+        .route("/api/agent/chat-actions", get(handlers::chat_action::list_chat_actions))
         .route(
             "/api/agent/incidents/:id/actions",
-            get(handlers::agent_incident::list_actions).post(handlers::agent_incident::create_action),
+            get(handlers::agent_incident::list_actions)
+                .post(handlers::agent_incident::create_action),
         )
         .route(
             "/api/agent/incidents/:id/actions/:action_id/confirm",
@@ -880,10 +900,7 @@ where
             post(handlers::agent_incident::cancel_action),
         )
         .route("/api/agent/sessions", get(handlers::agent_chat::list_sessions))
-        .route(
-            "/api/agent/messages/:id/feedback",
-            post(handlers::agent_chat::set_message_feedback),
-        )
+        .route("/api/agent/messages/:id/feedback", post(handlers::agent_chat::set_message_feedback))
         .route(
             "/api/agent/sessions/:id",
             get(handlers::agent_chat::get_session)

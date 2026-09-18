@@ -16,17 +16,38 @@ set -e
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$PROJECT_ROOT/build/dist"
 
-if [ ! -d "$DIST_DIR/bin" ]; then
-    echo "Error: $DIST_DIR/bin not found. Run the build step first (make build / make build-static)." >&2
+if [ ! -x "$DIST_DIR/bin/stellar" ]; then
+    echo "Error: $DIST_DIR/bin/stellar not found or not executable. Run the build step first." >&2
     exit 1
 fi
 
-# Resolve package name
+BINARY_IS_STATIC=false
+if file "$DIST_DIR/bin/stellar" | grep -q 'statically linked'; then
+    BINARY_IS_STATIC=true
+fi
+
+# Resolve package name. Static release artifacts are musl in this project; infer
+# that default from the built binary so `make package` cannot mislabel it as glibc.
+if [ -z "${BUILD_TARGET:-}" ]; then
+    if "$BINARY_IS_STATIC"; then
+        BUILD_TARGET="x86_64-unknown-linux-musl"
+    else
+        BUILD_TARGET="x86_64-unknown-linux-gnu"
+    fi
+fi
+if [[ "$BUILD_TARGET" == *-musl ]] && ! "$BINARY_IS_STATIC"; then
+    echo "Error: expected a statically linked musl binary for BUILD_TARGET=$BUILD_TARGET." >&2
+    exit 1
+fi
+if [[ "$BUILD_TARGET" == *-gnu ]] && "$BINARY_IS_STATIC"; then
+    echo "Error: refusing to label a static release binary as glibc." >&2
+    exit 1
+fi
+
 if [ -n "$1" ]; then
     PACKAGE_NAME="$1"
 else
     VERSION=$(grep '^version' "$PROJECT_ROOT/backend/Cargo.toml" | head -1 | cut -d'"' -f2)
-    export BUILD_TARGET="${BUILD_TARGET:-x86_64-unknown-linux-gnu}"
     ARCH=$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')
     SUFFIX=""
     case "$BUILD_TARGET" in
@@ -36,6 +57,11 @@ else
 fi
 
 echo -e "\033[1;33m[package]\033[0m Packaging $DIST_DIR -> ${PACKAGE_NAME}.tar.gz"
+
+# Never ship runtime state: purge data/logs/lib leftovers (e.g. if a server was
+# started from build/dist) and stale migration copies (migrations are embedded).
+find "$DIST_DIR/data" "$DIST_DIR/logs" "$DIST_DIR/lib" -mindepth 1 -delete 2>/dev/null || true
+rm -rf "$DIST_DIR/migrations"
 
 cd "$DIST_DIR"
 tar -czf "${PACKAGE_NAME}.tar.gz" --transform 's,^,stellar/,' bin conf lib data logs

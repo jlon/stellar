@@ -2,7 +2,6 @@ import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
 import { DashboardComponent } from './dashboard/dashboard.component';
 import { ClusterListComponent } from './clusters/cluster-list/cluster-list.component';
-import { ClusterFormComponent } from './clusters/cluster-form/cluster-form.component';
 import { ClusterDetailComponent } from './clusters/cluster-detail/cluster-detail.component';
 import { BackendsComponent } from './backends/backends.component';
 import { FrontendsComponent } from './frontends/frontends.component';
@@ -38,22 +37,16 @@ const routes: Routes = [
         data: { permission: 'api:clusters:list', reuse: true },
       },
       {
+        // 兜底：旧 /new 书签重定向回列表（表单已改为弹窗）。
         path: 'new',
-        component: ClusterFormComponent,
-        canActivate: [PermissionGuard],
-        data: { permission: 'api:clusters:create', reuse: true },
+        redirectTo: '',
+        pathMatch: 'full',
       },
       {
         path: ':id',
         component: ClusterDetailComponent,
         canActivate: [PermissionGuard],
         data: { permission: 'api:clusters:get', reuse: true },
-      },
-      {
-        path: ':id/edit',
-        component: ClusterFormComponent,
-        canActivate: [PermissionGuard],
-        data: { permission: 'api:clusters:update', reuse: true },
       },
     ],
   },

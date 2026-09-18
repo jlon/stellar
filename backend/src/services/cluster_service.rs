@@ -24,14 +24,16 @@ fn simplify_health_check_error(error: &str) -> String {
 
     // Check error patterns using if-else
     if error_lower.contains("28000") || error_lower.contains("access denied") {
-        return "认证失败: 请检查用户名和密码是否正确；普通用户需确认有 SHOW PROC 等基础权限".to_string();
+        return "认证失败: 请检查用户名和密码是否正确；普通用户需确认有 SHOW PROC 等基础权限"
+            .to_string();
     }
 
     if error_lower.contains("connection refused")
         || error_lower.contains("refused")
         || error_lower.contains("cannot connect")
     {
-        return "无法连接: 请检查集群地址和端口是否正确；可用 telnet 验证 FE 查询端口连通性".to_string();
+        return "无法连接: 请检查集群地址和端口是否正确；可用 telnet 验证 FE 查询端口连通性"
+            .to_string();
     }
 
     if error_lower.contains("timeout") {
@@ -746,7 +748,10 @@ mod tests {
             .execute(&pool)
             .await
             .expect("enable foreign keys");
-        sqlx::migrate!("./migrations/sqlite").run(&pool).await.expect("migrations");
+        sqlx::migrate!("./migrations/sqlite")
+            .run(&pool)
+            .await
+            .expect("migrations");
         pool
     }
 
@@ -781,7 +786,10 @@ mod tests {
         .expect("permission request");
 
         let service = ClusterService::new(pool.clone(), Arc::new(MySQLPoolManager::new()));
-        service.delete_cluster(1).await.expect("delete should succeed");
+        service
+            .delete_cluster(1)
+            .await
+            .expect("delete should succeed");
 
         let clusters: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM clusters WHERE id = 1")
             .fetch_one(&pool)

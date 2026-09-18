@@ -1,9 +1,11 @@
+import { I18nService } from '../../../@core/i18n/i18n.service';
+import { TranslatePipe } from '@ngx-translate/core';
 import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { CdkDragDrop, moveItemInArray, transferArrayItem, CdkDropList, CdkDrag } from '@angular/cdk/drag-drop';
 
-import { NbDialogService, NbToastrService, NbDialogRef, NbCardModule, NbSpinnerModule, NbButtonModule, NbIconModule } from '@nebular/theme';
+import { NbButtonModule, NbCardModule, NbDialogRef, NbDialogService, NbIconModule, NbSpinnerModule, NbToastrService, NbTooltipModule } from '@nebular/theme';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
@@ -50,10 +52,12 @@ interface NavigationHistoryItem {
     selector: 'ngx-system-management',
     templateUrl: './system-management.component.html',
     styleUrls: ['./system-management.component.scss'],
-    imports: [CommonModule, NbCardModule, NbSpinnerModule, NbButtonModule, NbIconModule, CdkDropList, CdkDrag, Angular2SmartTableModule]
+    imports: [
+    TranslatePipe,CommonModule, NbCardModule, NbSpinnerModule, NbButtonModule, NbIconModule, CdkDropList, CdkDrag, Angular2SmartTableModule]
 })
 export class SystemManagementComponent implements OnInit, OnDestroy {
-  private nodeService = inject(NodeService);
+  private nodeService = inject(NodeService)
+  private i18n = inject(I18nService);
   private clusterContext = inject(ClusterContextService);
   private dialogService = inject(NbDialogService);
   private confirmDialogService = inject(ConfirmDialogService);
@@ -306,7 +310,7 @@ export class SystemManagementComponent implements OnInit, OnDestroy {
         next: (newFunction) => {
           this.customFunctions.push(newFunction);
           this.mergeAndOrganizeFunctions();
-          this.toastrService.success('功能添加成功', '成功');
+          this.toastrService.success(this.i18n.instant('功能添加成功'), this.i18n.instant('成功'));
         },
         error: (error) => {
           console.error('Failed to create function:', error);
@@ -332,7 +336,7 @@ export class SystemManagementComponent implements OnInit, OnDestroy {
             this.customFunctions[index] = updatedFunction;
             this.mergeAndOrganizeFunctions();
           }
-          this.toastrService.success('功能更新成功', '成功');
+          this.toastrService.success(this.i18n.instant('功能更新成功'), this.i18n.instant('成功'));
         },
         error: (error) => {
           console.error('Failed to update function:', error);
@@ -396,7 +400,7 @@ export class SystemManagementComponent implements OnInit, OnDestroy {
         .pipe(takeUntil(this.destroy$))
         .subscribe({
           next: () => {
-            this.toastrService.success('分类顺序已保存', '成功');
+            this.toastrService.success(this.i18n.instant('分类顺序已保存'), this.i18n.instant('成功'));
           },
           error: (error) => {
             console.error('Failed to save category orders:', error);
@@ -426,7 +430,7 @@ export class SystemManagementComponent implements OnInit, OnDestroy {
         .pipe(takeUntil(this.destroy$))
         .subscribe({
           next: () => {
-            this.toastrService.success('功能顺序已保存', '成功');
+            this.toastrService.success(this.i18n.instant('功能顺序已保存'), this.i18n.instant('成功'));
           },
           error: (error) => {
             console.error('Failed to save function orders:', error);
@@ -477,7 +481,7 @@ export class SystemManagementComponent implements OnInit, OnDestroy {
                 // 从本地数据中移除
                 this.customFunctions = this.customFunctions.filter(f => f.id !== functionId);
                 this.mergeAndOrganizeFunctions();
-                this.toastrService.success('功能已删除', '成功');
+                this.toastrService.success(this.i18n.instant('功能已删除'), this.i18n.instant('成功'));
               },
               error: (error) => {
                 console.error('Failed to delete function:', error);
@@ -840,7 +844,7 @@ export class SystemManagementComponent implements OnInit, OnDestroy {
       if (confirmed) {
         this.systemFunctionService.deleteCategory(categoryName).subscribe({
           next: () => {
-            this.toastrService.success('分类删除成功');
+            this.toastrService.success(this.i18n.instant('分类删除成功'));
             this.loadSystemFunctions(); // 重新加载功能列表
           },
           error: (error) => {

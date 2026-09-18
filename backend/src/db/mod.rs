@@ -11,6 +11,7 @@
 //! 迁移脚本在编译期通过 `sqlx::migrate!` 按方言嵌入二进制（每后端一个静态
 //! [`Migrator`]），运行时按 [`AppDb::migrations`] 选择执行，无需外置迁移目录。
 
+pub mod bootstrap;
 pub mod dialect;
 pub mod query;
 
@@ -121,12 +122,34 @@ where
 
     tracing::debug!("Running database migrations...");
     DB::migrations().run(&pool).await.map_err(|e| {
-        tracing::error!("Migration execution failed: {}", e);
-        e
+        let hint = migration_hint(&e);
+        match hint {
+            Some(ref hint) => tracing::error!("Migration execution failed: {}（{}）", e, hint),
+            None => tracing::error!("Migration execution failed: {}", e),
+        }
+        anyhow::anyhow!("{}{}", e, hint.unwrap_or_default())
     })?;
 
     tracing::info!("Database pool created and migrations applied successfully");
     Ok(pool)
+}
+
+/// 迁移失败时给出可操作的提示。
+///
+/// 库中的迁移记录必须与本二进制内置的迁移集一致；不一致通常意味着
+/// 数据库与二进制版本不匹配。
+fn migration_hint(error: &sqlx::migrate::MigrateError) -> Option<String> {
+    use sqlx::migrate::MigrateError;
+    match error {
+        MigrateError::VersionMissing(version) | MigrateError::VersionMismatch(version) => {
+            Some(format!(
+                "；数据库中存在本二进制不再内置的迁移记录 version={version}，\
+                 通常由旧版本数据库搭配新版本二进制导致：请使用与建库时一致的版本启动，\
+                 或在备份后重建数据库。"
+            ))
+        },
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -153,6 +176,16 @@ mod tests {
     #[test]
     fn from_url_rejects_unknown_scheme() {
         assert!(DatabaseKind::from_url("garbage").is_err());
+    }
+
+    #[test]
+    fn migration_hint_explains_consolidated_ddl() {
+        use sqlx::migrate::MigrateError;
+        let missing = migration_hint(&MigrateError::VersionMissing(20260917000001));
+        assert!(missing.is_some_and(|hint| hint.contains("version=20260917000001")));
+        let mismatch = migration_hint(&MigrateError::VersionMismatch(0));
+        assert!(mismatch.is_some_and(|hint| hint.contains("version=0")));
+        assert!(migration_hint(&MigrateError::Dirty(0)).is_none());
     }
 
     #[test]

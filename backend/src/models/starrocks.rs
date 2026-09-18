@@ -366,6 +366,11 @@ pub struct QueryExecuteRequest {
     pub catalog: Option<String>, // Optional catalog name
     #[serde(default)]
     pub database: Option<String>, // Optional database name, will execute USE database before SQL
+    /// 是否记录到执行历史。只有 SQL 工作台编辑器执行的语句应记录；
+    /// 页面内部诊断/元数据查询（树右键、事务、Compaction、bucket 分析等）
+    /// 走同一接口但不属于用户输入的 SQL，不记录。缺省为 false（保守不记录）。
+    #[serde(default)]
+    pub record_history: bool,
 }
 
 fn default_limit() -> Option<i32> {

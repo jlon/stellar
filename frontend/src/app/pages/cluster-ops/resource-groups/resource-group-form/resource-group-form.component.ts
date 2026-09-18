@@ -1,3 +1,5 @@
+import { I18nService } from '../../../../@core/i18n/i18n.service';
+import { TranslatePipe } from '@ngx-translate/core';
 import { Component, Input, OnInit, OnDestroy, ViewChild, inject } from '@angular/core';
 import { FormBuilder, FormGroup, FormArray, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { NbButtonModule, NbCardModule, NbDialogRef, NbFormFieldModule, NbIconModule, NbInputModule, NbOptionModule, NbSelectModule, NbSpinnerModule, NbTabsetComponent, NbTabsetModule, NbToastrService, NbTooltipModule } from '@nebular/theme';
@@ -18,6 +20,7 @@ import {
     templateUrl: './resource-group-form.component.html',
     styleUrls: ['./resource-group-form.component.scss'],
     imports: [
+    TranslatePipe,
     NbCardModule,
     NbSpinnerModule,
     FormsModule,
@@ -33,7 +36,8 @@ import {
 })
 export class ResourceGroupFormComponent implements OnInit, OnDestroy {
   private dialogRef = inject<NbDialogRef<ResourceGroupFormComponent>>(NbDialogRef);
-  private fb = inject(FormBuilder);
+  private fb = inject(FormBuilder)
+  private i18n = inject(I18nService);
   private resourceGroupService = inject(ResourceGroupService);
   private toastrService = inject(NbToastrService);
 
@@ -110,7 +114,7 @@ export class ResourceGroupFormComponent implements OnInit, OnDestroy {
         },
         error: (error) => {
           console.error('Failed to load resource group:', error);
-          this.toastrService.danger('加载资源组失败', '错误');
+          this.toastrService.danger(this.i18n.instant('加载资源组失败'), this.i18n.instant('错误'));
           this.loading = false;
         },
       });
@@ -170,7 +174,7 @@ export class ResourceGroupFormComponent implements OnInit, OnDestroy {
     if (this.form.invalid) {
       this.markFormGroupTouched(this.form);
       this.navigateToFirstInvalidTab();
-      this.toastrService.warning('请填写必填字段', '提示');
+      this.toastrService.warning(this.i18n.instant('请填写必填字段'), this.i18n.instant('提示'));
       return;
     }
 
@@ -183,7 +187,7 @@ export class ResourceGroupFormComponent implements OnInit, OnDestroy {
       formValue.concurrency_limit;
     
     if (!hasResourceLimit) {
-      this.toastrService.warning('请至少配置一个资源限制（CPU 权重、独占 CPU 核数、内存限制或并发限制）', '配置不完整');
+      this.toastrService.warning(this.i18n.instant('请至少配置一个资源限制（CPU 权重、独占 CPU 核数、内存限制或并发限制）'), this.i18n.instant('配置不完整'));
       this.tabset.selectTab(this.tabset.tabs.toArray()[1]);
       return;
     }
@@ -191,7 +195,7 @@ export class ResourceGroupFormComponent implements OnInit, OnDestroy {
     const hasClassifier = formValue.classifiers && formValue.classifiers.length > 0;
     
     if (!hasClassifier) {
-      this.toastrService.warning('请至少添加一个分类器，否则查询无法分配到此资源组', '配置不完整');
+      this.toastrService.warning(this.i18n.instant('请至少添加一个分类器，否则查询无法分配到此资源组'), this.i18n.instant('配置不完整'));
       this.tabset.selectTab(this.tabset.tabs.last);
       return;
     }
@@ -233,12 +237,12 @@ export class ResourceGroupFormComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: () => {
-          this.toastrService.success('资源组创建成功', '成功');
+          this.toastrService.success(this.i18n.instant('资源组创建成功'), this.i18n.instant('成功'));
           this.dialogRef.close(true);
         },
         error: (error) => {
           console.error('Failed to create resource group:', error);
-          this.toastrService.danger('创建资源组失败', '错误');
+          this.toastrService.danger(this.i18n.instant('创建资源组失败'), this.i18n.instant('错误'));
           this.loading = false;
         },
       });
@@ -262,12 +266,12 @@ export class ResourceGroupFormComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: () => {
-          this.toastrService.success('资源组更新成功', '成功');
+          this.toastrService.success(this.i18n.instant('资源组更新成功'), this.i18n.instant('成功'));
           this.dialogRef.close(true);
         },
         error: (error) => {
           console.error('Failed to update resource group:', error);
-          this.toastrService.danger('更新资源组失败', '错误');
+          this.toastrService.danger(this.i18n.instant('更新资源组失败'), this.i18n.instant('错误'));
           this.loading = false;
         },
       });

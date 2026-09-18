@@ -206,15 +206,8 @@ export class AuthService {
     return ['/', ...this.getBaseSegments(), 'auth', 'login'];
   }
 
-  /**
-   * DEPRECATED: Use normalizeReturnUrl directly with router.navigateByUrl
-   * This method is kept for backward compatibility but should not be used
-   */
   getReturnUrlCommands(returnUrl: string): string[] {
-    console.warn('[AuthService.getReturnUrlCommands] DEPRECATED: Use router.navigateByUrl instead');
-    const withoutLeadingSlash = returnUrl.startsWith('/') ? returnUrl.slice(1) : returnUrl;
-    const rawSegments = withoutLeadingSlash.split('/').filter(Boolean);
-    return ['/', ...rawSegments];
+    return ['/', ...this.normalizeReturnUrl(returnUrl).split('/').filter(Boolean)];
   }
 
   private getBasePath(): string {

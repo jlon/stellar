@@ -99,8 +99,8 @@ spec:
           value: "0.0.0.0"
         - name: APP_SERVER_PORT
           value: "8080"
-        - name: APP_DATABASE_URL
-          value: "sqlite://data/stellar.db"
+        - name: STELLAR_DATA_DIR
+          value: "/data"
         - name: APP_JWT_SECRET
           valueFrom:
             secretKeyRef:
@@ -112,9 +112,7 @@ spec:
           value: "true"
         volumeMounts:
         - name: data
-          mountPath: /app/data
-        - name: logs
-          mountPath: /app/logs
+          mountPath: /data
         - name: config
           mountPath: /app/conf
           readOnly: true
@@ -148,8 +146,6 @@ spec:
       - name: config
         configMap:
           name: stellar-config
-      - name: logs
-        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

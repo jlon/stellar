@@ -1,3 +1,5 @@
+import { I18nService } from '../../../../@core/i18n/i18n.service';
+import { TranslatePipe } from '@ngx-translate/core';
 import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { NbToastrService, NbDialogService, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule, NbTooltipModule } from '@nebular/theme';
@@ -20,6 +22,7 @@ import { assignTableRows } from '../../../../@core/utils/table-rows';
     templateUrl: './resource-groups-list.component.html',
     styleUrls: ['./resource-groups-list.component.scss'],
     imports: [
+    TranslatePipe,
     NbCardModule,
     NbButtonModule,
     NbIconModule,
@@ -29,7 +32,8 @@ import { assignTableRows } from '../../../../@core/utils/table-rows';
 ],
 })
 export class ResourceGroupsListComponent implements OnInit, OnDestroy {
-  private resourceGroupService = inject(ResourceGroupService);
+  private resourceGroupService = inject(ResourceGroupService)
+  private i18n = inject(I18nService);
   private router = inject(Router);
   private dialogService = inject(NbDialogService);
   private confirmDialog = inject(ConfirmDialogService);
@@ -52,7 +56,7 @@ export class ResourceGroupsListComponent implements OnInit, OnDestroy {
       confirmDelete: true,
     },
     actions: {
-      columnTitle: '操作',
+      columnTitle: this.i18n.instant('操作'),
       add: false,
       edit: false,
       delete: false,
@@ -60,17 +64,17 @@ export class ResourceGroupsListComponent implements OnInit, OnDestroy {
       custom: [
         {
           name: 'edit',
-          title: '<i class="nb-edit" title="编辑"></i>',
+          title: this.i18n.instant('<i class="nb-edit" title="编辑"></i>'),
         },
         {
           name: 'delete',
-          title: '<i class="nb-trash" title="删除"></i>',
+          title: this.i18n.instant('<i class="nb-trash" title="删除"></i>'),
         },
       ],
     },
     columns: {
       name: {
-        title: '资源组名称',
+        title: this.i18n.instant('资源组名称'),
         type: 'string',
         editable: false,
       },
@@ -81,31 +85,31 @@ export class ResourceGroupsListComponent implements OnInit, OnDestroy {
         width: '5%',
       },
       cpu_weight: {
-        title: 'CPU权重',
+        title: this.i18n.instant('CPU权重'),
         type: 'number',
         editable: false,
         valuePrepareFunction: (value: any) => value || '-',
       },
       exclusive_cpu_cores: {
-        title: '独占CPU核数',
+        title: this.i18n.instant('独占CPU核数'),
         type: 'number',
         editable: false,
         valuePrepareFunction: (value: any) => value || '-',
       },
       mem_limit: {
-        title: '内存限制',
+        title: this.i18n.instant('内存限制'),
         type: 'string',
         editable: false,
         valuePrepareFunction: (value: any) => value || '-',
       },
       concurrency_limit: {
-        title: '并发限制',
+        title: this.i18n.instant('并发限制'),
         type: 'number',
         editable: false,
         valuePrepareFunction: (value: any) => value || '-',
       },
       classifiers_count: {
-        title: '分类器数量',
+        title: this.i18n.instant('分类器数量'),
         type: 'number',
         editable: false,
         valuePrepareFunction: withTableRow((value: any, row: ResourceGroup) => row.classifiers?.length || 0),
@@ -141,7 +145,7 @@ export class ResourceGroupsListComponent implements OnInit, OnDestroy {
         },
         error: (error) => {
           console.error('Failed to load resource groups:', error);
-          this.toastrService.danger('加载资源组列表失败', '错误');
+          this.toastrService.danger(this.i18n.instant('加载资源组列表失败'), this.i18n.instant('错误'));
           assignTableRows(this.source, []).then(() => {
             this.loading = false;
           });
@@ -192,11 +196,11 @@ export class ResourceGroupsListComponent implements OnInit, OnDestroy {
         .pipe(takeUntil(this.destroy$), timeout(20000))
         .subscribe({
           next: () => {
-            this.toastrService.success('资源组删除成功', '成功');
+            this.toastrService.success(this.i18n.instant('资源组删除成功'), this.i18n.instant('成功'));
             this.loadResourceGroups();
           },
           error: () => {
-            this.toastrService.danger('删除资源组失败', '错误');
+            this.toastrService.danger(this.i18n.instant('删除资源组失败'), this.i18n.instant('错误'));
           },
         });
     });

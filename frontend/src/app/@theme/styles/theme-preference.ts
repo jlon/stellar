@@ -10,7 +10,7 @@ export function resolveInitialTheme(): string {
     }
   } catch {
   }
-  return 'cosmic';
+  return 'dark';
 }
 
 export function persistTheme(themeName: string): void {

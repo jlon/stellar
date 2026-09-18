@@ -20,11 +20,7 @@ pub struct ProfileAnalysisCache {
 
 impl ProfileAnalysisCache {
     pub fn new() -> Self {
-        Self {
-            entries: DashMap::new(),
-            ttl: DEFAULT_TTL,
-            max_entries: DEFAULT_MAX_ENTRIES,
-        }
+        Self { entries: DashMap::new(), ttl: DEFAULT_TTL, max_entries: DEFAULT_MAX_ENTRIES }
     }
 
     pub fn get(&self, cluster_id: i64, query_id: &str) -> Option<ProfileAnalysisResponse> {
@@ -46,10 +42,8 @@ impl ProfileAnalysisCache {
         if self.entries.len() >= self.max_entries && !self.entries.contains_key(&key) {
             self.evict_oldest();
         }
-        self.entries.insert(
-            key,
-            CachedAnalysis { response, cached_at: Instant::now() },
-        );
+        self.entries
+            .insert(key, CachedAnalysis { response, cached_at: Instant::now() });
     }
 
     pub fn invalidate(&self, cluster_id: i64, query_id: &str) {

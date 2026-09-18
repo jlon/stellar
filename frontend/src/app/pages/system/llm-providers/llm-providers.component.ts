@@ -1,3 +1,5 @@
+import { I18nService } from '../../../@core/i18n/i18n.service';
+import { TranslatePipe } from '@ngx-translate/core';
 import { ChangeDetectorRef, Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { NbDialogService, NbToastrService, NbCardModule, NbButtonModule, NbIconModule, NbAlertModule, NbSpinnerModule } from '@nebular/theme';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
@@ -28,6 +30,7 @@ import { assignTableRows } from '../../../@core/utils/table-rows';
     templateUrl: './llm-providers.component.html',
     styleUrls: ['./llm-providers.component.scss'],
     imports: [
+    TranslatePipe,
     NbCardModule,
     NbButtonModule,
     NbIconModule,
@@ -37,7 +40,8 @@ import { assignTableRows } from '../../../@core/utils/table-rows';
 ],
 })
 export class LLMProvidersComponent implements OnInit, OnDestroy {
-  private llmService = inject(LLMProviderService);
+  private llmService = inject(LLMProviderService)
+  private i18n = inject(I18nService);
   private permissionService = inject(PermissionService);
   private dialogService = inject(NbDialogService);
   private confirmDialog = inject(ConfirmDialogService);
@@ -142,7 +146,7 @@ export class LLMProvidersComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.llmService.activateProvider(provider.id).pipe(takeUntil(this.destroy$), timeout(20000)).subscribe({
       next: () => {
-        this.toastrService.success(`已激活 ${provider.display_name}`, '成功');
+        this.toastrService.success(this.i18n.instant('已激活') + ' ' + provider.display_name, this.i18n.instant('成功'));
         this.loadProviders();
       },
       error: (error) => {
@@ -160,8 +164,8 @@ export class LLMProvidersComponent implements OnInit, OnDestroy {
     this.llmService.updateProvider(provider.id, { enabled: newEnabled }).pipe(takeUntil(this.destroy$), timeout(20000)).subscribe({
       next: () => {
         this.toastrService.success(
-          `已${newEnabled ? '启用' : '禁用'} ${provider.display_name}`,
-          '成功'
+          (newEnabled ? this.i18n.instant('已启用') : this.i18n.instant('已禁用')) + ' ' + provider.display_name,
+          this.i18n.instant('成功')
         );
         this.loadProviders();
       },
@@ -209,7 +213,7 @@ export class LLMProvidersComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.llmService.createProvider(payload).pipe(takeUntil(this.destroy$), timeout(20000)).subscribe({
       next: () => {
-        this.toastrService.success('LLM 提供商创建成功', '成功');
+        this.toastrService.success(this.i18n.instant('LLM 提供商创建成功'), this.i18n.instant('成功'));
         this.loadProviders();
       },
       error: (error) => {
@@ -238,7 +242,7 @@ export class LLMProvidersComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.llmService.updateProvider(id, payload).pipe(takeUntil(this.destroy$), timeout(20000)).subscribe({
       next: () => {
-        this.toastrService.success('LLM 提供商更新成功', '成功');
+        this.toastrService.success(this.i18n.instant('LLM 提供商更新成功'), this.i18n.instant('成功'));
         this.loadProviders();
       },
       error: (error) => {
@@ -252,7 +256,7 @@ export class LLMProvidersComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.llmService.deleteProvider(id).pipe(takeUntil(this.destroy$), timeout(20000)).subscribe({
       next: () => {
-        this.toastrService.success('LLM 提供商删除成功', '成功');
+        this.toastrService.success(this.i18n.instant('LLM 提供商删除成功'), this.i18n.instant('成功'));
         this.loadProviders();
       },
       error: (error) => {
@@ -288,22 +292,22 @@ export class LLMProvidersComponent implements OnInit, OnDestroy {
       actions: false,
       columns: {
         display_name: {
-          title: '名称',
+          title: this.i18n.instant('名称'),
           type: 'string',
           width: '14%',
         },
         name: {
-          title: '标识',
+          title: this.i18n.instant('标识'),
           type: 'string',
           width: '10%',
         },
         model_name: {
-          title: '模型',
+          title: this.i18n.instant('模型'),
           type: 'string',
           width: '14%',
         },
         api_base: {
-          title: 'API 地址',
+          title: this.i18n.instant('API 地址'),
           type: 'string',
           width: '18%',
           valuePrepareFunction: (cell: string) => {
@@ -312,7 +316,7 @@ export class LLMProvidersComponent implements OnInit, OnDestroy {
           },
         },
         status: {
-          title: '状态',
+          title: this.i18n.instant('状态'),
           type: 'custom',
           width: '15%',
           isFilterable: false,
@@ -322,12 +326,12 @@ export class LLMProvidersComponent implements OnInit, OnDestroy {
           },
         },
         priority: {
-          title: '优先级',
+          title: this.i18n.instant('优先级'),
           type: 'number',
           width: '10%',
         },
         actions: {
-          title: '操作',
+          title: this.i18n.instant('操作'),
           type: 'custom',
           width: '17%',
           isFilterable: false,

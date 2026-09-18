@@ -11,6 +11,11 @@ export class ApiService {
   private http = inject(HttpClient);
 
   private readonly baseUrl = environment.apiUrl;
+
+  /** Resolved API base URL (for fetch-based streaming clients). */
+  get apiBaseUrl(): string {
+    return this.resolvedBaseUrl;
+  }
   private readonly resolvedBaseUrl: string;
 
   constructor() {
@@ -36,6 +41,10 @@ export class ApiService {
 
   put<T>(path: string, body: any = {}): Observable<T> {
     return this.http.put<T>(`${this.resolvedBaseUrl}${path}`, body);
+  }
+
+  patch<T>(path: string, body: any = {}): Observable<T> {
+    return this.http.patch<T>(`${this.resolvedBaseUrl}${path}`, body);
   }
 
   delete<T>(path: string): Observable<T> {

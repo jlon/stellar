@@ -1,22 +1,22 @@
 <nb-card class="variable-edit-dialog">
   <nb-card-header class="dialog-header">
-    <span>修改变量</span>
-    <button nbButton ghost size="small" (click)="cancel()" title="关闭" aria-label="关闭修改变量弹窗">
+    <span>{{  '修改变量' | translate }}</span>
+    <button nbButton ghost size="small" (click)="cancel()" [title]="'关闭' | translate" [aria-label]="'关闭修改变量弹窗' | translate">
       <nb-icon icon="close-outline"></nb-icon>
     </button>
   </nb-card-header>
 
   <nb-card-body class="dialog-body">
     <span class="variable-name">{{ name }}</span>
-    <div class="current-value">当前值：{{ value || '(空)' }}</div>
-    <label class="field-label" for="variable-new-value">新值</label>
+    <div class="current-value">{{ '当前值：' | translate }}{{ value || ('(空)' | translate) }}</div>
+    <label class="field-label" for="variable-new-value">{{ '新值' | translate }}</label>
       <input
         id="variable-new-value"
         nbInput
         fullWidth
         type="text"
-        size="small"
-        placeholder="输入新值"
+        fieldSize="small"
+        [placeholder]="'输入新值' | translate"
         autocomplete="off"
         autofocus
         [(ngModel)]="newValue"
@@ -25,7 +25,7 @@
   </nb-card-body>
 
   <nb-card-footer class="dialog-footer">
-    <button type="button" class="icon-btn" (click)="cancel()" nbTooltip="取消" nbTooltipPlacement="top" aria-label="取消"><nb-icon icon="close-outline"></nb-icon></button>
-    <button type="button" class="icon-btn is-primary" (click)="save()" [disabled]="newValue === value" nbTooltip="更新" nbTooltipPlacement="top" aria-label="更新"><nb-icon icon="checkmark-outline"></nb-icon></button>
+    <button type="button" class="icon-btn" (click)="cancel()" [nbTooltip]="'取消' | translate" nbTooltipPlacement="top" [aria-label]="'取消' | translate"><nb-icon icon="close-outline"></nb-icon></button>
+    <button type="button" class="icon-btn is-primary" (click)="save()" [disabled]="newValue === value" [nbTooltip]="'更新' | translate" nbTooltipPlacement="top" [aria-label]="'更新' | translate"><nb-icon icon="checkmark-outline"></nb-icon></button>
   </nb-card-footer>
 </nb-card>

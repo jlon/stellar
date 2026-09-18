@@ -46,7 +46,9 @@ impl DorisAdapter {
 
     async fn mysql_client(&self) -> ApiResult<MySQLClient> {
         let pool = self.mysql_pool_manager.get_pool(&self.cluster).await?;
-        Ok(MySQLClient::from_pool(pool))
+        Ok(MySQLClient::from_pool(pool).with_timeout(std::time::Duration::from_secs(
+            self.cluster.connection_timeout.max(1) as u64,
+        )))
     }
 
     /// 折中实现：聚合所有数据库的 Load 错误信息
@@ -325,37 +327,59 @@ impl DorisAdapter {
     /// - catalog level: CATALOG catalog_name or ALL CATALOGS  
     /// - database level: database.* or catalog.database.* or *.* (all databases)
     /// - table level: database.table or catalog.database.table or database.* (all tables)
-    fn build_resource_path(resource_type: &str, database: &str, table: Option<&str>) -> String {
+    fn build_resource_path(
+        resource_type: &str,
+        catalog: Option<&str>,
+        database: &str,
+        table: Option<&str>,
+    ) -> String {
         match resource_type.to_uppercase().as_str() {
             "CATALOG" => {
                 // Catalog level permissions
-                if database == "*" {
+                let catalog = catalog.unwrap_or(database);
+                if catalog == "*" {
                     "ALL CATALOGS".to_string()
                 } else {
-                    format!("CATALOG {}", database)
+                    format!("CATALOG {}", catalog)
                 }
             },
             "TABLE" => {
                 // Table level permissions
                 if database == "*" {
                     // All databases, all tables
-                    "*.*".to_string()
+                    catalog.map_or_else(|| "*.*".to_string(), |catalog| format!("{catalog}.*.*"))
                 } else if let Some(table_name) = table {
                     if table_name == "*" {
                         // Specific database, all tables
-                        format!("{}.*", database)
+                        catalog.map_or_else(
+                            || format!("{database}.*"),
+                            |catalog| format!("{catalog}.{database}.*"),
+                        )
                     } else {
                         // Specific database and table
-                        format!("{}.{}", database, table_name)
+                        catalog.map_or_else(
+                            || format!("{database}.{table_name}"),
+                            |catalog| format!("{catalog}.{database}.{table_name}"),
+                        )
                     }
                 } else {
                     // No table specified, default to all tables in database
-                    format!("{}.*", database)
+                    catalog.map_or_else(
+                        || format!("{database}.*"),
+                        |catalog| format!("{catalog}.{database}.*"),
+                    )
                 }
             },
             _ => {
                 // Database level permissions (default)
-                if database == "*" { "*.*".to_string() } else { format!("{}.*", database) }
+                if database == "*" {
+                    catalog.map_or_else(|| "*.*".to_string(), |catalog| format!("{catalog}.*.*"))
+                } else {
+                    catalog.map_or_else(
+                        || format!("{database}.*"),
+                        |catalog| format!("{catalog}.{database}.*"),
+                    )
+                }
             },
         }
     }
@@ -1481,15 +1505,20 @@ impl ClusterAdapter for DorisAdapter {
     }
 
     async fn create_user(&self, username: &str, password: &str) -> ApiResult<String> {
+        let username = Self::escape_sql_literal(username);
         if password.is_empty() {
             Ok(format!("CREATE USER '{}'@'%';", username))
         } else {
-            Ok(format!("CREATE USER '{}'@'%' IDENTIFIED BY '{}';", username, password))
+            Ok(format!(
+                "CREATE USER '{}'@'%' IDENTIFIED BY '{}';",
+                username,
+                Self::escape_sql_literal(password)
+            ))
         }
     }
 
     async fn create_role(&self, role_name: &str) -> ApiResult<String> {
-        Ok(format!("CREATE ROLE '{}';", role_name))
+        Ok(format!("CREATE ROLE '{}';", Self::escape_sql_literal(role_name)))
     }
 
     async fn grant_permissions(
@@ -1498,19 +1527,20 @@ impl ClusterAdapter for DorisAdapter {
         principal_name: &str,
         permissions: &[&str],
         resource_type: &str,
+        catalog: Option<&str>,
         database: &str,
         table: Option<&str>,
         with_grant_option: bool,
     ) -> ApiResult<String> {
         let priv_permissions = Self::add_priv_suffix(permissions);
         let perm_str = priv_permissions.join(", ");
-        let resource = Self::build_resource_path(resource_type, database, table);
+        let resource = Self::build_resource_path(resource_type, catalog, database, table);
 
         let with_grant = if with_grant_option { " WITH GRANT OPTION" } else { "" };
 
         let principal = match principal_type {
-            "ROLE" => format!("'{}'", principal_name),
-            "USER" => format!("'{}'@'%'", principal_name),
+            "ROLE" => format!("'{}'", Self::escape_sql_literal(principal_name)),
+            "USER" => format!("'{}'@'%'", Self::escape_sql_literal(principal_name)),
             _ => {
                 return Err(ApiError::ValidationError(
                     "Principal type must be USER or ROLE".to_string(),
@@ -1518,7 +1548,7 @@ impl ClusterAdapter for DorisAdapter {
             },
         };
 
-        Ok(format!("GRANT {} ON {} TO {};{}", perm_str, resource, principal, with_grant))
+        Ok(format!("GRANT {} ON {} TO {}{};", perm_str, resource, principal, with_grant))
     }
 
     async fn revoke_permissions(
@@ -1527,16 +1557,17 @@ impl ClusterAdapter for DorisAdapter {
         principal_name: &str,
         permissions: &[&str],
         resource_type: &str,
+        catalog: Option<&str>,
         database: &str,
         table: Option<&str>,
     ) -> ApiResult<String> {
         let priv_permissions = Self::add_priv_suffix(permissions);
         let perm_str = priv_permissions.join(", ");
-        let resource = Self::build_resource_path(resource_type, database, table);
+        let resource = Self::build_resource_path(resource_type, catalog, database, table);
 
         let principal = match principal_type {
-            "ROLE" => format!("'{}'", principal_name),
-            "USER" => format!("'{}'@'%'", principal_name),
+            "ROLE" => format!("'{}'", Self::escape_sql_literal(principal_name)),
+            "USER" => format!("'{}'@'%'", Self::escape_sql_literal(principal_name)),
             _ => {
                 return Err(ApiError::ValidationError(
                     "Principal type must be USER or ROLE".to_string(),
@@ -1548,7 +1579,11 @@ impl ClusterAdapter for DorisAdapter {
     }
 
     async fn grant_role(&self, role_name: &str, username: &str) -> ApiResult<String> {
-        Ok(format!("GRANT '{}' TO '{}'@'%';", role_name, username))
+        Ok(format!(
+            "GRANT '{}' TO '{}'@'%';",
+            Self::escape_sql_literal(role_name),
+            Self::escape_sql_literal(username)
+        ))
     }
 
     async fn list_user_permissions(
@@ -1845,6 +1880,10 @@ impl ClusterAdapter for DorisAdapter {
 }
 
 impl DorisAdapter {
+    fn escape_sql_literal(value: &str) -> String {
+        value.replace('\'', "''")
+    }
+
     /// Parse user identity string like 'username'@'host' or username@host
     fn parse_user_identity(identity: &str) -> (String, String) {
         if identity.contains('@') {

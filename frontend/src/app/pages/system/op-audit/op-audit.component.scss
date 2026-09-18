@@ -1,0 +1,13 @@
+// 紧凑单行：两个下拉固定宽（8~11rem）；窄屏 wrap 由全局 _overrides.scss 提供
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.filter-target,
+.filter-action {
+  flex: 0 1 9rem;
+  min-width: 7.5rem;
+}

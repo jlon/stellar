@@ -5,6 +5,7 @@ pub mod backend;
 pub mod cluster;
 pub mod frontend;
 pub mod llm;
+pub mod log_archive;
 pub mod materialized_view;
 pub mod organization;
 pub mod overview;

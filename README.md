@@ -39,7 +39,7 @@ Stellar is a professional, enterprise-grade OLAP database cluster management pla
 git clone https://github.com/jlon/stellar.git
 cd stellar
 
-# 2. Build and package (use make build-static for a fully static single binary)
+# 2. Build and package (production musl static single binary)
 make build
 
 # 3. Start the service
@@ -53,16 +53,17 @@ open http://localhost:8080
 ### Method 2: Docker Deployment (Recommended)
 
 ```bash
-# Option 1: Use pre-built image from Docker Hub
+# Option 1: Use pre-built image from GHCR
 docker pull ghcr.io/jlon/stellar:latest
 docker run -d -p 8080:8080 --name stellar \
-  -v $(pwd)/data:/app/data \
-  -v $(pwd)/logs:/app/logs \
+  -v $(pwd)/data:/data \
   ghcr.io/jlon/stellar:latest
+# 首次启动用 docker logs stellar 查看一次性管理员密码
 
 # Option 2: Build from source
 git clone https://github.com/jlon/stellar.git
 cd stellar
+export APP_JWT_SECRET="$(openssl rand -hex 32)"
 make docker-build  # Build Docker image
 make docker-up     # Start Docker container
 
@@ -190,19 +191,22 @@ url = "postgres://user:pass@localhost:5432/stellar"
 
 `postgresql://...` is accepted as an alias. The same environment override applies: `APP_DATABASE_URL="postgres://..."`.
 
-**Schema changes (migrations)**:
+**Schema changes (DDL)**：
 
-- Migrations are **embedded into the binary at compile time** (`sqlx::migrate!`, one
-  static set per backend). On startup the embedded migrations for the selected backend
-  run automatically; the applied set is tracked in the `_sqlmigrations` table.
-- To change the schema, add a NEW numbered file (e.g. `backend/migrations/mysql/20260915000000_add_foo.sql`
-  and the SQLite/MySQL/PostgreSQL counterparts), containing only the change (e.g. `ALTER TABLE ...`).
-  Never edit an already-applied file — sqlx rejects it by checksum. After changing a
-  migration you must **rebuild** the binary (and image/package); there are no runtime
-  migration files in the distribution.
-- All dialect directories must be kept in sync (MySQL uses `AUTO_INCREMENT`, SQLite uses `AUTOINCREMENT`,
-  and PostgreSQL uses `BIGSERIAL`/`RETURNING`,
-  and so on — see `docs/MYSQL_SUPPORT_DESIGN.md` for the dialect checklist).
+- 每个后端只有**一个** DDL 文件（`backend/migrations/<backend>/00000000_initial_schema.sql`），
+  在**编译期嵌入二进制**（`sqlx::migrate!`）。启动时自动执行；已应用版本记录在 `_sqlx_migrations`。
+- 面向全新集群：该文件即完整 schema 与种子数据，一次执行即可建库（历史增量已按原顺序内联）。
+- 改 schema 直接编辑该文件（不再新增迁移文件）。历史上 ADD COLUMN 已折回建表语句；新列请直接写进对应的
+  `CREATE TABLE`。三个方言目录必须同步。
+  **改完必须重新构建二进制**（发行包不携带迁移文件）。
+- **旧库不可原地升级**：历史版本记录已随文件删除，迁移器会以
+  `... was previously applied but is missing in the resolved migrations` 明确拒绝启动（不会静默跳过、
+  也不会半执行）；请重建数据库后重新导入配置。
+- 方言差异（`AUTO_INCREMENT` / `AUTOINCREMENT` / `BIGSERIAL`+`RETURNING` 等）见
+  `docs/MYSQL_SUPPORT_DESIGN.md` 的方言清单。
+
+> 注意：合并前 MySQL / PostgreSQL 侧存在从未跑通的语句（MySQL 保留字 `read`、自更新子查询 1093、
+> TEXT 列做索引键、PostgreSQL 目录里的 MySQL 语法等），已在合并时修复并由真实数据库验证。
 
 ### StarRocks User Permissions (Important)
 
@@ -333,7 +337,7 @@ Stellar 是一个专业的、企业级的 OLAP 数据库集群管理平台，提
 git clone https://github.com/jlon/stellar.git
 cd stellar
 
-# 2. 构建和打包（发布推荐 make build-static：musl 全静态单二进制）
+# 2. 构建和打包（生产发布：musl 全静态单二进制）
 make build
 
 # 3. 启动服务
@@ -347,16 +351,17 @@ open http://localhost:8080
 ### 方式二：Docker 部署（推荐）
 
 ```bash
-# 方式1: 使用 Docker Hub 预构建镜像
+# 方式1: 使用 GHCR 预构建镜像
 docker pull ghcr.io/jlon/stellar:latest
 docker run -d -p 8080:8080 --name stellar \
-  -v $(pwd)/data:/app/data \
-  -v $(pwd)/logs:/app/logs \
+  -v $(pwd)/data:/data \
   ghcr.io/jlon/stellar:latest
+# 首次启动用 docker logs stellar 查看一次性管理员密码
 
 # 方式2: 从源码构建
 git clone https://github.com/jlon/stellar.git
 cd stellar
+export APP_JWT_SECRET="$(openssl rand -hex 32)"
 make docker-build  # 构建 Docker 镜像
 make docker-up     # 启动 Docker 容器
 

@@ -1,15 +1,8 @@
 <div class="row">
   <div class="col-12">
-    <nb-card [nbSpinner]="loading" nbSpinnerStatus="primary" nbSpinnerMessage="加载中">
-      <nb-card-header>
-        <div class="d-flex justify-content-between align-items-center">
-          <div class="d-flex align-items-center gap-2 page-actions">
-            <h5 class="mb-0">物化视图</h5>
-            <span class="text-hint">|</span>
-            <span class="text-hint">
-              集群: <strong>{{ activeCluster?.name || '未选择' }}</strong>
-            </span>
-          </div>
+    <nb-card [nbSpinner]="loading" nbSpinnerStatus="primary" [nbSpinnerMessage]="'加载中' | translate">
+      <nb-card-body>
+        <div class="card-toolbar">
           <div class="d-flex align-items-center gap-2">
             <button
               nbButton
@@ -18,8 +11,8 @@
               size="small"
               (click)="loadMaterializedViews()"
               [disabled]="loading || !clusterId"
-              nbTooltip="刷新"
-              title="刷新">
+              [nbTooltip]="'刷新' | translate"
+              [title]="'刷新' | translate">
               <nb-icon icon="refresh-outline"></nb-icon>
             </button>
             <button
@@ -29,16 +22,14 @@
               size="small"
               (click)="openCreateDialog()"
               [disabled]="!clusterId"
-              nbTooltip="创建物化视图"
-              title="创建物化视图"
-              aria-label="创建物化视图">
+              [nbTooltip]="'创建物化视图' | translate"
+              [title]="'创建物化视图' | translate"
+              [aria-label]="'创建物化视图' | translate">
               <nb-icon icon="plus-outline"></nb-icon>
             </button>
           </div>
         </div>
-      </nb-card-header>
 
-      <nb-card-body>
         <!-- Basic Filters: 紧凑单行，按钮右对齐（审计日志同款） -->
         <div class="filter-section">
           <div class="filter-row">
@@ -48,7 +39,7 @@
                 fullWidth
                 fieldSize="small"
                 type="text"
-                placeholder="搜索物化视图名称或数据库..."
+                [placeholder]="'搜索物化视图名称或数据库...' | translate"
                 [(ngModel)]="searchText"
                 (ngModelChange)="onSearch()"
                 />
@@ -56,11 +47,11 @@
             <nb-select
               class="filter-select"
               size="small"
-              placeholder="选择数据库"
+              [placeholder]="'选择数据库' | translate"
               [(selected)]="selectedDatabase"
               (selectedChange)="applyFilters()"
               >
-                <nb-option value="all">所有数据库</nb-option>
+                <nb-option value="all">{{  '所有数据库' | translate }}</nb-option>
                 @for (db of databases; track db) {
                   <nb-option [value]="db">
                     {{ db }}
@@ -70,7 +61,7 @@
             <nb-select
               class="filter-select"
               size="small"
-              placeholder="刷新类型"
+              [placeholder]="'刷新类型' | translate"
               [(selected)]="selectedRefreshType"
               (selectedChange)="applyFilters()"
               >
@@ -85,7 +76,7 @@
             <nb-select
               class="filter-select"
               size="small"
-              placeholder="状态"
+              [placeholder]="'状态' | translate"
               [(selected)]="selectedActiveState"
               (selectedChange)="applyFilters()"
               >
@@ -100,7 +91,7 @@
             <nb-select
               class="filter-select"
               size="small"
-              placeholder="刷新状态"
+              [placeholder]="'刷新状态' | translate"
               [(selected)]="selectedRefreshState"
               (selectedChange)="applyFilters()"
               >
@@ -120,8 +111,8 @@
               (click)="toggleAdvancedFilters()"
               [attr.aria-expanded]="showAdvancedFilters"
               aria-controls="mv-advanced-filters"
-              [attr.aria-label]="showAdvancedFilters ? '收起高级筛选' : '展开高级筛选'"
-              [title]="showAdvancedFilters ? '收起高级筛选' : '展开高级筛选'"
+              [attr.aria-label]="showAdvancedFilters ? ('收起高级筛选' | translate) : ('展开高级筛选' | translate)"
+              [title]="showAdvancedFilters ? ('收起高级筛选' | translate) : ('展开高级筛选' | translate)"
               >
                 <nb-icon icon="funnel-outline"></nb-icon>
               </button>
@@ -132,7 +123,7 @@
             <div id="mv-advanced-filters" class="advanced-panel">
               <div class="advanced-row">
                 <div class="adv-field">
-                  <span class="adv-label">刷新起始</span>
+                  <span class="adv-label">{{  '刷新起始' | translate }}</span>
                   <nb-form-field class="advanced-time">
                     <input
                       nbInput
@@ -145,7 +136,7 @@
                   </nb-form-field>
                 </div>
                 <div class="adv-field">
-                  <span class="adv-label">刷新结束</span>
+                  <span class="adv-label">{{  '刷新结束' | translate }}</span>
                   <nb-form-field class="advanced-time">
                     <input
                       nbInput
@@ -158,14 +149,14 @@
                   </nb-form-field>
                 </div>
                 <div class="adv-field">
-                  <span class="adv-label">行数</span>
+                  <span class="adv-label">{{  '行数' | translate }}</span>
                   <nb-form-field class="advanced-num">
                     <input
                       nbInput
                       fullWidth
                       fieldSize="tiny"
                       type="number"
-                      placeholder="最小"
+                      [placeholder]="'最小' | translate"
                       [(ngModel)]="rowCountMin"
                       (ngModelChange)="applyFilters()"
                       />
@@ -177,14 +168,14 @@
                       fullWidth
                       fieldSize="tiny"
                       type="number"
-                      placeholder="最大"
+                      [placeholder]="'最大' | translate"
                       [(ngModel)]="rowCountMax"
                       (ngModelChange)="applyFilters()"
                       />
                   </nb-form-field>
                 </div>
                 <div class="adv-field">
-                  <span class="adv-label">分区</span>
+                  <span class="adv-label">{{  '分区' | translate }}</span>
                   <nb-form-field class="advanced-select">
                     <nb-select
                       fullWidth
@@ -207,39 +198,39 @@
           }
           @if (getActiveFiltersCount() > 0) {
             <div class="active-filters mt-2">
-              <span class="me-2">当前筛选:</span>
+              <span class="me-2">{{  '当前筛选:' | translate }}</span>
               @if (searchText) {
                 <nb-badge
                   status="info"
-                  text="搜索: {{ searchText }}"
+                  text="{{ '搜索: ' | translate }}{{ searchText }}"
                   class="me-2"
                 ></nb-badge>
               }
               @if (selectedDatabase !== 'all') {
                 <nb-badge
                   status="info"
-                  text="数据库: {{ selectedDatabase }}"
+                  text="{{ '数据库: ' | translate }}{{ selectedDatabase }}"
                   class="me-2"
                 ></nb-badge>
               }
               @if (selectedRefreshType !== 'all') {
                 <nb-badge
                   status="info"
-                  text="类型: {{ selectedRefreshType }}"
+                  text="{{ '类型: ' | translate }}{{ selectedRefreshType }}"
                   class="me-2"
                 ></nb-badge>
               }
               @if (selectedActiveState !== 'all') {
                 <nb-badge
                   status="info"
-                  text="状态: {{ selectedActiveState }}"
+                  text="{{ '状态: ' | translate }}{{ selectedActiveState }}"
                   class="me-2"
                 ></nb-badge>
               }
               @if (selectedRefreshState !== 'all') {
                 <nb-badge
                   status="info"
-                  text="刷新状态: {{ selectedRefreshState }}"
+                  text="{{ '刷新状态: ' | translate }}{{ selectedRefreshState }}"
                   class="me-2"
                 ></nb-badge>
               }
@@ -248,8 +239,8 @@
                 ghost
                 size="tiny"
                 (click)="clearAllFilters()"
-                title="清除全部筛选"
-                aria-label="清除全部筛选"
+                [title]="'清除全部筛选' | translate"
+                [aria-label]="'清除全部筛选' | translate"
                 >
                 <nb-icon icon="close-outline"></nb-icon>
               </button>
@@ -275,7 +266,7 @@
   <nb-card>
     <nb-card-header>
       <div class="d-flex justify-content-between align-items-center">
-        <h5>创建物化视图</h5>
+        <h6>{{  '创建物化视图' | translate }}</h6>
         <button nbButton ghost (click)="closeCreateDialog()">
           <nb-icon icon="close-outline"></nb-icon>
         </button>
@@ -284,10 +275,10 @@
     <nb-card-body>
       <nb-accordion>
         <nb-accordion-item>
-          <nb-accordion-item-header>SQL 模板示例（点击查看）</nb-accordion-item-header>
+          <nb-accordion-item-header>{{  'SQL 模板示例（点击查看）' | translate }}</nb-accordion-item-header>
           <nb-accordion-item-body>
             <div class="template-section">
-              <h6>异步物化视图（手动刷新）</h6>
+              <h6>{{  '异步物化视图（手动刷新）' | translate }}</h6>
               <pre class="code-template">CREATE MATERIALIZED VIEW mv_async_manual
                 DISTRIBUTED BY HASH(order_date) BUCKETS 10
                 REFRESH MANUAL
@@ -298,7 +289,7 @@
                 FROM orders
               GROUP BY order_date;</pre>
 
-              <h6>异步物化视图（自动刷新）</h6>
+              <h6>{{  '异步物化视图（自动刷新）' | translate }}</h6>
               <pre class="code-template">CREATE MATERIALIZED VIEW mv_async_auto
                 DISTRIBUTED BY HASH(order_date) BUCKETS 10
                 REFRESH ASYNC EVERY (INTERVAL 1 HOUR)
@@ -308,7 +299,7 @@
                 FROM orders
               GROUP BY order_date;</pre>
 
-              <h6>同步物化视图（ROLLUP，导入时自动刷新）</h6>
+              <h6>{{  '同步物化视图（ROLLUP，导入时自动刷新）' | translate }}</h6>
               <pre class="code-template">CREATE MATERIALIZED VIEW mv_sync_rollup
                 AS SELECT
                 customer_id,
@@ -323,27 +314,27 @@
       </nb-accordion>
 
       <div class="form-group mt-3">
-        <label class="label">CREATE MATERIALIZED VIEW SQL 语句</label>
+        <label class="label">{{  'CREATE MATERIALIZED VIEW SQL 语句' | translate }}</label>
         <textarea nbInput size="small"
           nbInput
           fullWidth
           rows="12"
-          placeholder="输入完整的 CREATE MATERIALIZED VIEW 语句..."
+          [placeholder]="'输入完整的 CREATE MATERIALIZED VIEW 语句...' | translate"
           [(ngModel)]="createSQL"
           [disabled]="creating"
         ></textarea>
         <small class="form-text text-muted">
           <nb-icon icon="bulb-outline"></nb-icon>
-          请输入完整的CREATE MATERIALIZED VIEW SQL语句。异步MV需要DISTRIBUTED BY，同步MV（ROLLUP）无需DISTRIBUTED BY。
+          {{ '请输入完整的CREATE MATERIALIZED VIEW SQL语句。异步MV需要DISTRIBUTED BY，同步MV（ROLLUP）无需DISTRIBUTED BY。' | translate }}
         </small>
       </div>
     </nb-card-body>
     <nb-card-footer>
       <div class="d-flex justify-content-end gap-2">
         <button type="button" class="icon-btn" (click="closeCreateDialog()" [disabled]="creating"
-          nbTooltip="取消" nbTooltipPlacement="top" aria-label="取消"><nb-icon icon="close-outline"></nb-icon></button>
+          [nbTooltip]="'取消' | translate" nbTooltipPlacement="top" [aria-label]="'取消' | translate"><nb-icon icon="close-outline"></nb-icon></button>
         <button type="button" class="icon-btn is-primary" (click="createMV()" [disabled]="creating || !createSQL.trim()"
-          nbTooltip="创建" nbTooltipPlacement="top" aria-label="创建"><nb-icon icon="checkmark-outline"></nb-icon></button>
+          [nbTooltip]="'创建' | translate" nbTooltipPlacement="top" [aria-label]="'创建' | translate"><nb-icon icon="checkmark-outline"></nb-icon></button>
       </div>
     </nb-card-footer>
   </nb-card>
@@ -355,7 +346,7 @@
     <nb-card>
       <nb-card-header>
         <div class="d-flex justify-content-between align-items-center">
-          <h5>物化视图详情: {{ selectedMV.name }}</h5>
+          <h6>{{ '物化视图详情:' | translate }} {{ selectedMV.name }}</h6>
           <button nbButton ghost (click)="closeDetailDialog()">
             <nb-icon icon="close-outline"></nb-icon>
           </button>
@@ -363,31 +354,31 @@
       </nb-card-header>
       <nb-card-body>
         <nb-tabset>
-          <nb-tab tabTitle="基本信息">
+          <nb-tab [tabTitle]="'基本信息' | translate">
             <div class="detail-section">
               <div class="row">
                 <div class="col-md-6 mb-3">
-                  <label class="label">名称</label>
+                  <label class="label">{{  '名称' | translate }}</label>
                   <p>{{ selectedMV.name }}</p>
                 </div>
                 <div class="col-md-6 mb-3">
-                  <label class="label">数据库</label>
+                  <label class="label">{{  '数据库' | translate }}</label>
                   <p>{{ selectedMV.database_name }}</p>
                 </div>
                 <div class="col-md-6 mb-3">
-                  <label class="label">刷新类型</label>
+                  <label class="label">{{  '刷新类型' | translate }}</label>
                   <p>
                     @switch (selectedMV.refresh_type) {
-                      @case ('ASYNC') { <span class="badge badge-success">自动</span> }
-                      @case ('MANUAL') { <span class="badge badge-info">手动</span> }
-                      @case ('ROLLUP') { <span class="badge badge-primary">同步</span> }
-                      @case ('INCREMENTAL') { <span class="badge badge-warning">增量</span> }
+                      @case ('ASYNC') { <span class="badge badge-success">{{  '自动' | translate }}</span> }
+                      @case ('MANUAL') { <span class="badge badge-info">{{  '手动' | translate }}</span> }
+                      @case ('ROLLUP') { <span class="badge badge-primary">{{  '同步' | translate }}</span> }
+                      @case ('INCREMENTAL') { <span class="badge badge-warning">{{  '增量' | translate }}</span> }
                       @default { <span class="text-hint">-</span> }
                     }
                   </p>
                 </div>
                 <div class="col-md-6 mb-3">
-                  <label class="label">状态</label>
+                  <label class="label">{{  '状态' | translate }}</label>
                   <p>
                     @if (selectedMV.is_active) {
                       <span class="badge badge-success">Active</span>
@@ -398,44 +389,44 @@
                   </p>
                 </div>
                 <div class="col-md-6 mb-3">
-                  <label class="label">分区类型</label>
+                  <label class="label">{{  '分区类型' | translate }}</label>
                   <p>{{ selectedMV.partition_type ?? '-' }}</p>
                 </div>
                 <div class="col-md-6 mb-3">
-                  <label class="label">行数</label>
+                  <label class="label">{{  '行数' | translate }}</label>
                   <p>{{ selectedMV.rows ?? '-' }}</p>
                 </div>
                 <div class="col-md-6 mb-3">
-                  <label class="label">任务ID</label>
+                  <label class="label">{{  '任务ID' | translate }}</label>
                   <p>{{ selectedMV.task_id ?? '-' }}</p>
                 </div>
                 <div class="col-md-6 mb-3">
-                  <label class="label">任务名称</label>
+                  <label class="label">{{  '任务名称' | translate }}</label>
                   <p>{{ selectedMV.task_name ?? '-' }}</p>
                 </div>
                 <div class="col-md-6 mb-3">
-                  <label class="label">最后刷新开始时间</label>
+                  <label class="label">{{  '最后刷新开始时间' | translate }}</label>
                   <p>{{ selectedMV.last_refresh_start_time ?? '-' }}</p>
                 </div>
                 <div class="col-md-6 mb-3">
-                  <label class="label">最后刷新完成时间</label>
+                  <label class="label">{{  '最后刷新完成时间' | translate }}</label>
                   <p>{{ selectedMV.last_refresh_finished_time ?? '-' }}</p>
                 </div>
                 <div class="col-md-6 mb-3">
-                  <label class="label">最后刷新耗时</label>
+                  <label class="label">{{  '最后刷新耗时' | translate }}</label>
                   <p>{{ selectedMV.last_refresh_duration ?? '-' }}</p>
                 </div>
                 <div class="col-md-6 mb-3">
-                  <label class="label">最后刷新状态</label>
+                  <label class="label">{{  '最后刷新状态' | translate }}</label>
                   <p>
                     @if (selectedMV.refresh_type === 'ROLLUP') {
                       <span class="text-hint">-</span>
                     } @else {
                       @switch (selectedMV.last_refresh_state) {
-                        @case ('SUCCESS') { <span class="badge badge-success">成功</span> }
-                        @case ('RUNNING') { <span class="badge badge-info">运行中</span> }
-                        @case ('FAILED') { <span class="badge badge-danger">失败</span> }
-                        @case ('PENDING') { <span class="badge badge-warning">等待中</span> }
+                        @case ('SUCCESS') { <span class="badge badge-success">{{  '成功' | translate }}</span> }
+                        @case ('RUNNING') { <span class="badge badge-info">{{  '运行中' | translate }}</span> }
+                        @case ('FAILED') { <span class="badge badge-danger">{{  '失败' | translate }}</span> }
+                        @case ('PENDING') { <span class="badge badge-warning">{{  '等待中' | translate }}</span> }
                         @default { <span class="text-hint">-</span> }
                       }
                     }
@@ -444,36 +435,36 @@
                 <!-- Error information -->
                 @if (selectedMV.last_refresh_error_message) {
                   <div class="col-12 mb-3">
-                    <label class="label">刷新错误信息</label>
+                    <label class="label">{{  '刷新错误信息' | translate }}</label>
                     <nb-alert status="danger" closable="false">
-                      <strong>错误码：</strong>{{ selectedMV.last_refresh_error_code ?? '-' }}<br>
-                      <strong>错误信息：</strong>{{ selectedMV.last_refresh_error_message }}
+                      <strong>{{  '错误码：' | translate }}</strong>{{ selectedMV.last_refresh_error_code ?? '-' }}<br>
+                      <strong>{{  '错误信息：' | translate }}</strong>{{ selectedMV.last_refresh_error_message }}
                     </nb-alert>
                   </div>
                 }
                 <!-- Partition information -->
                 @if (selectedMV.last_refresh_start_partition) {
                   <div class="col-md-6 mb-3">
-                    <label class="label">最后刷新起始分区</label>
+                    <label class="label">{{  '最后刷新起始分区' | translate }}</label>
                     <p>{{ selectedMV.last_refresh_start_partition }}</p>
                   </div>
                 }
                 @if (selectedMV.last_refresh_end_partition) {
                   <div class="col-md-6 mb-3">
-                    <label class="label">最后刷新结束分区</label>
+                    <label class="label">{{  '最后刷新结束分区' | translate }}</label>
                     <p>{{ selectedMV.last_refresh_end_partition }}</p>
                   </div>
                 }
                 <!-- Force refresh flag -->
                 @if (selectedMV.last_refresh_force_refresh !== undefined && selectedMV.last_refresh_force_refresh !== null) {
                   <div class="col-md-6 mb-3">
-                    <label class="label">强制刷新</label>
+                    <label class="label">{{  '强制刷新' | translate }}</label>
                     <p>
                       @if (selectedMV.last_refresh_force_refresh) {
-                        <span class="badge badge-warning">是</span>
+                        <span class="badge badge-warning">{{  '是' | translate }}</span>
                       }
                       @if (!selectedMV.last_refresh_force_refresh) {
-                        <span class="badge badge-basic">否</span>
+                        <span class="badge badge-basic">{{  '否' | translate }}</span>
                       }
                     </p>
                   </div>
@@ -481,24 +472,24 @@
               </div>
             </div>
           </nb-tab>
-          <nb-tab tabTitle="DDL语句">
+          <nb-tab [tabTitle]="'DDL语句' | translate">
             <div class="ddl-section">
               <div class="ddl-toolbar">
-                <span class="text-hint">建表语句</span>
+                <span class="text-hint">{{  '建表语句' | translate }}</span>
                 <button
                   nbButton
                   ghost
                   size="tiny"
                   (click)="copyDDL()"
                   [disabled]="!mvDDL"
-                  title="复制 DDL"
+                  [title]="'复制 DDL' | translate"
                   >
                   <nb-icon icon="copy-outline"></nb-icon>
-                  复制
+                  {{ '复制' | translate }}
                 </button>
               </div>
               @if (!mvDDL) {
-                <div class="text-center text-hint p-4">正在加载 DDL...</div>
+                <div class="text-center text-hint p-4">{{  '正在加载 DDL...' | translate }}</div>
               }
               @if (mvDDL) {
                 <markdown
@@ -516,7 +507,7 @@
           <div class="d-flex gap-2">
             <button nbButton ghost status="info" size="small" (click)="closeDetailDialog(); openEditDialog(selectedMV)">
               <nb-icon icon="edit-outline"></nb-icon>
-              编辑
+              {{ '编辑' | translate }}
             </button>
             @if (selectedMV.refresh_type !== 'ROLLUP') {
               <button
@@ -527,7 +518,7 @@
                 (click)="closeDetailDialog(); openRefreshDialog(selectedMV)"
                 >
                 <nb-icon icon="refresh-outline"></nb-icon>
-                刷新
+                {{ '刷新' | translate }}
               </button>
             }
             @if (selectedMV.refresh_type !== 'ROLLUP') {
@@ -539,7 +530,7 @@
                 (click)="closeDetailDialog(); toggleActiveState(selectedMV)"
                 >
                 <nb-icon icon="power-outline"></nb-icon>
-                {{ selectedMV.is_active ? '停用' : '激活' }}
+                {{  selectedMV.is_active ? ('停用' | translate) : ('激活' | translate)  }}
               </button>
             }
           </div>
@@ -555,7 +546,7 @@
     <nb-card>
       <nb-card-header>
         <div class="d-flex justify-content-between align-items-center">
-          <h5>刷新物化视图: {{ selectedMV.name }}</h5>
+          <h6>{{ '刷新物化视图:' | translate }} {{ selectedMV.name }}</h6>
           <button nbButton ghost (click)="closeRefreshDialog()">
             <nb-icon icon="close-outline"></nb-icon>
           </button>
@@ -563,7 +554,7 @@
       </nb-card-header>
       <nb-card-body>
         <div class="form-group">
-          <label class="label">刷新模式</label>
+          <label class="label">{{  '刷新模式' | translate }}</label>
           <nb-select size="small" fullWidth [(selected)]="refreshMode">
             @for (option of refreshModeOptions; track option) {
               <nb-option [value]="option.value">
@@ -572,43 +563,43 @@
             }
           </nb-select>
           <small class="form-text text-muted">
-            ASYNC: 异步刷新（后台执行），SYNC: 同步刷新（阻塞等待完成）
+            {{ 'ASYNC: 异步刷新（后台执行），SYNC: 同步刷新（阻塞等待完成）' | translate }}
           </small>
         </div>
         <div class="form-group mt-3">
           <nb-checkbox [(checked)]="refreshForce">
-            强制刷新 (FORCE)
+            {{ '强制刷新 (FORCE)' | translate }}
           </nb-checkbox>
           <small class="form-text text-muted d-block">
-            即使数据未变化也强制刷新物化视图
+            {{ '即使数据未变化也强制刷新物化视图' | translate }}
           </small>
         </div>
         @if (selectedMV.partition_type && selectedMV.partition_type !== 'UNPARTITIONED') {
           <div class="form-group mt-3">
-            <label class="label">分区刷新 (可选)</label>
+            <label class="label">{{  '分区刷新 (可选)' | translate }}</label>
             <div class="row">
               <div class="col-md-6">
-                <input size="small"
+                <input fieldSize="small"
                   nbInput
                   fullWidth
                   type="text"
-                  placeholder="起始分区"
+                  [placeholder]="'起始分区' | translate"
                   [(ngModel)]="refreshPartitionStart"
                   />
               </div>
               <div class="col-md-6">
-                <input size="small"
+                <input fieldSize="small"
                   nbInput
                   fullWidth
                   type="text"
-                  placeholder="结束分区"
+                  [placeholder]="'结束分区' | translate"
                   [(ngModel)]="refreshPartitionEnd"
                   />
               </div>
             </div>
             <small class="form-text text-muted">
               <nb-icon icon="info-outline"></nb-icon>
-              留空刷新所有分区，或指定分区范围仅刷新部分分区
+              {{ '留空刷新所有分区，或指定分区范围仅刷新部分分区' | translate }}
             </small>
           </div>
         }
@@ -616,9 +607,9 @@
       <nb-card-footer>
         <div class="d-flex justify-content-end gap-2">
           <button type="button" class="icon-btn" (click="closeRefreshDialog()" [disabled]="refreshing"
-            nbTooltip="取消" nbTooltipPlacement="top" aria-label="取消"><nb-icon icon="close-outline"></nb-icon></button>
+            [nbTooltip]="'取消' | translate" nbTooltipPlacement="top" [aria-label]="'取消' | translate"><nb-icon icon="close-outline"></nb-icon></button>
           <button type="button" class="icon-btn is-primary" (click="refreshMV()" [disabled]="refreshing"
-            nbTooltip="刷新" nbTooltipPlacement="top" aria-label="刷新"><nb-icon icon="checkmark-outline"></nb-icon></button>
+            [nbTooltip]="'刷新' | translate" nbTooltipPlacement="top" [aria-label]="'刷新' | translate"><nb-icon icon="checkmark-outline"></nb-icon></button>
         </div>
       </nb-card-footer>
     </nb-card>
@@ -630,7 +621,7 @@
   <nb-card>
     <nb-card-header>
       <div class="d-flex justify-content-between align-items-center">
-        <h5>编辑物化视图: {{ selectedMV?.name }}</h5>
+        <h6>{{ '编辑物化视图:' | translate }} {{ selectedMV?.name }}</h6>
         <button nbButton ghost (click)="closeEditDialog()">
           <nb-icon icon="close-outline"></nb-icon>
         </button>
@@ -638,29 +629,29 @@
     </nb-card-header>
     <nb-card-body>
       <div class="form-group">
-        <label class="label">操作类型</label>
+        <label class="label">{{  '操作类型' | translate }}</label>
         <nb-select size="small" [(selected)]="editAction" fullWidth>
-          <nb-option value="rename">重命名</nb-option>
-          <nb-option value="refresh_strategy">修改刷新策略</nb-option>
-          <nb-option value="properties">修改属性</nb-option>
-          <nb-option value="advanced">高级模式（自定义ALTER子句）</nb-option>
+          <nb-option value="rename">{{  '重命名' | translate }}</nb-option>
+          <nb-option value="refresh_strategy">{{  '修改刷新策略' | translate }}</nb-option>
+          <nb-option value="properties">{{  '修改属性' | translate }}</nb-option>
+          <nb-option value="advanced">{{  '高级模式（自定义ALTER子句）' | translate }}</nb-option>
         </nb-select>
       </div>
 
       <!-- Rename Form -->
       @if (editAction === 'rename') {
         <div class="form-group">
-          <label class="label">新名称 <span class="text-danger">*</span></label>
-          <input size="small"
+          <label class="label">{{  '新名称' | translate }}<span class="text-danger">*</span></label>
+          <input fieldSize="small"
             nbInput
             fullWidth
             type="text"
             [(ngModel)]="editNewName"
-            placeholder="输入新的物化视图名称"
+            [placeholder]="'输入新的物化视图名称' | translate"
             />
           <p class="caption text-hint mt-2">
             <nb-icon icon="info-outline"></nb-icon>
-            将生成SQL: ALTER MATERIALIZED VIEW {{ selectedMV?.database_name }}.{{ selectedMV?.name }} RENAME {{ editNewName }}
+            {{ '将生成SQL: ALTER MATERIALIZED VIEW' | translate }} {{ selectedMV?.database_name }}.{{ selectedMV?.name }} {{ 'RENAME' | translate }} {{ editNewName }}
           </p>
         </div>
       }
@@ -669,18 +660,18 @@
       @if (editAction === 'refresh_strategy') {
         <div>
           <div class="form-group">
-            <label class="label">刷新策略 <span class="text-danger">*</span></label>
+            <label class="label">{{  '刷新策略' | translate }}<span class="text-danger">*</span></label>
             <nb-select size="small" [(selected)]="editRefreshStrategy" fullWidth>
-              <nb-option value="MANUAL">手动刷新 (MANUAL)</nb-option>
-              <nb-option value="ASYNC">自动刷新 (ASYNC)</nb-option>
+              <nb-option value="MANUAL">{{  '手动刷新 (MANUAL)' | translate }}</nb-option>
+              <nb-option value="ASYNC">{{  '自动刷新 (ASYNC)' | translate }}</nb-option>
             </nb-select>
           </div>
           @if (editRefreshStrategy === 'ASYNC') {
             <div class="row">
               <div class="col-md-6">
                 <div class="form-group">
-                  <label class="label">刷新间隔</label>
-                  <input size="small"
+                  <label class="label">{{  '刷新间隔' | translate }}</label>
+                  <input fieldSize="small"
                     nbInput
                     fullWidth
                     type="number"
@@ -692,12 +683,12 @@
               </div>
               <div class="col-md-6">
                 <div class="form-group">
-                  <label class="label">时间单位</label>
+                  <label class="label">{{  '时间单位' | translate }}</label>
                   <nb-select size="small" [(selected)]="editRefreshUnit" fullWidth>
-                    <nb-option value="HOUR">小时</nb-option>
-                    <nb-option value="DAY">天</nb-option>
-                    <nb-option value="WEEK">周</nb-option>
-                    <nb-option value="MONTH">月</nb-option>
+                    <nb-option value="HOUR">{{  '小时' | translate }}</nb-option>
+                    <nb-option value="DAY">{{  '天' | translate }}</nb-option>
+                    <nb-option value="WEEK">{{  '周' | translate }}</nb-option>
+                    <nb-option value="MONTH">{{  '月' | translate }}</nb-option>
                   </nb-select>
                 </div>
               </div>
@@ -707,12 +698,12 @@
             <nb-icon icon="info-outline"></nb-icon>
             @if (editRefreshStrategy === 'MANUAL') {
               <span>
-                将生成SQL: ALTER MATERIALIZED VIEW ... REFRESH MANUAL
+                {{ '将生成SQL: ALTER MATERIALIZED VIEW ... REFRESH MANUAL' | translate }}
               </span>
             }
             @if (editRefreshStrategy === 'ASYNC') {
               <span>
-                将生成SQL: ALTER MATERIALIZED VIEW ... REFRESH ASYNC EVERY(INTERVAL {{ editRefreshInterval }} {{ editRefreshUnit }})
+                {{ '将生成SQL: ALTER MATERIALIZED VIEW ... REFRESH ASYNC EVERY(INTERVAL' | translate }} {{ editRefreshInterval }} {{ editRefreshUnit }})
               </span>
             }
           </p>
@@ -723,43 +714,43 @@
       @if (editAction === 'properties') {
         <div>
           <div class="form-group">
-            <label class="label">属性名称 <span class="text-danger">*</span></label>
-            <input size="small"
+            <label class="label">{{  '属性名称' | translate }}<span class="text-danger">*</span></label>
+            <input fieldSize="small"
               nbInput
               fullWidth
               type="text"
               [(ngModel)]="editPropertyKey"
-              placeholder="例如: session.enable_profile 或 mv_rewrite_staleness_second"
+              [placeholder]="'例如: session.enable_profile 或 mv_rewrite_staleness_second' | translate"
               />
           </div>
           <div class="form-group">
-            <label class="label">属性值 <span class="text-danger">*</span></label>
-            <input size="small"
+            <label class="label">{{  '属性值' | translate }}<span class="text-danger">*</span></label>
+            <input fieldSize="small"
               nbInput
               fullWidth
               type="text"
               [(ngModel)]="editPropertyValue"
-              placeholder="输入属性值"
+              [placeholder]="'输入属性值' | translate"
               />
           </div>
           <nb-accordion class="mt-3">
             <nb-accordion-item>
-              <nb-accordion-item-header>常用属性说明</nb-accordion-item-header>
+              <nb-accordion-item-header>{{  '常用属性说明' | translate }}</nb-accordion-item-header>
               <nb-accordion-item-body>
                 <ul class="list-unstyled small">
-                  <li><strong>session.enable_profile</strong> - 启用Profile (true/false)</li>
-                  <li><strong>session.enable_spill</strong> - 启用中间结果落盘 (true/false)</li>
-                  <li><strong>session.spill_mode</strong> - 落盘模式 (auto/force)</li>
-                  <li><strong>mv_rewrite_staleness_second</strong> - 查询改写Staleness时间（秒）</li>
-                  <li><strong>partition_ttl_number</strong> - 分区TTL数量</li>
-                  <li><strong>partition_refresh_number</strong> - 分区刷新数量</li>
+                  <li><strong>session.enable_profile</strong>{{  '- 启用Profile (true/false)' | translate }}</li>
+                  <li><strong>session.enable_spill</strong>{{  '- 启用中间结果落盘 (true/false)' | translate }}</li>
+                  <li><strong>session.spill_mode</strong>{{  '- 落盘模式 (auto/force)' | translate }}</li>
+                  <li><strong>mv_rewrite_staleness_second</strong>{{  '- 查询改写Staleness时间（秒）' | translate }}</li>
+                  <li><strong>partition_ttl_number</strong>{{  '- 分区TTL数量' | translate }}</li>
+                  <li><strong>partition_refresh_number</strong>{{  '- 分区刷新数量' | translate }}</li>
                 </ul>
               </nb-accordion-item-body>
             </nb-accordion-item>
           </nb-accordion>
           <p class="caption text-hint mt-2">
             <nb-icon icon="info-outline"></nb-icon>
-            将生成SQL: ALTER MATERIALIZED VIEW ... SET ("{{ editPropertyKey }}" = "{{ editPropertyValue }}")
+            {{ '将生成SQL: ALTER MATERIALIZED VIEW ... SET (' | translate }}"{{ editPropertyKey }}" = "{{ editPropertyValue }}")
           </p>
         </div>
       }
@@ -768,28 +759,28 @@
       @if (editAction === 'advanced') {
         <div>
           <div class="form-group">
-            <label class="label">ALTER子句 <span class="text-danger">*</span></label>
+            <label class="label">{{  'ALTER子句' | translate }}<span class="text-danger">*</span></label>
             <textarea nbInput size="small"
               nbInput
               fullWidth
               rows="4"
               [(ngModel)]="editAdvancedClause"
-              placeholder="例如: ACTIVE, INACTIVE, SWAP WITH other_mv, SET (...) 等"
+              [placeholder]="'例如: ACTIVE, INACTIVE, SWAP WITH other_mv, SET (...) 等' | translate"
             ></textarea>
           </div>
           <nb-alert status="info" closable="false">
-            <strong>支持的ALTER子句:</strong>
+            <strong>{{  '支持的ALTER子句:' | translate }}</strong>
             <ul class="mb-0 mt-2">
-              <li><code>RENAME new_name</code> - 重命名</li>
-              <li><code>REFRESH MANUAL</code> 或 <code>REFRESH ASYNC EVERY(...)</code> - 修改刷新策略</li>
-              <li><code>ACTIVE</code> 或 <code>INACTIVE</code> - 修改状态</li>
-              <li><code>SET ("key" = "value")</code> - 修改属性</li>
-              <li><code>SWAP WITH other_mv_name</code> - 原子替换</li>
+              <li><code>RENAME new_name</code>{{  '- 重命名' | translate }}</li>
+              <li><code>REFRESH MANUAL</code>{{  '或' | translate }}<code>REFRESH ASYNC EVERY(...)</code>{{  '- 修改刷新策略' | translate }}</li>
+              <li><code>ACTIVE</code>{{  '或' | translate }}<code>INACTIVE</code>{{  '- 修改状态' | translate }}</li>
+              <li><code>SET ("key" = "value")</code>{{  '- 修改属性' | translate }}</li>
+              <li><code>SWAP WITH other_mv_name</code>{{  '- 原子替换' | translate }}</li>
             </ul>
           </nb-alert>
           <p class="caption text-hint mt-2">
             <nb-icon icon="alert-triangle-outline"></nb-icon>
-            请确保ALTER子句语法正确，完整SQL将为: ALTER MATERIALIZED VIEW {{ selectedMV?.database_name }}.{{ selectedMV?.name }} {{ editAdvancedClause }}
+            {{ '请确保ALTER子句语法正确，完整SQL将为: ALTER MATERIALIZED VIEW' | translate }} {{ selectedMV?.database_name }}.{{ selectedMV?.name }} {{ editAdvancedClause }}
           </p>
         </div>
       }
@@ -797,9 +788,9 @@
     <nb-card-footer>
       <div class="d-flex justify-content-end gap-2">
         <button type="button" class="icon-btn" (click="closeEditDialog()" [disabled]="editing"
-          nbTooltip="取消" nbTooltipPlacement="top" aria-label="取消"><nb-icon icon="close-outline"></nb-icon></button>
+          [nbTooltip]="'取消' | translate" nbTooltipPlacement="top" [aria-label]="'取消' | translate"><nb-icon icon="close-outline"></nb-icon></button>
         <button type="button" class="icon-btn is-primary" (click="editMV()" [disabled]="editing"
-          nbTooltip="保存" nbTooltipPlacement="top" aria-label="保存"><nb-icon icon="checkmark-outline"></nb-icon></button>
+          [nbTooltip]="'保存' | translate" nbTooltipPlacement="top" [aria-label]="'保存' | translate"><nb-icon icon="checkmark-outline"></nb-icon></button>
       </div>
     </nb-card-footer>
   </nb-card>

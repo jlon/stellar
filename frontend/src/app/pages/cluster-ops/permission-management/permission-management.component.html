@@ -5,7 +5,7 @@
     responsive="true"
     >
     <!-- Tab 1: 我的权限 -->
-    <nb-tab tabTitle="我的权限" tabId="0">
+    <nb-tab [tabTitle]="'我的权限' | translate" tabId="0">
       <ng-template nbTabContent>
         <ngx-permission-dashboard-standard
           [refresh$]="refreshDashboard$"
@@ -15,7 +15,7 @@
     </nb-tab>
 
     <!-- Tab 2: 权限申请 -->
-    <nb-tab tabTitle="权限申请" tabId="1">
+    <nb-tab [tabTitle]="'权限申请' | translate" tabId="1">
       <ng-template nbTabContent>
         <ngx-permission-request
           (submitted)="onRequestSubmitted()"
@@ -26,7 +26,7 @@
 
     <!-- Tab 3: 权限审批 (管理员) -->
     @if (canViewApprovalTab()) {
-      <nb-tab tabTitle="权限审批" tabId="2">
+      <nb-tab [tabTitle]="'权限审批' | translate" tabId="2">
         <ng-template nbTabContent>
           <ngx-permission-approval
             (processed)="onRequestProcessed()"

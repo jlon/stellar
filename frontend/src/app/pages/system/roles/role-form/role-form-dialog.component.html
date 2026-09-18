@@ -1,5 +1,5 @@
 <nb-card class="role-dialog">
-  <nb-card-header>{{ mode === 'create' ? '创建角色' : '编辑角色' }}</nb-card-header>
+  <nb-card-header>{{  mode === 'create' ? ('创建角色' | translate) : ('编辑角色' | translate)  }}</nb-card-header>
 
   <nb-card-body>
     <form [formGroup]="form" class="role-form" novalidate>
@@ -8,19 +8,19 @@
         <div class="basic-info-section">
           <label class="section-label">
             <nb-icon icon="settings-2-outline"></nb-icon>
-            基本信息
+            {{ '基本信息' | translate }}
           </label>
 
           <!-- Organization Selection (Super Admin Only) -->
           @if (isSuperAdmin) {
             <div class="form-group">
-              <label class="label" for="input-organization">所属组织</label>
+              <label class="label" for="input-organization">{{  '所属组织' | translate }}</label>
               <nb-form-field>
                 <nb-icon nbPrefix icon="home-outline"></nb-icon>
                 <nb-select size="small"
                   formControlName="organizationId"
                   id="input-organization"
-                  placeholder="请选择组织"
+                  [placeholder]="'请选择组织' | translate"
                   fullWidth
                   >
                   @for (org of organizations; track org) {
@@ -39,10 +39,10 @@
           <!-- Organization Display (Org Admin) -->
           @if (!isSuperAdmin && currentOrganization) {
             <div class="form-group">
-              <label class="label">所属组织</label>
+              <label class="label">{{  '所属组织' | translate }}</label>
               <nb-form-field>
                 <nb-icon nbPrefix icon="home-outline"></nb-icon>
-                <input size="small"
+                <input fieldSize="small"
                   nbInput
                   fullWidth
                   type="text"
@@ -50,20 +50,20 @@
                   disabled
                   />
               </nb-form-field>
-              <p class="caption status-hint">组织管理员只能在本组织内创建角色</p>
+              <p class="caption status-hint">{{  '组织管理员只能在本组织内创建角色' | translate }}</p>
             </div>
           }
 
           <div class="form-group">
-            <label class="label" for="input-code">角色代码</label>
+            <label class="label" for="input-code">{{  '角色代码' | translate }}</label>
             <nb-form-field>
               <nb-icon nbPrefix icon="hash-outline"></nb-icon>
-              <input size="small"
+              <input fieldSize="small"
                 nbInput
                 fullWidth
                 id="input-code"
                 formControlName="code"
-                placeholder="请输入角色代码"
+                [placeholder]="'请输入角色代码' | translate"
                 [readonly]="mode === 'edit'"
                 maxlength="50"
                 />
@@ -71,29 +71,29 @@
           </div>
 
           <div class="form-group">
-            <label class="label" for="input-name">角色名称</label>
+            <label class="label" for="input-name">{{  '角色名称' | translate }}</label>
             <nb-form-field>
               <nb-icon nbPrefix icon="shield-outline"></nb-icon>
-              <input size="small"
+              <input fieldSize="small"
                 nbInput
                 fullWidth
                 id="input-name"
                 formControlName="name"
-                placeholder="请输入角色名称"
+                [placeholder]="'请输入角色名称' | translate"
                 maxlength="50"
                 />
             </nb-form-field>
           </div>
 
           <div class="form-group form-group--grow">
-            <label class="label" for="input-description">角色描述</label>
+            <label class="label" for="input-description">{{  '角色描述' | translate }}</label>
             <nb-form-field>
               <textarea nbInput size="small"
                 nbInput
                 fullWidth
                 id="input-description"
                 formControlName="description"
-                placeholder="请输入角色描述（可选）"
+                [placeholder]="'请输入角色描述（可选）' | translate"
                 rows="3"
                 maxlength="200"
               ></textarea>
@@ -105,7 +105,7 @@
         <div class="permission-section">
           <label class="section-label">
             <nb-icon icon="lock-outline"></nb-icon>
-            菜单权限
+            {{ '菜单权限' | translate }}
           </label>
           <div class="permission-tree-container">
             <!-- Simple tree structure (inspired by query-execution) -->
@@ -119,7 +119,7 @@
               } @else {
                 <div class="empty-tree">
                   <nb-icon icon="inbox-outline"></nb-icon>
-                  <span>暂无可用权限</span>
+                  <span>{{  '暂无可用权限' | translate }}</span>
                 </div>
               }
 
@@ -145,7 +145,7 @@
               (checkedChange)="onNodeCheckChange(node, $event)"
               (click)="$event.stopPropagation()"
               >
-              <span class="node-text">{{ node.name }}</span>
+              <span class="node-text">{{ node.name | translate }}</span>
             </nb-checkbox>
 
             <!-- Expand/collapse button (right side) -->
@@ -178,7 +178,7 @@
   </nb-card-body>
 
   <nb-card-footer>
-    <button type="button" class="icon-btn" (click)="cancel()" nbTooltip="取消" nbTooltipPlacement="top" aria-label="取消"><nb-icon icon="close-outline"></nb-icon></button>
-    <button type="button" class="icon-btn is-primary" (click)="submit()" [disabled]="form.invalid" nbTooltip="保存" nbTooltipPlacement="top" aria-label="保存"><nb-icon icon="checkmark-outline"></nb-icon></button>
+    <button type="button" class="icon-btn" (click)="cancel()" [nbTooltip]="'取消' | translate" nbTooltipPlacement="top" [aria-label]="'取消' | translate"><nb-icon icon="close-outline"></nb-icon></button>
+    <button type="button" class="icon-btn is-primary" (click)="submit()" [disabled]="form.invalid" [nbTooltip]="'保存' | translate" nbTooltipPlacement="top" [aria-label]="'保存' | translate"><nb-icon icon="checkmark-outline"></nb-icon></button>
   </nb-card-footer>
 </nb-card>

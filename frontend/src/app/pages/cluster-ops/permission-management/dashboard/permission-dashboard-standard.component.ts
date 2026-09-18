@@ -1,10 +1,12 @@
-import { Component, OnInit, OnDestroy, Input, Output, EventEmitter, ViewChild, TemplateRef, inject } from '@angular/core';
+import { I18nService } from '../../../../@core/i18n/i18n.service';
+import { TranslatePipe } from '@ngx-translate/core';
+import { Component, OnInit, AfterViewInit, OnDestroy, Input, Output, EventEmitter, ViewChild, TemplateRef, inject } from '@angular/core';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { PermissionRequestService } from '../../../../@core/data/permission-request.service';
 import { DbUserPermissionDto } from '../../../../@core/data/permission-request.model';
-import { NbDialogService, NbToastrService, NbCardModule, NbIconModule, NbButtonModule, NbSpinnerModule, NbListModule, NbBadgeModule, NbAccordionModule } from '@nebular/theme';
+import { NbAccordionModule, NbBadgeModule, NbButtonModule, NbCardModule, NbDialogService, NbIconModule, NbListModule, NbSpinnerModule, NbToastrService, NbTooltipModule } from '@nebular/theme';
 
 
 /**
@@ -30,6 +32,7 @@ interface PermissionRecord extends DbUserPermissionDto {
     templateUrl: './permission-dashboard-standard.component.html',
     styleUrls: ['./permission-dashboard-standard.component.scss'],
     imports: [
+    TranslatePipe,
     NbCardModule,
     NbIconModule,
     NbButtonModule,
@@ -37,11 +40,13 @@ interface PermissionRecord extends DbUserPermissionDto {
     Angular2SmartTableModule,
     NbListModule,
     NbBadgeModule,
-    NbAccordionModule
+    NbAccordionModule,
+    NbTooltipModule
 ],
 })
-export class PermissionDashboardStandardComponent implements OnInit, OnDestroy {
-  private permissionService = inject(PermissionRequestService);
+export class PermissionDashboardStandardComponent implements AfterViewInit, OnDestroy {
+  private permissionService = inject(PermissionRequestService)
+  private i18n = inject(I18nService);
   private toastr = inject(NbToastrService);
   private dialogService = inject(NbDialogService);
 
@@ -59,17 +64,17 @@ export class PermissionDashboardStandardComponent implements OnInit, OnDestroy {
   // ng2-smart-table 配置 - 仿照节点管理，使用标准编辑按钮查看详情
   settings = {
     mode: 'external',
-    hideSubHeader: false,
-    noDataMessage: '暂无权限数据',
+    hideSubHeader: true,
+    noDataMessage: this.i18n.instant('暂无权限数据'),
     actions: {
-      columnTitle: '操作',
+      columnTitle: this.i18n.instant('操作'),
       add: false,
       edit: true,  // 使用编辑按钮作为查看详情
       delete: false,
       position: 'right',
     },
     edit: {
-      editButtonContent: '<i class="nb-search"></i>',
+      editButtonContent: '<i class="nb-search" title="查看"></i>',
     },
     pager: {
       display: true,
@@ -77,37 +82,35 @@ export class PermissionDashboardStandardComponent implements OnInit, OnDestroy {
     },
     columns: {
       privilege_type: {
-        title: '权限类型',
+        title: this.i18n.instant('权限类型'),
         type: 'string',
       },
       resource_type: {
-        title: '资源类型',
+        title: this.i18n.instant('资源类型'),
         type: 'string',
       },
       resource_path: {
-        title: '资源路径',
+        title: this.i18n.instant('资源路径'),
         type: 'string',
       },
       granted_role: {
-        title: '授权角色',
+        title: this.i18n.instant('授权角色'),
         type: 'string',
         valuePrepareFunction: (cell: string) => {
           return cell || '直接授权';
         },
       },
       risk_level_display: {
-        title: '风险等级',
-        type: 'string',
+        title: this.i18n.instant('风险等级'),
+        type: 'html',
+        sanitizer: { bypassHtml: true },
+        valuePrepareFunction: (value: string) => {
+          const badgeClass =
+            value === '高风险' ? 'badge-danger' : value === '中风险' ? 'badge-warning' : 'badge-basic';
+          return `<span class="badge ${badgeClass}">${value}</span>`;
+        },
       },
     },
-  };
-
-  // 统计
-  stats = {
-    totalRoles: 0,
-    globalPermissions: 0,
-    dbPermissions: 0,
-    tablePermissions: 0,
   };
 
   selectedPermission: PermissionRecord | null = null;
@@ -125,6 +128,11 @@ export class PermissionDashboardStandardComponent implements OnInit, OnDestroy {
         this.loadPermissions();
       });
     }
+  }
+
+  // LocalDataSource 在表格就绪前 load 会丢首行（angular2-smart-table 已知坑），
+  // 表格已改为常驻渲染，首次 load 延迟到视图初始化之后。
+  ngAfterViewInit(): void {
     this.loadPermissions();
   }
 
@@ -143,12 +151,11 @@ export class PermissionDashboardStandardComponent implements OnInit, OnDestroy {
       next: (permissions: DbUserPermissionDto[]) => {
         this.permissions = this.enhancePermissions(permissions);
         this.updatePermissionsDisplay();
-        this.calculateStats();
         this.loading = false;
       },
       error: (err) => {
         console.error('Failed to load permissions:', err);
-        this.toastr.danger('加载权限列表失败', '错误');
+        this.toastr.danger(this.i18n.instant('加载权限列表失败'), this.i18n.instant('错误'));
         this.loading = false;
       },
     });
@@ -188,39 +195,6 @@ export class PermissionDashboardStandardComponent implements OnInit, OnDestroy {
       return 'medium';
     }
     return 'low';
-  }
-
-  /**
-   * 计算统计数据
-   *
-   * 权限分类说明：
-   * - 角色数：用户被授予的角色数量（resource_type === 'ROLE'）
-   * - 全局权限：系统级别权限（resource_type === 'GLOBAL' 或 'SYSTEM' 或 'CATALOG'）
-   * - 数据库权限：数据库级别权限（resource_type === 'DATABASE'）
-   * - 表级权限：表级别权限（resource_type === 'TABLE'）
-   */
-  private calculateStats(): void {
-    // 角色数量
-    this.stats.totalRoles = this.permissions.filter(p =>
-      p.resource_type === 'ROLE' || p.privilege_type === 'ROLE'
-    ).length;
-
-    // 全局权限（GLOBAL, SYSTEM, CATALOG 级别）
-    this.stats.globalPermissions = this.permissions.filter(p =>
-      p.resource_type === 'GLOBAL' ||
-      p.resource_type === 'SYSTEM' ||
-      p.resource_type === 'CATALOG'
-    ).length;
-
-    // 数据库权限
-    this.stats.dbPermissions = this.permissions.filter(p =>
-      p.resource_type === 'DATABASE'
-    ).length;
-
-    // 表级权限
-    this.stats.tablePermissions = this.permissions.filter(p =>
-      p.resource_type === 'TABLE'
-    ).length;
   }
 
   /**
@@ -289,6 +263,11 @@ export class PermissionDashboardStandardComponent implements OnInit, OnDestroy {
       '请在权限申请页面填写撤销原因并提交',
       '跳转到权限申请'
     );
+  }
+
+  /** 空态引导：去权限申请 tab 发起申请。 */
+  requestPermission(): void {
+    this.switchToRequest.emit({ type: 'request_permission' });
   }
 
   // 辅助方法

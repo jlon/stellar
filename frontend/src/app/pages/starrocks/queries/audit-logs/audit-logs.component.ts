@@ -1,3 +1,5 @@
+import { TranslatePipe } from '@ngx-translate/core';
+import { I18nService } from '../../../../@core/i18n/i18n.service';
 import { Component, OnInit, OnDestroy, TemplateRef, ViewChild, inject, ChangeDetectorRef } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { NbToastrService, NbDialogService, NbCardModule, NbButtonModule, NbIconModule, NbSelectModule, NbOptionModule, NbFormFieldModule, NbInputModule, NbBadgeModule, NbSpinnerModule, NbTooltipModule } from '@nebular/theme';
@@ -20,6 +22,7 @@ import { FormsModule } from '@angular/forms';
     templateUrl: './audit-logs.component.html',
     styleUrls: ['./audit-logs.component.scss'],
     imports: [
+    TranslatePipe,
     NbCardModule,
     NbButtonModule,
     NbIconModule,
@@ -37,6 +40,7 @@ import { FormsModule } from '@angular/forms';
 })
 export class AuditLogsComponent implements OnInit, OnDestroy {
   private nodeService = inject(NodeService);
+  private i18n = inject(I18nService);
   private cdr = inject(ChangeDetectorRef);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
@@ -72,13 +76,13 @@ export class AuditLogsComponent implements OnInit, OnDestroy {
   historySettings = {
     mode: 'external',
     hideSubHeader: false, // Enable search
-    noDataMessage: '暂无审计日志记录',
+    noDataMessage: this.i18n.instant('暂无审计日志记录'),
     actions: {
       add: false,
       edit: true,
       delete: false,
       position: 'right',
-      columnTitle: '操作',
+      columnTitle: this.i18n.instant('操作'),
     },
     edit: {
       editButtonContent: '<i class="nb-search" title="查看"></i>',
@@ -88,13 +92,13 @@ export class AuditLogsComponent implements OnInit, OnDestroy {
     },
     columns: {
       query_id: { title: 'Query ID', type: 'string' },
-      user: { title: '用户', type: 'string', width: '8%' },
-      default_db: { title: '数据库', type: 'string', width: '8%' },
-      query_type: { title: '类型', type: 'string', width: '8%' },
-      query_state: { title: '状态', type: 'string', width: '8%' },
-      start_time: { title: '开始时间', type: 'string', width: '12%' },
+      user: { title: this.i18n.instant('用户'), type: 'string', width: '8%' },
+      default_db: { title: this.i18n.instant('数据库'), type: 'string', width: '8%' },
+      query_type: { title: this.i18n.instant('类型'), type: 'string', width: '8%' },
+      query_state: { title: this.i18n.instant('状态'), type: 'string', width: '8%' },
+      start_time: { title: this.i18n.instant('开始时间'), type: 'string', width: '12%' },
       total_ms: {
-        title: '耗时(ms)',
+        title: this.i18n.instant('耗时(ms)'),
         type: 'html',
         sanitizer: { bypassHtml: true },
         width: '8%',

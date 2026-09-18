@@ -1,3 +1,4 @@
+import { TranslatePipe } from '@ngx-translate/core';
 import { Component, Input, OnInit, inject } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { NbDialogRef, NbCardModule, NbSelectModule, NbOptionModule, NbInputModule, NbFormFieldModule, NbButtonModule, NbTooltipModule, NbIconModule, NbAccordionModule } from '@nebular/theme';
@@ -24,6 +25,7 @@ export interface LLMProviderFormDialogResult {
     templateUrl: './llm-provider-form-dialog.component.html',
     styleUrls: ['./llm-provider-form-dialog.component.scss'],
     imports: [
+    TranslatePipe,
     NbCardModule,
     FormsModule,
     ReactiveFormsModule,

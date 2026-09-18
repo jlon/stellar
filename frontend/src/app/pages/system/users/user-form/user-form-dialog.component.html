@@ -1,5 +1,5 @@
 <nb-card class="user-dialog">
-  <nb-card-header>{{ mode === 'create' ? '新增用户' : '编辑用户' }}</nb-card-header>
+  <nb-card-header>{{  mode === 'create' ? ('新增用户' | translate) : ('编辑用户' | translate)  }}</nb-card-header>
 
   <nb-card-body>
     <form [formGroup]="form" novalidate>
@@ -7,8 +7,8 @@
       @if (isSuperAdmin) {
         <div class="form-row">
           <div class="form-group full">
-            <label class="label">所属组织</label>
-            <nb-select size="small" formControlName="organizationId" placeholder="请选择组织" fullWidth
+            <label class="label">{{  '所属组织' | translate }}</label>
+            <nb-select size="small" formControlName="organizationId" [placeholder]="'请选择组织' | translate" fullWidth
               [status]="form.get('organizationId')?.invalid && form.get('organizationId')?.touched ? 'danger' : 'basic'">
               @for (org of organizations; track org) {
                 <nb-option [value]="org.id">{{ org.name }}</nb-option>
@@ -22,8 +22,8 @@
       @if (!isSuperAdmin && currentOrganization) {
         <div class="form-row">
           <div class="form-group full">
-            <label class="label">所属组织</label>
-            <input nbInput size="small" fullWidth [value]="currentOrganization.name" disabled />
+            <label class="label">{{  '所属组织' | translate }}</label>
+            <input nbInput fieldSize="small" fullWidth [value]="currentOrganization.name" disabled />
           </div>
         </div>
       }
@@ -31,13 +31,13 @@
       <!-- Username & Email -->
       <div class="form-row">
         <div class="form-group">
-          <label class="label">用户名</label>
-          <input nbInput size="small" fullWidth formControlName="username" placeholder="用户名"
+          <label class="label">{{  '用户名' | translate }}</label>
+          <input nbInput fieldSize="small" fullWidth formControlName="username" [placeholder]="'用户名' | translate"
             [status]="form.get('username')?.invalid && form.get('username')?.touched ? 'danger' : 'basic'" />
         </div>
         <div class="form-group">
-          <label class="label">邮箱</label>
-          <input nbInput size="small" fullWidth type="email" formControlName="email" placeholder="邮箱地址"
+          <label class="label">{{  '邮箱' | translate }}</label>
+          <input nbInput fieldSize="small" fullWidth type="email" formControlName="email" [placeholder]="'邮箱地址' | translate"
             [status]="form.get('email')?.invalid && form.get('email')?.touched ? 'danger' : 'basic'" />
         </div>
       </div>
@@ -45,16 +45,16 @@
       <!-- Password & Confirm -->
       <div class="form-row">
         <div class="form-group">
-          <label class="label">密码 @if (mode === 'edit') {
-            <span class="hint">(留空不改)</span>
+          <label class="label">{{ '密码' | translate }} @if (mode === 'edit') {
+            <span class="hint">{{  '(留空不改)' | translate }}</span>
           }</label>
-          <input nbInput size="small" fullWidth type="password" formControlName="password"
-            [placeholder]="mode === 'create' ? '密码' : '留空不修改'"
+          <input nbInput fieldSize="small" fullWidth type="password" formControlName="password"
+            [placeholder]="mode === 'create' ? ('密码' | translate) : ('留空不修改' | translate)"
             [status]="form.get('password')?.invalid && form.get('password')?.touched ? 'danger' : 'basic'" />
         </div>
         <div class="form-group">
-          <label class="label">确认密码</label>
-          <input nbInput size="small" fullWidth type="password" formControlName="confirmPassword" placeholder="再次输入"
+          <label class="label">{{  '确认密码' | translate }}</label>
+          <input nbInput fieldSize="small" fullWidth type="password" formControlName="confirmPassword" [placeholder]="'再次输入' | translate"
             [status]="(form.get('confirmPassword')?.invalid || form.errors?.['passwordMismatch']) && form.get('confirmPassword')?.touched ? 'danger' : 'basic'" />
         </div>
       </div>
@@ -62,8 +62,8 @@
       <!-- Role -->
       <div class="form-row">
         <div class="form-group full">
-          <label class="label">角色</label>
-          <nb-select size="small" formControlName="roleIds" placeholder="选择角色（可多选）" multiple fullWidth
+          <label class="label">{{  '角色' | translate }}</label>
+          <nb-select size="small" formControlName="roleIds" [placeholder]="'选择角色（可多选）' | translate" multiple fullWidth
             [status]="form.get('roleIds')?.invalid && form.get('roleIds')?.touched ? 'danger' : 'basic'">
             @for (role of filteredRoles; track role) {
               <nb-option [value]="role.id">{{ role.name }}</nb-option>
@@ -75,7 +75,7 @@
   </nb-card-body>
 
   <nb-card-footer>
-    <button type="button" class="icon-btn" (click)="cancel()" nbTooltip="取消" nbTooltipPlacement="top" aria-label="取消"><nb-icon icon="close-outline"></nb-icon></button>
-    <button type="button" class="icon-btn is-primary" (click)="submit()" [disabled]="form.invalid || loading" nbTooltip="保存" nbTooltipPlacement="top" aria-label="保存"><nb-icon icon="checkmark-outline"></nb-icon></button>
+    <button type="button" class="icon-btn" (click)="cancel()" [nbTooltip]="'取消' | translate" nbTooltipPlacement="top" [aria-label]="'取消' | translate"><nb-icon icon="close-outline"></nb-icon></button>
+    <button type="button" class="icon-btn is-primary" (click)="submit()" [disabled]="form.invalid || loading" [nbTooltip]="'保存' | translate" nbTooltipPlacement="top" [aria-label]="'保存' | translate"><nb-icon icon="checkmark-outline"></nb-icon></button>
   </nb-card-footer>
 </nb-card>

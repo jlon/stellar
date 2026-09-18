@@ -12,14 +12,20 @@
 </div>
 
 <div class="header-container">
-  <nb-actions size="small">
+  <nb-actions size="small" class="header-actions">
+    <nb-action class="control-item lang-action" [title]="i18n.lang === 'zh' ? 'Switch to English' : '切换到中文'" (click)="i18n.setLang(i18n.lang === 'zh' ? 'en' : 'zh')">
+      <!-- 语言名用其自身语言书写，不走共享词表：'中' 键已被「高/中/低」等级占用，
+           若复用译成英文会渲染成 "Medium"。 -->
+      <span class="lang-label">{{ i18n.lang === 'zh' ? 'EN' : '中文' }}</span>
+    </nb-action>
     <nb-action class="control-item action-email" icon="email-outline"></nb-action>
-    <nb-action class="control-item action-bell" icon="bell-outline"></nb-action>
+    <ngx-notification-bell></ngx-notification-bell>
     <nb-action class="control-item theme-action" (click)="cycleTheme()" [title]="currentThemeMeta.name">
       <nb-icon [icon]="currentThemeMeta.icon"></nb-icon>
     </nb-action>
     <nb-action class="user-action" *nbIsGranted="['view', 'user']">
-      <nb-user [nbContextMenu]="userMenu"
+      <nb-user size="small"
+        [nbContextMenu]="userMenu"
         nbContextMenuTag="user-context-menu"
         [onlyPicture]="userPictureOnly"
         [name]="user?.name"

@@ -1,4 +1,5 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
+import { I18nService } from '../i18n/i18n.service';
 
 export interface DiceBearOptions {
   seed?: string;
@@ -21,33 +22,34 @@ export interface DiceBearOptions {
 })
 export class DiceBearService {
   private readonly baseUrl = 'https://api.dicebear.com/7.x';
+  private i18n = inject(I18nService);
   
   // 可用的头像样式 - 积极向上、多样化的风格
   readonly avatarStyles = [
-    { name: 'avataaars', label: '经典人物', description: '经典卡通人物风格' },
-    { name: 'avataaars-neutral', label: '简约人物', description: '简约中性人物风格' },
-    { name: 'adventurer', label: '冒险家', description: '可爱卡通冒险家' },
-    { name: 'adventurer-neutral', label: '简约冒险家', description: '简约冒险家风格' },
-    { name: 'big-ears', label: '大耳朵', description: '可爱大耳朵风格' },
-    { name: 'big-ears-neutral', label: '简约大耳朵', description: '简约大耳朵风格' },
-    { name: 'big-smile', label: '大笑脸', description: '开心大笑脸风格' },
-    { name: 'bottts', label: '机器人', description: '可爱机器人风格' },
-    { name: 'croodles', label: '涂鸦', description: '手绘涂鸦风格' },
-    { name: 'croodles-neutral', label: '简约涂鸦', description: '简约涂鸦风格' },
-    { name: 'fun-emoji', label: '趣味表情', description: '有趣的表情符号' },
-    { name: 'lorelei', label: '洛蕾莱', description: '现代简约风格' },
-    { name: 'lorelei-neutral', label: '简约洛蕾莱', description: '极简洛蕾莱风格' },
-    { name: 'micah', label: '米卡', description: '温暖插画风格' },
-    { name: 'miniavs', label: '迷你头像', description: '迷你可爱风格' },
-    { name: 'notionists', label: 'Notion风格', description: '专业Notion风格' },
-    { name: 'notionists-neutral', label: '简约Notion', description: '简约Notion风格' },
-    { name: 'open-peeps', label: '开放人物', description: '友好开放人物' },
-    { name: 'personas', label: '人物角色', description: '多彩人物角色' },
-    { name: 'pixel-art', label: '像素艺术', description: '复古像素风格' },
-    { name: 'pixel-art-neutral', label: '简约像素', description: '简约像素风格' },
-    { name: 'thumbs', label: '点赞', description: '积极点赞风格' },
-    { name: 'shapes', label: '几何图形', description: '抽象几何风格' },
-    { name: 'icons', label: '图标', description: '简洁图标风格' }
+    { name: 'avataaars', label: this.i18n.instant('经典人物'), description: this.i18n.instant('经典卡通人物风格') },
+    { name: 'avataaars-neutral', label: this.i18n.instant('简约人物'), description: this.i18n.instant('简约中性人物风格') },
+    { name: 'adventurer', label: this.i18n.instant('冒险家'), description: this.i18n.instant('可爱卡通冒险家') },
+    { name: 'adventurer-neutral', label: this.i18n.instant('简约冒险家'), description: this.i18n.instant('简约冒险家风格') },
+    { name: 'big-ears', label: this.i18n.instant('大耳朵'), description: this.i18n.instant('可爱大耳朵风格') },
+    { name: 'big-ears-neutral', label: this.i18n.instant('简约大耳朵'), description: this.i18n.instant('简约大耳朵风格') },
+    { name: 'big-smile', label: this.i18n.instant('大笑脸'), description: this.i18n.instant('开心大笑脸风格') },
+    { name: 'bottts', label: this.i18n.instant('机器人'), description: this.i18n.instant('可爱机器人风格') },
+    { name: 'croodles', label: this.i18n.instant('涂鸦'), description: this.i18n.instant('手绘涂鸦风格') },
+    { name: 'croodles-neutral', label: this.i18n.instant('简约涂鸦'), description: this.i18n.instant('简约涂鸦风格') },
+    { name: 'fun-emoji', label: this.i18n.instant('趣味表情'), description: this.i18n.instant('有趣的表情符号') },
+    { name: 'lorelei', label: this.i18n.instant('洛蕾莱'), description: this.i18n.instant('现代简约风格') },
+    { name: 'lorelei-neutral', label: this.i18n.instant('简约洛蕾莱'), description: this.i18n.instant('极简洛蕾莱风格') },
+    { name: 'micah', label: this.i18n.instant('米卡'), description: this.i18n.instant('温暖插画风格') },
+    { name: 'miniavs', label: this.i18n.instant('迷你头像'), description: this.i18n.instant('迷你可爱风格') },
+    { name: 'notionists', label: this.i18n.instant('Notion风格'), description: this.i18n.instant('专业Notion风格') },
+    { name: 'notionists-neutral', label: this.i18n.instant('简约Notion'), description: this.i18n.instant('简约Notion风格') },
+    { name: 'open-peeps', label: this.i18n.instant('开放人物'), description: this.i18n.instant('友好开放人物') },
+    { name: 'personas', label: this.i18n.instant('人物角色'), description: this.i18n.instant('多彩人物角色') },
+    { name: 'pixel-art', label: this.i18n.instant('像素艺术'), description: this.i18n.instant('复古像素风格') },
+    { name: 'pixel-art-neutral', label: this.i18n.instant('简约像素'), description: this.i18n.instant('简约像素风格') },
+    { name: 'thumbs', label: this.i18n.instant('点赞'), description: this.i18n.instant('积极点赞风格') },
+    { name: 'shapes', label: this.i18n.instant('几何图形'), description: this.i18n.instant('抽象几何风格') },
+    { name: 'icons', label: this.i18n.instant('图标'), description: this.i18n.instant('简洁图标风格') }
   ];
 
   constructor() { }

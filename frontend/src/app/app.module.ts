@@ -7,10 +7,14 @@ import { BrowserModule } from '@angular/platform-browser';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { NgModule } from '@angular/core';
 import { HttpClientModule, HTTP_INTERCEPTORS } from '@angular/common/http';
+import { provideTranslateService, TranslateLoader } from '@ngx-translate/core';
+import { MarkdownModule } from 'ngx-markdown';
 import { RouteReuseStrategy } from '@angular/router';
 import { CoreModule } from './@core/core.module';
 import { ThemeModule } from './@theme/theme.module';
 import { AppRoutingModule } from './app-routing.module';
+import { I18nService } from './@core/i18n/i18n.service';
+import { MergedTranslateLoader } from './@core/i18n/merged-translate.loader';
 import {
   NbDatepickerModule,
   NbDialogModule,
@@ -28,6 +32,7 @@ import { TabRouteReuseStrategy } from './@core/routing/tab-route-reuse.strategy'
     BrowserModule,
     BrowserAnimationsModule,
     HttpClientModule,
+    MarkdownModule.forRoot(),
     AuthModule,
     AppRoutingModule,
     NbSidebarModule.forRoot(),
@@ -40,9 +45,15 @@ import { TabRouteReuseStrategy } from './@core/routing/tab-route-reuse.strategy'
     ThemeModule.forRoot(),
   ],
   providers: [
+    I18nService,
     { provide: HTTP_INTERCEPTORS, useClass: JwtInterceptor, multi: true },
     { provide: RouteReuseStrategy, useClass: TabRouteReuseStrategy },
+    ...provideTranslateService({ fallbackLang: 'zh' }),
+    { provide: TranslateLoader, useFactory: () => new MergedTranslateLoader() },
   ],
 })
 export class AppModule {
+  constructor(private i18n: I18nService) {
+    this.i18n.init();
+  }
 }

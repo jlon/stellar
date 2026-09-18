@@ -1,5 +1,5 @@
 <nb-card class="organization-dialog">
-  <nb-card-header>{{ mode === 'create' ? '创建组织' : '编辑组织' }}</nb-card-header>
+  <nb-card-header>{{  mode === 'create' ? ('创建组织' | translate) : ('编辑组织' | translate)  }}</nb-card-header>
 
   <nb-card-body>
     <form [formGroup]="form" novalidate>
@@ -7,13 +7,13 @@
       @if (mode === 'create') {
         <div class="form-row">
           <div class="form-group">
-            <label class="label">组织代码</label>
-            <input nbInput size="small" fullWidth formControlName="code" placeholder="小写字母、数字、下划线"
+            <label class="label">{{  '组织代码' | translate }}</label>
+            <input nbInput fieldSize="small" fullWidth formControlName="code" [placeholder]="'小写字母、数字、下划线' | translate"
               [status]="form.get('code')?.invalid && form.get('code')?.touched ? 'danger' : 'basic'" />
           </div>
           <div class="form-group">
-            <label class="label">组织名称</label>
-            <input nbInput size="small" fullWidth formControlName="name" placeholder="组织名称"
+            <label class="label">{{  '组织名称' | translate }}</label>
+            <input nbInput fieldSize="small" fullWidth formControlName="name" [placeholder]="'组织名称' | translate"
               [status]="form.get('name')?.invalid && form.get('name')?.touched ? 'danger' : 'basic'" />
           </div>
         </div>
@@ -23,8 +23,8 @@
       @if (mode === 'edit') {
         <div class="form-row">
           <div class="form-group full">
-            <label class="label">组织名称</label>
-            <input nbInput size="small" fullWidth formControlName="name" placeholder="组织名称"
+            <label class="label">{{  '组织名称' | translate }}</label>
+            <input nbInput fieldSize="small" fullWidth formControlName="name" [placeholder]="'组织名称' | translate"
               [status]="form.get('name')?.invalid && form.get('name')?.touched ? 'danger' : 'basic'" />
           </div>
         </div>
@@ -33,8 +33,8 @@
       <!-- Description -->
       <div class="form-row">
         <div class="form-group full">
-          <label class="label">描述</label>
-          <textarea nbInput size="small" fullWidth formControlName="description" placeholder="组织描述（可选）" rows="2"></textarea>
+          <label class="label">{{  '描述' | translate }}</label>
+          <textarea nbInput size="small" fullWidth formControlName="description" [placeholder]="'组织描述（可选）' | translate" rows="2"></textarea>
         </div>
       </div>
 
@@ -42,8 +42,8 @@
       @if (mode === 'edit') {
         <div class="form-row">
           <div class="form-group full">
-            <label class="label">管理员</label>
-            <nb-select size="small" formControlName="admin_user_id" placeholder="选择管理员（可选）" fullWidth>
+            <label class="label">{{  '管理员' | translate }}</label>
+            <nb-select size="small" formControlName="admin_user_id" [placeholder]="'选择管理员（可选）' | translate" fullWidth>
               @for (user of availableUsers; track trackByUserId($index, user)) {
                 <nb-option [value]="user.id">
                   {{ user.username }} @if (user.email) {
@@ -59,7 +59,7 @@
 </nb-card-body>
 
 <nb-card-footer>
-  <button type="button" class="icon-btn" (click)="cancel()" nbTooltip="取消" nbTooltipPlacement="top" aria-label="取消"><nb-icon icon="close-outline"></nb-icon></button>
-  <button type="button" class="icon-btn is-primary" (click)="submit()" [disabled]="form.invalid" nbTooltip="保存" nbTooltipPlacement="top" aria-label="保存"><nb-icon icon="checkmark-outline"></nb-icon></button>
+  <button type="button" class="icon-btn" (click)="cancel()" [nbTooltip]="'取消' | translate" nbTooltipPlacement="top" [aria-label]="'取消' | translate"><nb-icon icon="close-outline"></nb-icon></button>
+  <button type="button" class="icon-btn is-primary" (click)="submit()" [disabled]="form.invalid" [nbTooltip]="'保存' | translate" nbTooltipPlacement="top" [aria-label]="'保存' | translate"><nb-icon icon="checkmark-outline"></nb-icon></button>
 </nb-card-footer>
 </nb-card>

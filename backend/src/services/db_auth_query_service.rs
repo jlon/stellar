@@ -30,13 +30,7 @@ impl<DB: AppDb> DbAuthQueryService<DB> {
         let cluster = self.cluster_service.get_cluster(cluster_id).await?;
         let adapter = create_adapter(cluster, self.mysql_pool_manager.clone());
 
-        match adapter.list_db_accounts().await {
-            Ok(accounts) => Ok(accounts),
-            Err(e) => {
-                tracing::warn!("Failed to query accounts for cluster {}: {}", cluster_id, e);
-                Ok(Vec::new())
-            },
-        }
+        adapter.list_db_accounts().await
     }
 
     /// Query all database roles from the cluster
@@ -45,13 +39,7 @@ impl<DB: AppDb> DbAuthQueryService<DB> {
         let cluster = self.cluster_service.get_cluster(cluster_id).await?;
         let adapter = create_adapter(cluster, self.mysql_pool_manager.clone());
 
-        match adapter.list_db_roles().await {
-            Ok(roles) => Ok(roles),
-            Err(e) => {
-                tracing::warn!("Failed to query roles for cluster {}: {}", cluster_id, e);
-                Ok(Vec::new())
-            },
-        }
+        adapter.list_db_roles().await
     }
 
     /// List current user's database permissions on a cluster
@@ -64,18 +52,7 @@ impl<DB: AppDb> DbAuthQueryService<DB> {
         let cluster = self.cluster_service.get_cluster(cluster_id).await?;
         let adapter = create_adapter(cluster, self.mysql_pool_manager.clone());
 
-        match adapter.list_user_permissions(username).await {
-            Ok(permissions) => Ok(permissions),
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to query permissions for user {} on cluster {}: {}",
-                    username,
-                    cluster_id,
-                    e
-                );
-                Ok(Vec::new())
-            },
-        }
+        adapter.list_user_permissions(username).await
     }
 
     /// Query permissions for a specific role
@@ -88,17 +65,6 @@ impl<DB: AppDb> DbAuthQueryService<DB> {
         let cluster = self.cluster_service.get_cluster(cluster_id).await?;
         let adapter = create_adapter(cluster, self.mysql_pool_manager.clone());
 
-        match adapter.list_role_permissions(role_name).await {
-            Ok(permissions) => Ok(permissions),
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to query permissions for role {} on cluster {}: {}",
-                    role_name,
-                    cluster_id,
-                    e
-                );
-                Ok(Vec::new())
-            },
-        }
+        adapter.list_role_permissions(role_name).await
     }
 }

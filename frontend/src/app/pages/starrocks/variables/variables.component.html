@@ -1,75 +1,79 @@
 <div class="row">
   <div class="col-12">
-    <nb-card [nbSpinner]="loading" nbSpinnerStatus="primary" nbSpinnerMessage="加载中">
-      <nb-card-header>
-        <div class="d-flex justify-content-between align-items-center">
+    <nb-card [nbSpinner]="loading" nbSpinnerStatus="primary" [nbSpinnerMessage]="'加载中' | translate">
+      <nb-card-body>
+        <div class="card-toolbar">
           <div class="d-flex align-items-center gap-2">
-            <h5 class="mb-0">变量管理</h5>
-            <span class="text-hint">|</span>
-            <span class="text-hint" style="font-size: 13px;">
-              集群: <strong>{{ activeCluster?.name || '未选择' }}</strong>
-            </span>
-          </div>
-          <div>
-            <button nbButton status="primary" size="small" (click)="refresh()" [disabled]="loading || !clusterId">
+            @if (!loading && variables.length) {
+              <span class="count-label">{{ variables.length }} {{ '个变量' | translate }}</span>
+            }
+            <button nbButton ghost status="basic" size="small" (click)="refresh()" [disabled]="loading || !clusterId" [nbTooltip]="'刷新' | translate" [title]="'刷新' | translate">
               <nb-icon icon="refresh-outline"></nb-icon>
-              刷新
             </button>
           </div>
         </div>
-      </nb-card-header>
-      <nb-card-body>
-        <!-- Filters -->
-        <div class="row mb-3">
-          <div class="col-md-6">
-            <div class="form-group">
-              <label for="search" class="label">搜索变量</label>
-              <input
-                type="text"
-                nbInput
-                fullWidth
-                id="search"
-                placeholder="输入变量名..."
-                [(ngModel)]="searchText"
-                (keyup.enter)="onSearch()"
-                />
-            </div>
-          </div>
-          <div class="col-md-3">
-            <div class="form-group">
-              <label class="label">变量类型</label>
-              <nb-select fullWidth [(selected)]="variableType" (selectedChange)="onTypeChange()">
-                <nb-option value="global">全局变量</nb-option>
-                <nb-option value="session">会话变量</nb-option>
-              </nb-select>
-            </div>
-          </div>
-          <div class="col-md-3">
-            <div class="form-group">
-              <label class="label">&nbsp;</label>
-              <button nbButton status="primary" fullWidth (click)="onSearch()" [disabled]="loading || !clusterId">
-                <nb-icon icon="search-outline"></nb-icon>
-                搜索
+
+        <!-- Filters: 紧凑单行，搜索按钮右对齐（审计日志同款） -->
+        <div class="filter-row">
+          <nb-form-field class="filter-search">
+            <input
+              type="text"
+              nbInput
+              fullWidth
+              fieldSize="small"
+              [placeholder]="'输入变量名...' | translate"
+              [aria-label]="'按变量名搜索' | translate"
+              [(ngModel)]="searchText"
+              (keyup.enter)="onSearch()"
+              />
+          </nb-form-field>
+          <nb-select class="filter-type" size="small" [aria-label]="'变量范围' | translate" [(selected)]="variableType" (selectedChange)="onTypeChange()">
+            <nb-option value="global">{{  '全局变量' | translate }}</nb-option>
+            <nb-option value="session">{{  '会话变量' | translate }}</nb-option>
+          </nb-select>
+          <button nbButton status="primary" size="small" class="filter-submit" (click)="onSearch()" [disabled]="loading || !clusterId">
+            <nb-icon icon="search-outline"></nb-icon>
+            {{ '搜索' | translate }}
+          </button>
+        </div>
+
+        @if (loadError) {
+          <nb-alert status="danger" class="load-state">
+            <div class="state-content">
+              <span>{{ loadError }}</span>
+              <button nbButton ghost size="tiny" status="danger" (click)="refresh()">
+                <nb-icon icon="refresh-outline"></nb-icon>
+                {{ '重试' | translate }}
               </button>
             </div>
-          </div>
-        </div>
-
-        <angular2-smart-table
-          [settings]="settings"
-          [source]="source"
-          (edit)="onEdit($event)"
-        ></angular2-smart-table>
-
-        <div class="mt-3">
-          <nb-alert status="warning">
-            <p class="mb-0">
-              <nb-icon icon="alert-triangle-outline"></nb-icon>
-              <strong>Warning:</strong> Modifying system variables may affect cluster behavior.
-              Please consult the StarRocks documentation before making changes.
-            </p>
           </nb-alert>
-        </div>
+        }
+
+        @if (!loading && !loadError && !variables.length) {
+          <div class="empty-state">
+            <nb-icon icon="options-2-outline"></nb-icon>
+            <div>
+              <strong>{{  '暂无匹配的变量' | translate }}</strong>
+              <p>{{  '请调整搜索条件，或切换变量范围后重试。' | translate }}</p>
+            </div>
+            <button nbButton ghost size="small" status="primary" (click)="refresh()">
+              <nb-icon icon="refresh-outline"></nb-icon>
+              {{ '重新加载' | translate }}
+            </button>
+          </div>
+        }
+
+        @if (!loadError && variables.length) {
+          <angular2-smart-table
+            [settings]="settings"
+            [source]="source"
+          ></angular2-smart-table>
+        }
+
+        <nb-alert status="warning" class="page-note risk-note">
+          <nb-icon icon="alert-triangle-outline"></nb-icon>
+          <span>{{  '修改系统变量会影响集群行为；请确认变量含义后再保存。' | translate }}</span>
+        </nb-alert>
       </nb-card-body>
     </nb-card>
   </div>

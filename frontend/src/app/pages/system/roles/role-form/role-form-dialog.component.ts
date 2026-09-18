@@ -1,3 +1,4 @@
+import { TranslatePipe } from '@ngx-translate/core';
 import { Component, Input, OnInit, inject } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { NbDialogRef, NbCardModule, NbIconModule, NbFormFieldModule, NbSelectModule, NbOptionModule, NbInputModule, NbCheckboxModule, NbButtonModule, NbTooltipModule } from '@nebular/theme';
@@ -47,6 +48,7 @@ interface PermissionTreeNode {
     templateUrl: './role-form-dialog.component.html',
     styleUrls: ['./role-form-dialog.component.scss'],
     imports: [
+    TranslatePipe,
     NbCardModule,
     FormsModule,
     ReactiveFormsModule,

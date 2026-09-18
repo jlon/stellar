@@ -1,3 +1,5 @@
+import { I18nService } from '../../../@core/i18n/i18n.service';
+import { TranslatePipe } from '@ngx-translate/core';
 import { Component, OnInit, OnDestroy, TemplateRef, ViewChild, ChangeDetectorRef, inject } from '@angular/core';
 import { Subject } from 'rxjs';
 import { skip, takeUntil, timeout } from 'rxjs/operators';
@@ -25,6 +27,7 @@ import { FormsModule } from '@angular/forms';
     styleUrls: ['./materialized-views.component.scss'],
     providers: [MaterializedViewService],
     imports: [
+    TranslatePipe,
     NbCardModule,
     NbButtonModule,
     NbIconModule,
@@ -47,7 +50,8 @@ import { FormsModule } from '@angular/forms';
 ],
 })
 export class MaterializedViewsComponent implements OnInit, OnDestroy {
-  private mvService = inject(MaterializedViewService);
+  private mvService = inject(MaterializedViewService)
+  private i18n = inject(I18nService);
   private clusterService = inject(ClusterService);
   private clusterContextService = inject(ClusterContextService);
   private toastrService = inject(NbToastrService);
@@ -87,26 +91,26 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
   // Options for filters
   databases: string[] = [];
   refreshTypeOptions = [
-    { value: 'all', label: '全部类型' },
-    { value: 'ASYNC', label: '自动刷新' },
-    { value: 'MANUAL', label: '手动刷新' },
-    { value: 'ROLLUP', label: '同步' },
-    { value: 'INCREMENTAL', label: '增量' },
+    { value: 'all', label: this.i18n.instant('全部类型') },
+    { value: 'ASYNC', label: this.i18n.instant('自动刷新') },
+    { value: 'MANUAL', label: this.i18n.instant('手动刷新') },
+    { value: 'ROLLUP', label: this.i18n.instant('同步') },
+    { value: 'INCREMENTAL', label: this.i18n.instant('增量') },
   ];
   activeStateOptions = [
-    { value: 'all', label: '全部' },
+    { value: 'all', label: this.i18n.instant('全部') },
     { value: 'active', label: 'Active' },
     { value: 'inactive', label: 'Inactive' },
   ];
   refreshStateOptions = [
-    { value: 'all', label: '全部' },
-    { value: 'SUCCESS', label: '成功' },
-    { value: 'RUNNING', label: '运行中' },
-    { value: 'FAILED', label: '失败' },
-    { value: 'PENDING', label: '等待中' },
+    { value: 'all', label: this.i18n.instant('全部') },
+    { value: 'SUCCESS', label: this.i18n.instant('成功') },
+    { value: 'RUNNING', label: this.i18n.instant('运行中') },
+    { value: 'FAILED', label: this.i18n.instant('失败') },
+    { value: 'PENDING', label: this.i18n.instant('等待中') },
   ];
   partitionTypeOptions = [
-    { value: 'all', label: '全部分区类型' },
+    { value: 'all', label: this.i18n.instant('全部分区类型') },
     { value: 'RANGE', label: 'RANGE' },
     { value: 'LIST', label: 'LIST' },
     { value: 'UNPARTITIONED', label: 'UNPARTITIONED' },
@@ -143,16 +147,16 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
   editing = false;
 
   refreshModeOptions = [
-    { value: 'ASYNC', label: '异步模式' },
-    { value: 'SYNC', label: '同步模式' },
+    { value: 'ASYNC', label: this.i18n.instant('异步模式') },
+    { value: 'SYNC', label: this.i18n.instant('同步模式') },
   ];
 
   settings = {
     mode: 'external',
     hideSubHeader: false,
-    noDataMessage: '暂无物化视图数据',
+    noDataMessage: this.i18n.instant('暂无物化视图数据'),
     actions: {
-      columnTitle: '操作',
+      columnTitle: this.i18n.instant('操作'),
       add: false,
       edit: true,
       delete: true,
@@ -172,17 +176,17 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
     },
     columns: {
       name: {
-        title: '名称',
+        title: this.i18n.instant('名称'),
         type: 'string',
         width: '12%',
       },
       database_name: {
-        title: '数据库',
+        title: this.i18n.instant('数据库'),
         type: 'string',
         width: '10%',
       },
       mv_type: {
-        title: '类型',
+        title: this.i18n.instant('类型'),
         type: 'custom',
         width: '7%',
         renderComponent: BadgeRenderComponent,
@@ -194,24 +198,24 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
         },
       },
       refresh_type: {
-        title: '刷新策略',
+        title: this.i18n.instant('刷新策略'),
         type: 'custom',
         width: '9%',
         renderComponent: BadgeRenderComponent,
         componentInitFunction: (instance: BadgeRenderComponent) => {
           instance.getBadge = (value: string): BadgeInfo | null => {
             const map: Record<string, BadgeInfo> = {
-              ASYNC: { status: 'success', label: '自动' },
-              MANUAL: { status: 'info', label: '手动' },
-              ROLLUP: { status: 'primary', label: '同步' },
-              INCREMENTAL: { status: 'warning', label: '增量' },
+              ASYNC: { status: 'success', label: this.i18n.instant('自动') },
+              MANUAL: { status: 'info', label: this.i18n.instant('手动') },
+              ROLLUP: { status: 'primary', label: this.i18n.instant('同步') },
+              INCREMENTAL: { status: 'warning', label: this.i18n.instant('增量') },
             };
             return map[value] ?? null;
           };
         },
       },
       is_active: {
-        title: '状态',
+        title: this.i18n.instant('状态'),
         type: 'custom',
         width: '12%',
         renderComponent: ActiveToggleRenderComponent,
@@ -222,7 +226,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
         },
       },
       last_refresh_state: {
-        title: '刷新状态',
+        title: this.i18n.instant('刷新状态'),
         type: 'custom',
         width: '9%',
         renderComponent: BadgeRenderComponent,
@@ -230,23 +234,23 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
           instance.getBadge = (value: string, row: MaterializedView): BadgeInfo | null => {
             if (row?.refresh_type === 'ROLLUP') return null;
             const map: Record<string, BadgeInfo> = {
-              SUCCESS: { status: 'success', label: '成功' },
-              RUNNING: { status: 'info', label: '运行中' },
-              FAILED: { status: 'danger', label: '失败' },
-              PENDING: { status: 'warning', label: '等待中' },
+              SUCCESS: { status: 'success', label: this.i18n.instant('成功') },
+              RUNNING: { status: 'info', label: this.i18n.instant('运行中') },
+              FAILED: { status: 'danger', label: this.i18n.instant('失败') },
+              PENDING: { status: 'warning', label: this.i18n.instant('等待中') },
             };
             return map[value] ?? null;
           };
         },
       },
       last_refresh_finished_time: {
-        title: '最后刷新时间',
+        title: this.i18n.instant('最后刷新时间'),
         type: 'string',
         width: '15%',
         valuePrepareFunction: (value: string) => value || '-',
       },
       rows: {
-        title: '行数',
+        title: this.i18n.instant('行数'),
         type: 'string',
         width: '8%',
         valuePrepareFunction: (value: number) => {
@@ -255,20 +259,20 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
         },
       },
       partition_type: {
-        title: '分区类型',
+        title: this.i18n.instant('分区类型'),
         type: 'string',
         width: '8%',
         valuePrepareFunction: (value: string) => value || '-',
       },
       error_info: {
-        title: '错误信息',
+        title: this.i18n.instant('错误信息'),
         type: 'custom',
         width: '8%',
         renderComponent: BadgeRenderComponent,
         componentInitFunction: (instance: BadgeRenderComponent) => {
           instance.getBadge = (_value: any, row: MaterializedView): BadgeInfo | null =>
             row?.last_refresh_error_message
-              ? { status: 'danger', label: '错误', tooltip: row.last_refresh_error_message }
+              ? { status: 'danger', label: this.i18n.instant('错误'), tooltip: row.last_refresh_error_message }
               : null;
         },
       },
@@ -534,7 +538,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
 
   createMV() {
     if (!this.createSQL.trim()) {
-      this.toastrService.warning('请输入CREATE MATERIALIZED VIEW SQL语句', '输入错误');
+      this.toastrService.warning(this.i18n.instant('请输入CREATE MATERIALIZED VIEW SQL语句'), this.i18n.instant('输入错误'));
       return;
     }
 
@@ -544,7 +548,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: () => {
-          this.toastrService.success('物化视图创建成功', '成功');
+          this.toastrService.success(this.i18n.instant('物化视图创建成功'), this.i18n.instant('成功'));
           this.closeCreateDialog();
           this.loadMaterializedViews();
         },
@@ -599,7 +603,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
     if (!this.mvDDL) {
       return;
     }
-    const done = () => this.toastrService.success('DDL 已复制', '成功');
+    const done = () => this.toastrService.success(this.i18n.instant('DDL 已复制'), this.i18n.instant('成功'));
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(this.mvDDL).then(done).catch(() => done());
     } else {
@@ -640,7 +644,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: () => {
-          this.toastrService.success('刷新任务已启动', '成功');
+          this.toastrService.success(this.i18n.instant('刷新任务已启动'), this.i18n.instant('成功'));
           this.closeRefreshDialog();
           setTimeout(() => this.loadMaterializedViews(), 1000);
         },
@@ -672,7 +676,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
             .pipe(takeUntil(this.destroy$))
             .subscribe({
               next: () => {
-                this.toastrService.success('刷新任务已取消', '成功');
+                this.toastrService.success(this.i18n.instant('刷新任务已取消'), this.i18n.instant('成功'));
                 this.loadMaterializedViews();
               },
               error: (error) => {
@@ -695,7 +699,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: () => {
-          this.toastrService.success('物化视图删除成功', '成功');
+          this.toastrService.success(this.i18n.instant('物化视图删除成功'), this.i18n.instant('成功'));
           tableEvent?.confirm.resolve();
           this.loadMaterializedViews();
         },
@@ -781,11 +785,11 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
     switch (this.editAction) {
       case 'rename':
         if (!this.editNewName.trim()) {
-          this.toastrService.warning('请输入新名称', '输入错误');
+          this.toastrService.warning(this.i18n.instant('请输入新名称'), this.i18n.instant('输入错误'));
           return;
         }
         if (this.editNewName === this.selectedMV.name) {
-          this.toastrService.warning('新名称与当前名称相同', '输入错误');
+          this.toastrService.warning(this.i18n.instant('新名称与当前名称相同'), this.i18n.instant('输入错误'));
           return;
         }
         alterClause = `RENAME ${this.editNewName}`;
@@ -797,7 +801,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
         } else {
           const interval = parseInt(this.editRefreshInterval);
           if (!interval || interval <= 0) {
-            this.toastrService.warning('请输入有效的刷新间隔', '输入错误');
+            this.toastrService.warning(this.i18n.instant('请输入有效的刷新间隔'), this.i18n.instant('输入错误'));
             return;
           }
           alterClause = `REFRESH ASYNC EVERY(INTERVAL ${interval} ${this.editRefreshUnit})`;
@@ -806,7 +810,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
         
       case 'properties':
         if (!this.editPropertyKey.trim() || !this.editPropertyValue.trim()) {
-          this.toastrService.warning('请输入属性名称和值', '输入错误');
+          this.toastrService.warning(this.i18n.instant('请输入属性名称和值'), this.i18n.instant('输入错误'));
           return;
         }
         alterClause = `SET ("${this.editPropertyKey}" = "${this.editPropertyValue}")`;
@@ -814,7 +818,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
         
       case 'advanced':
         if (!this.editAdvancedClause.trim()) {
-          this.toastrService.warning('请输入ALTER子句', '输入错误');
+          this.toastrService.warning(this.i18n.instant('请输入ALTER子句'), this.i18n.instant('输入错误'));
           return;
         }
         alterClause = this.editAdvancedClause;
@@ -827,7 +831,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: () => {
-          this.toastrService.success('物化视图修改成功', '成功');
+          this.toastrService.success(this.i18n.instant('物化视图修改成功'), this.i18n.instant('成功'));
           this.closeEditDialog();
           this.loadMaterializedViews();
         },

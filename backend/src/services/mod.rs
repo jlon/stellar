@@ -12,15 +12,15 @@ pub mod db_auth_query_service;
 pub mod llm;
 pub mod materialized_view_service;
 pub mod metrics_collector_service;
-pub mod notification_service;
-pub mod op_audit;
 pub mod mysql_client;
 pub mod mysql_pool_manager;
-pub mod organization_service;
+pub mod notification_service;
+pub mod op_audit;
 pub mod ops_agent;
+pub mod organization_service;
 pub mod overview_service;
-pub mod permission_service;
 pub mod permission_request_service;
+pub mod permission_service;
 pub mod profile_analyzer;
 pub mod query_execution_history_service;
 pub mod resource_group_service;
@@ -30,6 +30,7 @@ pub mod system_function_service;
 pub mod user_role_service;
 pub mod user_service;
 
+pub use agent_runtime::AgentRuntimeService;
 pub use audit_log_service::{AuditLogService, SlowQuery, TopTableByAccess};
 pub use auth_service::AuthService;
 pub use baseline_refresh_task::start_baseline_refresh_task;
@@ -47,21 +48,19 @@ pub use metrics_collector_service::{
     ClusterResourceSummary, MetricsCollectorService, MetricsSnapshot,
 };
 pub use mysql_client::MySQLClient;
-pub use agent_runtime::AgentRuntimeService;
-pub use ops_agent::OpsAgentService;
 pub use mysql_pool_manager::MySQLPoolManager;
+pub use ops_agent::OpsAgentService;
 pub use organization_service::OrganizationService;
 pub use overview_service::{
     Alert, AlertLevel, BECompactionScore, CapacityPrediction, ClusterHealth, ClusterOverview,
     CompactionDetailStats, CompactionDurationStats, CompactionStats, CompactionTaskStats,
-    NodeDiskUsage,
-    ExtendedClusterOverview, HealthCard, HealthStatus, KeyPerformanceIndicators, LoadJobStats,
-    MaterializedViewStats, NetworkIOStats, OverviewService, PerformanceTrends, ResourceMetrics,
-    ResourceTrends, RunningQuery, SchemaChangeStats, SessionStats, TimeRange, TopPartitionByScore,
-    TransactionStats,
+    DiskMetricKind, ExtendedClusterOverview, HealthCard, HealthStatus, KeyPerformanceIndicators,
+    LoadJobStats, MaterializedViewStats, NetworkIOStats, NodeDiskUsage, OverviewService,
+    PerformanceTrends, ResourceMetrics, ResourceTrends, RunningQuery, SchemaChangeStats,
+    SessionStats, TimeRange, TopPartitionByScore, TransactionStats,
 };
-pub use permission_service::PermissionService;
 pub use permission_request_service::PermissionRequestService;
+pub use permission_service::PermissionService;
 pub use query_execution_history_service::QueryExecutionHistoryService;
 pub use resource_group_service::ResourceGroupService;
 pub use role_service::RoleService;
@@ -72,8 +71,8 @@ pub use user_service::UserService;
 
 // Cluster adapters for multi-engine support
 pub use cluster_adapter::{
-    ClusterAdapter, DorisAdapter, StarRocksAdapter, cluster_timeout, create_adapter, create_doris_adapter,
-    create_starrocks_adapter,
+    ClusterAdapter, DorisAdapter, StarRocksAdapter, cluster_timeout, create_adapter,
+    create_doris_adapter, create_starrocks_adapter,
 };
 
 pub use notification_service::NotificationService;

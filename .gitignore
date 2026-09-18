@@ -14,7 +14,10 @@ backend/sqlite*
 
 
 # Frontend (from frontend)
+node_modules/
 frontend/node_modules/
+# Translation WIP drafts (never release); shipped dictionaries live in i18n/{zh,en}/
+frontend/src/assets/i18n/work/
 frontend/.angular/
 frontend/dist/
 frontend/tmp/
@@ -73,3 +76,4 @@ config.toml
 target
 .kilocode
 .kiro
+.impeccable/

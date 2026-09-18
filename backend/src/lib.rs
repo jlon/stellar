@@ -12,7 +12,7 @@
 #![allow(clippy::if_same_then_else)]
 
 use sqlx::Pool;
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use crate::db::AppDb;
 
@@ -25,16 +25,33 @@ pub mod models;
 pub mod services;
 pub mod utils;
 
+#[cfg(test)]
+#[path = "tests/permission_request_service_test.rs"]
+mod permission_request_service_test;
+
+#[cfg(test)]
+#[path = "tests/log_archive_test.rs"]
+mod log_archive_test;
+
+#[cfg(test)]
+#[path = "tests/bootstrap_test.rs"]
+mod bootstrap_test;
+
+#[cfg(test)]
+#[path = "tests/config_test.rs"]
+mod config_test;
+
+use crate::services::NotificationService;
 use crate::services::profile_analyzer::ProfileAnalysisCache;
 
 // Re-export commonly used types
 pub use config::Config;
 pub use services::llm::{LLMError, LLMProviderInfo, LLMService, LLMServiceImpl};
 pub use services::{
-    AuthService, CasbinService, ClusterService, DataStatisticsService, DbAuthQueryService,
-    MetricsCollectorService, MySQLPoolManager, OrganizationService, OverviewService,
-    PermissionRequestService, PermissionService, RoleService, SystemFunctionService,
-    UserRoleService, UserService,
+    AgentRuntimeService, AuthService, CasbinService, ClusterService, DataStatisticsService,
+    DbAuthQueryService, MetricsCollectorService, MySQLPoolManager, OpsAgentService,
+    OrganizationService, OverviewService, PermissionRequestService, PermissionService, RoleService,
+    SystemFunctionService, UserRoleService, UserService,
 };
 pub use utils::JwtUtil;
 
@@ -50,6 +67,7 @@ pub struct AppState<DB: AppDb> {
     pub mysql_pool_manager: Arc<MySQLPoolManager>,
     pub jwt_util: Arc<JwtUtil>,
     pub audit_config: config::AuditLogConfig,
+    pub log_file: Option<PathBuf>,
 
     pub auth_service: Arc<AuthService<DB>>,
     pub cluster_service: Arc<ClusterService<DB>>,
@@ -70,4 +88,15 @@ pub struct AppState<DB: AppDb> {
     pub db_auth_query_service: Arc<DbAuthQueryService<DB>>,
     pub permission_request_service: Arc<PermissionRequestService<DB>>,
     pub profile_analysis_cache: Arc<ProfileAnalysisCache>,
+    pub ops_agent_service: Arc<OpsAgentService<DB>>,
+    pub notification_service: Arc<NotificationService<DB>>,
+
+    pub agent_runtime_service: Arc<AgentRuntimeService<DB>>,
+}
+
+impl<DB: AppDb> AppState<DB> {
+    /// AI 会话相关表共用 OpsAgentService 的连接池（避免重复建池）。
+    pub fn ops_agent_service_pool(&self) -> sqlx::Pool<DB> {
+        self.ops_agent_service.pool()
+    }
 }

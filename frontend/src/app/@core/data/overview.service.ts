@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
+import { I18nService } from '../i18n/i18n.service';
 import { ApiService } from './api.service';
 
 export interface ClusterOverview {
@@ -288,6 +289,7 @@ export interface Alert {
 })
 export class OverviewService {
   private api = inject(ApiService);
+  private i18n = inject(I18nService);
 
 
   /**
@@ -387,7 +389,7 @@ export class OverviewService {
         : 'success';
     return [
       {
-        title: '状态',
+        title: this.i18n.instant('状态'),
         value: Math.round(overview.health.score).toString(),
         status: healthStatus,
         cardId: 'health',
@@ -397,6 +399,7 @@ export class OverviewService {
         value: `${overview.health.fe_nodes_online}/${overview.health.fe_nodes_total}`,
         status: this.nodePairStatus(overview.health.fe_nodes_online, overview.health.fe_nodes_total),
         navigateTo: '/pages/starrocks/frontends',
+        description: this.i18n.instant('查看 FE 节点'),
         cardId: 'fe',
       },
       {
@@ -404,12 +407,14 @@ export class OverviewService {
         value: `${overview.health.be_nodes_online}/${overview.health.be_nodes_total}`,
         status: this.nodePairStatus(overview.health.be_nodes_online, overview.health.be_nodes_total),
         navigateTo: '/pages/starrocks/backends',
+        description: this.i18n.instant('查看计算节点'),
         cardId: 'be',
       },
       {
         title: 'Score',
         value: Math.round(overview.resources.compaction_score).toString(),
         status: overview.resources.compaction_score > 100 ? 'warning' : 'success',
+        description: '查看 Compaction 任务',
         cardId: 'compaction_score',
       },
       {
@@ -418,27 +423,37 @@ export class OverviewService {
         unit: 'ms',
         status: overview.kpi.p99_latency_ms < 1000 ? 'success' :
                 overview.kpi.p99_latency_ms < 5000 ? 'warning' : 'danger',
+        navigateTo: '/pages/starrocks/queries/audit-logs',
+        description: this.i18n.instant('查看查询审计日志与执行耗时'),
         cardId: 'p99',
       },
       {
-        title: '错误率',
+        title: this.i18n.instant('错误率'),
         value: (overview.kpi.error_rate || 0).toFixed(1),
         unit: '%',
         status: overview.kpi.error_rate > 5 ? 'warning' : 'success',
+        navigateTo: '/pages/starrocks/queries/audit-logs',
+        description: this.i18n.instant('查看查询审计日志与执行状态'),
         cardId: 'error_rate',
       },
       {
-        title: sharedData ? '缓存' : '磁盘',
+        title: this.i18n.instant(sharedData ? '缓存' : '磁盘'),
         value: Math.round(diskPct).toString(),
         unit: '%',
-        status: diskPct > 90 ? 'danger' : diskPct > 80 ? 'warning' : 'success',
+        // shared-data 的本地盘是数据缓存配额：写满是 LRU 淘汰的稳态，不是容量事故
+        status: sharedData ? 'info' : diskPct > 90 ? 'danger' : diskPct > 80 ? 'warning' : 'success',
+        navigateTo: '/pages/starrocks/backends',
+        description: this.i18n.instant(sharedData ? '查看计算节点数据缓存配额使用情况（写满后按 LRU 淘汰）' : '查看计算节点磁盘使用情况'),
         cardId: 'disk',
       },
       {
-        title: '距存满',
-        value: daysValue,
-        unit: daysUnit,
-        status: daysStatus,
+        title: this.i18n.instant('距存满'),
+        value: sharedData ? '不适用' : daysValue,
+        unit: sharedData ? '' : daysUnit,
+        // 数据在对象存储：本地缓存配额推不出「距存满」
+        status: sharedData ? 'info' : daysStatus,
+        navigateTo: '/pages/starrocks/backends',
+        description: this.i18n.instant(sharedData ? '存算分离集群的数据位于对象存储，本地盘不承载数据' : '查看计算节点容量'),
         cardId: 'days_full',
       },
       {
@@ -496,4 +511,3 @@ export class OverviewService {
     return online === total ? 'success' : 'danger';
   }
 }
-

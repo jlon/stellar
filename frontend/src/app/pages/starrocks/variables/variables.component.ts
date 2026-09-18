@@ -1,21 +1,25 @@
-import { Component, OnInit, OnDestroy, inject } from '@angular/core';
+import { I18nService } from '../../../@core/i18n/i18n.service';
+import { TranslatePipe } from '@ngx-translate/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef, inject } from '@angular/core';
 
-import { NbToastrService, NbDialogService, NbCardModule, NbButtonModule, NbIconModule, NbInputModule, NbSelectModule, NbOptionModule, NbSpinnerModule, NbAlertModule } from '@nebular/theme';
+import { NbToastrService, NbDialogService, NbCardModule, NbButtonModule, NbIconModule, NbInputModule, NbFormFieldModule, NbSelectModule, NbOptionModule, NbSpinnerModule, NbAlertModule, NbTooltipModule } from '@nebular/theme';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
+import { takeUntil, timeout } from 'rxjs/operators';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
 import { Cluster } from '../../../@core/data/cluster.service';
 import { NodeService, Variable } from '../../../@core/data/node.service';
-import { ErrorHandler } from '../../../@core/utils/error-handler';
 import { FormsModule } from '@angular/forms';
 import { assignTableRows } from '../../../@core/utils/table-rows';
+import { VariableEditDialogComponent } from './variable-edit-dialog/variable-edit-dialog.component';
+import { VariableActionsCellComponent } from './variable-actions-cell.component';
 
 @Component({
     selector: 'ngx-variables',
     templateUrl: './variables.component.html',
     styleUrls: ['./variables.component.scss'],
     imports: [
+    TranslatePipe,
     NbCardModule,
     NbButtonModule,
     NbIconModule,
@@ -25,12 +29,17 @@ import { assignTableRows } from '../../../@core/utils/table-rows';
     NbOptionModule,
     NbSpinnerModule,
     NbAlertModule,
-    Angular2SmartTableModule
+    NbTooltipModule,
+    Angular2SmartTableModule,
+    NbFormFieldModule,
+    VariableActionsCellComponent
 ],
 })
 export class VariablesComponent implements OnInit, OnDestroy {
-  private toastrService = inject(NbToastrService);
+  private toastrService = inject(NbToastrService)
+  private i18n = inject(I18nService);
   private dialogService = inject(NbDialogService);
+  private cdRef = inject(ChangeDetectorRef);
   private clusterContext = inject(ClusterContextService);
   private nodeService = inject(NodeService);
 
@@ -39,39 +48,45 @@ export class VariablesComponent implements OnInit, OnDestroy {
   variables: Variable[] = [];
   source: LocalDataSource = new LocalDataSource();
   loading = true;
+  loadError = '';
   searchText = '';
   variableType = 'global'; // 'global' or 'session'
   private destroy$ = new Subject<void>();
 
   settings = {
-    hideSubHeader: false, // Enable search
-    noDataMessage: '未找到匹配的变量',
-    actions: {
-      add: false,
-      edit: true,
-      delete: false,
-      position: 'right',
-    },
-    edit: {
-      editButtonContent: '<i class="nb-edit"></i>',
-    },
+    mode: 'external',
+    hideSubHeader: true,
+    noDataMessage: this.i18n.instant('暂无变量数据'),
+    actions: false,
     pager: {
       display: true,
       perPage: 20,
     },
     columns: {
       name: {
-        title: 'Variable Name',
+        title: this.i18n.instant('变量名'),
         type: 'string',
-        width: '40%',
+        width: '35%',
       },
       value: {
-        title: 'Value',
+        title: this.i18n.instant('当前值'),
         type: 'string',
-        width: '60%',
-        valuePrepareFunction: (value: any) => {
-          if (!value) return 'NULL';
-          return value.length > 200 ? value.substring(0, 200) + '...' : value;
+        width: 'auto',
+        valuePrepareFunction: (value: string) => {
+          if (value === null || value === undefined || value === '') return 'NULL';
+          return value.length > 200 ? `${value.slice(0, 200)}…` : value;
+        },
+      },
+      action: {
+        title: this.i18n.instant('操作'),
+        type: 'custom',
+        width: '5rem',
+        isFilterable: false,
+        isSortable: false,
+        renderComponent: VariableActionsCellComponent,
+        componentInitFunction: (instance: VariableActionsCellComponent, cell: any) => {
+          instance.variable = cell.getRow().getData() as Variable;
+          instance.edit.subscribe((variable: Variable) => this.editVariable(variable));
         },
       },
     },
@@ -111,56 +126,64 @@ export class VariablesComponent implements OnInit, OnDestroy {
 
   loadVariables(): void {
     this.loading = true;
+    this.loadError = '';
     this.nodeService.getVariables(
       
       this.variableType,
       this.searchText || undefined
-    ).subscribe({
+    ).pipe(takeUntil(this.destroy$), timeout(20000)).subscribe({
       next: (variables) => {
         this.variables = variables;
-        assignTableRows(this.source, variables).then(() => {
-          this.loading = false;
-        });
+        this.loading = false;
+        // variables.length 会创建表格；先完成本轮检测，再写数据源，避免 smart-table
+        // 在宿主尚未创建时丢失首批行。
+        this.cdRef.detectChanges();
+        assignTableRows(this.source, variables).then(() => this.cdRef.detectChanges());
       },
       error: (error) => {
         console.error('[Variables] Error loading variables:', error);
-        this.toastrService.danger(
-          error.error?.message || '加载变量失败',
-          '错误'
-        );
+        this.loadError = error.error?.message || '变量加载超时或服务不可用';
+        this.toastrService.danger(this.loadError, this.i18n.instant('加载失败'));
         this.variables = [];
         assignTableRows(this.source, []).then(() => {
           this.loading = false;
+          this.cdRef.detectChanges();
         });
       },
     });
   }
 
-  onEdit(event: any): void {
-    this.editVariable(event.data);
-  }
-
   editVariable(variable: Variable): void {
-    const newValue = prompt(`修改变量 "${variable.name}":`, variable.value);
-    if (newValue !== null && newValue !== variable.value) {
-      this.loading = true;
-      this.nodeService.updateVariable(variable.name, {
-        value: newValue,
-        scope: this.variableType.toUpperCase(),
-      }).subscribe({
-        next: () => {
-          this.toastrService.success(`变量 "${variable.name}" 更新成功`, '成功');
-          this.loadVariables();
+    this.dialogService
+      .open(VariableEditDialogComponent, {
+        context: {
+          name: variable.name,
+          value: variable.value,
         },
-        error: (error) => {
-          this.toastrService.danger(
-            error.error?.message || '更新变量失败',
-            '错误'
-          );
-          this.loading = false;
-        },
+      })
+      .onClose.subscribe((newValue: string | undefined) => {
+        if (newValue === undefined || newValue === variable.value) {
+          return;
+        }
+        this.loading = true;
+        this.nodeService.updateVariable(variable.name, {
+          value: newValue,
+          scope: this.variableType.toUpperCase(),
+        }).pipe(takeUntil(this.destroy$), timeout(20000)).subscribe({
+          next: () => {
+            this.toastrService.success(`变量“${variable.name}”已更新`, '更新成功');
+            this.loadVariables();
+          },
+          error: (error) => {
+            this.toastrService.danger(
+              error.error?.message || '变量更新超时或失败',
+              '更新失败'
+            );
+            this.loading = false;
+            this.cdRef.detectChanges();
+          },
+        });
       });
-    }
   }
 
   onTypeChange(): void {

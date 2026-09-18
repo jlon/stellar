@@ -1,17 +1,17 @@
-<nb-card>
+<nb-card class="approval-card" [nbSpinner]="requestsLoading" nbSpinnerStatus="primary" nbSpinnerSize="medium" [nbSpinnerMessage]="'加载中' | translate">
   <nb-card-header>
-    <div class="d-flex justify-content-between align-items-center">
-      <div class="d-flex align-items-center">
-        <h6 class="mb-0">待审批申请</h6>
-        <span class="badge badge-warning ml-2">{{ filteredRequests.length }}</span>
+    <div class="approval-header">
+      <div>
+        <h6>{{  '待审批申请' | translate }}</h6>
+        <p>@if (filteredRequests.length) { {{ filteredRequests.length }} {{ '条' | translate }}申请等待处理。 } @else { 当前没有待处理事项。 }</p>
       </div>
-      <div class="d-flex align-items-center gap-2">
-        <nb-select [(selected)]="typeFilter" (selectedChange)="onTypeFilterChange()" size="small">
-          @for (opt of typeOptions; track opt) {
-            <nb-option [value]="opt.value">{{ opt.label }}</nb-option>
+      <div class="approval-tools">
+        <nb-select [(selected)]="typeFilter" (selectedChange)="onTypeFilterChange()" size="small" [aria-label]="'按申请类型筛选' | translate">
+          @for (option of typeOptions; track option.value) {
+            <nb-option [value]="option.value">{{ option.label }}</nb-option>
           }
         </nb-select>
-        <button nbButton status="primary" size="small" (click)="loadPendingRequests()">
+        <button type="button" class="icon-btn" (click)="loadPendingRequests()" [nbTooltip]="'刷新' | translate" nbTooltipPlacement="top" [aria-label]="'刷新待审批申请' | translate">
           <nb-icon icon="refresh-outline"></nb-icon>
         </button>
       </div>
@@ -19,24 +19,19 @@
   </nb-card-header>
 
   <nb-card-body>
-    @if (requestsLoading) {
-      <div class="text-center p-4">
-        <nb-spinner status="primary"></nb-spinner>
-      </div>
-    }
-
-    @if (!requestsLoading && filteredRequests.length > 0) {
+    @if (filteredRequests.length > 0) {
       <angular2-smart-table
         [settings]="tableSettings"
         [source]="approvalSource"
         (edit)="onEditRow($event)">
       </angular2-smart-table>
-    }
-
-    @if (!requestsLoading && filteredRequests.length === 0) {
+    } @else if (!requestsLoading) {
       <div class="empty-state">
-        <nb-icon icon="checkmark-circle-2-outline" class="empty-icon" status="success"></nb-icon>
-        <p>暂无待审批申请</p>
+        <nb-icon icon="checkmark-circle-2-outline"></nb-icon>
+        <div>
+          <strong>{{  '没有待审批申请' | translate }}</strong>
+          <p>{{  '新的权限申请会显示在这里。' | translate }}</p>
+        </div>
       </div>
     }
   </nb-card-body>

@@ -1,8 +1,9 @@
+import { TranslatePipe } from '@ngx-translate/core';
 import { Component, OnInit, OnDestroy, AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Subject, interval } from 'rxjs';
 import { takeUntil, skip } from 'rxjs/operators';
-import { NbToastrService, NbThemeService, NbCardModule, NbBadgeModule, NbIconModule, NbActionsModule, NbSelectModule, NbOptionModule, NbButtonModule, NbSpinnerModule, NbTooltipModule, NbAlertModule, NbProgressBarModule } from '@nebular/theme';
+import { NbActionsModule, NbAlertModule, NbBadgeModule, NbButtonModule, NbCardModule, NbIconModule, NbOptionModule, NbProgressBarModule, NbSelectModule, NbSpinnerModule, NbThemeService, NbToastrService, NbTooltipModule } from '@nebular/theme';
 import { CountUp } from 'countup.js';
 import {
   OverviewService,
@@ -18,6 +19,7 @@ import {
   TopPartitionByScore,
 } from '../../../@core/data/overview.service';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
+import { I18nService } from '../../../@core/i18n/i18n.service';
 import { AuthService } from '../../../@core/data/auth.service';
 import { NodeService, Session } from '../../../@core/data/node.service';
 import { themeChartChrome, colorWithAlpha } from '../../../@core/utils/theme-color';
@@ -31,6 +33,7 @@ import { donutOption, horizontalBarOption } from './overview-charts';
     styleUrls: ['./cluster-overview.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
+    TranslatePipe,
     NbCardModule,
     NbBadgeModule,
     NbIconModule,
@@ -48,6 +51,7 @@ import { donutOption, horizontalBarOption } from './overview-charts';
 })
 export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewInit {
   private overviewService = inject(OverviewService);
+  private i18n = inject(I18nService);
   private clusterContext = inject(ClusterContextService);
   private router = inject(Router);
   private toastr = inject(NbToastrService);
@@ -85,7 +89,6 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
   ];
   
   // Disk/Cache metric selection
-  selectedDiskMetric: 'percentage' | 'bytes' = 'percentage';
   
   // Expose Math to template
   Math = Math;
@@ -96,6 +99,11 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
   private destroy$ = new Subject<void>();
   private refreshTick$ = new Subject<void>();
   private loadSeq = 0;
+  trendCharts: Array<{ title: string; options: Record<string, unknown>; hasData: boolean; facts?: string[] }> = [];
+  taskChartOptions: Record<string, unknown> | null = null;
+  topSizeChartOptions: Record<string, unknown> | null = null;
+  topAccessChartOptions: Record<string, unknown> | null = null;
+  storageChartOptions: Record<string, unknown> | null = null;
 
   // Time range options
   timeRangeOptions = [
@@ -119,12 +127,16 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
       .pipe(takeUntil(this.destroy$))
       .subscribe(() => {
         this.chartColors = themeChartChrome();
+        this.rebuildChartOptions();
         this.cdr.markForCheck();
       });
 
     // Initialize overview data loading
     this.loadOverview();
     this.setupAutoRefresh();
+
+    // 语言切换后重建健康卡片：标题/描述由 i18n.instant 生成，需重新求值
+    this.i18n.lang$.pipe(takeUntil(this.destroy$)).subscribe(() => this.refreshCards(false));
 
     // Listen to active cluster changes
     this.clusterContext.activeCluster$
@@ -179,6 +191,10 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
   }
 
   loadOverview(showLoading: boolean = true, includeDeferred: boolean = true) {
+    // Guard: never fire requests after logout (token already cleared)
+    if (!this.authService.isAuthenticated()) {
+      return;
+    }
     const seq = ++this.loadSeq;
     if (showLoading && !this.overview) {
       this.loading = true;
@@ -205,6 +221,10 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
         },
         error: (err) => {
           if (seq !== this.loadSeq) {
+            return;
+          }
+          // Silently ignore errors after logout (in-flight request returning 401)
+          if (!this.authService.isAuthenticated()) {
             return;
           }
           let errorMsg = '加载集群概览失败';
@@ -235,11 +255,22 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
     this.refreshCards();
   }
 
-  private refreshCards() {
+  private refreshCards(rebuildChartOptions: boolean = true) {
     if (!this.overview) {
       return;
     }
     this.healthCards = this.overviewService.transformToHealthCards(this.overview);
+    if (rebuildChartOptions) {
+      this.rebuildChartOptions();
+    }
+  }
+
+  private rebuildChartOptions(): void {
+    this.taskChartOptions = this.getTaskChartOptions();
+    this.topSizeChartOptions = this.getTopSizeChartOptions();
+    this.topAccessChartOptions = this.getTopAccessChartOptions();
+    this.storageChartOptions = this.getStorageChartOptions();
+    this.trendCharts = this.getTrendCharts();
   }
 
   private loadDeferred(seq: number) {
@@ -334,7 +365,7 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
           this.activeSessions = sessions.length;
           this.runningQueries = running.length;
           this.sessionsReady = true;
-          this.refreshCards();
+          this.refreshCards(false);
           this.cdr.markForCheck();
         },
         error: () => {
@@ -390,6 +421,10 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
   }
 
   get capacityTone(): string {
+    // shared-data：本地盘是数据缓存配额，写满是 LRU 淘汰的稳态，不能上报警色
+    if (this.isSharedData) {
+      return '';
+    }
     if (this.capacityPercent >= 90) {
       return 'danger';
     }
@@ -421,7 +456,7 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
     return rows;
   }
 
-  get taskChartOptions(): Record<string, unknown> | null {
+  private getTaskChartOptions(): Record<string, unknown> | null {
     if (!this.overview) {
       return null;
     }
@@ -493,6 +528,10 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
     this.navigateToCard(card);
   }
 
+  isNavigableCard(card: HealthCard): boolean {
+    return card.cardId === 'compaction_score' || Boolean(card.navigateTo);
+  }
+
   navigateToCard(card: HealthCard) {
     if (card.navigateTo) {
       this.router.navigate([card.navigateTo]);
@@ -556,7 +595,7 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
     ];
   }
 
-  get compactionChartOptions(): Record<string, unknown> | null {
+  private getCompactionChartOptions(): Record<string, unknown> | null {
     if (this.compactionPartitions.length) {
       return this.getCompactionScoreChartOptions();
     }
@@ -578,9 +617,9 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
     );
   }
 
-  get storageChartOptions(): Record<string, unknown> | null {
+  private getStorageChartOptions(): Record<string, unknown> | null {
     if (this.isSharedData) {
-      return this.compactionChartOptions;
+      return this.getCompactionChartOptions();
     }
     if (!this.nodeDisks.length) {
       return null;
@@ -594,7 +633,7 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
     );
   }
 
-  get trendCharts(): Array<{ title: string; options: Record<string, unknown>; hasData: boolean; facts?: string[] }> {
+  private getTrendCharts(): Array<{ title: string; options: Record<string, unknown>; hasData: boolean; facts?: string[] }> {
     const tablet = this.resourceTrends?.tablet_count;
     const tabletFact = tablet?.length
       ? [`Tablet ${Math.round(tablet[tablet.length - 1].value)}`]
@@ -630,9 +669,9 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
     ];
   }
 
-  getTopSizeChartOptions() {
+  private getTopSizeChartOptions(): Record<string, unknown> | null {
     if (!this.topTablesBySize.length) {
-      return {};
+      return null;
     }
     return horizontalBarOption(
       this.chartColors,
@@ -645,9 +684,9 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
     );
   }
 
-  getTopAccessChartOptions() {
+  private getTopAccessChartOptions(): Record<string, unknown> | null {
     if (!this.topTablesByAccess.length) {
-      return {};
+      return null;
     }
     return horizontalBarOption(
       this.chartColors,
@@ -660,7 +699,7 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
     );
   }
 
-  getCompactionScoreChartOptions() {
+  private getCompactionScoreChartOptions(): Record<string, unknown> {
     const partitions = this.compactionPartitions;
     if (!partitions.length) {
       return {};
@@ -844,58 +883,6 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
     return this.selectedLatencyPercentile;
   }
   
-  // Cycle through disk/cache metrics on click
-  cycleDiskMetric(): void {
-    this.selectedDiskMetric = this.selectedDiskMetric === 'percentage' ? 'bytes' : 'percentage';
-  }
-  
-  getDiskCardValue(): string {
-    if (!this.capacityPrediction) return '0';
-    const capacity = this.capacityPrediction;
-    
-    if (this.selectedDiskMetric === 'percentage') {
-      return Math.round(capacity.disk_usage_pct).toString();
-    } else {
-      // bytes - use adaptive unit formatting
-      const formatted = this.formatBytesAdaptive(capacity.disk_used_bytes);
-      return formatted.value;
-    }
-  }
-  
-  getDiskCardUnit(): string {
-    if (this.selectedDiskMetric === 'percentage') {
-      return '%';
-    } else {
-      const formatted = this.formatBytesAdaptive(this.capacityPrediction?.disk_used_bytes || 0);
-      return formatted.unit;
-    }
-  }
-  
-  getDiskCardTitle(): string {
-    return this.selectedDiskMetric === 'percentage' ? '磁盘' : '缓存';
-  }
-  
-  getDiskCardDescription(): string {
-    return this.selectedDiskMetric === 'percentage' 
-      ? '计算节点本地磁盘最大使用率（点击切换）'
-      : '使用率最高节点的本地缓存数据量（点击切换）';
-  }
-  
-  getDiskCardStatus(): string {
-    if (!this.capacityPrediction) return 'info';
-    const capacity = this.capacityPrediction;
-    
-    if (this.selectedDiskMetric === 'percentage') {
-      return capacity.disk_usage_pct > 80 ? 'warning' : 'info';
-    } else {
-      // For bytes, check if usage is high relative to real data
-      const usageRatio = capacity.real_data_size_bytes > 0 
-        ? capacity.disk_used_bytes / capacity.real_data_size_bytes 
-        : 0;
-      return usageRatio > 2 ? 'warning' : 'info'; // Warn if cache is 2x real data
-    }
-  }
-
   // ECharts Configuration Methods (使用 ngx-admin 兼容的渐变样式)
 
   /**

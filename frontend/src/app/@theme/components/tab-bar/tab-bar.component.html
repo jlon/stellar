@@ -1,10 +1,12 @@
-<div class="tab-bar">
+<div class="tab-bar" [class.overflow]="overflow">
   <div class="tab-container">
     @for (tab of tabs; track trackByTabId($index, tab)) {
       <div
         class="tab-item"
         [class.active]="tab.active"
         [class.pinned]="tab.pinned"
+        [attr.aria-label]="tab.title"
+        [title]="tab.title"
         (click)="onTabClick(tab)"
         (contextmenu)="onTabContextMenu(tab, $event)">
         <!-- 固定图标 -->

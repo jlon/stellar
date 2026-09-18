@@ -1,27 +1,60 @@
 <div class="row">
   <div class="col-12">
-    <nb-card [nbSpinner]="loading" nbSpinnerStatus="primary" nbSpinnerMessage="加载中">
-      <nb-card-header>
-        <div class="d-flex justify-content-between align-items-center">
-          <h5>操作日志</h5>
-          <div class="d-flex gap-2">
-            <nb-select size="small" placeholder="对象" [(selected)]="filterTarget" (selectedChange)="load()">
-              <nb-option value="">全部对象</nb-option>
-              <nb-option value="cluster">集群</nb-option>
-              <nb-option value="user">用户</nb-option>
-              <nb-option value="role">角色</nb-option>
-              <nb-option value="organization">组织</nb-option>
-            </nb-select>
-            <nb-select size="small" placeholder="动作" [(selected)]="filterAction" (selectedChange)="load()">
-              <nb-option value="">全部动作</nb-option>
-              <nb-option value="create">创建</nb-option>
-              <nb-option value="update">更新</nb-option>
-              <nb-option value="delete">删除</nb-option>
-            </nb-select>
+    <nb-card [nbSpinner]="loading" nbSpinnerStatus="primary" [nbSpinnerMessage]="'加载中' | translate">
+      <nb-card-body>
+        <div class="card-toolbar">
+          <div class="d-flex align-items-center gap-2">
+            <button
+              nbButton
+              ghost
+              status="basic"
+              size="small"
+              [disabled]="downloading"
+              ngxHasPermission="api:system:logs:archive"
+              (click)="downloadLogArchive()"
+              [nbTooltip]="'打包日志' | translate"
+              [title]="'打包日志' | translate"
+              [aria-label]="'打包日志' | translate"
+            >
+              <nb-icon icon="download-outline"></nb-icon>
+            </button>
           </div>
         </div>
-      </nb-card-header>
-      <nb-card-body>
+
+        <!-- 筛选：紧凑单行，下拉固定宽 -->
+        <div class="filter-row">
+          <nb-select
+            class="filter-target"
+            size="small"
+            [placeholder]="'对象' | translate"
+            [aria-label]="'按对象筛选' | translate"
+            [(selected)]="filterTarget"
+            (selectedChange)="load()"
+          >
+            <nb-option value="">{{  '全部对象' | translate }}</nb-option>
+            <nb-option value="cluster">{{  '集群' | translate }}</nb-option>
+            <nb-option value="user">{{  '用户' | translate }}</nb-option>
+            <nb-option value="role">{{  '角色' | translate }}</nb-option>
+            <nb-option value="organization">{{  '组织' | translate }}</nb-option>
+            <nb-option value="system_log">{{  '日志包' | translate }}</nb-option>
+          </nb-select>
+
+          <nb-select
+            class="filter-action"
+            size="small"
+            [placeholder]="'动作' | translate"
+            [aria-label]="'按动作筛选' | translate"
+            [(selected)]="filterAction"
+            (selectedChange)="load()"
+          >
+            <nb-option value="">{{  '全部动作' | translate }}</nb-option>
+            <nb-option value="create">{{  '创建' | translate }}</nb-option>
+            <nb-option value="update">{{  '更新' | translate }}</nb-option>
+            <nb-option value="delete">{{  '删除' | translate }}</nb-option>
+            <nb-option value="download">{{  '下载' | translate }}</nb-option>
+          </nb-select>
+        </div>
+
         <angular2-smart-table [settings]="settings" [source]="source"></angular2-smart-table>
       </nb-card-body>
     </nb-card>

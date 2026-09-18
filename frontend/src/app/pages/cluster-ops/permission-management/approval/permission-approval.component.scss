@@ -1,24 +1,82 @@
-// Permission Approval - 使用 ngx-admin 原生样式
+@import '../../../../@theme/styles/themes';
 
-.empty-state {
-  text-align: center;
-  padding: 3rem 1rem;
+@include nb-install-component() {
+  .approval-card {
+    margin: 0;
 
-  .empty-icon {
-    font-size: 3rem;
-    margin-bottom: 1rem;
+    nb-card-header {
+      padding: 0.75rem 1rem;
+    }
   }
 
-  p {
+  .approval-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+
+    h6 {
+      margin: 0;
+      font-size: 0.9375rem;
+      font-weight: 600;
+    }
+
+    p {
+      margin: 0.25rem 0 0;
+      color: nb-theme(text-hint-color);
+      font-size: 0.8125rem;
+    }
+  }
+
+  .approval-tools {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+
+    nb-select {
+      width: 8.5rem;
+    }
+  }
+
+  .empty-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    min-height: 10rem;
+    padding: 1.5rem;
     color: nb-theme(text-hint-color);
-    margin-bottom: 0;
+    border: 1px dashed nb-theme(border-basic-color-3);
+    border-radius: nb-theme(border-radius);
+
+    nb-icon {
+      color: nb-theme(color-success-default);
+      font-size: 2rem;
+    }
+
+    strong {
+      display: block;
+      color: nb-theme(text-basic-color);
+    }
+
+    p {
+      margin: 0.25rem 0 0;
+    }
   }
-}
 
-.gap-2 {
-  gap: 0.5rem;
-}
+  @media (max-width: 48rem) {
+    .approval-header {
+      align-items: flex-start;
+      flex-direction: column;
+    }
 
-.ml-2 {
-  margin-left: 0.5rem;
+    .approval-tools {
+      width: 100%;
+
+      nb-select {
+        flex: 1;
+        width: auto;
+      }
+    }
+  }
 }

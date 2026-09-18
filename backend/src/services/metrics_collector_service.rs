@@ -155,11 +155,7 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
 
     pub fn cached_backends(&self, cluster_id: i64, max_age: Duration) -> Option<Vec<Backend>> {
         let entry = self.backend_list_cache.get(&cluster_id)?;
-        if entry.fetched_at.elapsed() <= max_age {
-            Some(entry.nodes.clone())
-        } else {
-            None
-        }
+        if entry.fetched_at.elapsed() <= max_age { Some(entry.nodes.clone()) } else { None }
     }
 
     pub fn stale_backends(&self, cluster_id: i64) -> Option<Vec<Backend>> {
@@ -175,11 +171,7 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
 
     pub fn cached_frontends(&self, cluster_id: i64, max_age: Duration) -> Option<Vec<Frontend>> {
         let entry = self.frontend_list_cache.get(&cluster_id)?;
-        if entry.fetched_at.elapsed() <= max_age {
-            Some(entry.nodes.clone())
-        } else {
-            None
-        }
+        if entry.fetched_at.elapsed() <= max_age { Some(entry.nodes.clone()) } else { None }
     }
 
     pub fn stale_frontends(&self, cluster_id: i64) -> Option<Vec<Frontend>> {
@@ -347,16 +339,15 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
             .filter_map(|b| b.tablet_num.parse::<i64>().ok())
             .sum();
 
-        let cpu_values: Vec<f64> =
-            backends.iter().filter_map(|b| parse_pct(&b.cpu_used_pct)).collect();
+        let cpu_values: Vec<f64> = backends
+            .iter()
+            .filter_map(|b| parse_pct(&b.cpu_used_pct))
+            .collect();
 
         let total_cpu_usage: f64 = cpu_values.iter().sum();
 
-        let avg_cpu_usage = if !cpu_values.is_empty() {
-            total_cpu_usage / cpu_values.len() as f64
-        } else {
-            0.0
-        };
+        let avg_cpu_usage =
+            if !cpu_values.is_empty() { total_cpu_usage / cpu_values.len() as f64 } else { 0.0 };
 
         tracing::debug!(
             "CPU parsing: parsed {}/{} compute nodes (BE/CN), total={}, avg={}",
@@ -366,8 +357,10 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
             avg_cpu_usage
         );
 
-        let memory_values: Vec<f64> =
-            backends.iter().filter_map(|b| parse_pct(&b.mem_used_pct)).collect();
+        let memory_values: Vec<f64> = backends
+            .iter()
+            .filter_map(|b| parse_pct(&b.mem_used_pct))
+            .collect();
         let total_memory_usage: f64 = memory_values.iter().sum();
         let avg_memory_usage = if !memory_values.is_empty() {
             total_memory_usage / memory_values.len() as f64
@@ -391,9 +384,9 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
                 Some((pct, total, used))
             })
             .collect();
-        let disk_samples = if capacity_samples.is_empty() { cache_samples } else { capacity_samples };
-        let (disk_usage_pct, disk_used_bytes, disk_total_bytes) =
-            cluster_disk_usage(&disk_samples);
+        let disk_samples =
+            select_disk_samples(capacity_samples, cache_samples, cluster.is_shared_data());
+        let (disk_usage_pct, disk_used_bytes, disk_total_bytes) = cluster_disk_usage(&disk_samples);
 
         tracing::debug!(
             "Disk usage (cluster): {}% ({} / {} bytes, cluster mode: {})",
@@ -554,7 +547,12 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
                 .get("starrocks_fe_unfinished_query")
                 .copied()
                 .unwrap_or(0.0) as i64,
-            safe_mode: if metrics_map.get("starrocks_fe_safe_mode").copied().unwrap_or(0.0) > 0.0 {
+            safe_mode: if metrics_map
+                .get("starrocks_fe_safe_mode")
+                .copied()
+                .unwrap_or(0.0)
+                > 0.0
+            {
                 1
             } else {
                 0
@@ -859,13 +857,12 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
             let Some(org_id) = cluster.organization_id else {
                 continue;
             };
-            let user_ids: Vec<(i64,)> = db_query::query_as(
-                "SELECT id FROM users WHERE organization_id = ?",
-            )
-            .bind(org_id)
-            .fetch_all(&self.db)
-            .await
-            .unwrap_or_default();
+            let user_ids: Vec<(i64,)> =
+                db_query::query_as("SELECT id FROM users WHERE organization_id = ?")
+                    .bind(org_id)
+                    .fetch_all(&self.db)
+                    .await
+                    .unwrap_or_default();
             for (user_id,) in user_ids {
                 let _ = db_query::query(
                     "INSERT INTO notifications (user_id, kind, title, severity, meta_json) VALUES (?, ?, ?, ?, ?)",
@@ -963,6 +960,26 @@ fn parse_data_cache_disk(metrics: &str) -> Option<(i64, i64, f64)> {
         return None;
     }
     Some((used_sum, total_sum, used_sum as f64 / total_sum as f64 * 100.0))
+}
+
+/// 选择用于集群磁盘水位的数据源：数据盘列优先；只有 shared-data 集群的本地盘本身就是数据缓存，
+/// 缺数据盘列时才退回缓存配额。
+///
+/// shared-nothing 集群缺 `MaxDiskUsedPct` 时绝不能拿缓存配额顶替数据盘：缓存写满是 LRU 淘汰的
+/// 稳态，冒充磁盘只会造出「磁盘使用率 100%」的假警报（历史 bug）。
+/// ponytail: 缺列时记 0 而非未知（disk_usage_pct 是非空列），需要区分「未知」时再改可空。
+fn select_disk_samples(
+    disk_samples: Vec<(f64, i64, i64)>,
+    cache_samples: Vec<(f64, i64, i64)>,
+    shared_data: bool,
+) -> Vec<(f64, i64, i64)> {
+    if !disk_samples.is_empty() {
+        disk_samples
+    } else if shared_data {
+        cache_samples
+    } else {
+        Vec::new()
+    }
 }
 
 fn cluster_disk_usage(samples: &[(f64, i64, i64)]) -> (f64, i64, i64) {
@@ -1386,9 +1403,8 @@ mod tests {
 
     #[test]
     fn parse_data_cache_disk_reads_used_and_total() {
-        let parsed = parse_data_cache_disk(
-            "Status: Normal, DiskUsage: 6.1TB/12.6TB, MemUsage: 0B/0B",
-        );
+        let parsed =
+            parse_data_cache_disk("Status: Normal, DiskUsage: 6.1TB/12.6TB, MemUsage: 0B/0B");
         let (used, total, pct) = parsed.expect("disk usage should parse");
         assert!(used > 0);
         assert!(total > used);
@@ -1399,10 +1415,9 @@ mod tests {
         )
         .expect("two disks should sum");
         assert!(two_disks.2 > 50.0 && two_disks.2 < 60.0);
-        let full_quota = parse_data_cache_disk(
-            "Status: Normal, DiskUsage: 8.8TB/8.8TB, MemUsage: 0B/0B",
-        )
-        .expect("full cache quota should parse");
+        let full_quota =
+            parse_data_cache_disk("Status: Normal, DiskUsage: 8.8TB/8.8TB, MemUsage: 0B/0B")
+                .expect("full cache quota should parse");
         assert!((full_quota.2 - 100.0).abs() < 0.0001);
     }
 
@@ -1417,6 +1432,25 @@ mod tests {
         assert!(pct > 70.0 && pct < 72.0, "pct={pct}");
         assert_eq!(used, samples[0].2 + samples[1].2);
         assert_eq!(total, samples[0].1 + samples[1].1);
+    }
+
+    #[test]
+    fn disk_source_prefers_data_disk_and_never_leaks_cache_to_shared_nothing() {
+        let data_disk = vec![(41.0, 1_000_i64, 410_i64)];
+        let full_cache = vec![(100.0, 1_000_i64, 1_000_i64)];
+
+        // 数据盘可用时永远优先
+        assert_eq!(
+            super::select_disk_samples(data_disk.clone(), full_cache.clone(), true),
+            data_disk
+        );
+        // shared-data：本地盘就是缓存，缺数据盘列时用缓存配额
+        assert_eq!(super::select_disk_samples(Vec::new(), full_cache.clone(), true), full_cache);
+        // shared-nothing：缓存写满不得冒充数据盘水位
+        assert_eq!(
+            super::select_disk_samples(Vec::new(), vec![(100.0, 1_000_i64, 1_000_i64)], false),
+            Vec::<(f64, i64, i64)>::new()
+        );
     }
 
     #[test]
@@ -1465,10 +1499,8 @@ mod tests {
             .await
             .expect("db");
         let mysql = std::sync::Arc::new(crate::services::MySQLPoolManager::new());
-        let clusters = std::sync::Arc::new(crate::services::ClusterService::new(
-            pool.clone(),
-            mysql.clone(),
-        ));
+        let clusters =
+            std::sync::Arc::new(crate::services::ClusterService::new(pool.clone(), mysql.clone()));
         let service = super::MetricsCollectorService::new(pool, clusters, mysql, 7);
         let node: Backend = serde_json::from_value(serde_json::json!({
             "ComputeNodeId": "1",
@@ -1484,7 +1516,11 @@ mod tests {
             1
         );
         service.invalidate_backends(3);
-        assert!(service.cached_backends(3, std::time::Duration::from_secs(90)).is_none());
+        assert!(
+            service
+                .cached_backends(3, std::time::Duration::from_secs(90))
+                .is_none()
+        );
         assert!(service.stale_backends(3).is_none());
     }
 
@@ -1495,10 +1531,8 @@ mod tests {
             .await
             .expect("db");
         let mysql = std::sync::Arc::new(crate::services::MySQLPoolManager::new());
-        let clusters = std::sync::Arc::new(crate::services::ClusterService::new(
-            pool.clone(),
-            mysql.clone(),
-        ));
+        let clusters =
+            std::sync::Arc::new(crate::services::ClusterService::new(pool.clone(), mysql.clone()));
         let service = super::MetricsCollectorService::new(pool, clusters, mysql, 7);
         let node: Backend = serde_json::from_value(serde_json::json!({
             "ComputeNodeId": "1",
@@ -1522,10 +1556,8 @@ mod tests {
             .await
             .expect("db");
         let mysql = std::sync::Arc::new(crate::services::MySQLPoolManager::new());
-        let clusters = std::sync::Arc::new(crate::services::ClusterService::new(
-            pool.clone(),
-            mysql.clone(),
-        ));
+        let clusters =
+            std::sync::Arc::new(crate::services::ClusterService::new(pool.clone(), mysql.clone()));
         let service = super::MetricsCollectorService::new(pool, clusters, mysql, 7);
         let node: Frontend = serde_json::from_value(serde_json::json!({
             "Name": "fe-0",

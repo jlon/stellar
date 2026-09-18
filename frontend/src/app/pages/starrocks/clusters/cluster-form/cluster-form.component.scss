@@ -1,11 +1,11 @@
-// 集群创建/编辑弹窗（llm-provider-form-dialog 同款范式）
+// 集群创建/编辑抽屉（side-sheet 形态；列表页 dialogClass 控制，宽度不再自定）
 :host {
   display: block;
+  height: 100%;
 }
 
 .cluster-form-dialog {
-  width: min(46rem, 94vw);
-  max-height: 88vh;
+  height: 100%;
   margin: 0;
   display: flex;
   flex-direction: column;
@@ -17,12 +17,34 @@
   justify-content: space-between;
   font-size: 0.95rem;
   font-weight: 600;
-  padding: 0.9rem 1.2rem;
+  padding: 0.9rem 1.5rem;
+  border-bottom: 1px solid var(--border-basic-color-3);
+  flex-shrink: 0;
 }
 
 .dialog-body {
   overflow-y: auto;
-  padding: 1rem 1.2rem;
+  padding: 1.1rem 1.5rem;
+  flex: 1;
+  min-height: 0;
+}
+
+/* 抽屉窄容器：两栏改单栏（32rem 内两栏太挤）。
+   bootstrap col-* 自带 flex-basis 与 max-width，需一并中和；
+   row 的 -15px 负 margin 也必须归零，否则与裸 form-group 错位 15px */
+.dialog-body .row {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.dialog-body .row > [class*="col-"] {
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
 }
 
 /* 紧凑表单：small 输入 + 收紧组间距 */
@@ -53,7 +75,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.8rem 1.2rem;
+  padding: 0.8rem 1.5rem;
+  border-top: 1px solid var(--border-basic-color-3);
+  flex-shrink: 0;
 }
 
 .footer-right {

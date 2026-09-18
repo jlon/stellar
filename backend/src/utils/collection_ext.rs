@@ -18,7 +18,10 @@ where
     K: Eq + Hash,
     F: Fn(&T) -> K,
 {
-    items.into_iter().map(|item| (key_fn(&item), item)).collect()
+    items
+        .into_iter()
+        .map(|item| (key_fn(&item), item))
+        .collect()
 }
 
 /// 将 Vec 转换为 HashMap，使用指定的 key 和 value 提取函数
@@ -89,10 +92,10 @@ pub fn unique_ordered<T: Eq + Hash + Clone>(items: Vec<T>) -> Vec<T> {
 pub fn diff_sets<T: Eq + Hash + Clone>(current: &[T], new_items: &[T]) -> (Vec<T>, Vec<T>) {
     let current_set: HashSet<_> = current.iter().cloned().collect();
     let new_set: HashSet<_> = new_items.iter().cloned().collect();
-    
+
     let to_add: Vec<T> = new_set.difference(&current_set).cloned().collect();
     let to_remove: Vec<T> = current_set.difference(&new_set).cloned().collect();
-    
+
     (to_add, to_remove)
 }
 

@@ -1,3 +1,5 @@
+import { I18nService } from '../../../@core/i18n/i18n.service';
+import { TranslatePipe } from '@ngx-translate/core';
 import { Component, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
@@ -23,6 +25,7 @@ import { ActivatedRoute, Router } from '@angular/router';
     templateUrl: './sessions.component.html',
     styleUrls: ['./sessions.component.scss'],
     imports: [
+    TranslatePipe,
     NbCardModule,
     FormsModule,
     NbButtonModule,
@@ -36,7 +39,8 @@ import { ActivatedRoute, Router } from '@angular/router';
 ],
 })
 export class SessionsComponent implements OnInit, OnDestroy {
-  private toastrService = inject(NbToastrService);
+  private toastrService = inject(NbToastrService)
+  private i18n = inject(I18nService);
   private dialogService = inject(NbDialogService);
   private confirmDialogService = inject(ConfirmDialogService);
   private clusterContext = inject(ClusterContextService);
@@ -62,13 +66,13 @@ export class SessionsComponent implements OnInit, OnDestroy {
 
   settings = {
     hideSubHeader: false, // Enable search
-    noDataMessage: '当前没有活动会话',
+    noDataMessage: this.i18n.instant('当前没有活动会话'),
     actions: {
       add: false,
       edit: false,
       delete: true,
       position: 'right',
-      columnTitle: '操作',
+      columnTitle: this.i18n.instant('操作'),
     },
     delete: {
       deleteButtonContent: '<i class="nb-trash" title="删除"></i>',
@@ -348,7 +352,7 @@ export class SessionsComponent implements OnInit, OnDestroy {
         });
 
         if (sleepingSessions.length === 0) {
-          this.toastrService.info('当前没有睡眠连接', '提示');
+          this.toastrService.info(this.i18n.instant('当前没有睡眠连接'), this.i18n.instant('提示'));
           return;
         }
 
@@ -391,7 +395,7 @@ export class SessionsComponent implements OnInit, OnDestroy {
                   if (successCount > 0) {
                     this.toastrService.warning(`成功清除 ${successCount} 个，失败 ${failCount} 个`, '部分成功');
                   } else {
-                    this.toastrService.danger('清除睡眠连接失败', '错误');
+                    this.toastrService.danger(this.i18n.instant('清除睡眠连接失败'), this.i18n.instant('错误'));
                   }
                   this.loadSessions();
                 }
@@ -412,7 +416,7 @@ export class SessionsComponent implements OnInit, OnDestroy {
   // Batch kill all displayed sessions
   batchKillAllSessions(): void {
     if (this.sessions.length === 0) {
-      this.toastrService.warning('当前没有可查杀的会话', '提示');
+      this.toastrService.warning(this.i18n.instant('当前没有可查杀的会话'), this.i18n.instant('提示'));
       return;
     }
 
@@ -455,7 +459,7 @@ export class SessionsComponent implements OnInit, OnDestroy {
               if (successCount > 0) {
                 this.toastrService.warning(`成功查杀 ${successCount} 个，失败 ${failCount} 个`, '部分成功');
               } else {
-                this.toastrService.danger('批量查杀失败', '错误');
+                this.toastrService.danger(this.i18n.instant('批量查杀失败'), this.i18n.instant('错误'));
               }
               this.loadSessions();
             }

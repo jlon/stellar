@@ -10,6 +10,7 @@ use std::sync::Arc;
 use stellar_macros::app_db;
 
 use crate::{
+    services::cluster_timeout,
     services::{create_adapter, mysql_client::MySQLClient},
     utils::error::{ApiError, ApiResult},
 };
@@ -79,7 +80,7 @@ pub async fn kill_session(
     };
 
     let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
-    let mysql_client = MySQLClient::from_pool(pool);
+    let mysql_client = MySQLClient::from_pool(pool).with_timeout(cluster_timeout(&cluster));
 
     kill_session_via_starrocks(&mysql_client, &session_id).await?;
 

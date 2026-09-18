@@ -6,7 +6,7 @@
     <nb-select class="overview-toolbar__select" [(selected)]="refreshInterval" (selectedChange)="onRefreshIntervalChange($event)" size="tiny" status="basic">
       <nb-option *ngFor="let opt of refreshIntervalOptions" [value]="opt.value">{{ opt.label }}</nb-option>
     </nb-select>
-    <button type="button" nbButton size="tiny" ghost status="basic" (click)="onManualRefresh()" aria-label="立即刷新">
+    <button type="button" nbButton size="tiny" ghost status="basic" (click)="onManualRefresh()" [aria-label]="'立即刷新' | translate">
       <nb-icon icon="refresh-outline"></nb-icon>
     </button>
   </div>
@@ -24,18 +24,31 @@
     </ul>
 
     <div class="kpi-grid">
-      <button
-        type="button"
-        class="kpi"
-        *ngFor="let card of healthCards"
-        [attr.data-status]="cardStatus(card)"
-        [nbTooltip]="cardTooltip(card)"
-        [nbTooltipDisabled]="!cardTooltip(card)"
-        nbTooltipPlacement="top"
-        (click)="handleCardClick(card)">
-        <span class="kpi__label">{{ cardTitle(card) }}</span>
-        <span class="kpi__value">{{ cardValue(card) }}</span>
-      </button>
+      <ng-container *ngFor="let card of healthCards">
+        <button
+          *ngIf="isNavigableCard(card); else staticKpi"
+          type="button"
+          class="kpi kpi--action"
+          [attr.data-status]="cardStatus(card)"
+          [nbTooltip]="cardTooltip(card)"
+          [nbTooltipDisabled]="!cardTooltip(card)"
+          nbTooltipPlacement="top"
+          (click)="handleCardClick(card)">
+          <span class="kpi__label">{{ cardTitle(card) }}</span>
+          <span class="kpi__value">{{ cardValue(card) }}</span>
+        </button>
+        <ng-template #staticKpi>
+          <div
+            class="kpi"
+            [attr.data-status]="cardStatus(card)"
+            [nbTooltip]="cardTooltip(card)"
+            [nbTooltipDisabled]="!cardTooltip(card)"
+            nbTooltipPlacement="top">
+            <span class="kpi__label">{{ cardTitle(card) }}</span>
+            <span class="kpi__value">{{ cardValue(card) }}</span>
+          </div>
+        </ng-template>
+      </ng-container>
     </div>
 
     <div class="chart-grid chart-grid--trends">
@@ -46,24 +59,24 @@
           <div class="fact-strip" *ngIf="chart.facts?.length">
             <span *ngFor="let fact of chart.facts">{{ fact }}</span>
           </div>
-          <p *ngIf="!chart.hasData" class="panel__empty">暂无数据</p>
+          <p *ngIf="!chart.hasData" class="panel__empty">{{  '暂无数据' | translate }}</p>
         </div>
       </section>
     </div>
 
     <div class="chart-grid chart-grid--3">
       <section class="panel">
-        <header class="panel__title">表大小</header>
+        <header class="panel__title">{{  '表大小' | translate }}</header>
         <div class="panel__body">
-          <div *ngIf="topTablesBySize.length" echarts [options]="getTopSizeChartOptions()" class="echart-rank"></div>
-          <p *ngIf="!topTablesBySize.length" class="panel__empty">暂无数据</p>
+          <div *ngIf="topSizeChartOptions" echarts [options]="topSizeChartOptions" class="echart-rank"></div>
+          <p *ngIf="!topSizeChartOptions" class="panel__empty">{{  '暂无数据' | translate }}</p>
         </div>
       </section>
       <section class="panel">
-        <header class="panel__title">访问</header>
+        <header class="panel__title">{{  '访问' | translate }}</header>
         <div class="panel__body">
-          <div *ngIf="topTablesByAccess.length" echarts [options]="getTopAccessChartOptions()" class="echart-rank"></div>
-          <p *ngIf="!topTablesByAccess.length" class="panel__empty">{{ accessEmptyText }}</p>
+          <div *ngIf="topAccessChartOptions" echarts [options]="topAccessChartOptions" class="echart-rank"></div>
+          <p *ngIf="!topAccessChartOptions" class="panel__empty">{{ accessEmptyText }}</p>
         </div>
       </section>
       <section class="panel">
@@ -73,14 +86,14 @@
           <div class="fact-strip" *ngIf="isSharedData && compactionDurationFacts.length">
             <span *ngFor="let fact of compactionDurationFacts">{{ fact }}</span>
           </div>
-          <p *ngIf="!storageChartOptions" class="panel__empty">暂无数据</p>
+          <p *ngIf="!storageChartOptions" class="panel__empty">{{  '暂无数据' | translate }}</p>
         </div>
       </section>
     </div>
 
     <div class="chart-grid chart-grid--2">
       <section class="panel">
-        <header class="panel__title">容量</header>
+        <header class="panel__title">{{ (isSharedData ? '数据缓存' : '容量') | translate }}</header>
         <div class="panel__body">
           <ng-container *ngIf="capacityPrediction; else noCapacity">
             <div class="meter">
@@ -91,22 +104,22 @@
                 [attr.aria-valuenow]="capacityPercent"
                 aria-valuemin="0"
                 aria-valuemax="100"
-                aria-label="磁盘使用率">
+                [aria-label]="(isSharedData ? '数据缓存配额使用率' : '磁盘使用率') | translate">
                 <span class="meter__fill" [style.width.%]="capacityPercent" [attr.data-tone]="capacityTone"></span>
               </div>
             </div>
             <div class="fact-strip">
               <span>{{ formatBytes(capacityPrediction.disk_used_bytes) }} / {{ formatBytes(capacityPrediction.disk_total_bytes) }}</span>
               <span *ngIf="capacityPrediction.days_until_full != null" [class.text-danger]="capacityPrediction.days_until_full < 30">
-                {{ capacityPrediction.days_until_full }} 天后存满
+                {{ capacityPrediction.days_until_full }} {{ '天后存满' | translate }}
               </span>
             </div>
           </ng-container>
-          <ng-template #noCapacity><p class="panel__empty">暂无数据</p></ng-template>
+          <ng-template #noCapacity><p class="panel__empty">{{  '暂无数据' | translate }}</p></ng-template>
         </div>
       </section>
       <section class="panel">
-        <header class="panel__title">任务</header>
+        <header class="panel__title">{{  '任务' | translate }}</header>
         <div class="panel__body panel__body--split">
           <div *ngIf="taskChartOptions" echarts [options]="taskChartOptions" class="echart-task"></div>
           <ul class="stat-list" *ngIf="taskRows.length">
@@ -115,7 +128,7 @@
               <span>{{ row.value }}</span>
             </li>
           </ul>
-          <p *ngIf="!taskChartOptions && !taskRows.length" class="panel__empty">暂无数据</p>
+          <p *ngIf="!taskChartOptions && !taskRows.length" class="panel__empty">{{  '暂无数据' | translate }}</p>
         </div>
       </section>
     </div>

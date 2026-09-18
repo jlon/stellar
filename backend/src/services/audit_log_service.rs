@@ -6,6 +6,7 @@
 
 use crate::config::AuditLogConfig;
 use crate::models::Cluster;
+use crate::services::cluster_timeout;
 use crate::services::{MySQLClient, MySQLPoolManager};
 use crate::utils::ApiResult;
 use once_cell::sync::Lazy;
@@ -207,7 +208,7 @@ impl AuditLogService {
         limit: usize,
     ) -> ApiResult<Vec<TopTableByAccess>> {
         let pool = self.mysql_pool_manager.get_pool(cluster).await?;
-        let mysql_client = MySQLClient::from_pool(pool);
+        let mysql_client = MySQLClient::from_pool(pool).with_timeout(cluster_timeout(cluster));
         let (audit_table, time_field, _query_time_field, is_query_field, _stmt_type_field) =
             self.get_audit_config(cluster);
         let audit_table_filter = &self.audit_config.table;
@@ -252,12 +253,16 @@ impl AuditLogService {
             let user = row_field(&col_idx, &row, "user");
             let last_access = row_field(&col_idx, &row, "last_access");
             for (database, table) in extract_table_refs(stmt, db_name, catalog) {
-                let entry = aggregated.entry((database, table)).or_insert_with(|| {
-                    (0, None, HashSet::new())
-                });
+                let entry = aggregated
+                    .entry((database, table))
+                    .or_insert_with(|| (0, None, HashSet::new()));
                 entry.0 += 1;
                 if !last_access.is_empty()
-                    && entry.1.as_deref().map(|prev| last_access > prev).unwrap_or(true)
+                    && entry
+                        .1
+                        .as_deref()
+                        .map(|prev| last_access > prev)
+                        .unwrap_or(true)
                 {
                     entry.1 = Some(last_access.to_string());
                 }
@@ -269,14 +274,12 @@ impl AuditLogService {
 
         let mut tables: Vec<TopTableByAccess> = aggregated
             .into_iter()
-            .map(|((database, table), (access_count, last_access, users))| {
-                TopTableByAccess {
-                    database,
-                    table,
-                    access_count,
-                    last_access,
-                    unique_users: users.len() as i32,
-                }
+            .map(|((database, table), (access_count, last_access, users))| TopTableByAccess {
+                database,
+                table,
+                access_count,
+                last_access,
+                unique_users: users.len() as i32,
             })
             .collect();
         tables.sort_by(|a, b| b.access_count.cmp(&a.access_count));
@@ -296,6 +299,48 @@ impl AuditLogService {
     /// * `hours` - Time window in hours (default: 24)
     /// * `min_duration_ms` - Minimum query duration in milliseconds (default: 1000)
     /// * `limit` - Maximum number of results (default: 20)
+    ///
+    /// 取某次查询的完整 SQL 与所属库。
+    pub async fn get_query_sql(
+        &self,
+        cluster: &Cluster,
+        query_id: &str,
+    ) -> ApiResult<(String, String)> {
+        use crate::models::cluster::ClusterType;
+        use crate::utils::ApiError;
+        if query_id.is_empty() || !query_id.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
+            return Err(ApiError::invalid_data("query_id 格式非法"));
+        }
+        let (audit_table, time_field, _, _, _) = self.get_audit_config(cluster);
+        let id_col = match cluster.cluster_type {
+            ClusterType::StarRocks => "queryId",
+            ClusterType::Doris => "query_id",
+        };
+        let pool = self.mysql_pool_manager.get_pool(cluster).await?;
+        let mysql_client = MySQLClient::from_pool(pool).with_timeout(cluster_timeout(cluster));
+        let sql = format!(
+            "SELECT `stmt`, COALESCE(`db`, '') AS `database` FROM {audit_table} \
+             WHERE `{id_col}` = '{query_id}' ORDER BY `{time_field}` DESC LIMIT 1",
+        );
+        let (columns, rows) = mysql_client.query_raw(&sql).await?;
+        let pos = |name: &str| columns.iter().position(|c| c == name);
+        let stmt = pos("stmt")
+            .and_then(|i| rows.first()?.get(i))
+            .cloned()
+            .unwrap_or_default();
+        let db = pos("database")
+            .and_then(|i| rows.first()?.get(i))
+            .cloned()
+            .unwrap_or_default();
+        if stmt.trim().is_empty() {
+            return Err(ApiError::not_found(format!(
+                "审计日志中找不到该查询的 SQL（query_id={}，可能已超出保留期）",
+                query_id
+            )));
+        }
+        Ok((stmt, db))
+    }
+
     pub async fn get_slow_queries(
         &self,
         cluster: &Cluster,
@@ -304,7 +349,7 @@ impl AuditLogService {
         limit: usize,
     ) -> ApiResult<Vec<SlowQuery>> {
         let pool = self.mysql_pool_manager.get_pool(cluster).await?;
-        let mysql_client = MySQLClient::from_pool(pool);
+        let mysql_client = MySQLClient::from_pool(pool).with_timeout(cluster_timeout(cluster));
         let (audit_table, time_field, query_time_field, is_query_field, _stmt_type_field) =
             self.get_audit_config(cluster);
 
@@ -493,10 +538,7 @@ mod tests {
         assert_eq!(
             tables,
             vec![
-                (
-                    "ib_nebula".to_string(),
-                    "dwd_meituan_launch_from_all_version_inc_d".to_string()
-                ),
+                ("ib_nebula".to_string(), "dwd_meituan_launch_from_all_version_inc_d".to_string()),
                 ("other_db".to_string(), "dim_user".to_string()),
             ]
         );
@@ -505,9 +547,7 @@ mod tests {
     #[test]
     fn extract_skips_heartbeat_and_information_schema() {
         assert!(extract_table_refs("select @@version_comment limit 1", "", "").is_empty());
-        assert!(
-            extract_table_refs("select * from information_schema.tables", "", "").is_empty()
-        );
+        assert!(extract_table_refs("select * from information_schema.tables", "", "").is_empty());
         assert!(is_ignored_table("information_schema", "tables"));
     }
 
@@ -544,10 +584,7 @@ mod tests {
         let denied = crate::utils::ApiError::internal_error(
             "Access denied; you need the SELECT privilege(s)",
         );
-        assert_eq!(
-            super::audit_query_user_message(&denied, "t"),
-            "监控账号无权读取审计日志表 t"
-        );
+        assert_eq!(super::audit_query_user_message(&denied, "t"), "监控账号无权读取审计日志表 t");
         let timeout = crate::utils::ApiError::cluster_connection_failed("connection timed out");
         assert_eq!(super::audit_query_user_message(&timeout, "t"), "查询审计日志超时");
     }

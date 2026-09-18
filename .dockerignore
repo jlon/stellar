@@ -3,9 +3,13 @@
 .gitignore
 .gitattributes
 
-# Build artifacts
-build/
+# Build artifacts (preserve the frontend release-build script used by Docker)
+build/*
+!build/build-frontend.sh
 target/
+backend/target/
+backend/data/
+backend/logs/
 frontend/dist/
 frontend/node_modules/
 frontend/.angular/
@@ -43,8 +47,11 @@ frontend/e2e/
 # Scripts (except those needed for build)
 scripts/
 
-# Deploy files (we're already in deploy)
-deploy/
+# Deployment assets are excluded except the image entrypoint copied by Dockerfile.
+deploy/*
+!deploy/docker/
+deploy/docker/*
+!deploy/docker/entrypoint.sh
 
 # Temporary files
 tmp/

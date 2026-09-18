@@ -165,6 +165,7 @@ export interface QueryExecuteRequest {
   limit?: number;
   catalog?: string;
   database?: string;
+  record_history?: boolean;
 }
 
 export interface SingleQueryResult {
@@ -343,6 +344,11 @@ export class NodeService {
     return this.api.get<Query[]>(`/clusters/queries`);
   }
 
+  /** 取消执行（按指纹 KILL 在跑查询，影响面限于相同 SQL 文本）。 */
+  cancelQuery(fingerprint: string, started_after_ms: number): Observable<{ killed: string[] }> {
+    return this.api.post<{ killed: string[] }>(`/clusters/queries/cancel`, { fingerprint, started_after_ms });
+  }
+
   killQuery(queryId: string): Observable<any> {
     return this.api.delete(`/clusters/queries/${queryId}`);
   }
@@ -448,8 +454,15 @@ export class NodeService {
 
   // Execute SQL API
   // Use extended timeout (650 seconds) for large queries to match Nginx proxy_read_timeout (600s)
-  executeSQL(sql: string, limit?: number, catalog?: string, database?: string): Observable<QueryExecuteResult> {
-    const request: QueryExecuteRequest = { sql, limit, catalog, database };
+  // recordHistory=true 仅用于 SQL 工作台编辑器执行；页面内部诊断/元数据查询不记录历史。
+  executeSQL(
+    sql: string,
+    limit?: number,
+    catalog?: string,
+    database?: string,
+    recordHistory = false,
+  ): Observable<QueryExecuteResult> {
+    const request: QueryExecuteRequest = { sql, limit, catalog, database, record_history: recordHistory };
     return this.api.post<QueryExecuteResult>(`/clusters/queries/execute`, request, 650000);
   }
 

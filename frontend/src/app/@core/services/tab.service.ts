@@ -1,3 +1,4 @@
+import { I18nService } from '../i18n/i18n.service';
 import { Injectable, inject } from '@angular/core';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { Router } from '@angular/router';
@@ -18,7 +19,8 @@ export interface TabItem {
   providedIn: 'root'
 })
 export class TabService {
-  private router = inject(Router);
+  private router = inject(Router)
+  private i18n = inject(I18nService);
   private tabReuseService = inject(TabReuseService);
 
   private readonly STORAGE_KEY = 'stellar_tabs';
@@ -365,7 +367,7 @@ export class TabService {
     if (!hasHomeTab) {
       const homeTab: TabItem = {
         id: 'home',
-        title: '集群列表',
+        title: this.i18n ? this.i18n.instant('集群列表') : '集群列表',
         url: '/pages/starrocks/dashboard',
         active: true,
         closable: false,

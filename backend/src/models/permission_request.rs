@@ -10,11 +10,13 @@ pub struct PermissionRequest {
     pub cluster_id: i64,
     pub applicant_id: i64,
     pub applicant_org_id: i64,
-    pub request_type: String,  // 'create_account' | 'grant_role' | 'grant_permission'
-    pub request_details: String,  // JSON string
+    pub request_type: String, // 'create_account' | 'grant_role' | 'grant_permission'
+    pub request_details: String, // JSON string
+    #[serde(skip_serializing)]
+    pub new_user_password_encrypted: Option<String>,
     pub reason: String,
     pub valid_until: Option<DateTime<Utc>>,
-    pub status: String,  // 'pending' | 'approved' | 'rejected' | 'executing' | 'completed' | 'failed'
+    pub status: String, // 'pending' | 'rejected' | 'cancelled' | 'executing' | 'completed' | 'failed'
     pub approver_id: Option<i64>,
     pub approval_comment: Option<String>,
     pub approved_at: Option<DateTime<Utc>>,
@@ -32,12 +34,15 @@ pub struct RequestDetails {
     pub action: Option<String>, // 'grant_role' | 'grant_permission' | 'revoke_permission'
 
     // Principals
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub target_user: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub target_account: Option<String>, // e.g., "user@'%'"
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub target_role: Option<String>,
 
     // Resource scope
-    pub scope: Option<String>,        // 'global' | 'database' | 'table'
+    pub scope: Option<String>,         // 'global' | 'database' | 'table'
     pub resource_type: Option<String>, // 'catalog' | 'database' | 'table' | 'column'
     pub catalog: Option<String>,
     pub database: Option<String>,
@@ -48,8 +53,12 @@ pub struct RequestDetails {
     pub with_grant_option: Option<bool>,
 
     // Auto-provision principals on approval
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub new_user_name: Option<String>,
+    /// 仅在提交时接收；落库前必须转换为 `new_user_password_encrypted`。
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub new_user_password: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub new_role_name: Option<String>,
 }
 
@@ -117,7 +126,7 @@ pub struct DbAccountDto {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct DbRoleDto {
     pub role_name: String,
-    pub role_type: String,  // 'built-in' | 'custom'
+    pub role_type: String, // 'built-in' | 'custom'
     pub permissions_count: Option<i64>,
 }
 

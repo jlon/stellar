@@ -6,6 +6,7 @@ use stellar_macros::app_db;
 
 use crate::models::cluster::ClusterType;
 use crate::models::starrocks::{QueryHistoryItem, QueryHistoryResponse};
+use crate::services::cluster_timeout;
 use crate::services::mysql_client::MySQLClient;
 use crate::utils::error::ApiResult;
 
@@ -20,7 +21,10 @@ struct AuditHistoryColumns {
     warehouse_field: &'static str,
 }
 
-fn audit_history_columns(cluster_type: ClusterType, starrocks_table: String) -> AuditHistoryColumns {
+fn audit_history_columns(
+    cluster_type: ClusterType,
+    starrocks_table: String,
+) -> AuditHistoryColumns {
     match cluster_type {
         ClusterType::StarRocks => AuditHistoryColumns {
             audit_table: starrocks_table,
@@ -126,7 +130,7 @@ pub async fn list_query_history(
     };
 
     let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
-    let mysql = MySQLClient::from_pool(pool);
+    let mysql = MySQLClient::from_pool(pool).with_timeout(cluster_timeout(&cluster));
 
     let limit = params.limit;
     let offset = params.offset;
@@ -281,7 +285,10 @@ mod tests {
 
     #[test]
     fn starrocks_history_sql_uses_native_columns() {
-        let columns = audit_history_columns(ClusterType::StarRocks, "starrocks_audit_db__.starrocks_audit_tbl__".to_string());
+        let columns = audit_history_columns(
+            ClusterType::StarRocks,
+            "starrocks_audit_db__.starrocks_audit_tbl__".to_string(),
+        );
         let sql = audit_history_select_sql(&columns, "isQuery = 1", 10, 0);
         assert!(sql.contains("`queryType`"));
         assert!(sql.contains("`queryTime`"));

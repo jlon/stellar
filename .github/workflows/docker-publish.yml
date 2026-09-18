@@ -4,7 +4,7 @@ name: Docker Build and Publish
 on:
   push:
     tags:
-      - 'v*'  # Trigger on version tags like v1.0.0
+      - 'v*.*.*'  # Keep the trigger aligned with release.yml
   workflow_dispatch:  # Allow manual trigger
 
 env:
@@ -17,7 +17,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-      id-token: write
 
     steps:
       # Step 0: Free up disk space on runner
@@ -47,6 +46,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Manual runs must select an existing vX.Y.Z tag; branch builds never
+      # publish a release image.
+      - name: Verify release tag and version consistency
+        run: |
+          case "$GITHUB_REF_NAME" in
+            v*.*.*) ;;
+            *) echo "Docker publishing must run from a vX.Y.Z tag, not $GITHUB_REF_NAME." >&2; exit 1 ;;
+          esac
+          bash build/verify-release-version.sh "${GITHUB_REF_NAME#v}"
+
+      # The target runtime stage executes arm64 package installation.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       # Step 2: Setup Docker buildx (for multi-platform builds)
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -66,10 +79,11 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            # For version tags (v1.0.0) - only full version
             type=semver,pattern={{version}}
-            # Always include latest tag for version tags
-            type=raw,value=latest
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            # Stable releases update latest; prereleases never do.
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
 
       # Step 5: Build and push Docker image
       - name: Build and push Docker image
@@ -86,22 +100,44 @@ jobs:
           # Multi-platform build: support AMD64 and ARM64 (Apple M1/M2, AWS Graviton)
           platforms: linux/amd64,linux/arm64
 
-      # Step 6: Verify Docker image
-      - name: Verify Docker image
+      # Step 6: Assert both requested architectures were pushed to GHCR.
+      - name: Verify multi-platform manifest
         run: |
-          echo "Verifying Docker image..."
-          
-          # Extract first tag for testing
-          FIRST_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -1)
-          echo "Testing image: $FIRST_TAG"
-          
-          # Pull and inspect the image
-          docker pull "$FIRST_TAG"
-          docker inspect "$FIRST_TAG" > /dev/null
-          
-          echo "✅ Docker image verified successfully"
+          set -euo pipefail
+          IMAGE=$(echo "${{ steps.meta.outputs.tags }}" | head -1)
+          docker buildx imagetools inspect --raw "$IMAGE" | jq -e '
+            [.manifests[].platform | select(.os == "linux") | .architecture]
+            | contains(["amd64", "arm64"])
+          ' >/dev/null
 
-      # Step 7: Generate build summary
+      # Step 7: Smoke test the published amd64 image. The Dockerfile validates
+      # static linkage during every platform build; this also proves it starts.
+      - name: Smoke test published amd64 image
+        run: |
+          set -euo pipefail
+          IMAGE=$(echo "${{ steps.meta.outputs.tags }}" | head -1)
+          echo "Testing image: $IMAGE"
+          docker pull --platform linux/amd64 "$IMAGE"
+
+          cleanup() {
+            docker logs stellar-smoke || true
+            docker rm -f stellar-smoke || true
+          }
+          trap cleanup EXIT
+
+          docker run -d --rm --name stellar-smoke -p 18080:8080 "$IMAGE"
+          for _ in $(seq 1 30); do
+            if curl --fail --silent --show-error http://127.0.0.1:18080/health >/dev/null; then
+              echo "✅ Docker image started and /health passed"
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "❌ Docker image did not become healthy" >&2
+          exit 1
+
+      # Step 8: Generate build summary
       - name: Generate build summary
         run: |
           echo "## 🐳 Docker Image Build Summary" >> $GITHUB_STEP_SUMMARY

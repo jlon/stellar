@@ -1,3 +1,5 @@
+import { I18nService } from '../../../@core/i18n/i18n.service';
+import { TranslatePipe } from '@ngx-translate/core';
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { NbDialogService, NbToastrService, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule, NbAlertModule } from '@nebular/theme';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
@@ -30,6 +32,7 @@ import { HasPermissionDirective } from '../../../@core/directives/has-permission
     templateUrl: './roles.component.html',
     styleUrls: ['./roles.component.scss'],
     imports: [
+    TranslatePipe,
     NbCardModule,
     NbButtonModule,
     HasPermissionDirective,
@@ -40,7 +43,8 @@ import { HasPermissionDirective } from '../../../@core/directives/has-permission
 ],
 })
 export class RolesComponent implements OnInit, OnDestroy {
-  private roleService = inject(RoleService);
+  private roleService = inject(RoleService)
+  private i18n = inject(I18nService);
   private permissionService = inject(PermissionService);
   private dialogService = inject(NbDialogService);
   private confirmDialog = inject(ConfirmDialogService);
@@ -85,13 +89,13 @@ export class RolesComponent implements OnInit, OnDestroy {
 
     if (this.isSuperAdmin && !this.organizations.length) {
       this.loadOrganizations();
-      this.toastrService.info('正在加载组织列表，请稍后重试', '提示');
+      this.toastrService.info(this.i18n.instant('正在加载组织列表，请稍后重试'), this.i18n.instant('提示'));
       return;
     }
 
     if (!this.isSuperAdmin && !this.currentOrganization) {
       this.loadCurrentOrganization();
-      this.toastrService.info('正在获取所属组织，请稍后重试', '提示');
+      this.toastrService.info(this.i18n.instant('正在获取所属组织，请稍后重试'), this.i18n.instant('提示'));
       return;
     }
 
@@ -171,7 +175,7 @@ export class RolesComponent implements OnInit, OnDestroy {
 
       this.roleService.deleteRole(role.id).subscribe({
         next: () => {
-          this.toastrService.success('角色已删除', '成功');
+          this.toastrService.success(this.i18n.instant('角色已删除'), this.i18n.instant('成功'));
           this.rolePermissionCache.delete(role.id);
           this.loadRoles();
         },
@@ -199,7 +203,7 @@ export class RolesComponent implements OnInit, OnDestroy {
       )
       .subscribe({
         next: (role) => {
-          this.toastrService.success('角色创建成功', '成功');
+          this.toastrService.success(this.i18n.instant('角色创建成功'), this.i18n.instant('成功'));
           if (role) {
             this.rolePermissionCache.set(role.id, [...result.permissionIds]);
           }
@@ -221,7 +225,7 @@ export class RolesComponent implements OnInit, OnDestroy {
       )
       .subscribe({
         next: () => {
-          this.toastrService.success('角色更新成功', '成功');
+          this.toastrService.success(this.i18n.instant('角色更新成功'), this.i18n.instant('成功'));
           this.rolePermissionCache.set(role.id, [...result.permissionIds]);
           this.loadRoles();
         },
@@ -317,7 +321,7 @@ export class RolesComponent implements OnInit, OnDestroy {
     return {
       mode: 'external',
       hideSubHeader: false,
-      noDataMessage: this.hasListPermission ? '暂无角色数据' : '您暂无查看角色的权限',
+      noDataMessage: this.hasListPermission ? this.i18n.instant('暂无角色数据') : this.i18n.instant('您暂无查看角色的权限'),
       actions: {
         add: false,
         edit: false,
@@ -335,19 +339,19 @@ export class RolesComponent implements OnInit, OnDestroy {
           width: '8%',
         },
         code: {
-          title: '角色代码',
+          title: this.i18n.instant('角色代码'),
           type: 'string',
         },
         name: {
-          title: '角色名称',
+          title: this.i18n.instant('角色名称'),
           type: 'string',
         },
         description: {
-          title: '描述',
+          title: this.i18n.instant('描述'),
           type: 'string',
         },
         is_system: {
-          title: '系统角色',
+          title: this.i18n.instant('系统角色'),
           type: 'html',
           sanitizer: { bypassHtml: true },
           isFilterable: false,
@@ -359,12 +363,12 @@ export class RolesComponent implements OnInit, OnDestroy {
           },
         },
         created_at: {
-          title: '创建时间',
+          title: this.i18n.instant('创建时间'),
           type: 'string',
           valuePrepareFunction: (date: string) => new Date(date).toLocaleString('zh-CN'),
         },
         actions: {
-          title: '操作',
+          title: this.i18n.instant('操作'),
           type: 'custom',
           renderComponent: RolesActionsCellComponent,
           isFilterable: false,

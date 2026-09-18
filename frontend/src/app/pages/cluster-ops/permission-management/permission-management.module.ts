@@ -1,27 +1,7 @@
 import { NgModule, NO_ERRORS_SCHEMA } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
-import {
-  NbCardModule,
-  NbTabsetModule,
-  NbButtonModule,
-  NbButtonGroupModule,
-  NbIconModule,
-  NbInputModule,
-  NbSpinnerModule,
-  NbDialogModule,
-  NbSelectModule,
-  NbCheckboxModule,
-  NbAlertModule,
-  NbLayoutModule,
-  NbActionsModule,
-  NbBadgeModule,
-  NbTagModule,
-  NbTooltipModule,
-  NbProgressBarModule,
-  NbAccordionModule,
-  NbListModule,
-} from '@nebular/theme';
+import { NbCardModule, NbTabsetModule, NbButtonModule, NbButtonGroupModule, NbIconModule, NbInputModule, NbSpinnerModule, NbDialogModule, NbSelectModule, NbCheckboxModule, NbAlertModule, NbLayoutModule, NbActionsModule, NbBadgeModule, NbTagModule, NbTooltipModule, NbProgressBarModule, NbAccordionModule, NbListModule } from '@nebular/theme';
 import { Angular2SmartTableModule } from 'angular2-smart-table';
 
 import { PermissionManagementComponent } from './permission-management.component';

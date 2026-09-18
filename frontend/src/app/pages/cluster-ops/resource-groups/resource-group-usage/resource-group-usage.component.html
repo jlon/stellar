@@ -1,8 +1,8 @@
 <div class="row">
   <div class="col-12">
-    <nb-card [nbSpinner]="loading" nbSpinnerStatus="primary" nbSpinnerMessage="加载中">
+    <nb-card [nbSpinner]="loading" nbSpinnerStatus="primary" [nbSpinnerMessage]="'加载中' | translate">
       <nb-card-header class="d-flex justify-content-between align-items-center">
-        <h4>资源组使用情况</h4>
+        <h4>{{  '资源组使用情况' | translate }}</h4>
         <div class="d-flex align-items-center gap-2">
           <button
             nbButton
@@ -10,8 +10,8 @@
             status="basic"
             size="small"
             (click)="toggleAutoRefresh()"
-            [nbTooltip]="autoRefresh ? '关闭自动刷新' : '开启自动刷新'"
-            [title]="autoRefresh ? '关闭自动刷新' : '开启自动刷新'"
+            [nbTooltip]="autoRefresh ? ('关闭自动刷新' | translate) : ('开启自动刷新' | translate)"
+            [title]="autoRefresh ? ('关闭自动刷新' | translate) : ('开启自动刷新' | translate)"
             [attr.aria-pressed]="autoRefresh"
             [class.rg-refresh-active]="autoRefresh">
             <nb-icon [icon]="autoRefresh ? 'pause-circle-outline' : 'play-circle-outline'"></nb-icon>
@@ -23,8 +23,8 @@
             size="small"
             (click)="refreshData()"
             [disabled]="loading"
-            nbTooltip="刷新"
-            title="刷新">
+            [nbTooltip]="'刷新' | translate"
+            [title]="'刷新' | translate">
             <nb-icon icon="refresh-outline"></nb-icon>
           </button>
           <button
@@ -33,8 +33,8 @@
             status="basic"
             size="small"
             (click)="goBack()"
-            nbTooltip="返回资源组列表"
-            title="返回资源组列表">
+            [nbTooltip]="'返回资源组列表' | translate"
+            [title]="'返回资源组列表' | translate">
             <nb-icon icon="arrow-back-outline"></nb-icon>
           </button>
         </div>
@@ -45,7 +45,7 @@
           <div class="mb-3">
             <nb-alert status="info" size="small">
               <nb-icon icon="info-outline"></nb-icon>
-              自动刷新已开启，每 {{ refreshInterval }} 秒更新一次数据
+              {{ '自动刷新已开启，每' | translate }} {{ refreshInterval }} {{ '秒更新一次数据' | translate }}
             </nb-alert>
           </div>
         }
@@ -59,7 +59,7 @@
         @if (source.count() === 0) {
           <div class="text-center p-4">
             <nb-icon icon="inbox-outline" class="text-muted" style="font-size: 3rem;"></nb-icon>
-            <p class="text-muted mt-2">当前没有资源组在使用资源</p>
+            <p class="text-muted mt-2">{{  '当前没有资源组在使用资源' | translate }}</p>
           </div>
         }
       </nb-card-body>

@@ -1,17 +1,18 @@
+import { I18nService } from '../../../../@core/i18n/i18n.service';
+import { TranslatePipe } from '@ngx-translate/core';
 import { ChangeDetectorRef, Component, OnInit, OnDestroy, TemplateRef, ViewChild, ViewEncapsulation, inject } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { CommonModule, Location, NgStyle, NgClass, DecimalPipe } from '@angular/common'; // Import Location
 import { NbToastrService, NbDialogService, NbCardModule, NbButtonModule, NbIconModule, NbSelectModule, NbOptionModule, NbSpinnerModule, NbTabsetModule, NbTooltipModule } from '@nebular/theme';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
+import { takeUntil, timeout } from 'rxjs/operators';
 import { NodeService } from '../../../../@core/data/node.service';
 import { ClusterContextService } from '../../../../@core/data/cluster-context.service';
 import { Cluster } from '../../../../@core/data/cluster.service';
 import { ErrorHandler } from '../../../../@core/utils/error-handler';
 import { MetricThresholds, renderMetricBadge, parseStarRocksDuration } from '../../../../@core/utils/metric-badge';
 import { renderLongText } from '../../../../@core/utils/text-truncate';
-import { AuthService } from '../../../../@core/data/auth.service';
 import { themeColor } from '../../../../@core/utils/theme-color';
 import { assignTableRows } from '../../../../@core/utils/table-rows';
 import * as dagre from 'dagre';
@@ -22,6 +23,7 @@ import * as dagre from 'dagre';
     styleUrls: ['./profile-queries.component.scss'],
     encapsulation: ViewEncapsulation.None,
     imports: [
+    TranslatePipe,
     NbCardModule,
     NbButtonModule,
     NbIconModule,
@@ -38,12 +40,12 @@ import * as dagre from 'dagre';
 ],
 })
 export class ProfileQueriesComponent implements OnInit, OnDestroy {
-  private route = inject(ActivatedRoute);
+  private route = inject(ActivatedRoute)
+  private i18n = inject(I18nService);
   private nodeService = inject(NodeService);
   private clusterContextService = inject(ClusterContextService);
   private toastrService = inject(NbToastrService);
   private dialogService = inject(NbDialogService);
-  private authService = inject(AuthService);
   private cdr = inject(ChangeDetectorRef);
   private location = inject(Location);
 
@@ -54,17 +56,6 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
   clusterId: number;
   activeCluster: Cluster | null = null;
   loading = true;
-  autoRefresh = false; // Default: disabled
-  refreshInterval: any;
-  selectedRefreshInterval: number | 'off' = 'off'; // Default: off (Grafana style)
-  refreshIntervalOptions = [
-    { value: 'off', label: '关闭' },
-    { value: 3, label: '3秒' },
-    { value: 5, label: '5秒' },
-    { value: 10, label: '10秒' },
-    { value: 30, label: '30秒' },
-    { value: 60, label: '1分钟' },
-  ];
   private destroy$ = new Subject<void>();
   private profileDurationThresholds: MetricThresholds = { warn: 120000, danger: 240000 }; // Will be updated dynamically
 
@@ -550,10 +541,10 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
       edit: true,
       delete: false,
       position: 'right',
-      width: '80px',
+      columnTitle: this.i18n.instant('操作'),
     },
     edit: {
-      editButtonContent: '<i class="nb-search"></i>',
+      editButtonContent: '<i class="nb-search" title="查看"></i>',
     },
     pager: {
       display: true,
@@ -561,9 +552,9 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
     },
     columns: {
       QueryId: { title: 'Query ID', type: 'string', width: '25%' },
-      StartTime: { title: '开始时间', type: 'string', width: '15%' },
+      StartTime: { title: this.i18n.instant('开始时间'), type: 'string', width: '15%' },
       Time: {
-        title: '执行时间',
+        title: this.i18n.instant('执行时间'),
         type: 'html',
         sanitizer: { bypassHtml: true },
         width: '10%',
@@ -579,7 +570,7 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
         },
       },
       State: {
-        title: '状态',
+        title: this.i18n.instant('状态'),
         type: 'html',
         sanitizer: { bypassHtml: true },
         width: '10%',
@@ -589,7 +580,7 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
         },
       },
       Statement: { 
-        title: 'SQL语句', 
+        title: this.i18n.instant('SQL语句'), 
         type: 'html', 
         sanitizer: { bypassHtml: true },
         width: '40%',
@@ -626,83 +617,25 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    this.stopAutoRefresh();
     this.destroy$.next();
     this.destroy$.complete();
-  }
-
-  // Grafana-style: selecting an interval automatically enables auto-refresh
-  // Selecting 'off' disables auto-refresh
-  onRefreshIntervalChange(interval: number | 'off'): void {
-    this.selectedRefreshInterval = interval;
-    
-    if (interval === 'off') {
-      // Disable auto-refresh
-      this.autoRefresh = false;
-      this.stopAutoRefresh();
-    } else {
-      // Enable auto-refresh with selected interval
-      this.autoRefresh = true;
-      this.stopAutoRefresh();
-      this.startAutoRefresh();
-    }
-  }
-
-  startAutoRefresh(): void {
-    this.stopAutoRefresh(); // Clear any existing interval
-    
-    // Only start if interval is a number (not 'off')
-    if (typeof this.selectedRefreshInterval !== 'number') {
-      return;
-    }
-    
-    this.refreshInterval = setInterval(() => {
-      // Stop auto-refresh if user is not authenticated (logged out)
-      if (!this.authService.isAuthenticated()) {
-        this.autoRefresh = false;
-        this.selectedRefreshInterval = 'off';
-        this.stopAutoRefresh();
-        return;
-      }
-      // Only update data, don't show loading spinner during auto-refresh
-      this.loadProfilesSilently();
-    }, this.selectedRefreshInterval * 1000);
-  }
-
-  stopAutoRefresh(): void {
-    if (this.refreshInterval) {
-      clearInterval(this.refreshInterval);
-      this.refreshInterval = null;
-    }
   }
 
   // Load profiles
   loadProfiles(): void {
     this.loading = true;
-    this.nodeService.listProfiles().subscribe(
+    this.nodeService.listProfiles().pipe(takeUntil(this.destroy$), timeout(20000)).subscribe(
       data => {
         this.updateDynamicThresholds(data);
         assignTableRows(this.profileSource, data).then(() => {
           this.loading = false;
+          this.cdr.markForCheck();
         });
       },
       error => {
         this.toastrService.danger(ErrorHandler.handleClusterError(error), '加载失败');
         this.loading = false;
-      }
-    );
-  }
-
-  // Load profiles silently (for auto-refresh, without loading spinner)
-  loadProfilesSilently(): void {
-    this.nodeService.listProfiles().subscribe(
-      data => {
-        this.profileSource.load(data);
-        this.updateDynamicThresholds(data);
-      },
-      error => {
-        // Silently handle errors during auto-refresh
-        console.error('Failed to refresh profiles:', error);
+        this.cdr.markForCheck();
       }
     );
   }
@@ -2026,7 +1959,7 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
   exportDagAsPng(): void {
     const graphContent = document.querySelector('.graph-content') as HTMLElement;
     if (!graphContent) {
-      this.toastrService.warning('无法找到图表内容', '导出失败');
+      this.toastrService.warning(this.i18n.instant('无法找到图表内容'), this.i18n.instant('导出失败'));
       return;
     }
 
@@ -2044,14 +1977,14 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
         link.download = `profile-dag-${this.currentQueryId || 'export'}.png`;
         link.href = canvas.toDataURL('image/png');
         link.click();
-        this.toastrService.success('图表已导出', '导出成功');
+        this.toastrService.success(this.i18n.instant('图表已导出'), this.i18n.instant('导出成功'));
       }).catch(err => {
         console.error('Export failed:', err);
-        this.toastrService.danger('导出图片失败', '错误');
+        this.toastrService.danger(this.i18n.instant('导出图片失败'), this.i18n.instant('错误'));
       });
     }).catch(err => {
       console.error('Failed to load html2canvas:', err);
-      this.toastrService.danger('加载导出模块失败', '错误');
+      this.toastrService.danger(this.i18n.instant('加载导出模块失败'), this.i18n.instant('错误'));
     });
   }
 
@@ -2268,7 +2201,7 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
     if (navigator.clipboard && window.isSecureContext) {
       navigator.clipboard.writeText(this.currentProfileDetail)
         .then(() => {
-          this.toastrService.success('Profile 内容已复制到剪贴板', '复制成功');
+          this.toastrService.success(this.i18n.instant('Profile 内容已复制到剪贴板'), this.i18n.instant('复制成功'));
         })
         .catch(err => {
           console.error('Failed to copy:', err);
@@ -2293,13 +2226,13 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
     try {
       const successful = document.execCommand('copy');
       if (successful) {
-        this.toastrService.success('Profile 内容已复制到剪贴板', '复制成功');
+        this.toastrService.success(this.i18n.instant('Profile 内容已复制到剪贴板'), this.i18n.instant('复制成功'));
       } else {
-        this.toastrService.warning('复制失败，请手动复制', '提示');
+        this.toastrService.warning(this.i18n.instant('复制失败，请手动复制'), this.i18n.instant('提示'));
       }
     } catch (err) {
       console.error('Failed to copy:', err);
-      this.toastrService.warning('复制失败，请手动复制', '提示');
+      this.toastrService.warning(this.i18n.instant('复制失败，请手动复制'), this.i18n.instant('提示'));
     } finally {
       document.body.removeChild(textArea);
     }
@@ -2312,11 +2245,11 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
     if (navigator.clipboard && window.isSecureContext) {
       navigator.clipboard.writeText(text)
         .then(() => {
-          this.toastrService.success('已复制到剪贴板', '复制成功');
+          this.toastrService.success(this.i18n.instant('已复制到剪贴板'), this.i18n.instant('复制成功'));
         })
         .catch(err => {
           console.error('Failed to copy:', err);
-          this.toastrService.warning('复制失败', '提示');
+          this.toastrService.warning(this.i18n.instant('复制失败'), this.i18n.instant('提示'));
         });
     } else {
       // Fallback
@@ -2328,9 +2261,9 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
       textArea.select();
       try {
         document.execCommand('copy');
-        this.toastrService.success('已复制到剪贴板', '复制成功');
+        this.toastrService.success(this.i18n.instant('已复制到剪贴板'), this.i18n.instant('复制成功'));
       } catch (err) {
-        this.toastrService.warning('复制失败', '提示');
+        this.toastrService.warning(this.i18n.instant('复制失败'), this.i18n.instant('提示'));
       } finally {
         document.body.removeChild(textArea);
       }

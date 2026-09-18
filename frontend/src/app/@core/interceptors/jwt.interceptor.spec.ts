@@ -38,9 +38,6 @@ describe('JwtInterceptor', () => {
     toastrMock.danger.calls.reset();
     routerMock.navigate.calls.reset();
     authServiceMock.token = 'mock-token';
-    Object.defineProperty(authServiceMock, 'token', {
-      get: () => 'mock-token',
-    });
   });
 
   it('attaches Authorization header when token exists', () => {

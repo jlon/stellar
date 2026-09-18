@@ -2,9 +2,9 @@ use anyhow::Result;
 use mysql_async::Pool;
 
 use crate::models::{
-    Classifier, ClassifierRequest, CreateResourceGroupRequest, ResourceGroup,
-    ResourceGroupUsage, ResourceUsageAnalysis, UpdateResourceGroupRequest, UserConcurrency,
-    UserCpuUsage, UserMemoryUsage,
+    Classifier, ClassifierRequest, CreateResourceGroupRequest, ResourceGroup, ResourceGroupUsage,
+    ResourceUsageAnalysis, UpdateResourceGroupRequest, UserConcurrency, UserCpuUsage,
+    UserMemoryUsage,
 };
 use crate::services::mysql_client::MySQLClient;
 
@@ -14,7 +14,7 @@ impl ResourceGroupService {
     pub async fn list_resource_groups(pool: &Pool) -> Result<Vec<ResourceGroup>> {
         let mysql_client = MySQLClient::from_pool(pool.clone());
         let mut session = mysql_client.create_session().await?;
-        
+
         let sql = "SHOW RESOURCE GROUPS ALL";
         let (_, rows, _) = session.execute(sql).await?;
 
@@ -55,11 +55,13 @@ impl ResourceGroupService {
     pub async fn get_resource_group(pool: &Pool, name: &str) -> Result<ResourceGroup> {
         let mysql_client = MySQLClient::from_pool(pool.clone());
         let mut session = mysql_client.create_session().await?;
-        
+
         let sql = format!("SHOW RESOURCE GROUP {}", Self::quote_identifier(name));
         let (_, rows, _) = session.execute(&sql).await?;
-        
-        let row = rows.into_iter().next()
+
+        let row = rows
+            .into_iter()
+            .next()
             .ok_or_else(|| anyhow::anyhow!("Resource group not found"))?;
 
         let name = row.first().cloned().unwrap_or_default();
@@ -91,13 +93,10 @@ impl ResourceGroupService {
         })
     }
 
-    pub async fn create_resource_group(
-        pool: &Pool,
-        req: CreateResourceGroupRequest,
-    ) -> Result<()> {
+    pub async fn create_resource_group(pool: &Pool, req: CreateResourceGroupRequest) -> Result<()> {
         let mysql_client = MySQLClient::from_pool(pool.clone());
         let mut session = mysql_client.create_session().await?;
-        
+
         let sql = Self::build_create_sql(&req)?;
         session.execute(&sql).await?;
         Ok(())
@@ -110,7 +109,7 @@ impl ResourceGroupService {
     ) -> Result<()> {
         let mysql_client = MySQLClient::from_pool(pool.clone());
         let mut session = mysql_client.create_session().await?;
-        
+
         let sql = Self::build_alter_sql(name, &req)?;
         session.execute(&sql).await?;
         Ok(())
@@ -119,7 +118,7 @@ impl ResourceGroupService {
     pub async fn delete_resource_group(pool: &Pool, name: &str) -> Result<()> {
         let mysql_client = MySQLClient::from_pool(pool.clone());
         let mut session = mysql_client.create_session().await?;
-        
+
         let sql = format!("DROP RESOURCE GROUP {}", Self::quote_identifier(name));
         session.execute(&sql).await?;
         Ok(())
@@ -128,7 +127,7 @@ impl ResourceGroupService {
     pub async fn get_resource_group_usage(pool: &Pool) -> Result<Vec<ResourceGroupUsage>> {
         let mysql_client = MySQLClient::from_pool(pool.clone());
         let mut session = mysql_client.create_session().await?;
-        
+
         let sql = "SHOW USAGE RESOURCE GROUPS";
         let (_, rows, _) = session.execute(sql).await?;
 
@@ -152,19 +151,12 @@ impl ResourceGroupService {
         Ok(usages)
     }
 
-    pub async fn analyze_resource_usage(
-        pool: &Pool,
-        days: u32,
-    ) -> Result<ResourceUsageAnalysis> {
+    pub async fn analyze_resource_usage(pool: &Pool, days: u32) -> Result<ResourceUsageAnalysis> {
         let cpu_analysis = Self::analyze_cpu_usage(pool, days).await?;
         let memory_analysis = Self::analyze_memory_usage(pool, days).await?;
         let concurrency_analysis = Self::analyze_concurrency(pool, days).await?;
 
-        Ok(ResourceUsageAnalysis {
-            cpu_analysis,
-            memory_analysis,
-            concurrency_analysis,
-        })
+        Ok(ResourceUsageAnalysis { cpu_analysis, memory_analysis, concurrency_analysis })
     }
 
     async fn analyze_cpu_usage(pool: &Pool, days: u32) -> Result<Vec<UserCpuUsage>> {
@@ -216,7 +208,7 @@ impl ResourceGroupService {
     async fn analyze_memory_usage(pool: &Pool, days: u32) -> Result<Vec<UserMemoryUsage>> {
         let mysql_client = MySQLClient::from_pool(pool.clone());
         let mut session = mysql_client.create_session().await?;
-        
+
         let sql = format!(
             r#"
             SELECT 
@@ -257,7 +249,7 @@ impl ResourceGroupService {
     async fn analyze_concurrency(pool: &Pool, days: u32) -> Result<Vec<UserConcurrency>> {
         let mysql_client = MySQLClient::from_pool(pool.clone());
         let mut session = mysql_client.create_session().await?;
-        
+
         let sql = format!(
             r#"
             WITH UserConcurrency AS (
@@ -299,7 +291,8 @@ impl ResourceGroupService {
         let mut results = Vec::new();
         for row in rows {
             let user = row.first().cloned().unwrap_or_default();
-            let max_concurrency_per_second: f64 = row.get(2).and_then(|s| s.parse().ok()).unwrap_or(0.0);
+            let max_concurrency_per_second: f64 =
+                row.get(2).and_then(|s| s.parse().ok()).unwrap_or(0.0);
 
             let suggested_concurrency_limit = (max_concurrency_per_second * 1.5).ceil() as i32;
 
@@ -339,31 +332,22 @@ impl ResourceGroupService {
             with_clauses.push(format!("'mem_limit' = '{}'", mem_limit));
         }
         if let Some(big_query_cpu_second_limit) = req.big_query_cpu_second_limit {
-            with_clauses.push(format!(
-                "'big_query_cpu_second_limit' = '{}'",
-                big_query_cpu_second_limit
-            ));
+            with_clauses
+                .push(format!("'big_query_cpu_second_limit' = '{}'", big_query_cpu_second_limit));
         }
         if let Some(big_query_scan_rows_limit) = req.big_query_scan_rows_limit {
-            with_clauses.push(format!(
-                "'big_query_scan_rows_limit' = '{}'",
-                big_query_scan_rows_limit
-            ));
+            with_clauses
+                .push(format!("'big_query_scan_rows_limit' = '{}'", big_query_scan_rows_limit));
         }
         if let Some(ref big_query_mem_limit) = req.big_query_mem_limit {
-            with_clauses.push(format!(
-                "'big_query_mem_limit' = '{}'",
-                big_query_mem_limit
-            ));
+            with_clauses.push(format!("'big_query_mem_limit' = '{}'", big_query_mem_limit));
         }
         if let Some(concurrency_limit) = req.concurrency_limit {
             with_clauses.push(format!("'concurrency_limit' = '{}'", concurrency_limit));
         }
         if let Some(ref spill_mem_limit_threshold) = req.spill_mem_limit_threshold {
-            with_clauses.push(format!(
-                "'spill_mem_limit_threshold' = '{}'",
-                spill_mem_limit_threshold
-            ));
+            with_clauses
+                .push(format!("'spill_mem_limit_threshold' = '{}'", spill_mem_limit_threshold));
         }
 
         if !with_clauses.is_empty() {
@@ -390,31 +374,22 @@ impl ResourceGroupService {
             set_clauses.push(format!("'mem_limit' = '{}'", mem_limit));
         }
         if let Some(big_query_cpu_second_limit) = req.big_query_cpu_second_limit {
-            set_clauses.push(format!(
-                "'big_query_cpu_second_limit' = '{}'",
-                big_query_cpu_second_limit
-            ));
+            set_clauses
+                .push(format!("'big_query_cpu_second_limit' = '{}'", big_query_cpu_second_limit));
         }
         if let Some(big_query_scan_rows_limit) = req.big_query_scan_rows_limit {
-            set_clauses.push(format!(
-                "'big_query_scan_rows_limit' = '{}'",
-                big_query_scan_rows_limit
-            ));
+            set_clauses
+                .push(format!("'big_query_scan_rows_limit' = '{}'", big_query_scan_rows_limit));
         }
         if let Some(ref big_query_mem_limit) = req.big_query_mem_limit {
-            set_clauses.push(format!(
-                "'big_query_mem_limit' = '{}'",
-                big_query_mem_limit
-            ));
+            set_clauses.push(format!("'big_query_mem_limit' = '{}'", big_query_mem_limit));
         }
         if let Some(concurrency_limit) = req.concurrency_limit {
             set_clauses.push(format!("'concurrency_limit' = '{}'", concurrency_limit));
         }
         if let Some(ref spill_mem_limit_threshold) = req.spill_mem_limit_threshold {
-            set_clauses.push(format!(
-                "'spill_mem_limit_threshold' = '{}'",
-                spill_mem_limit_threshold
-            ));
+            set_clauses
+                .push(format!("'spill_mem_limit_threshold' = '{}'", spill_mem_limit_threshold));
         }
 
         if !set_clauses.is_empty() {

@@ -130,12 +130,18 @@ match DatabaseKind::from_url(&config.database.url)? {
 - casbin_service.rs:133 `pool: &sqlx::SqlitePool` → 方法级泛型 `<DB: AppDb>(pool: &Pool<DB>)`
 - middleware/auth.rs：`AuthState` 泛型化 + `fetch_org_from_user_organizations(db: &Pool<DB>)`
 
-### F. migrations 三方言目录（`migrations/sqlite` / `migrations/mysql` / `migrations/postgres`）
+### F. DDL 三方言目录（`migrations/sqlite` / `migrations/mysql` / `migrations/postgres`）
 
-迁移在**编译期嵌入二进制**：每个后端在 `db/{sqlite,mysql,postgres}.rs` 声明一个
+每个目录只有**一个 DDL 文件** `00000000_initial_schema.sql`（面向全新集群，历史增量已按原顺序内联，
+7 个 `ADD COLUMN` 已折回建表语句）。文件在**编译期嵌入二进制**：每个后端在
+`db/{sqlite,mysql,postgres}.rs` 声明一个
 `static MIGRATIONS: Migrator = sqlx::migrate!("./migrations/<后端>")`，运行时由
 `AppDb::migrations()` 按 URL 协议选择执行；发行包不再携带迁移文件，
 schema 变更后必须重新构建二进制（见 README「Schema changes」）。
+
+旧库（已按历史迁移建库）不会被静默跳过：历史版本记录已从迁移集移除，启动时报
+`previously applied but is missing`，由 `db/mod.rs::migration_hint` 追加中文可操作提示；
+需重建库后重新导入配置。
 
 MySQL 改写要点：
 - `INTEGER PRIMARY KEY AUTOINCREMENT` → `BIGINT AUTO_INCREMENT PRIMARY KEY`（**i64 decode 要求 BIGINT**，所有会读成 i64 的 INTEGER 列都建 BIGINT）

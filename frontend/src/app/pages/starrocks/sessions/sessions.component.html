@@ -1,93 +1,78 @@
 <div class="row">
   <div class="col-12">
-    <nb-card [nbSpinner]="loading" nbSpinnerStatus="primary" nbSpinnerMessage="加载中">
+    <nb-card [nbSpinner]="loading" nbSpinnerStatus="primary" [nbSpinnerMessage]="'加载中' | translate">
       <nb-card-body>
-        <!-- Combined Header and Filter Bar -->
         <div class="session-header-filters mb-3">
-          <div class="header-filters-content">
-            <!-- Left: Title and Cluster Info -->
-            <div class="header-left">
-              <h5 class="mb-0">会话管理</h5>
-              <span class="text-hint">|</span>
-              <span class="text-hint" style="font-size: 13px;">
-                集群: <strong>{{ activeCluster?.name || '未选择' }}</strong>
-              </span>
-            </div>
-            
-            <!-- Center: Filter Options -->
-            <div class="filter-options">
-              <nb-checkbox 
-                [(ngModel)]="sessionFilter.sleepOnly"
-                (checkedChange)="applySessionFilter()"
-                class="filter-checkbox">
-                <span class="text-hint">仅显示睡眠连接</span>
-              </nb-checkbox>
-              <nb-checkbox 
-                [(ngModel)]="sessionFilter.slowOnly"
-                (checkedChange)="applySessionFilter()"
-                class="filter-checkbox">
-                <span class="text-hint">仅显示慢会话（≥1分钟）</span>
-              </nb-checkbox>
-              <button 
-                *ngIf="sessionFilter.sleepOnly || sessionFilter.slowOnly"
-                nbButton 
-                ghost 
-                size="tiny"
-                status="basic"
-                (click)="resetSessionFilter()"
-                class="clear-filter-btn">
-                <span class="text-hint">清除筛选</span>
-              </button>
-            </div>
-            
-            <!-- Right: Actions and Refresh Controls -->
-            <div class="header-right">
-              <button 
-                nbButton 
-                ghost
-                status="warning" 
-                size="small"
-                (click)="clearSleepingConnections()"
-                [disabled]="loading">
-                <nb-icon icon="power-outline"></nb-icon>
-                清除睡眠连接
-              </button>
-              <button 
-                nbButton 
-                ghost
-                status="danger" 
-                size="small"
-                (click)="batchKillAllSessions()"
-                [disabled]="loading">
-                <nb-icon icon="trash-2-outline"></nb-icon>
-                批量查杀当前显示
-              </button>
-              
-              <div class="refresh-controls">
-                <button nbButton status="primary" size="small" (click)="refresh()" [disabled]="loading || !clusterId">
-                  <nb-icon icon="refresh-outline"></nb-icon>
-                  刷新
+          <div class="session-toolbar">
+            <div class="session-toolbar__controls" role="group" [aria-label]="'会话筛选与操作' | translate">
+              <div class="session-toolbar__filters">
+                <button
+                  nbButton
+                  ghost
+                  size="small"
+                  class="filter-toggle"
+                  [class.filter-toggle--active]="sessionFilter.sleepOnly"
+                  [attr.aria-pressed]="sessionFilter.sleepOnly"
+                  (click)="toggleSleepFilter()"
+                  [nbTooltip]="'仅显示睡眠连接' | translate"
+                  [title]="'仅显示睡眠连接' | translate">
+                  <nb-icon icon="moon-outline"></nb-icon>
                 </button>
-                
-                <div class="refresh-interval-selector">
-                  <nb-select 
-                    [(selected)]="selectedRefreshInterval" 
-                    size="small" 
-                    placeholder="自动刷新"
-                    (selectedChange)="onRefreshIntervalChange($event)"
-                    [disabled]="!clusterId"
-                    class="refresh-interval-select">
-                    <nb-option *ngFor="let option of refreshIntervalOptions" [value]="option.value">
-                      {{ option.label }}
-                    </nb-option>
-                  </nb-select>
-                </div>
+                <button
+                  nbButton
+                  ghost
+                  size="small"
+                  class="filter-toggle"
+                  [class.filter-toggle--active]="sessionFilter.slowOnly"
+                  [attr.aria-pressed]="sessionFilter.slowOnly"
+                  (click)="toggleSlowFilter()"
+                  [nbTooltip]="'仅显示慢会话（≥1分钟）' | translate"
+                  [title]="'仅显示慢会话（≥1分钟）' | translate">
+                  <nb-icon icon="clock-outline"></nb-icon>
+                </button>
+              </div>
+
+              <div class="session-toolbar__actions">
+                <button
+                  nbButton
+                  ghost
+                  status="basic"
+                  size="small"
+                  (click)="clearSleepingConnections()"
+                  [disabled]="loading"
+                  [nbTooltip]="'清除睡眠连接' | translate"
+                  [title]="'清除睡眠连接' | translate">
+                  <nb-icon icon="power-outline"></nb-icon>
+                </button>
+                <button
+                  nbButton
+                  ghost
+                  status="basic"
+                  size="small"
+                  (click)="batchKillAllSessions()"
+                  [disabled]="loading"
+                  [nbTooltip]="'批量查杀当前显示的会话' | translate"
+                  [title]="'批量查杀当前显示的会话' | translate">
+                  <nb-icon icon="trash-2-outline"></nb-icon>
+                </button>
+                <button
+                  nbButton
+                  ghost
+                  status="basic"
+                  size="small"
+                  (click)="refresh()"
+                  [disabled]="loading || !clusterId"
+                  [nbTooltip]="'刷新' | translate"
+                  [title]="'刷新' | translate">
+                  <nb-icon icon="refresh-outline"></nb-icon>
+                </button>
               </div>
             </div>
           </div>
         </div>
 
         <angular2-smart-table
+          class="data-region"
           [settings]="settings"
           [source]="source"
           (deleteConfirm)="onDeleteConfirm($event)"

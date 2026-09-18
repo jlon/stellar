@@ -12,7 +12,7 @@ use stellar_macros::app_db;
 
 use crate::AppState;
 use crate::services::{
-    CapacityPrediction, ClusterOverview, CompactionDetailStats, DataStatistics,
+    CapacityPrediction, ClusterOverview, CompactionDetailStats, DataStatistics, DiskMetricKind,
     ExtendedClusterOverview, HealthCard, PerformanceTrends, ResourceTrends, TimeRange,
 };
 use crate::utils::ApiResult;
@@ -298,7 +298,10 @@ pub async fn get_capacity_prediction(
     };
     tracing::debug!("GET /api/clusters/overview/capacity-prediction");
 
-    let prediction = state.overview_service.predict_capacity(cluster.id).await?;
+    let prediction = state
+        .overview_service
+        .predict_capacity(cluster.id, DiskMetricKind::from_cluster(&cluster))
+        .await?;
 
     Ok(Json(prediction))
 }

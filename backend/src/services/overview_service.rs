@@ -4,9 +4,10 @@ use crate::db::query as db_query;
 // Design Ref: ARCHITECTURE_ANALYSIS_AND_INTEGRATION.md
 
 use crate::db::AppDb;
-use crate::services::{
-    ClusterService, DataStatistics, DataStatisticsService, MetricsSnapshot,
-};
+use crate::models::cluster::Cluster;
+use crate::services::cluster_timeout;
+use crate::services::metrics_collector_service::{DISK_CRITICAL_PCT, DISK_WARNING_PCT};
+use crate::services::{ClusterService, DataStatistics, DataStatisticsService, MetricsSnapshot};
 use crate::utils::{ApiError, ApiResult};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -136,12 +137,91 @@ pub struct HealthCard {
 }
 
 /// Health status enum
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum HealthStatus {
     Healthy,
     Warning,
     Critical,
+}
+
+impl HealthStatus {
+    /// 严重级别排序：用于从多个维度中取最严重者，保证 status 与 score 同源
+    fn rank(self) -> u8 {
+        match self {
+            HealthStatus::Healthy => 0,
+            HealthStatus::Warning => 1,
+            HealthStatus::Critical => 2,
+        }
+    }
+}
+
+// ---- 健康评分模型（满分 100，逐维度扣分） ----
+// 阈值与告警共用，避免同一事实出现两套口径（历史 bug：横幅 Critical / 状态卡 Warning）。
+const PENALTY_NODE_OFFLINE: f64 = 30.0;
+const PENALTY_COMPACTION_CRITICAL: f64 = 20.0;
+const PENALTY_COMPACTION_WARNING: f64 = 10.0;
+const PENALTY_DISK_CRITICAL: f64 = 20.0;
+const PENALTY_DISK_WARNING: f64 = 10.0;
+const PENALTY_CPU_HIGH: f64 = 10.0;
+/// Compaction score 分档
+const COMPACTION_CRITICAL_SCORE: f64 = 100.0;
+const COMPACTION_WARNING_SCORE: f64 = 50.0;
+/// 计算节点平均 CPU 水位（告警与评分一致）
+const CPU_HIGH_PCT: f64 = 80.0;
+/// 任一维度 Critical 时的分数上限：复合分不得把 P0 事件粉饰成「还行」
+const SCORE_CAP_ON_CRITICAL: f64 = 60.0;
+
+/// 快照里 `disk_usage_pct` 的语义由部署模式决定，消费点必须按语义使用：
+/// - shared-nothing：本地盘即数据存储，使用率代表容量风险；
+/// - shared-data：数据在对象存储，本地盘只是 Data Cache 配额，写满是 LRU 淘汰的稳态。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiskMetricKind {
+    DataStore,
+    DataCache,
+}
+
+impl DiskMetricKind {
+    /// 按部署模式判定快照磁盘指标的语义
+    pub fn from_cluster(cluster: &Cluster) -> Self {
+        if cluster.is_shared_data() { Self::DataCache } else { Self::DataStore }
+    }
+
+    /// 只有承载数据的磁盘，使用率高才构成容量事故
+    fn tracks_capacity(self) -> bool {
+        self == Self::DataStore
+    }
+}
+
+/// 健康维度累加器：每个维度只声明一次严重级与扣分，status 与 score 由同一份声明推导。
+struct HealthAccumulator {
+    score: f64,
+    worst: HealthStatus,
+    alerts: Vec<String>,
+}
+
+impl HealthAccumulator {
+    fn new() -> Self {
+        Self { score: 100.0, worst: HealthStatus::Healthy, alerts: Vec::new() }
+    }
+
+    fn record(&mut self, level: HealthStatus, penalty: f64, message: String) {
+        self.score -= penalty;
+        if level.rank() > self.worst.rank() {
+            self.worst = level;
+        }
+        self.alerts.push(message);
+    }
+
+    /// Critical 维度封顶，其余按扣分结果（不为负）
+    fn score(&self) -> f64 {
+        let capped = if self.worst == HealthStatus::Critical {
+            self.score.min(SCORE_CAP_ON_CRITICAL)
+        } else {
+            self.score
+        };
+        capped.max(0.0)
+    }
 }
 
 /// Cluster health overview (Hero Card)
@@ -381,11 +461,7 @@ pub struct ExtendedClusterOverview {
 fn empty_compaction_detail_stats() -> CompactionDetailStats {
     CompactionDetailStats {
         top_partitions: Vec::new(),
-        task_stats: CompactionTaskStats {
-            running_count: 0,
-            finished_count: 0,
-            total_count: 0,
-        },
+        task_stats: CompactionTaskStats { running_count: 0, finished_count: 0, total_count: 0 },
         duration_stats: CompactionDurationStats {
             min_duration_ms: 0,
             max_duration_ms: 0,
@@ -401,7 +477,9 @@ fn counter_delta_vs_last_positive(values: impl IntoIterator<Item = i64>) -> Vec<
         .into_iter()
         .map(|current| {
             let delta = match last_positive {
-                Some(previous) if current >= previous && previous > 0 => (current - previous) as f64,
+                Some(previous) if current >= previous && previous > 0 => {
+                    (current - previous) as f64
+                },
                 _ => 0.0,
             };
             if current > 0 {
@@ -417,7 +495,10 @@ fn parse_usage_pct(raw: &str) -> Option<f64> {
     if trimmed.is_empty() {
         return None;
     }
-    trimmed.parse().ok().filter(|value: &f64| value.is_finite() && *value >= 0.0)
+    trimmed
+        .parse()
+        .ok()
+        .filter(|value: &f64| value.is_finite() && *value >= 0.0)
 }
 
 #[derive(Clone)]
@@ -481,6 +562,8 @@ impl<DB: AppDb> OverviewService<DB> {
     /// Get health status cards
     pub async fn get_health_cards(&self, cluster_id: i64) -> ApiResult<Vec<HealthCard>> {
         let snapshot = self.get_latest_snapshot(cluster_id).await?;
+        let disk =
+            DiskMetricKind::from_cluster(&self.cluster_service.get_cluster(cluster_id).await?);
 
         let snapshot = match snapshot {
             Some(s) => s,
@@ -549,19 +632,29 @@ impl<DB: AppDb> OverviewService<DB> {
             description: "Average CPU usage across all compute nodes".to_string(),
         });
 
-        let disk_status = if snapshot.disk_usage_pct < 70.0 {
-            HealthStatus::Healthy
-        } else if snapshot.disk_usage_pct < 85.0 {
-            HealthStatus::Warning
+        // shared-data 集群没有「数据盘」：本地盘是数据缓存配额，写满不构成容量风险
+        let (disk_title, disk_description, disk_status) = if disk.tracks_capacity() {
+            let status = if snapshot.disk_usage_pct > DISK_CRITICAL_PCT {
+                HealthStatus::Critical
+            } else if snapshot.disk_usage_pct > DISK_WARNING_PCT {
+                HealthStatus::Warning
+            } else {
+                HealthStatus::Healthy
+            };
+            ("Disk Usage", "Total disk space usage", status)
         } else {
-            HealthStatus::Critical
+            (
+                "Data Cache Quota",
+                "Local data cache quota usage (evicted by LRU when full)",
+                HealthStatus::Healthy,
+            )
         };
 
         cards.push(HealthCard {
-            title: "Disk Usage".to_string(),
+            title: disk_title.to_string(),
             value: format!("{:.1}%", snapshot.disk_usage_pct),
             status: disk_status,
-            description: "Total disk space usage".to_string(),
+            description: disk_description.to_string(),
         });
 
         Ok(cards)
@@ -625,7 +718,11 @@ impl<DB: AppDb> OverviewService<DB> {
     /// Predict disk capacity
     ///
     /// Uses linear regression on historical disk usage data to predict when disk will be full
-    pub async fn predict_capacity(&self, cluster_id: i64) -> ApiResult<CapacityPrediction> {
+    pub async fn predict_capacity(
+        &self,
+        cluster_id: i64,
+        disk: DiskMetricKind,
+    ) -> ApiResult<CapacityPrediction> {
         let cutoff = Utc::now() - chrono::Duration::hours(2);
 
         let snapshots: Vec<(i64, i64, f64, DateTime<Utc>)> = db_query::query_as(
@@ -726,8 +823,11 @@ impl<DB: AppDb> OverviewService<DB> {
         };
 
         let remaining_bytes = disk_total_bytes.saturating_sub(disk_used_bytes);
-        let (days_until_full, predicted_full_date) = if disk_usage_pct >= 99.5 || remaining_bytes == 0
-        {
+        // 数据缓存配额没有「写满即事故」语义：缓存会 LRU 淘汰，用量也会上下浮动，
+        // 拿缓存算「距存满」只会得出「0 天」这类假预警。shared-data 集群不产出该结论。
+        let (days_until_full, predicted_full_date) = if !disk.tracks_capacity() {
+            (None, None)
+        } else if disk_usage_pct >= 99.5 || remaining_bytes == 0 {
             (Some(0), Some(Utc::now().format("%Y-%m-%d").to_string()))
         } else if daily_growth_bytes > 0 {
             let days = (remaining_bytes as f64 / daily_growth_bytes as f64).ceil() as i32;
@@ -736,6 +836,8 @@ impl<DB: AppDb> OverviewService<DB> {
         } else {
             (None, None)
         };
+
+        let daily_growth_bytes = if disk.tracks_capacity() { daily_growth_bytes } else { 0 };
 
         Ok(CapacityPrediction {
             disk_total_bytes,
@@ -993,7 +1095,10 @@ impl<DB: AppDb> OverviewService<DB> {
     ) -> Vec<TimeSeriesPoint> {
         snapshots
             .iter()
-            .map(|snapshot| TimeSeriesPoint { timestamp: snapshot.collected_at, value: value(snapshot) })
+            .map(|snapshot| TimeSeriesPoint {
+                timestamp: snapshot.collected_at,
+                value: value(snapshot),
+            })
             .collect()
     }
 
@@ -1005,11 +1110,7 @@ impl<DB: AppDb> OverviewService<DB> {
                 return (delta_part as f64 / delta_total as f64) * 100.0;
             }
         }
-        if curr_total > 0 {
-            curr_part as f64 / curr_total as f64 * 100.0
-        } else {
-            0.0
-        }
+        if curr_total > 0 { curr_part as f64 / curr_total as f64 * 100.0 } else { 0.0 }
     }
 
     fn snapshot_delta_vs_last_positive(
@@ -1053,7 +1154,11 @@ impl<DB: AppDb> OverviewService<DB> {
             latency_p50: Self::snapshot_points(snapshots, |s| s.query_latency_p50),
             latency_p95: Self::snapshot_points(snapshots, |s| s.query_latency_p95),
             latency_p99: Self::snapshot_points(snapshots, |s| s.query_latency_p99),
-            error_rate: Self::snapshot_ratio_series(snapshots, |s| s.query_error, |s| s.query_total),
+            error_rate: Self::snapshot_ratio_series(
+                snapshots,
+                |s| s.query_error,
+                |s| s.query_total,
+            ),
             timeout_rate: Self::snapshot_ratio_series(
                 snapshots,
                 |s| s.query_timeout,
@@ -1124,27 +1229,24 @@ impl<DB: AppDb> OverviewService<DB> {
         time_range: TimeRange,
     ) -> ApiResult<ExtendedClusterOverview> {
         let cluster = self.cluster_service.get_cluster(cluster_id).await?;
+        let disk = DiskMetricKind::from_cluster(&cluster);
 
         let (latest, snapshots) = tokio::try_join!(
             self.get_latest_snapshot(cluster_id),
             self.get_history_snapshots(cluster_id, &time_range)
         )?;
 
-        let capacity = match self.predict_capacity(cluster_id).await {
+        let capacity = match self.predict_capacity(cluster_id, disk).await {
             Ok(cap) => Some(cap),
             Err(e) => {
-                tracing::debug!(
-                    "Capacity prediction skipped for cluster {}: {}",
-                    cluster_id,
-                    e
-                );
+                tracing::debug!("Capacity prediction skipped for cluster {}: {}", cluster_id, e);
                 None
             },
         };
 
         let health = latest
             .as_ref()
-            .map(Self::cluster_health_from_snapshot)
+            .map(|s| Self::cluster_health_from_snapshot(s, disk))
             .unwrap_or_else(Self::empty_cluster_health);
         let kpi = self.calculate_kpi(&latest, &snapshots);
         let resources = self.calculate_resource_metrics(&latest, &snapshots);
@@ -1161,7 +1263,7 @@ impl<DB: AppDb> OverviewService<DB> {
                 .unwrap_or(0),
             ..LoadJobStats::default()
         };
-        let alerts = self.generate_alerts(&health, &resources, &latest);
+        let alerts = self.generate_alerts(&health, &resources, &latest, disk);
 
         Ok(ExtendedClusterOverview {
             cluster_id,
@@ -1203,63 +1305,84 @@ impl<DB: AppDb> OverviewService<DB> {
         }
     }
 
-    fn cluster_health_from_snapshot(snapshot: &MetricsSnapshot) -> ClusterHealth {
+    fn cluster_health_from_snapshot(
+        snapshot: &MetricsSnapshot,
+        disk: DiskMetricKind,
+    ) -> ClusterHealth {
         let be_nodes_online = snapshot.backend_alive;
         let be_nodes_total = snapshot.backend_total;
         let fe_nodes_online = snapshot.frontend_alive;
         let fe_nodes_total = snapshot.frontend_total;
         let compaction_score = snapshot.max_compaction_score;
 
-        let mut alerts = Vec::new();
-        let status = if be_nodes_total == 0 && fe_nodes_total == 0 {
-            alerts.push("暂无节点采集数据".to_string());
-            HealthStatus::Warning
-        } else if be_nodes_online < be_nodes_total {
-            alerts.push(format!("{} 计算节点离线", be_nodes_total - be_nodes_online));
-            HealthStatus::Critical
-        } else if compaction_score > 100.0 {
-            alerts.push(format!("Compaction Score过高: {:.1}", compaction_score));
-            HealthStatus::Critical
-        } else if compaction_score > 50.0 || snapshot.disk_usage_pct > 80.0 {
-            if compaction_score > 50.0 {
-                alerts.push(format!("Compaction Score偏高: {:.1}", compaction_score));
-            }
-            if snapshot.disk_usage_pct > 80.0 {
-                alerts.push(format!("磁盘使用率偏高: {:.1}%", snapshot.disk_usage_pct));
-            }
-            HealthStatus::Warning
-        } else {
-            HealthStatus::Healthy
-        };
+        // 一个节点都没采到：与「无快照」同一口径，不得报 100 分健康
+        if be_nodes_total == 0 && fe_nodes_total == 0 {
+            return Self::empty_cluster_health();
+        }
 
-        let score: f64 = 100.0
-            - (if be_nodes_online < be_nodes_total { 30.0 } else { 0.0 })
-            - (if compaction_score > 100.0 {
-                20.0
-            } else if compaction_score > 50.0 {
-                10.0
-            } else {
-                0.0
-            })
-            - (if snapshot.disk_usage_pct > 90.0 {
-                20.0
-            } else if snapshot.disk_usage_pct > 80.0 {
-                10.0
-            } else {
-                0.0
-            })
-            - (if snapshot.avg_cpu_usage > 90.0 { 10.0 } else { 0.0 });
+        let mut health = HealthAccumulator::new();
+
+        if be_nodes_online < be_nodes_total {
+            health.record(
+                HealthStatus::Critical,
+                PENALTY_NODE_OFFLINE,
+                format!("{} 计算节点离线", be_nodes_total - be_nodes_online),
+            );
+        }
+        if fe_nodes_online < fe_nodes_total {
+            health.record(
+                HealthStatus::Critical,
+                PENALTY_NODE_OFFLINE,
+                format!("{} FE 节点离线", fe_nodes_total - fe_nodes_online),
+            );
+        }
+        if compaction_score > COMPACTION_CRITICAL_SCORE {
+            health.record(
+                HealthStatus::Critical,
+                PENALTY_COMPACTION_CRITICAL,
+                format!("Compaction Score过高: {:.1}", compaction_score),
+            );
+        } else if compaction_score > COMPACTION_WARNING_SCORE {
+            health.record(
+                HealthStatus::Warning,
+                PENALTY_COMPACTION_WARNING,
+                format!("Compaction Score偏高: {:.1}", compaction_score),
+            );
+        }
+        // 数据缓存配额写满是缓存常态，不构成容量事故（见 DiskMetricKind）
+        if disk.tracks_capacity() {
+            if snapshot.disk_usage_pct > DISK_CRITICAL_PCT {
+                health.record(
+                    HealthStatus::Critical,
+                    PENALTY_DISK_CRITICAL,
+                    format!("磁盘使用率过高: {:.1}%", snapshot.disk_usage_pct),
+                );
+            } else if snapshot.disk_usage_pct > DISK_WARNING_PCT {
+                health.record(
+                    HealthStatus::Warning,
+                    PENALTY_DISK_WARNING,
+                    format!("磁盘使用率偏高: {:.1}%", snapshot.disk_usage_pct),
+                );
+            }
+        }
+        if snapshot.avg_cpu_usage > CPU_HIGH_PCT {
+            health.record(
+                HealthStatus::Warning,
+                PENALTY_CPU_HIGH,
+                format!("CPU 使用率偏高: {:.1}%", snapshot.avg_cpu_usage),
+            );
+        }
 
         ClusterHealth {
-            status,
-            score: score.max(0.0),
+            status: health.worst,
+            score: health.score(),
             starrocks_version: "Unknown".to_string(),
             be_nodes_online,
             be_nodes_total,
             fe_nodes_online,
             fe_nodes_total,
             compaction_score,
-            alerts,
+            alerts: health.alerts,
         }
     }
 
@@ -1411,7 +1534,7 @@ impl<DB: AppDb> OverviewService<DB> {
         }
 
         let pool = self.mysql_pool_manager.get_pool(&cluster).await?;
-        let client = MySQLClient::from_pool(pool);
+        let client = MySQLClient::from_pool(pool).with_timeout(cluster_timeout(&cluster));
 
         let hours_back = match time_range {
             "1h" => 1,
@@ -1586,8 +1709,7 @@ impl<DB: AppDb> OverviewService<DB> {
         &self,
         cluster: crate::models::Cluster,
     ) -> ApiResult<CompactionDetailStats> {
-        let adapter =
-            crate::services::create_adapter(cluster, self.mysql_pool_manager.clone());
+        let adapter = crate::services::create_adapter(cluster, self.mysql_pool_manager.clone());
         let backends = match adapter.get_backends().await {
             Ok(nodes) => nodes,
             Err(error) => {
@@ -1601,11 +1723,8 @@ impl<DB: AppDb> OverviewService<DB> {
                 let used_pct = parse_usage_pct(&node.max_disk_used_pct)
                     .or_else(|| parse_usage_pct(&node.used_pct))
                     .or_else(|| parse_usage_pct(&node.data_used_pct))?;
-                let host = if node.host.is_empty() {
-                    node.backend_id.clone()
-                } else {
-                    node.host.clone()
-                };
+                let host =
+                    if node.host.is_empty() { node.backend_id.clone() } else { node.host.clone() };
                 Some(NodeDiskUsage { host, used_pct })
             })
             .collect();
@@ -1631,6 +1750,7 @@ impl<DB: AppDb> OverviewService<DB> {
         health: &ClusterHealth,
         resources: &ResourceMetrics,
         snapshot: &Option<MetricsSnapshot>,
+        disk: DiskMetricKind,
     ) -> Vec<Alert> {
         let mut alerts = Vec::new();
 
@@ -1655,7 +1775,7 @@ impl<DB: AppDb> OverviewService<DB> {
             });
         }
 
-        if health.compaction_score > 100.0 {
+        if health.compaction_score > COMPACTION_CRITICAL_SCORE {
             alerts.push(Alert {
                 level: AlertLevel::Critical,
                 category: "Compaction".to_string(),
@@ -1665,22 +1785,23 @@ impl<DB: AppDb> OverviewService<DB> {
             });
         }
 
-        if resources.disk_usage_pct > 80.0 {
-            let level = if resources.disk_usage_pct > 90.0 {
-                AlertLevel::Critical
+        // 数据缓存配额写满是缓存常态，不得报成磁盘告警（见 DiskMetricKind）
+        if disk.tracks_capacity() && resources.disk_usage_pct > DISK_WARNING_PCT {
+            let (level, wording) = if resources.disk_usage_pct > DISK_CRITICAL_PCT {
+                (AlertLevel::Critical, "磁盘使用率过高")
             } else {
-                AlertLevel::Warning
+                (AlertLevel::Warning, "磁盘使用率偏高")
             };
             alerts.push(Alert {
                 level,
                 category: "容量".to_string(),
-                message: format!("磁盘使用率过高: {:.1}%", resources.disk_usage_pct),
+                message: format!("{wording}: {:.1}%", resources.disk_usage_pct),
                 timestamp: Utc::now(),
                 action: Some("清理过期数据或扩容磁盘".to_string()),
             });
         }
 
-        if resources.cpu_usage_pct > 80.0 {
+        if resources.cpu_usage_pct > CPU_HIGH_PCT {
             alerts.push(Alert {
                 level: AlertLevel::Warning,
                 category: "资源".to_string(),
@@ -1741,11 +1862,18 @@ mod tests {
             .execute(&pool)
             .await
             .expect("enable foreign keys");
-        sqlx::migrate!("./migrations/sqlite").run(&pool).await.expect("migrations");
+        sqlx::migrate!("./migrations/sqlite")
+            .run(&pool)
+            .await
+            .expect("migrations");
         pool
     }
 
     async fn seed_cluster(pool: &SqlitePool) {
+        seed_cluster_with_mode(pool, "shared_data").await;
+    }
+
+    async fn seed_cluster_with_mode(pool: &SqlitePool, deployment_mode: &str) {
         sqlx::query(
             "INSERT INTO organizations (code, name, description, is_system) VALUES ('org', 'Org', '', 0)",
         )
@@ -1754,11 +1882,49 @@ mod tests {
         .expect("org");
         sqlx::query(
             "INSERT INTO clusters (name, fe_host, fe_http_port, fe_query_port, username, password_encrypted, catalog, deployment_mode, cluster_type, is_active, organization_id)
-             VALUES ('c1', '127.0.0.1', 8030, 9030, 'root', 'p', 'default_catalog', 'shared_data', 'starrocks', 1, 1)",
+             VALUES ('c1', '127.0.0.1', 8030, 9030, 'root', 'p', 'default_catalog', ?, 'starrocks', 1, 1)",
         )
+        .bind(deployment_mode)
         .execute(pool)
         .await
         .expect("cluster");
+    }
+
+    /// 插入一条快照；参数至少包含 BE/FE 在线数、磁盘水位、compaction score
+    #[allow(clippy::too_many_arguments)]
+    async fn seed_snapshot(
+        pool: &SqlitePool,
+        be_online: i32,
+        be_total: i32,
+        fe_online: i32,
+        fe_total: i32,
+        disk_usage_pct: f64,
+        compaction_score: f64,
+        avg_cpu_usage: f64,
+    ) {
+        let used = (disk_usage_pct * 10.0) as i64;
+        sqlx::query(
+            r#"
+            INSERT INTO metrics_snapshots (
+                cluster_id, collected_at, qps, query_latency_p99,
+                backend_total, backend_alive, frontend_total, frontend_alive,
+                avg_cpu_usage, disk_total_bytes, disk_used_bytes, disk_usage_pct,
+                max_compaction_score, load_running
+            ) VALUES (1, ?, 1.0, 10.0, ?, ?, ?, ?, ?, 1000, ?, ?, ?, 0)
+            "#,
+        )
+        .bind(Utc::now())
+        .bind(be_total)
+        .bind(be_online)
+        .bind(fe_total)
+        .bind(fe_online)
+        .bind(avg_cpu_usage)
+        .bind(used)
+        .bind(disk_usage_pct)
+        .bind(compaction_score)
+        .execute(pool)
+        .await
+        .expect("snapshot");
     }
 
     fn service(pool: SqlitePool) -> OverviewService<sqlx::Sqlite> {
@@ -1777,13 +1943,21 @@ mod tests {
             .expect("overview");
 
         assert_eq!(overview.cluster_name, "c1");
-        assert_eq!(
-            overview.deployment_mode,
-            crate::models::cluster::DeploymentMode::SharedData
-        );
+        assert_eq!(overview.deployment_mode, crate::models::cluster::DeploymentMode::SharedData);
         assert!(matches!(overview.health.status, HealthStatus::Warning));
-        assert!(overview.health.alerts.iter().any(|a| a.contains("暂无采集数据")));
-        assert!(overview.alerts.iter().any(|alert| alert.message.contains("暂无采集数据")));
+        assert!(
+            overview
+                .health
+                .alerts
+                .iter()
+                .any(|a| a.contains("暂无采集数据"))
+        );
+        assert!(
+            overview
+                .alerts
+                .iter()
+                .any(|alert| alert.message.contains("暂无采集数据"))
+        );
         assert!(overview.performance_trends.qps.is_empty());
         assert!(overview.data_stats.is_none());
         assert_eq!(overview.sessions.current_connections, 0);
@@ -1843,21 +2017,8 @@ mod tests {
     #[tokio::test]
     async fn capacity_days_until_full_is_zero_when_disk_is_full() {
         let pool = test_pool().await;
-        seed_cluster(&pool).await;
-        sqlx::query(
-            r#"
-            INSERT INTO metrics_snapshots (
-                cluster_id, collected_at, qps, query_latency_p99,
-                backend_total, backend_alive, frontend_total, frontend_alive,
-                avg_cpu_usage, disk_total_bytes, disk_used_bytes, disk_usage_pct,
-                max_compaction_score, load_running
-            ) VALUES (1, ?, 1.0, 10.0, 1, 1, 1, 1, 10.0, 1000, 1000, 100.0, 1.0, 0)
-            "#,
-        )
-        .bind(Utc::now())
-        .execute(&pool)
-        .await
-        .expect("snapshot");
+        seed_cluster_with_mode(&pool, "shared_nothing").await;
+        seed_snapshot(&pool, 1, 1, 1, 1, 100.0, 1.0, 10.0).await;
 
         let overview = service(pool)
             .get_extended_overview(1, TimeRange::Hours1)
@@ -1865,6 +2026,118 @@ mod tests {
             .expect("overview");
 
         assert_eq!(overview.capacity.as_ref().and_then(|c| c.days_until_full), Some(0));
+    }
+
+    #[tokio::test]
+    async fn shared_data_cache_quota_full_is_healthy_not_capacity_event() {
+        // 真实集群 bj-com：shared-data + `DataCacheMetrics: DiskUsage 9.1TB/9.1TB`，
+        // 采集回退到缓存配额 → disk_usage_pct=100。缓存写满是 LRU 淘汰的稳态，不得报磁盘事故。
+        let pool = test_pool().await;
+        seed_cluster(&pool).await; // shared_data
+        seed_snapshot(&pool, 54, 54, 3, 3, 100.0, 9.0, 0.0).await;
+
+        let overview = service(pool)
+            .get_extended_overview(1, TimeRange::Hours1)
+            .await
+            .expect("overview");
+
+        assert!(matches!(overview.health.status, HealthStatus::Healthy));
+        assert!((overview.health.score - 100.0).abs() < f64::EPSILON);
+        assert!(!overview.health.alerts.iter().any(|a| a.contains("磁盘")));
+        assert!(!overview.alerts.iter().any(|a| a.message.contains("磁盘")));
+        assert_eq!(overview.capacity.as_ref().and_then(|c| c.days_until_full), None);
+        assert_eq!(overview.capacity.as_ref().map(|c| c.daily_growth_bytes), Some(0));
+    }
+
+    #[tokio::test]
+    async fn shared_nothing_disk_critical_is_critical_and_caps_score() {
+        let pool = test_pool().await;
+        seed_cluster_with_mode(&pool, "shared_nothing").await;
+        seed_snapshot(&pool, 3, 3, 3, 3, 100.0, 9.0, 0.0).await;
+
+        let overview = service(pool)
+            .get_extended_overview(1, TimeRange::Hours1)
+            .await
+            .expect("overview");
+
+        // 扣 20 分 → 80，但 Critical 维度必须封顶，不能粉饰成「还行」
+        assert!(matches!(overview.health.status, HealthStatus::Critical));
+        assert_eq!(overview.health.score, SCORE_CAP_ON_CRITICAL);
+        assert!(
+            overview
+                .health
+                .alerts
+                .iter()
+                .any(|a| a.contains("磁盘使用率过高"))
+        );
+        // 告警与状态卡同口径：横幅也必须说「过高」而不是「偏高」
+        let banner = overview
+            .alerts
+            .iter()
+            .find(|a| a.message.contains("磁盘"))
+            .expect("磁盘横幅告警");
+        assert!(matches!(banner.level, AlertLevel::Critical));
+        assert!(banner.message.contains("过高"));
+    }
+
+    #[tokio::test]
+    async fn disk_warning_threshold_is_shared_by_status_and_score() {
+        let pool = test_pool().await;
+        seed_cluster_with_mode(&pool, "shared_nothing").await;
+        seed_snapshot(&pool, 3, 3, 3, 3, 85.0, 9.0, 0.0).await;
+
+        let overview = service(pool)
+            .get_extended_overview(1, TimeRange::Hours1)
+            .await
+            .expect("overview");
+
+        assert!(matches!(overview.health.status, HealthStatus::Warning));
+        assert_eq!(overview.health.score, 100.0 - PENALTY_DISK_WARNING);
+        let banner = overview
+            .alerts
+            .iter()
+            .find(|a| a.message.contains("磁盘"))
+            .expect("磁盘横幅告警");
+        assert!(matches!(banner.level, AlertLevel::Warning));
+        assert!(banner.message.contains("偏高"));
+    }
+
+    #[tokio::test]
+    async fn fe_node_offline_counts_toward_health() {
+        let pool = test_pool().await;
+        seed_cluster(&pool).await;
+        seed_snapshot(&pool, 3, 3, 1, 3, 10.0, 9.0, 0.0).await;
+
+        let overview = service(pool)
+            .get_extended_overview(1, TimeRange::Hours1)
+            .await
+            .expect("overview");
+
+        assert!(matches!(overview.health.status, HealthStatus::Critical));
+        assert_eq!(overview.health.score, SCORE_CAP_ON_CRITICAL);
+        assert!(overview.health.alerts.iter().any(|a| a == "2 FE 节点离线"));
+    }
+
+    #[tokio::test]
+    async fn snapshot_without_any_node_data_scores_zero() {
+        let pool = test_pool().await;
+        seed_cluster(&pool).await;
+        seed_snapshot(&pool, 0, 0, 0, 0, 0.0, 0.0, 0.0).await;
+
+        let overview = service(pool)
+            .get_extended_overview(1, TimeRange::Hours1)
+            .await
+            .expect("overview");
+
+        assert!(matches!(overview.health.status, HealthStatus::Warning));
+        assert!(overview.health.score < f64::EPSILON);
+        assert!(
+            overview
+                .health
+                .alerts
+                .iter()
+                .any(|a| a.contains("暂无采集数据"))
+        );
     }
 
     #[tokio::test]
@@ -1891,8 +2164,18 @@ mod tests {
 
         assert_eq!(overview.meta_log_count, 60_000);
         assert!(overview.safe_mode);
-        assert!(overview.alerts.iter().any(|alert| alert.message.contains("Safe Mode")));
-        assert!(overview.alerts.iter().any(|alert| alert.message.contains("Meta Log")));
+        assert!(
+            overview
+                .alerts
+                .iter()
+                .any(|alert| alert.message.contains("Safe Mode"))
+        );
+        assert!(
+            overview
+                .alerts
+                .iter()
+                .any(|alert| alert.message.contains("Meta Log"))
+        );
     }
 
     #[test]
@@ -1905,8 +2188,16 @@ mod tests {
 
     #[test]
     fn snapshot_ratio_pct_uses_increment_then_falls_back() {
-        assert!((super::OverviewService::<sqlx::Sqlite>::snapshot_ratio_pct(8, 100, Some((5, 80)) ) - 15.0).abs() < f64::EPSILON);
-        assert!((super::OverviewService::<sqlx::Sqlite>::snapshot_ratio_pct(8, 100, None) - 8.0).abs() < f64::EPSILON);
+        assert!(
+            (super::OverviewService::<sqlx::Sqlite>::snapshot_ratio_pct(8, 100, Some((5, 80)))
+                - 15.0)
+                .abs()
+                < f64::EPSILON
+        );
+        assert!(
+            (super::OverviewService::<sqlx::Sqlite>::snapshot_ratio_pct(8, 100, None) - 8.0).abs()
+                < f64::EPSILON
+        );
         assert_eq!(super::OverviewService::<sqlx::Sqlite>::snapshot_ratio_pct(0, 0, None), 0.0);
     }
 

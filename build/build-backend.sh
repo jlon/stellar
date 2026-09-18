@@ -8,6 +8,26 @@
 
 set -e
 
+# --- 守卫：只允许嵌入生产前端，避免 dev 构建（含 sourcemap）使二进制翻倍 ---
+FRONTEND_DIST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../frontend/dist" 2>/dev/null && pwd)" || {
+    echo "错误: frontend/dist 不存在。请先执行 bash build/build-frontend.sh。" >&2
+    exit 1
+}
+if [ -z "$(ls -A "$FRONTEND_DIST_DIR" 2>/dev/null)" ]; then
+    echo "错误: frontend/dist 为空，无法嵌入前端。请先执行 bash build/build-frontend.sh。" >&2
+    exit 1
+fi
+MAP_COUNT=$(find "$FRONTEND_DIST_DIR" -name '*.map' 2>/dev/null | wc -l)
+FRONTEND_DIST_MB=$(du -sm "$FRONTEND_DIST_DIR" | cut -f1)
+if [ "$MAP_COUNT" -gt 0 ] || [ "$FRONTEND_DIST_MB" -gt 20 ]; then
+    echo "错误: frontend/dist 看起来是开发构建（${FRONTEND_DIST_MB}MB，${MAP_COUNT} 个 sourcemap）。" >&2
+    echo "      生产构建请执行: bash build/build-frontend.sh" >&2
+    echo "      否则嵌入资源会从约 7MB 膨胀到 70MB+，二进制体积翻倍。" >&2
+    exit 1
+fi
+echo "[guard] frontend/dist 检查通过: ${FRONTEND_DIST_MB}MB，无 sourcemap"
+
+
 # Get project root
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND_DIR="$PROJECT_ROOT/backend"
@@ -23,6 +43,9 @@ case "$BUILD_TARGET" in
     *)      BUILD_CMD=(cargo build) ;;
 esac
 
+# Non-interactive shells miss ~/.cargo/bin; make it available (idempotent).
+export PATH="$HOME/.cargo/bin:$PATH"
+
 # Colors
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -36,8 +59,17 @@ echo ""
 
 # Verify toolchain for musl (requires zig + cargo-zigbuild)
 if [[ "$BUILD_TARGET" == *-musl ]]; then
+    # Fall back to well-known zig install locations when not on PATH (e.g. /opt/zig)
     if ! command -v zig >/dev/null; then
-        echo -e "${RED}Error: zig not found. Install it (e.g. apt install zig or from ziglang.org) for musl builds.${NC}" >&2
+        for ZIG_DIR in /opt/zig /usr/local/zig /usr/lib/zig; do
+            if [ -x "$ZIG_DIR/zig" ]; then
+                export PATH="$ZIG_DIR:$PATH"
+                break
+            fi
+        done
+    fi
+    if ! command -v zig >/dev/null; then
+        echo -e "${RED}Error: zig not found. Install it (e.g. apt install zig or from ziglang.org) or add it to PATH.${NC}" >&2
         exit 1
     fi
     if ! command -v cargo-zigbuild >/dev/null; then
@@ -64,11 +96,22 @@ rm -f "$DIST_DIR/lib/"*
 # Build backend
 echo -e "${YELLOW}[1/4]${NC} Compiling Rust backend (release, $BUILD_TARGET)..."
 cd "$BACKEND_DIR"
-"${BUILD_CMD[@]}" --release --target "$BUILD_TARGET" --bin stellar
+# Cargo 的 target-dir 可来自环境变量或 .cargo/config.toml；让 Cargo 报告实际目录，禁止拷贝旧产物。
+CARGO_BUILD_DIR="$(cargo metadata --no-deps --format-version=1 | sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p')"
+if [ -z "$CARGO_BUILD_DIR" ]; then
+    echo "Error: unable to determine Cargo target directory." >&2
+    exit 1
+fi
+"${BUILD_CMD[@]}" --locked --release --target "$BUILD_TARGET" --bin stellar
 
-# Copy binary
+# Copy the binary cargo just built. CARGO_TARGET_DIR is commonly set by CI/local toolchains.
 echo -e "${YELLOW}[2/4]${NC} Copying backend binary..."
-cp "target/$BUILD_TARGET/release/stellar" "$DIST_DIR/bin/"
+ARTIFACT_PATH="$CARGO_BUILD_DIR/$BUILD_TARGET/release/stellar"
+if [ ! -x "$ARTIFACT_PATH" ]; then
+    echo "Error: expected build artifact not found: $ARTIFACT_PATH" >&2
+    exit 1
+fi
+cp "$ARTIFACT_PATH" "$DIST_DIR/bin/"
 
 # Create production configuration file
 echo -e "${YELLOW}[3/4]${NC} Creating production configuration file..."
@@ -81,7 +124,9 @@ port = 8080
 url = "sqlite://data/stellar.db"
 
 [auth]
-jwt_secret = "dev-secret-key-change-in-production"
+# With `stellar server --config`, set this through APP_JWT_SECRET or replace it here.
+# Data-directory mode (`stellar server /var/lib/stellar`) generates .jwt-secret automatically.
+jwt_secret = ""
 jwt_expires_in = "24h"
 
 [logging]
@@ -119,9 +164,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIST_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BINARY_PATH="$SCRIPT_DIR/stellar"
-CONFIG_DIR="$DIST_ROOT/conf"
 DATA_DIR="$DIST_ROOT/data"
-LOG_DIR="$DIST_ROOT/logs"
+LOG_DIR="$DATA_DIR/logs"
+LOG_FILE="$LOG_DIR/console.log"
 PID_FILE="$DIST_ROOT/stellar.pid"
 
 # 颜色输出
@@ -170,60 +215,6 @@ get_pid() {
     fi
 }
 
-# 检查并强杀占用端口的进程
-kill_port_process() {
-    local port=$1
-    echo -e "${YELLOW}[INFO]${NC} 检查端口 $port 占用情况..."
-    
-    # 查找占用端口的进程
-    local pids=$(lsof -ti:$port 2>/dev/null || netstat -tlnp 2>/dev/null | grep ":$port " | awk '{print $7}' | cut -d'/' -f1)
-    
-    if [ -z "$pids" ]; then
-        echo -e "${GREEN}[INFO]${NC} 端口 $port 未被占用"
-        return 0
-    fi
-    
-    # 处理每个占用端口的进程
-    for pid in $pids; do
-        if [ -n "$pid" ] && [ "$pid" != "-" ]; then
-            # 获取进程信息
-            local proc_info=$(ps -p $pid -o comm= 2>/dev/null || echo "unknown")
-            echo -e "${YELLOW}[WARNING]${NC} 端口 $port 被进程占用: PID=$pid, 进程=$proc_info"
-            
-            # 尝试优雅停止
-            echo -e "${YELLOW}[INFO]${NC} 尝试优雅停止进程 $pid..."
-            kill -TERM $pid 2>/dev/null || true
-            sleep 2
-            
-            # 检查进程是否还在运行
-            if ps -p $pid > /dev/null 2>&1; then
-                echo -e "${RED}[WARNING]${NC} 进程 $pid 未响应，强制终止..."
-                kill -KILL $pid 2>/dev/null || true
-                sleep 1
-            fi
-            
-            # 最终检查
-            if ps -p $pid > /dev/null 2>&1; then
-                echo -e "${RED}[ERROR]${NC} 无法终止进程 $pid，请手动处理"
-                return 1
-            else
-                echo -e "${GREEN}[SUCCESS]${NC} 已终止占用端口的进程 $pid"
-            fi
-        fi
-    done
-    
-    # 再次确认端口已释放
-    sleep 1
-    local check_pids=$(lsof -ti:$port 2>/dev/null)
-    if [ -n "$check_pids" ]; then
-        echo -e "${RED}[ERROR]${NC} 端口 $port 仍被占用，请手动检查"
-        return 1
-    fi
-    
-    echo -e "${GREEN}[SUCCESS]${NC} 端口 $port 已释放"
-    return 0
-}
-
 # 启动服务
 start_service() {
     if is_running; then
@@ -244,36 +235,20 @@ start_service() {
 
     # 创建必要的目录
     echo -e "${YELLOW}[INFO]${NC} 创建必要的目录..."
-    mkdir -p "$DATA_DIR"
     mkdir -p "$LOG_DIR"
-    mkdir -p "$CONFIG_DIR"
+    HOST="${HOST:-0.0.0.0}"
+    PORT="${PORT:-8080}"
 
-    # 设置环境变量
-    export DATABASE_URL="${DATABASE_URL:-sqlite://$DATA_DIR/stellar.db}"
-    export HOST="${HOST:-0.0.0.0}"
-    export PORT="${PORT:-8080}"
-
-    # 显示配置信息
     echo -e "${GREEN}[CONFIG]${NC} 配置信息:"
     echo "  - 二进制文件: $BINARY_PATH"
-    echo "  - 配置文件: $CONFIG_DIR/config.toml"
     echo "  - 数据目录: $DATA_DIR"
     echo "  - 日志目录: $LOG_DIR"
     echo "  - 监听地址: $HOST:$PORT"
-    echo "  - 数据库: $DATABASE_URL"
     echo ""
 
-    # 检查并清理端口占用
-    if ! kill_port_process "$PORT"; then
-        echo -e "${RED}[ERROR]${NC} 无法释放端口 $PORT"
-        exit 1
-    fi
-    echo ""
-
-    # 启动后端
+    # 启动后端。显式传入数据目录和端口，避免随包参考配置或旧环境变量影响行为。
     echo -e "${GREEN}[START]${NC} 启动后端服务..."
-    cd "$DIST_ROOT"
-    nohup "$BINARY_PATH" > "$LOG_DIR/stellar.log" 2>&1 &
+    nohup "$BINARY_PATH" server "$DATA_DIR" --server-host "$HOST" --server-port "$PORT" > "$LOG_FILE" 2>&1 &
     BACKEND_PID=$!
     echo $BACKEND_PID > "$PID_FILE"
 
@@ -296,7 +271,7 @@ echo ""
         fi
     else
         echo -e "${RED}[ERROR]${NC} 后端启动失败，请查看日志:"
-        echo "  tail -f $LOG_DIR/stellar.log"
+        echo "  tail -f $LOG_FILE"
         rm -f "$PID_FILE"
         exit 1
     fi
@@ -355,8 +330,7 @@ show_status() {
         echo -e "${GREEN}[STATUS]${NC} 后端服务正在运行"
         echo "  - PID: $pid"
         echo "  - 二进制文件: $BINARY_PATH"
-        echo "  - 配置文件: $CONFIG_DIR/config.toml"
-        echo "  - 日志文件: $LOG_DIR/stellar.log"
+        echo "  - 日志文件: $LOG_FILE"
         echo "  - 数据目录: $DATA_DIR"
         echo "  - 健康检查: http://${HOST:-0.0.0.0}:${PORT:-8080}/health"
         echo "  - Web UI: http://${HOST:-0.0.0.0}:${PORT:-8080}"
@@ -374,13 +348,13 @@ show_status() {
 
 # 查看日志
 show_logs() {
-    if [ ! -f "$LOG_DIR/stellar.log" ]; then
-        echo -e "${YELLOW}[WARNING]${NC} 日志文件不存在: $LOG_DIR/stellar.log"
+    if [ ! -f "$LOG_FILE" ]; then
+        echo -e "${YELLOW}[WARNING]${NC} 日志文件不存在: $LOG_FILE"
         return 1
     fi
     
     echo -e "${BLUE}[INFO]${NC} 显示实时日志 (按 Ctrl+C 退出)..."
-    tail -f "$LOG_DIR/stellar.log"
+    tail -f "$LOG_FILE"
 }
 
 # 主函数

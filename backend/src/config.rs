@@ -1,7 +1,7 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use serde::Deserialize;
 use std::fs;
-use std::path::Path;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(default)]
@@ -9,10 +9,15 @@ pub struct Config {
     pub server: ServerConfig,
     pub database: DatabaseConfig,
     pub auth: AuthConfig,
+    pub security: SecurityConfig,
     pub logging: LoggingConfig,
     pub static_config: StaticConfig,
     pub metrics: MetricsCollectorConfig,
     pub audit: AuditLogConfig,
+    pub agent: AgentConfig,
+    /// Data directory resolved from `server [DATA_DIR]`; empty in --config mode.
+    #[serde(skip)]
+    pub data_dir: Option<PathBuf>,
 }
 
 /// Audit log configuration for StarRocks audit table
@@ -61,6 +66,15 @@ pub struct AuthConfig {
     pub jwt_expires_in: String,
 }
 
+/// Secrets used by isolated security-sensitive workflows.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct SecurityConfig {
+    /// AES-256 key material for pending permission-request credentials.
+    /// It must be independent from the JWT signing secret.
+    pub permission_request_encryption_key: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct LoggingConfig {
@@ -89,11 +103,30 @@ pub struct MetricsCollectorConfig {
     pub enabled: bool,
 }
 
-/// Command line arguments for configuration overrides
+/// Command line arguments: `stellar server [DATA_DIR] [OPTIONS]`.
+/// A bare `stellar` is equivalent to `stellar server` (defaults below).
 #[derive(Parser, Debug, Clone)]
-#[command(name = "stellar")]
-#[command(version, about = "Stellar - Cluster Management Platform")]
+#[command(name = "stellar", version, about = "Stellar - Cluster Management Platform")]
 pub struct CommandLineArgs {
+    #[command(subcommand)]
+    pub command: Option<Commands>,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum Commands {
+    /// Start the Stellar server. DATA_DIR holds everything: stellar.db,
+    /// .jwt-secret and logs/. Defaults to $STELLAR_DATA_DIR or ./data.
+    Server {
+        /// Data directory (stellar.db, .jwt-secret and logs/ live here)
+        data_dir: Option<PathBuf>,
+        #[command(flatten)]
+        overrides: ConfigOverrides,
+    },
+}
+
+/// Optional single-value overrides on top of the config file.
+#[derive(clap::Args, Debug, Clone, Default)]
+pub struct ConfigOverrides {
     /// Path to configuration file
     #[arg(long, value_name = "PATH")]
     pub config: Option<String>,
@@ -106,7 +139,7 @@ pub struct CommandLineArgs {
     #[arg(long, value_name = "PORT")]
     pub server_port: Option<u16>,
 
-    /// Database URL (overrides config file)
+    /// Database URL (overrides config file and DATA_DIR)
     #[arg(long, value_name = "URL")]
     pub database_url: Option<String>,
 
@@ -154,17 +187,38 @@ impl Config {
     pub fn load() -> Result<Self, anyhow::Error> {
         let cli_args = CommandLineArgs::parse();
 
-        let config_path = cli_args.config.clone().or_else(Self::find_config_file);
-        let mut config = if let Some(config_path) = config_path {
-            Self::from_toml(&config_path)?
-        } else {
-            tracing::warn!("Configuration file not found, using defaults");
-            Config::default()
+        let (overrides, data_dir) = match cli_args.command {
+            Some(Commands::Server { data_dir, overrides }) => (Some(overrides), data_dir),
+            None => (None, None), // bare `stellar` == `stellar server`
         };
 
-        config.apply_env_overrides();
+        // 配置文件模式必须显式指定 --config。否则发布包内的 conf/config.toml
+        // 会意外覆盖 `stellar server [DATA_DIR]` 的零配置数据目录。
+        let config_path = overrides.as_ref().and_then(|o| o.config.clone());
+        let mut config = if let Some(config_path) = &config_path {
+            Self::from_toml(config_path)?
+        } else {
+            Self::default()
+        };
 
-        config.apply_cli_overrides(&cli_args);
+        // MinIO-style data directory: everything lives under one folder. Only
+        // applies in zero-config mode; --config users manage paths explicitly.
+        if config_path.is_none() {
+            let dir = data_dir
+                .or_else(|| std::env::var("STELLAR_DATA_DIR").ok().map(PathBuf::from))
+                .unwrap_or_else(|| PathBuf::from("data"));
+            fs::create_dir_all(&dir)?;
+            config.database.url = format!("sqlite://{}/stellar.db", dir.display());
+            config.logging.file = Some(dir.join("logs").join("stellar.log").display().to_string());
+            config.data_dir = Some(dir.clone());
+            tracing::info!("Data directory: {} (stellar.db, .jwt-secret, logs/)", dir.display());
+        }
+
+        if let Some(o) = &overrides {
+            config.apply_cli_overrides(o);
+        }
+
+        config.apply_env_overrides();
 
         config.validate()?;
 
@@ -179,6 +233,7 @@ impl Config {
     /// - APP_DATABASE_URL: Database URL (default: sqlite://data/stellar.db)
     /// - APP_JWT_SECRET: JWT secret key
     /// - APP_JWT_EXPIRES_IN: JWT expiration time (e.g., "24h")
+    /// - APP_PERMISSION_REQUEST_ENCRYPTION_KEY: dedicated key for pending database-user passwords
     /// - APP_LOG_LEVEL: Logging level (e.g., "info,stellar_backend=debug")
     /// - APP_METRICS_INTERVAL_SECS: Metrics collection interval in seconds (accepts "30s", "5m", "1h")
     /// - APP_METRICS_RETENTION_DAYS: Retention days for metrics (accepts "7d")
@@ -211,6 +266,11 @@ impl Config {
         if let Ok(expires) = std::env::var("APP_JWT_EXPIRES_IN") {
             self.auth.jwt_expires_in = expires;
             tracing::info!("Override auth.jwt_expires_in from env: {}", self.auth.jwt_expires_in);
+        }
+
+        if let Ok(key) = std::env::var("APP_PERMISSION_REQUEST_ENCRYPTION_KEY") {
+            self.security.permission_request_encryption_key = key;
+            tracing::info!("Override security.permission_request_encryption_key from env");
         }
 
         if let Ok(level) = std::env::var("APP_LOG_LEVEL") {
@@ -273,7 +333,7 @@ impl Config {
     }
 
     /// Apply command line argument overrides (highest priority)
-    fn apply_cli_overrides(&mut self, args: &CommandLineArgs) {
+    fn apply_cli_overrides(&mut self, args: &ConfigOverrides) {
         if let Some(host) = &args.server_host {
             self.server.host = host.clone();
             tracing::info!("Override server.host from CLI: {}", self.server.host);
@@ -357,13 +417,14 @@ impl Config {
     }
 
     /// Validate configuration
-    fn validate(&self) -> Result<(), anyhow::Error> {
-        if self.auth.jwt_secret == "dev-secret-key-change-in-production" {
-            tracing::warn!("⚠️  WARNING: Using default JWT secret!");
-            tracing::warn!(
-                "⚠️  Please set APP_JWT_SECRET environment variable or update config.toml"
+    pub(crate) fn validate(&self) -> Result<(), anyhow::Error> {
+        if self.data_dir.is_none()
+            && (self.auth.jwt_secret.is_empty()
+                || self.auth.jwt_secret == "dev-secret-key-change-in-production")
+        {
+            anyhow::bail!(
+                "auth.jwt_secret is required with --config; set it in config.toml or APP_JWT_SECRET"
             );
-            tracing::warn!("⚠️  This is INSECURE for production use!");
         }
 
         if self.server.port == 0 {
@@ -382,18 +443,6 @@ impl Config {
         }
 
         Ok(())
-    }
-
-    fn find_config_file() -> Option<String> {
-        let possible_paths =
-            ["conf/config.toml", "config.toml", "./conf/config.toml", "./config.toml"];
-
-        for path in &possible_paths {
-            if Path::new(path).exists() {
-                return Some(path.to_string());
-            }
-        }
-        None
     }
 
     fn from_toml(path: &str) -> Result<Self, anyhow::Error> {
@@ -443,6 +492,27 @@ impl Default for StaticConfig {
 impl Default for MetricsCollectorConfig {
     fn default() -> Self {
         Self { interval_secs: 30, retention_days: 7, enabled: true }
+    }
+}
+
+/// AI Agent runtime configuration (event-driven closed loop, see docs/agent/ops-agent-design.md)
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct AgentConfig {
+    /// Whether the agent runtime loop (event intake -> incident -> forensics -> rule diagnosis)
+    /// runs at startup (default: true)
+    pub enabled: bool,
+    /// Agent runtime tick interval in seconds (default: 30)
+    #[serde(deserialize_with = "deserialize_duration_secs")]
+    pub interval_secs: u64,
+    /// agent_events 事实表保留天数（默认 14；按 last_seen_at 裁剪）。
+    /// 事件是可重建的事实日志，长期保留只产生噪音与膨胀。
+    pub event_retention_days: u64,
+}
+
+impl Default for AgentConfig {
+    fn default() -> Self {
+        Self { enabled: true, interval_secs: 30, event_retention_days: 14 }
     }
 }
 

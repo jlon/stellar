@@ -1,6 +1,9 @@
-import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, OnDestroy, OnInit, ViewEncapsulation } from '@angular/core';
+import { I18nService } from '../../@core/i18n/i18n.service';
+import { TranslatePipe } from '@ngx-translate/core';
+import { inject, AfterViewInit, ChangeDetectorRef, Component, ElementRef, OnDestroy, OnInit, ViewEncapsulation } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import { CommonModule } from '@angular/common';
 import { NbAlertModule, NbButtonModule, NbCheckboxModule, NbIconModule, NbInputModule, NbToastrService } from '@nebular/theme';
 import { AuthService } from '../../@core/data/auth.service';
 
@@ -9,10 +12,12 @@ import { AuthService } from '../../@core/data/auth.service';
   selector: 'ngx-login',
   templateUrl: './login.component.html',
   styleUrls: ['./login.component.scss'],
-  imports: [NbAlertModule, FormsModule, NbInputModule, NbCheckboxModule, NbButtonModule, NbIconModule, RouterLink],
+  imports: [
+    TranslatePipe,CommonModule, NbAlertModule, FormsModule, NbInputModule, NbCheckboxModule, NbButtonModule, NbIconModule, RouterLink],
   encapsulation: ViewEncapsulation.None,
 })
 export class LoginComponent implements OnInit, AfterViewInit, OnDestroy {
+  private i18n = inject(I18nService);
   submitted = false;
   user = {
     username: '',
@@ -132,7 +137,7 @@ export class LoginComponent implements OnInit, AfterViewInit, OnDestroy {
           localStorage.removeItem('remembered_username');
         }
 
-        this.toastrService.success('欢迎回来，正在进入控制台。', '登录成功');
+        this.toastrService.success(this.i18n.instant('欢迎回来，正在进入控制台。'), this.i18n.instant('登录成功'));
         setTimeout(() => {
           this.router.navigateByUrl(this.returnUrl, { replaceUrl: true });
         }, 500);

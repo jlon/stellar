@@ -118,7 +118,10 @@ impl StarRocksClient {
     }
 
     async fn get_compute_nodes(&self) -> ApiResult<Vec<Backend>> {
-        let compute_nodes = match self.query_sql_entities::<Backend>("SHOW COMPUTE NODES").await {
+        let compute_nodes = match self
+            .query_sql_entities::<Backend>("SHOW COMPUTE NODES")
+            .await
+        {
             Ok(nodes) => nodes,
             Err(e) => {
                 tracing::warn!(

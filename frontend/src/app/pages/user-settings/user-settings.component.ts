@@ -1,3 +1,5 @@
+import { I18nService } from '../../@core/i18n/i18n.service';
+import { TranslatePipe } from '@ngx-translate/core';
 import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
@@ -12,11 +14,13 @@ import { FormsModule } from '@angular/forms';
     selector: 'ngx-user-settings',
     templateUrl: './user-settings.component.html',
     styleUrls: ['./user-settings.component.scss'],
-    imports: [CommonModule, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule, NbAlertModule, FormsModule, NbInputModule,
+    imports: [
+    TranslatePipe,CommonModule, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule, NbAlertModule, FormsModule, NbInputModule,
     NbTooltipModule,]
 })
 export class UserSettingsComponent implements OnInit {
-  private authService = inject(AuthService);
+  private authService = inject(AuthService)
+  private i18n = inject(I18nService);
   private apiService = inject(ApiService);
   private toastrService = inject(NbToastrService);
   private router = inject(Router);
@@ -161,7 +165,7 @@ export class UserSettingsComponent implements OnInit {
         
         // If password was changed, logout and redirect to login
         if (isChangingPassword) {
-          this.toastrService.success('密码修改成功，请重新登录', '成功');
+          this.toastrService.success(this.i18n.instant('密码修改成功，请重新登录'), this.i18n.instant('成功'));
           setTimeout(() => {
             // Clear auth data and redirect to login
             localStorage.removeItem('jwt_token');
@@ -170,7 +174,7 @@ export class UserSettingsComponent implements OnInit {
           }, 1500);
         } else {
           // Just show success message
-          this.toastrService.success('用户信息更新成功', '成功');
+          this.toastrService.success(this.i18n.instant('用户信息更新成功'), this.i18n.instant('成功'));
           
           // Fetch latest user info from database to ensure we have the latest data
           this.authService.getMe().subscribe({

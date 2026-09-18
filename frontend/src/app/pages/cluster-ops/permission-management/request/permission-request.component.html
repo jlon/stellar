@@ -1,167 +1,317 @@
 <div class="permission-request-container">
-  <!-- Form Section -->
-  <div class="form-section" *ngIf="showForm">
-    <nb-card class="permission-form-card">
-      <nb-card-header>
-        <h6 class="mb-0">新建权限申请</h6>
-        <span class="text-hint">按步骤选择授权对象与资源</span>
-      </nb-card-header>
-      <nb-card-body>
-        <form [formGroup]="requestForm">
-          <!-- 第 1 步：申请对象 -->
-          <div class="form-step">
-            <div class="step-fields">
-              <div class="form-field">
-                <label class="label">申请类型 <span class="text-danger">*</span></label>
-                <nb-select size="small" fullWidth formControlName="request_type" (selectedChange)="onRequestTypeChange()">
-                  <nb-option *ngFor="let type of requestTypes" [value]="type.value">{{ type.label }}</nb-option>
-                </nb-select>
-              </div>
+  <nb-card class="request-card">
+    <nb-card-body>
+      <form [formGroup]="requestForm" class="request-form" (ngSubmit)="onSubmitRequest()">
+        @if (initialDataError) {
+          <p class="form-load-error">{{ initialDataError }}</p>
+        }
+        <div class="request-workspace">
+          <div class="request-fields">
+            <section class="workflow-section">
+          <div class="field-stack">
+            <div class="form-field form-field--wide">
+              <label class="label">{{  '申请操作' | translate }}</label>
+              <nb-button-group size="small" appearance="outline" status="basic" (valueChange)="onRequestTypeSelected($event)">
+                @for (type of requestTypes; track type.value) {
+                  <button nbButtonToggle [value]="type.value" [pressed]="currentRequestType === type.value" type="button">
+                    {{ type.label }}
+                  </button>
+                }
+              </nb-button-group>
+            </div>
 
-              <div class="form-field">
-                <label class="label">目标用户 <span class="text-danger">*</span></label>
-                <ng-container *ngIf="!isCreatingUser; else createUserTpl">
-                  <nb-select size="small" fullWidth formControlName="target_user" [disabled]="loadingAccounts"
-                    (selectedChange)="onTargetUserChange($event)"
-                    [class.empty-value]="!requestForm.get('target_user')?.value">
-                    <nb-option *ngFor="let user of dbAccounts" [value]="user">{{ user }}</nb-option>
-                    <nb-option value="__CREATE_NEW_USER__">+ 新建账号</nb-option>
+            @if (isGrantRole) {
+              <div class="form-grid">
+                <div class="form-field">
+                  <label class="label" for="grant-role-user">{{  '目标用户' | translate }}<span class="text-danger">*</span></label>
+                  <nb-select id="grant-role-user" size="small" fullWidth formControlName="target_user" [disabled]="loadingAccounts">
+                    <nb-option value="">{{  '选择用户' | translate }}</nb-option>
+                    @for (user of dbAccounts; track user) {
+                      <nb-option [value]="user">{{ user }}</nb-option>
+                    }
                   </nb-select>
-                </ng-container>
-                <ng-template #createUserTpl>
-                  <input nbInput size="small" fullWidth formControlName="new_user_name" placeholder="账户名" />
-                </ng-template>
-              </div>
-
-              <div class="form-field" *ngIf="isCreatingUser">
-                <label class="label">初始密码</label>
-                <input nbInput size="small" fullWidth type="password" formControlName="new_user_password" placeholder="密码" />
-              </div>
-
-              <div class="form-field" *ngIf="isGrantRole || isPermissionType">
-                <label class="label">目标角色 <span *ngIf="isGrantRole" class="text-danger">*</span></label>
-                <ng-container *ngIf="!isCreatingRole; else createRoleTpl">
-                  <nb-select size="small" fullWidth formControlName="target_role" [disabled]="loadingRoles"
-                    (selectedChange)="onTargetRoleChange($event)"
-                    [class.empty-value]="!requestForm.get('target_role')?.value">
-                    <nb-option value="">不选择</nb-option>
-                    <nb-option *ngFor="let role of dbRoles" [value]="role">{{ role }}</nb-option>
-                    <nb-option value="__CREATE_NEW_ROLE__">+ 新建角色</nb-option>
+                  <span class="field-hint">{{  '受保护账户不会出现在可选列表中。' | translate }}</span>
+                  @if (showControlError('target_user')) {
+                    <span class="field-error">{{  '请选择需要授予角色的用户。' | translate }}</span>
+                  }
+                </div>
+                <div class="form-field">
+                  <label class="label" for="grant-role-role">{{  '授予角色' | translate }}<span class="text-danger">*</span></label>
+                  <nb-select id="grant-role-role" size="small" fullWidth formControlName="target_role" [disabled]="loadingRoles">
+                    <nb-option value="">{{  '选择角色' | translate }}</nb-option>
+                    @for (role of dbRoles; track role) {
+                      <nb-option [value]="role">{{ role }}</nb-option>
+                    }
                   </nb-select>
-                </ng-container>
-                <ng-template #createRoleTpl>
-                  <input nbInput size="small" fullWidth formControlName="new_role_name" placeholder="角色名" />
-                </ng-template>
+                  <span class="field-hint">{{  '仅可申请自定义角色；内置角色受保护。' | translate }}</span>
+                  @if (showControlError('target_role')) {
+                    <span class="field-error">{{  '请选择要授予的角色。' | translate }}</span>
+                  }
+                </div>
               </div>
+            } @else {
+              @if (isGrantPermission) {
+                <div class="form-field form-field--wide">
+                  <label class="label">{{  '授权给' | translate }}</label>
+                  <nb-button-group class="principal-switch" size="small" appearance="outline" status="basic" (valueChange)="onPrincipalTypeSelected($event)">
+                    <button nbButtonToggle value="user" [pressed]="principalType === 'user'" type="button">{{  '用户' | translate }}</button>
+                    <button nbButtonToggle value="role" [pressed]="principalType === 'role'" type="button">{{  '角色' | translate }}</button>
+                  </nb-button-group>
+                </div>
+              }
+
+              @if (principalType === 'user' || isRevokePermission) {
+                <div class="form-grid">
+                  <div class="form-field">
+                    <label class="label" for="permission-user">{{  '目标用户' | translate }}<span class="text-danger">*</span></label>
+                    @if (!isCreatingUser) {
+                      <nb-select id="permission-user" size="small" fullWidth formControlName="target_user" [disabled]="loadingAccounts" (selectedChange)="onTargetUserChange($event)">
+                        <nb-option value="">{{  '选择用户' | translate }}</nb-option>
+                        @for (user of dbAccounts; track user) {
+                          <nb-option [value]="user">{{ user }}</nb-option>
+                        }
+                        @if (isGrantPermission) {
+                          <nb-option value="__CREATE_NEW_USER__">{{  '新建数据库用户' | translate }}</nb-option>
+                        }
+                      </nb-select>
+                      <span class="field-hint">{{  '受保护账户不会出现在可选列表中。' | translate }}</span>
+                    } @else {
+                      <input id="permission-user" nbInput fieldSize="small" fullWidth formControlName="new_user_name" [placeholder]="'输入新建用户的账号名' | translate" (input)="onNewUserNameChange()" />
+                    }
+                    @if (showControlError(isCreatingUser ? 'new_user_name' : 'target_user')) {
+                      <span class="field-error">{{  '请选择或输入目标用户。' | translate }}</span>
+                    }
+                  </div>
+
+                  @if (isCreatingUser) {
+                    <div class="form-field">
+                      <label class="label" for="new-user-password">{{  '初始密码' | translate }}<span class="text-danger">*</span></label>
+                      <input id="new-user-password" nbInput fieldSize="small" fullWidth type="password" formControlName="new_user_password" [placeholder]="'设置初始密码' | translate" />
+                      @if (showControlError('new_user_password')) {
+                        <span class="field-error">{{  '新建用户需要初始密码。' | translate }}</span>
+                      }
+                    </div>
+                  }
+                </div>
+              } @else {
+                <div class="form-grid">
+                  <div class="form-field">
+                    <label class="label" for="permission-role">{{  '目标角色' | translate }}<span class="text-danger">*</span></label>
+                    @if (!isCreatingRole) {
+                      <nb-select id="permission-role" size="small" fullWidth formControlName="target_role" [disabled]="loadingRoles" (selectedChange)="onTargetRoleChange($event)">
+                        <nb-option value="">{{  '选择角色' | translate }}</nb-option>
+                        @for (role of dbRoles; track role) {
+                          <nb-option [value]="role">{{ role }}</nb-option>
+                        }
+                        <nb-option value="__CREATE_NEW_ROLE__">{{  '新建数据库角色' | translate }}</nb-option>
+                      </nb-select>
+                      <span class="field-hint">{{  '仅可申请自定义角色；内置角色受保护。' | translate }}</span>
+                    } @else {
+                      <input id="permission-role" nbInput fieldSize="small" fullWidth formControlName="new_role_name" [placeholder]="'输入新建角色名' | translate" />
+                    }
+                    @if (showControlError(isCreatingRole ? 'new_role_name' : 'target_role')) {
+                      <span class="field-error">{{  '请选择或输入目标角色。' | translate }}</span>
+                    }
+                  </div>
+
+                  @if (isCreatingRole) {
+                    <div class="form-field">
+                      <label class="label" for="new-role-user">{{  '同时授予给用户' | translate }}<span class="text-danger">*</span></label>
+                      <nb-select id="new-role-user" size="small" fullWidth formControlName="target_user" [disabled]="loadingAccounts">
+                        <nb-option value="">{{  '选择用户' | translate }}</nb-option>
+                        @for (user of dbAccounts; track user) {
+                          <nb-option [value]="user">{{ user }}</nb-option>
+                        }
+                      </nb-select>
+                      <span class="field-hint">{{  '受保护账户不会出现在可选列表中。' | translate }}</span>
+                      @if (showControlError('target_user')) {
+                        <span class="field-error">{{  '新建角色需要指定接收该角色的用户。' | translate }}</span>
+                      }
+                    </div>
+                  }
+                </div>
+              }
+            }
+          </div>
+            </section>
+
+            @if (isPermissionType) {
+              <section class="workflow-section">
+            <div class="section-heading">
+              <h6>{{  '资源范围' | translate }}</h6>
             </div>
+
+            <div class="form-field form-field--wide">
+              <label class="label">{{  '资源类型' | translate }}<span class="text-danger">*</span></label>
+              <nb-button-group size="small" appearance="outline" status="basic" (valueChange)="onResourceTypeSelected($event)">
+                @for (type of resourceTypes; track type.value) {
+                  <button nbButtonToggle [value]="type.value" [pressed]="currentResourceType === type.value" type="button">
+                    {{ type.label }}
+                  </button>
+                }
+              </nb-button-group>
+              @if (showControlError('resource_type')) {
+                <span class="field-error">{{  '请选择资源类型。' | translate }}</span>
+              }
+            </div>
+
+            @if (currentResourceType) {
+              <div class="scope-path" [aria-label]="'资源路径' | translate">
+                <div class="scope-step">
+                  <label class="label" for="permission-catalog">Catalog @if (currentResourceType === 'catalog') {<span class="text-danger">*</span>}</label>
+                  <nb-select id="permission-catalog" size="small" fullWidth formControlName="catalog" [disabled]="loadingCatalogs">
+                    <nb-option value="">{{  '选择 Catalog' | translate }}</nb-option>
+                    @if (currentResourceType === 'catalog') {
+                      <nb-option value="*">{{  '所有 Catalog' | translate }}</nb-option>
+                    }
+                    @for (catalog of catalogs; track catalog) {
+                      <nb-option [value]="catalog">{{ catalog }}</nb-option>
+                    }
+                  </nb-select>
+                  @if (showControlError('catalog')) {
+                    <span class="field-error">{{  '请选择 Catalog。' | translate }}</span>
+                  }
+                </div>
+
+                @if (currentResourceType === 'database' || currentResourceType === 'table') {
+                  <nb-icon class="scope-separator" icon="chevron-right-outline" aria-hidden="true"></nb-icon>
+                  <div class="scope-step">
+                    <label class="label" for="permission-database">{{  '数据库' | translate }}<span class="text-danger">*</span></label>
+                    <nb-select id="permission-database" size="small" fullWidth formControlName="database" [disabled]="!requestForm.get('catalog')?.value || loadingDatabases">
+                      <nb-option value="">{{  '选择数据库' | translate }}</nb-option>
+                      <nb-option value="*">{{  '所有数据库' | translate }}</nb-option>
+                      @for (database of databases; track database) {
+                        <nb-option [value]="database">{{ database }}</nb-option>
+                      }
+                    </nb-select>
+                    @if (showControlError('database')) {
+                      <span class="field-error">{{  '请选择数据库。' | translate }}</span>
+                    }
+                  </div>
+                }
+
+                @if (currentResourceType === 'table') {
+                  <nb-icon class="scope-separator" icon="chevron-right-outline" aria-hidden="true"></nb-icon>
+                  <div class="scope-step">
+                    <label class="label" for="permission-table">{{  '表' | translate }}<span class="text-danger">*</span></label>
+                    <nb-select id="permission-table" size="small" fullWidth formControlName="table" [disabled]="!requestForm.get('database')?.value || loadingTables">
+                      <nb-option value="">{{  '选择表' | translate }}</nb-option>
+                      <nb-option value="*">{{  '所有表' | translate }}</nb-option>
+                      @for (table of tables; track table) {
+                        <nb-option [value]="table">{{ table }}</nb-option>
+                      }
+                    </nb-select>
+                    @if (showControlError('table')) {
+                      <span class="field-error">{{  '请选择表。' | translate }}</span>
+                    }
+                  </div>
+                }
+              </div>
+
+              <div class="permission-selection">
+                <div class="permission-selection-header">
+                  <label class="label">{{  '允许的操作' | translate }}<span class="text-danger">*</span></label>
+                </div>
+                <div class="permission-options">
+                  @for (permission of availablePermissions; track permission.value) {
+                    <nb-checkbox [checked]="isPermissionSelected(permission.value)" (checkedChange)="setPermissionSelected(permission.value, $event)">
+                      <span class="permission-name">{{ permission.label }}</span>
+                      <span class="permission-description">{{ getPermissionDescription(permission.value) }}</span>
+                    </nb-checkbox>
+                  }
+                </div>
+                @if (showControlError('permissions')) {
+                  <span class="field-error">{{  '至少选择一项操作。' | translate }}</span>
+                }
+              </div>
+            }
+              </section>
+            }
+
+            <section class="workflow-section workflow-section--final">
+              <div class="section-heading">
+                <h6>{{  '申请说明' | translate }}</h6>
+              </div>
+              <div class="reason-field">
+                <label class="label" for="permission-reason">{{  '申请原因' | translate }}<span class="text-danger">*</span></label>
+                <textarea id="permission-reason" nbInput fieldSize="small" fullWidth rows="2" maxlength="500" formControlName="reason" [placeholder]="'例如：用于日报查询，需要读取 sales.orders。' | translate"></textarea>
+                <div class="field-caption">
+                  @if (showControlError('reason')) {
+                    <span class="field-error">{{  '请填写申请原因。' | translate }}</span>
+                  }
+                  <span>{{ reasonLength }}/500</span>
+                </div>
+              </div>
+            </section>
           </div>
 
-          <!-- 第 2 步：资源范围 -->
-          <div class="form-step" *ngIf="isPermissionType">
-            <div class="step-fields">
-              <div class="form-field">
-                <label class="label">资源类型 <span class="text-danger">*</span></label>
-                <nb-select size="small" fullWidth formControlName="resource_type"
-                  [class.empty-value]="!requestForm.get('resource_type')?.value">
-                  <nb-option value="">请选择</nb-option>
-                  <nb-option *ngFor="let type of resourceTypes" [value]="type.value">{{ type.label }}</nb-option>
-                </nb-select>
-              </div>
-
-              <div class="form-field" *ngIf="currentResourceType === 'catalog' || currentResourceType === 'database' || currentResourceType === 'table'">
-                <label class="label">Catalog <span *ngIf="currentResourceType === 'catalog'" class="text-danger">*</span></label>
-                <nb-select size="small" fullWidth formControlName="catalog" [disabled]="loadingCatalogs"
-                  [class.empty-value]="!requestForm.get('catalog')?.value">
-                  <nb-option value="">{{ currentResourceType === 'catalog' ? '请选择' : '默认' }}</nb-option>
-                  <nb-option value="*">* (全部)</nb-option>
-                  <nb-option *ngFor="let cat of catalogs" [value]="cat">{{ cat }}</nb-option>
-                </nb-select>
-              </div>
-
-              <div class="form-field" *ngIf="currentResourceType === 'database' || currentResourceType === 'table'">
-                <label class="label">数据库 <span class="text-danger">*</span></label>
-                <nb-select size="small" fullWidth formControlName="database" [disabled]="loadingDatabases"
-                  [class.empty-value]="!requestForm.get('database')?.value">
-                  <nb-option value="">请选择</nb-option>
-                  <nb-option value="*">* (全部)</nb-option>
-                  <nb-option *ngFor="let db of databases" [value]="db">{{ db }}</nb-option>
-                </nb-select>
-              </div>
-
-              <div class="form-field" *ngIf="currentResourceType === 'table'">
-                <label class="label">表 <span class="text-danger">*</span></label>
-                <nb-select size="small" fullWidth formControlName="table" [disabled]="loadingTables"
-                  [class.empty-value]="!requestForm.get('table')?.value">
-                  <nb-option value="">请选择</nb-option>
-                  <nb-option value="*">* (全部)</nb-option>
-                  <nb-option *ngFor="let tbl of tables" [value]="tbl">{{ tbl }}</nb-option>
-                </nb-select>
-              </div>
+          <aside class="request-review">
+            <div class="request-review-content">
+              <dl>
+                <div>
+                  <dt>{{  '操作' | translate }}</dt>
+                  <dd>{{  isRevokePermission ? ('撤销权限' | translate) : isGrantRole ? ('授予角色' | translate) : ('授予权限' | translate)  }}</dd>
+                </div>
+                <div>
+                  <dt>{{  '对象' | translate }}</dt>
+                  <dd>{{ requestTargetSummary }}</dd>
+                </div>
+                @if (isPermissionType) {
+                  <div>
+                    <dt>{{  '范围' | translate }}</dt>
+                    <dd>{{ resourceScopeSummary }}</dd>
+                  </div>
+                  <div>
+                    <dt>{{  '权限' | translate }}</dt>
+                    <dd>{{ permissionSummary }}</dd>
+                  </div>
+                }
+              </dl>
             </div>
-          </div>
+          </aside>
 
-          <!-- 第 3 步：勾选权限（资源类型确定后渐进披露） -->
-          <div class="form-step" *ngIf="isPermissionType && requestForm.get('resource_type')?.value">
-            <div class="step-title">选择权限</div>
-            <div class="permission-chips">
-              <button type="button"
-                      *ngFor="let perm of availablePermissions"
-                      class="permission-chip"
-                      [class.selected]="isPermissionSelected(perm.value)"
-                      (click)="togglePermission(perm.value)">
-                {{ perm.label }}
-              </button>
-            </div>
-          </div>
-
-          <!-- 申请原因 + 提交 -->
-          <div class="form-step form-step-submit">
-            <div class="form-field-reason">
-              <label class="label">申请原因 <span class="text-danger">*</span></label>
-              <input nbInput size="small" fullWidth formControlName="reason" placeholder="请简要说明申请权限的原因" />
-            </div>
-            <div class="form-field-actions">
-              <button type="button" class="icon-btn" (click)="requestForm.reset({ request_type: 'grant_permission' })" nbTooltip="重置" nbTooltipPlacement="top" aria-label="重置">
-                <nb-icon icon="refresh-outline"></nb-icon>
-              </button>
-              <button type="button" class="icon-btn is-primary" [disabled]="!requestForm.valid || formSubmitting" (click)="onSubmitRequest()" nbTooltip="提交申请" nbTooltipPlacement="top" aria-label="提交申请">
-                <nb-icon [icon]="formSubmitting ? 'loader-outline' : 'paper-plane-outline'" [class.spin]="formSubmitting"></nb-icon>
-              </button>
-            </div>
-          </div>
-        </form>
-      </nb-card-body>
-    </nb-card>
-  </div>
-
-  <!-- My Requests Table -->
-  <div class="table-section">
-    <nb-card [nbSpinner]="requestsLoading" nbSpinnerStatus="primary" nbSpinnerSize="medium" nbSpinnerMessage="加载中">
-      <nb-card-header>
-        <div class="d-flex justify-content-between align-items-center">
-          <h6 class="mb-0">我的申请</h6>
-          <div class="d-flex align-items-center gap-2">
-            <nb-select [(selected)]="statusFilter" (selectedChange)="onStatusFilterChange()" size="small">
-              <nb-option *ngFor="let opt of statusOptions" [value]="opt.value">{{ opt.label }}</nb-option>
-            </nb-select>
-            <button nbButton ghost status="basic" size="small" (click)="loadMyRequests()" nbTooltip="刷新" title="刷新">
+          <div class="request-actions">
+            <button type="button" class="icon-btn" (click)="resetRequestForm()" [nbTooltip]="'重置' | translate" nbTooltipPlacement="top" [aria-label]="'重置' | translate">
               <nb-icon icon="refresh-outline"></nb-icon>
+            </button>
+            <button nbButton appearance="ghost" status="primary" size="small" type="submit" [disabled]="requestForm.invalid || formSubmitting || !activeClusterId">
+              {{  formSubmitting ? ('提交中' | translate) : ('提交申请' | translate)  }}
             </button>
           </div>
         </div>
-      </nb-card-header>
+      </form>
+    </nb-card-body>
+  </nb-card>
 
-      <nb-card-body>
-        <angular2-smart-table [settings]="tableSettings" [source]="requestSource"></angular2-smart-table>
-        <ngx-table-pagination
-          [page]="requestPage"
-          [total]="requestTotal"
-          [pageSize]="requestPageSize"
-          [pageSizeOptions]="requestPageSizeOptions"
-          (pageChange)="onRequestPageChange($event)"
-          (pageSizeChange)="onRequestPageSizeChange($event)">
-        </ngx-table-pagination>
-      </nb-card-body>
-    </nb-card>
-  </div>
+  <nb-card class="request-history" [nbSpinner]="requestsLoading" nbSpinnerStatus="primary" nbSpinnerSize="medium" [nbSpinnerMessage]="'加载中' | translate">
+    <nb-card-header>
+      <div class="history-header">
+        <div>
+          <h6>{{  '我的申请' | translate }}</h6>
+        </div>
+        <div class="history-tools">
+          <nb-select [(selected)]="statusFilter" (selectedChange)="onStatusFilterChange()" size="small" [aria-label]="'按状态筛选申请' | translate">
+            @for (option of statusOptions; track option.value) {
+              <nb-option [value]="option.value">{{ option.label }}</nb-option>
+            }
+          </nb-select>
+          <button type="button" class="icon-btn" (click)="loadMyRequests()" [nbTooltip]="'刷新' | translate" nbTooltipPlacement="top" [aria-label]="'刷新申请记录' | translate">
+            <nb-icon icon="refresh-outline"></nb-icon>
+          </button>
+        </div>
+      </div>
+    </nb-card-header>
+
+    <nb-card-body>
+      <angular2-smart-table [settings]="tableSettings" [source]="requestSource"></angular2-smart-table>
+      <ngx-table-pagination
+        [page]="requestPage"
+        [total]="requestTotal"
+        [pageSize]="requestPageSize"
+        [pageSizeOptions]="requestPageSizeOptions"
+        (pageChange)="onRequestPageChange($event)"
+        (pageSizeChange)="onRequestPageSizeChange($event)">
+      </ngx-table-pagination>
+    </nb-card-body>
+  </nb-card>
 </div>

@@ -1,10 +1,14 @@
 use crate::utils::error::ApiError;
 use mysql_async::{Conn, Pool, prelude::Queryable};
 use std::sync::Arc;
+use std::time::Duration;
 
 #[derive(Clone)]
 pub struct MySQLClient {
     pool: Arc<Pool>,
+    /// 单条语句上限（None = 不限制，仅交互式会话使用）。
+    /// 列表类读取必须设上限，否则一次 FE 抖动就把所有列表页变成无限转圈。
+    query_timeout: Option<Duration>,
 }
 
 /// MySQLSession wraps a single database connection for executing multiple operations
@@ -15,7 +19,30 @@ pub struct MySQLSession {
 
 impl MySQLClient {
     pub fn from_pool(pool: Pool) -> Self {
-        Self { pool: Arc::new(pool) }
+        Self { pool: Arc::new(pool), query_timeout: None }
+    }
+
+    /// 设置单条语句超时（列表类读取必设；交互式执行保持 None）。
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.query_timeout = Some(timeout);
+        self
+    }
+
+    async fn bounded<T, F: std::future::Future<Output = Result<T, ApiError>>>(
+        &self,
+        what: &str,
+        fut: F,
+    ) -> Result<T, ApiError> {
+        match self.query_timeout {
+            Some(d) => tokio::time::timeout(d, fut).await.map_err(|_| {
+                ApiError::cluster_connection_failed(format!(
+                    "集群查询超时（{}，{}s）：FE 可能过载，请稍后重试",
+                    what,
+                    d.as_secs()
+                ))
+            })?,
+            None => fut.await,
+        }
     }
 
     /// Create a new session with a dedicated connection from the pool
@@ -31,21 +58,25 @@ impl MySQLClient {
 
     /// Execute a query and return results as (column_names, rows)
     pub async fn query_raw(&self, sql: &str) -> Result<(Vec<String>, Vec<Vec<String>>), ApiError> {
-        let mut conn = self.pool.get_conn().await.map_err(|e| {
-            tracing::error!("Failed to get connection from pool: {}", e);
-            ApiError::cluster_connection_failed(format!("Failed to get connection: {}", e))
-        })?;
+        let sql = sql.to_string();
+        self.bounded("SQL 查询", async move {
+            let mut conn = self.pool.get_conn().await.map_err(|e| {
+                tracing::error!("Failed to get connection from pool: {}", e);
+                ApiError::cluster_connection_failed(format!("Failed to get connection: {}", e))
+            })?;
 
-        let rows: Vec<mysql_async::Row> = conn.query(sql).await.map_err(|e| {
-            tracing::error!("MySQL query execution failed: {}", e);
-            ApiError::internal_error(format!("SQL execution failed: {}", e))
-        })?;
+            let rows: Vec<mysql_async::Row> = conn.query(sql).await.map_err(|e| {
+                tracing::error!("MySQL query execution failed: {}", e);
+                ApiError::internal_error(format!("SQL execution failed: {}", e))
+            })?;
 
-        tracing::debug!("Query returned {} rows", rows.len());
+            tracing::debug!("Query returned {} rows", rows.len());
 
-        drop(conn);
+            drop(conn);
 
-        Ok(process_query_result(rows))
+            Ok(process_query_result(rows))
+        })
+        .await
     }
 
     /// Execute a query and return results as Vec<serde_json::Value> (JSON objects)
@@ -68,19 +99,23 @@ impl MySQLClient {
     }
 
     pub async fn execute(&self, sql: &str) -> Result<u64, ApiError> {
-        let mut conn = self.pool.get_conn().await.map_err(|e| {
-            tracing::error!("Failed to get connection for execute: {}", e);
-            ApiError::cluster_connection_failed(format!("Failed to get connection: {}", e))
-        })?;
+        let sql = sql.to_string();
+        self.bounded("SQL 执行", async move {
+            let mut conn = self.pool.get_conn().await.map_err(|e| {
+                tracing::error!("Failed to get connection for execute: {}", e);
+                ApiError::cluster_connection_failed(format!("Failed to get connection: {}", e))
+            })?;
 
-        let result: Vec<mysql_async::Row> = conn.query(sql).await.map_err(|e| {
-            tracing::error!("MySQL execute failed: {}", e);
-            ApiError::cluster_connection_failed(format!("Query failed: {}", e))
-        })?;
+            let result: Vec<mysql_async::Row> = conn.query(sql).await.map_err(|e| {
+                tracing::error!("MySQL execute failed: {}", e);
+                ApiError::cluster_connection_failed(format!("Query failed: {}", e))
+            })?;
 
-        drop(conn);
+            drop(conn);
 
-        Ok(result.len() as u64)
+            Ok(result.len() as u64)
+        })
+        .await
     }
 }
 
@@ -162,12 +197,7 @@ impl MySQLSession {
         })?;
         let (columns, data_rows) = process_query_result(rows);
         let execution_time_ms = start.elapsed().as_millis();
-        tracing::debug!(
-            "SQL: '{}' -> {} rows in {}ms",
-            sql,
-            data_rows.len(),
-            execution_time_ms
-        );
+        tracing::debug!("SQL: '{}' -> {} rows in {}ms", sql, data_rows.len(), execution_time_ms);
         Ok((columns, data_rows, execution_time_ms))
     }
 

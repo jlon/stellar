@@ -65,6 +65,29 @@ $nb-themes: nb-register-theme(map-merge((
   select-min-width: 6rem,
   menu-item-divider-width: 0,
 
+  // Menu: calm, shadcn-style nav (muted icons by default, soft accent on active)
+  menu-item-hover-background-color: color-primary-transparent-100,
+  menu-item-active-background-color: color-primary-transparent-200,
+  menu-submenu-item-hover-background-color: color-primary-transparent-100,
+  menu-submenu-item-active-background-color: color-primary-transparent-200,
+
+  // Tabset: Linear/Vercel-style quiet tabs. Active state is carried by text
+  // contrast (bright + semibold) with a thin 2px underline; hover only
+  // brightens text. No thick colored bars, no uppercase transform.
+  tabset-tab-text-transform: none,
+  tabset-tab-underline-width: 2px,
+  tabset-tab-active-underline-color: text-basic-color,
+  tabset-tab-hover-underline-color: transparent,
+  tabset-tab-focus-underline-color: text-basic-color,
+  tabset-tab-active-text-color: text-basic-color,
+
+  // Option: selected 用低饱和中性底 + 加粗文字，不用高饱和实心蓝块
+  option-selected-background-color: color-basic-transparent-200,
+  option-selected-text-color: text-basic-color,
+  option-selected-focus-background-color: color-basic-transparent-300,
+  option-selected-hover-background-color: color-basic-transparent-300,
+  option-selected-hover-text-color: text-basic-color,
+
   slide-out-background: #f7f9fc,
   slide-out-shadow-color: 0 4px 14px 0 #8f9bb3,
   slide-out-shadow-color-rtl: 0 4px 14px 0 #8f9bb3,
@@ -86,6 +109,29 @@ $nb-themes: nb-register-theme(map-merge((
 
   select-min-width: 6rem,
   menu-item-divider-width: 0,
+
+  // Menu: calm, shadcn-style nav (muted icons by default, soft accent on active)
+  menu-item-hover-background-color: color-primary-transparent-100,
+  menu-item-active-background-color: color-primary-transparent-200,
+  menu-submenu-item-hover-background-color: color-primary-transparent-100,
+  menu-submenu-item-active-background-color: color-primary-transparent-200,
+
+  // Tabset: Linear/Vercel-style quiet tabs. Active state is carried by text
+  // contrast (bright + semibold) with a thin 2px underline; hover only
+  // brightens text. No thick colored bars, no uppercase transform.
+  tabset-tab-text-transform: none,
+  tabset-tab-underline-width: 2px,
+  tabset-tab-active-underline-color: text-basic-color,
+  tabset-tab-hover-underline-color: transparent,
+  tabset-tab-focus-underline-color: text-basic-color,
+  tabset-tab-active-text-color: text-basic-color,
+
+  // Option: selected 用低饱和中性底 + 加粗文字，不用高饱和实心蓝块
+  option-selected-background-color: color-basic-transparent-200,
+  option-selected-text-color: text-basic-color,
+  option-selected-focus-background-color: color-basic-transparent-300,
+  option-selected-hover-background-color: color-basic-transparent-300,
+  option-selected-hover-text-color: text-basic-color,
 
   slide-out-background: #252547,
   slide-out-shadow-color: 2px 0 3px #29157a,
@@ -113,6 +159,29 @@ $nb-themes: nb-register-theme(map-merge((
   select-min-width: 6rem,
   menu-item-divider-width: 0,
 
+  // Menu: calm, shadcn-style nav (muted icons by default, soft accent on active)
+  menu-item-hover-background-color: color-primary-transparent-100,
+  menu-item-active-background-color: color-primary-transparent-200,
+  menu-submenu-item-hover-background-color: color-primary-transparent-100,
+  menu-submenu-item-active-background-color: color-primary-transparent-200,
+
+  // Tabset: Linear/Vercel-style quiet tabs. Active state is carried by text
+  // contrast (bright + semibold) with a thin 2px underline; hover only
+  // brightens text. No thick colored bars, no uppercase transform.
+  tabset-tab-text-transform: none,
+  tabset-tab-underline-width: 2px,
+  tabset-tab-active-underline-color: text-basic-color,
+  tabset-tab-hover-underline-color: transparent,
+  tabset-tab-focus-underline-color: text-basic-color,
+  tabset-tab-active-text-color: text-basic-color,
+
+  // Option: selected 用低饱和中性底 + 加粗文字，不用高饱和实心蓝块
+  option-selected-background-color: color-basic-transparent-200,
+  option-selected-text-color: text-basic-color,
+  option-selected-focus-background-color: color-basic-transparent-300,
+  option-selected-hover-background-color: color-basic-transparent-300,
+  option-selected-hover-text-color: text-basic-color,
+
   slide-out-background: linear-gradient(270deg, #edf1f7 0%, #e4e9f2 100%),
   slide-out-shadow-color: 0 4px 14px 0 #8f9bb3,
   slide-out-shadow-color-rtl: 0 4px 14px 0 #8f9bb3,
@@ -134,6 +203,29 @@ $nb-themes: nb-register-theme(map-merge((
 
   select-min-width: 6rem,
   menu-item-divider-width: 0,
+
+  // Menu: calm, shadcn-style nav (muted icons by default, soft accent on active)
+  menu-item-hover-background-color: color-primary-transparent-100,
+  menu-item-active-background-color: color-primary-transparent-200,
+  menu-submenu-item-hover-background-color: color-primary-transparent-100,
+  menu-submenu-item-active-background-color: color-primary-transparent-200,
+
+  // Tabset: Linear/Vercel-style quiet tabs. Active state is carried by text
+  // contrast (bright + semibold) with a thin 2px underline; hover only
+  // brightens text. No thick colored bars, no uppercase transform.
+  tabset-tab-text-transform: none,
+  tabset-tab-underline-width: 2px,
+  tabset-tab-active-underline-color: text-basic-color,
+  tabset-tab-hover-underline-color: transparent,
+  tabset-tab-focus-underline-color: text-basic-color,
+  tabset-tab-active-text-color: text-basic-color,
+
+  // Option: selected 用低饱和中性底 + 加粗文字，不用高饱和实心蓝块
+  option-selected-background-color: color-basic-transparent-200,
+  option-selected-text-color: text-basic-color,
+  option-selected-focus-background-color: color-basic-transparent-300,
+  option-selected-hover-background-color: color-basic-transparent-300,
+  option-selected-hover-text-color: text-basic-color,
 
   slide-out-background: linear-gradient(270deg, #222b45 0%, #151a30 100%),
   slide-out-shadow-color: 0 4px 14px 0 #8f9bb3,

@@ -1,26 +1,6 @@
 import { NgModule, NO_ERRORS_SCHEMA } from '@angular/core';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
-import {
-  NbCardModule,
-  NbButtonModule,
-  NbInputModule,
-  NbSelectModule,
-  NbFormFieldModule,
-  NbCheckboxModule,
-  NbSpinnerModule,
-  NbAlertModule,
-  NbTabsetModule,
-  NbAccordionModule,
-  NbIconModule,
-  NbDialogModule,
-  NbToastrModule,
-  NbListModule,
-  NbBadgeModule,
-  NbProgressBarModule,
-  NbToggleModule,
-  NbTooltipModule,
-  NbTagModule,
-} from '@nebular/theme';
+import { NbCardModule, NbButtonModule, NbInputModule, NbSelectModule, NbFormFieldModule, NbCheckboxModule, NbSpinnerModule, NbAlertModule, NbTabsetModule, NbAccordionModule, NbIconModule, NbDialogModule, NbToastrModule, NbListModule, NbBadgeModule, NbProgressBarModule, NbToggleModule, NbTooltipModule, NbTagModule } from '@nebular/theme';
 import { Angular2SmartTableModule } from 'angular2-smart-table';
 import { NgxEchartsModule } from 'ngx-echarts';
 import { DragDropModule } from '@angular/cdk/drag-drop';

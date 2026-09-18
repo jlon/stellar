@@ -1,3 +1,5 @@
+import { I18nService } from '../../../@core/i18n/i18n.service';
+import { TranslatePipe } from '@ngx-translate/core';
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { NbDialogService, NbToastrService, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule, NbAlertModule } from '@nebular/theme';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
@@ -30,6 +32,7 @@ import { HasPermissionDirective } from '../../../@core/directives/has-permission
     templateUrl: './users.component.html',
     styleUrls: ['./users.component.scss'],
     imports: [
+    TranslatePipe,
     NbCardModule,
     NbButtonModule,
     HasPermissionDirective,
@@ -40,7 +43,8 @@ import { HasPermissionDirective } from '../../../@core/directives/has-permission
 ],
 })
 export class UsersComponent implements OnInit, OnDestroy {
-  private userService = inject(UserService);
+  private userService = inject(UserService)
+  private i18n = inject(I18nService);
   private permissionService = inject(PermissionService);
   private roleService = inject(RoleService);
   private organizationService = inject(OrganizationService);
@@ -163,7 +167,7 @@ export class UsersComponent implements OnInit, OnDestroy {
 
     if (!this.roleCatalog.length) {
       this.loadRoleCatalog();
-      this.toastrService.info('正在加载角色数据，请稍后重试', '提示');
+      this.toastrService.info(this.i18n.instant('正在加载角色数据，请稍后重试'), this.i18n.instant('提示'));
       return;
     }
 
@@ -193,7 +197,7 @@ export class UsersComponent implements OnInit, OnDestroy {
 
     if (!this.roleCatalog.length) {
       this.loadRoleCatalog();
-      this.toastrService.info('正在加载角色数据，请稍后重试', '提示');
+      this.toastrService.info(this.i18n.instant('正在加载角色数据，请稍后重试'), this.i18n.instant('提示'));
       return;
     }
 
@@ -227,7 +231,7 @@ export class UsersComponent implements OnInit, OnDestroy {
         if (confirmed) {
           this.userService.deleteUser(user.id).subscribe({
             next: () => {
-              this.toastrService.success('用户已删除', '成功');
+              this.toastrService.success(this.i18n.instant('用户已删除'), this.i18n.instant('成功'));
               this.loadUsers();
             },
             error: (error) => ErrorHandler.handleHttpError(error, this.toastrService),
@@ -244,7 +248,7 @@ export class UsersComponent implements OnInit, OnDestroy {
     const payload = result.payload as CreateUserPayload;
     this.userService.createUser(payload).subscribe({
       next: () => {
-        this.toastrService.success('用户已创建', '成功');
+        this.toastrService.success(this.i18n.instant('用户已创建'), this.i18n.instant('成功'));
         this.loadUsers();
       },
       error: (error) => ErrorHandler.handleHttpError(error, this.toastrService),
@@ -259,7 +263,7 @@ export class UsersComponent implements OnInit, OnDestroy {
     const payload = result.payload as UpdateUserPayload;
     this.userService.updateUser(userId, payload).subscribe({
       next: () => {
-        this.toastrService.success('用户信息已更新', '成功');
+        this.toastrService.success(this.i18n.instant('用户信息已更新'), this.i18n.instant('成功'));
         this.loadUsers();
       },
       error: (error) => ErrorHandler.handleHttpError(error, this.toastrService),
@@ -301,7 +305,7 @@ export class UsersComponent implements OnInit, OnDestroy {
     return {
       mode: 'external',
       hideSubHeader: false,
-      noDataMessage: this.hasListPermission ? '暂无用户数据' : '您暂无查看用户的权限',
+      noDataMessage: this.hasListPermission ? this.i18n.instant('暂无用户数据') : this.i18n.instant('您暂无查看用户的权限'),
       actions: {
         add: false,
         edit: false,
@@ -319,23 +323,23 @@ export class UsersComponent implements OnInit, OnDestroy {
           width: '6%',
         },
         username: {
-          title: '用户名',
+          title: this.i18n.instant('用户名'),
           type: 'string',
           width: '12%',
         },
         email: {
-          title: '邮箱',
+          title: this.i18n.instant('邮箱'),
           type: 'string',
           width: '18%',
         },
         organization_name: {
-          title: '所属组织',
+          title: this.i18n.instant('所属组织'),
           type: 'string',
           width: '13%',
           valuePrepareFunction: (name: string) => name || '-',
         },
         is_org_admin: {
-          title: '管理员',
+          title: this.i18n.instant('管理员'),
           type: 'html',
           sanitizer: { bypassHtml: true },
           width: '8%',
@@ -346,7 +350,7 @@ export class UsersComponent implements OnInit, OnDestroy {
           },
         },
         roles: {
-          title: '角色',
+          title: this.i18n.instant('角色'),
           type: 'custom',
           width: '18%',
           renderComponent: UsersRoleBadgeCellComponent,
@@ -354,13 +358,13 @@ export class UsersComponent implements OnInit, OnDestroy {
           isSortable: false,
         },
         created_at: {
-          title: '创建时间',
+          title: this.i18n.instant('创建时间'),
           type: 'string',
           width: '12%',
           valuePrepareFunction: (date: string) => new Date(date).toLocaleString('zh-CN'),
         },
         actions: {
-          title: '操作',
+          title: this.i18n.instant('操作'),
           type: 'custom',
           width: '10%',
           renderComponent: UsersActionsCellComponent,

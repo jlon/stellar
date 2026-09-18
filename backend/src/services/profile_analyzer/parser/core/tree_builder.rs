@@ -432,7 +432,7 @@ impl TreeBuilder {
                         && let Ok(duration) = ValueParser::parse_duration(time_str)
                     {
                         let time_ns = duration.as_nanos() as u64;
-                        
+
                         // StarRocks original logic: SUM all operator times for same plan_node_id
                         // This follows StarRocks' sumUpMetric() logic
                         // Note: For StarRocks, fragments may contain operators from different BE instances,
@@ -469,10 +469,16 @@ impl TreeBuilder {
         // Detect if this is Doris format using multiple reliable indicators:
         // 1. Check version field: Doris version starts with "doris-", StarRocks doesn't
         // 2. Check operator metrics format: Doris uses ExecTime with "avg/max/min", StarRocks uses OperatorTotalTime
-        let is_doris_by_version = summary.starrocks_version.to_lowercase().starts_with("doris-");
-        let is_starrocks_by_version = !summary.starrocks_version.is_empty() 
-            && !summary.starrocks_version.to_lowercase().starts_with("doris-");
-        
+        let is_doris_by_version = summary
+            .starrocks_version
+            .to_lowercase()
+            .starts_with("doris-");
+        let is_starrocks_by_version = !summary.starrocks_version.is_empty()
+            && !summary
+                .starrocks_version
+                .to_lowercase()
+                .starts_with("doris-");
+
         // Check metrics format as fallback
         let has_doris_exec_time = fragments
             .iter()
@@ -490,7 +496,7 @@ impl TreeBuilder {
             .flat_map(|f| &f.pipelines)
             .flat_map(|p| &p.operators)
             .any(|op| op.common_metrics.contains_key("OperatorTotalTime"));
-        
+
         // Determine format: prioritize version check, fallback to metrics check
         let is_doris_format = if is_doris_by_version {
             true
@@ -512,23 +518,25 @@ impl TreeBuilder {
                     .flat_map(|f| &f.pipelines)
                     .flat_map(|p| &p.operators)
                     .filter_map(|op| {
-                        op.common_metrics
-                            .get("ExecTime")
-                            .and_then(|time_str| {
-                                // Extract max value (prefer max, fallback to avg) for aggregation
-                                let extracted = if time_str.contains("max") {
-                                    time_str.split("max").nth(1)
-                                        .and_then(|s| s.split(',').next())
-                                        .map(|s| s.trim())
-                                } else if time_str.contains("avg") {
-                                    time_str.split("avg").nth(1)
-                                        .and_then(|s| s.split(',').next())
-                                        .map(|s| s.trim())
-                                } else {
-                                    Some(time_str.as_str())
-                                };
-                                extracted
-                            })
+                        op.common_metrics.get("ExecTime").and_then(|time_str| {
+                            // Extract max value (prefer max, fallback to avg) for aggregation
+                            let extracted = if time_str.contains("max") {
+                                time_str
+                                    .split("max")
+                                    .nth(1)
+                                    .and_then(|s| s.split(',').next())
+                                    .map(|s| s.trim())
+                            } else if time_str.contains("avg") {
+                                time_str
+                                    .split("avg")
+                                    .nth(1)
+                                    .and_then(|s| s.split(',').next())
+                                    .map(|s| s.trim())
+                            } else {
+                                Some(time_str.as_str())
+                            };
+                            extracted
+                        })
                     })
                     .filter_map(|s| ValueParser::parse_time_to_ms(s).ok())
                     .map(|ms| (ms * 1_000_000.0) as u64)
@@ -547,11 +555,15 @@ impl TreeBuilder {
                                 .and_then(|time_str| {
                                     // Extract max value (prefer max, fallback to avg)
                                     let extracted = if time_str.contains("max") {
-                                        time_str.split("max").nth(1)
+                                        time_str
+                                            .split("max")
+                                            .nth(1)
                                             .and_then(|s| s.split(',').next())
                                             .map(|s| s.trim())
                                     } else if time_str.contains("avg") {
-                                        time_str.split("avg").nth(1)
+                                        time_str
+                                            .split("avg")
+                                            .nth(1)
                                             .and_then(|s| s.split(',').next())
                                             .map(|s| s.trim())
                                     } else {

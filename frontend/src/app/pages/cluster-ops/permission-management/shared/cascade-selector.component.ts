@@ -1,3 +1,4 @@
+import { I18nService } from '../../../../@core/i18n/i18n.service';
 import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, inject } from '@angular/core';
 import { Subject, of } from 'rxjs';
 import { takeUntil, debounceTime, distinctUntilChanged } from 'rxjs/operators';
@@ -143,7 +144,8 @@ import { NbToastrService, NbSelectModule, NbOptionModule, NbSpinnerModule, NbBut
 ],
 })
 export class CascadeSelectorComponent implements OnInit, OnDestroy {
-  private cacheService = inject(CascadeSelectorCacheService);
+  private cacheService = inject(CascadeSelectorCacheService)
+  private i18n = inject(I18nService);
   private toastr = inject(NbToastrService);
 
   @Input() clusterId: number;
@@ -220,7 +222,7 @@ export class CascadeSelectorComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         console.error('Failed to load catalogs:', err);
-        this.toastr.danger('加载 Catalog 列表失败', '错误');
+        this.toastr.danger(this.i18n.instant('加载 Catalog 列表失败'), this.i18n.instant('错误'));
         this.catalogLoading = false;
       },
     });
@@ -263,7 +265,7 @@ export class CascadeSelectorComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         console.error('Failed to load databases:', err);
-        this.toastr.danger('加载 Database 列表失败', '错误');
+        this.toastr.danger(this.i18n.instant('加载 Database 列表失败'), this.i18n.instant('错误'));
         this.databaseLoading = false;
       },
     });
@@ -307,7 +309,7 @@ export class CascadeSelectorComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         console.error('Failed to load tables:', err);
-        this.toastr.danger('加载 Table 列表失败', '错误');
+        this.toastr.danger(this.i18n.instant('加载 Table 列表失败'), this.i18n.instant('错误'));
         this.tableLoading = false;
       },
     });

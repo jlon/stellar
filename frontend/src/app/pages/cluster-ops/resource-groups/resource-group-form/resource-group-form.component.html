@@ -1,7 +1,7 @@
 <nb-card class="rg-form-dialog">
   <nb-card-header class="dialog-header">
-    <span>{{ isEditMode ? '编辑资源组' : '创建资源组' }}</span>
-    <button nbButton ghost size="small" (click)="cancel()" title="关闭">
+    <span>{{  isEditMode ? ('编辑资源组' | translate) : ('创建资源组' | translate)  }}</span>
+    <button nbButton ghost size="small" (click)="cancel()" [title]="'关闭' | translate">
       <nb-icon icon="close-outline"></nb-icon>
     </button>
   </nb-card-header>
@@ -17,28 +17,28 @@
           <form [formGroup]="form" (ngSubmit)="onSubmit()">
             <nb-tabset #tabset>
               <!-- 基础配置 -->
-              <nb-tab tabTitle="基础配置">
+              <nb-tab [tabTitle]="'基础配置' | translate">
                 <div class="row">
                   <div class="col-md-12">
                     <div class="form-group">
-                      <label for="name" class="label">资源组名称 *</label>
-                      <input size="small"
+                      <label for="name" class="label">{{  '资源组名称 *' | translate }}</label>
+                      <input fieldSize="small"
                         nbInput
                         fullWidth
                         type="text"
                         id="name"
                         formControlName="name"
-                        placeholder="请输入资源组名称"
+                        [placeholder]="'请输入资源组名称' | translate"
                         [readonly]="isEditMode"
                         [status]="form.get('name')?.invalid && form.get('name')?.touched ? 'danger' : 'basic'"
                         />
                       @if (form.get('name')?.invalid && form.get('name')?.touched) {
                         <small class="form-text text-danger">
                           @if (form.get('name')?.errors?.['required']) {
-                            <span>资源组名称不能为空</span>
+                            <span>{{  '资源组名称不能为空' | translate }}</span>
                           }
                           @if (form.get('name')?.errors?.['pattern']) {
-                            <span>资源组名称只能包含字母、数字和下划线</span>
+                            <span>{{  '资源组名称只能包含字母、数字和下划线' | translate }}</span>
                           }
                         </small>
                       }
@@ -47,34 +47,34 @@
                 </div>
               </nb-tab>
               <!-- CPU 配置 -->
-              <nb-tab tabTitle="CPU 配置">
+              <nb-tab [tabTitle]="'CPU 配置' | translate">
                 <div class="tab-required-hint">
                   <nb-icon icon="alert-circle-outline"></nb-icon>
-                  <span>请至少配置一个资源限制</span>
+                  <span>{{  '请至少配置一个资源限制' | translate }}</span>
                 </div>
                 <div class="row">
                   <div class="col-md-6">
                     <div class="form-group">
-                      <label for="cpu_weight" class="label">CPU 权重 (1-100)</label>
-                      <input size="small"
+                      <label for="cpu_weight" class="label">{{  'CPU 权重 (1-100)' | translate }}</label>
+                      <input fieldSize="small"
                         nbInput
                         fullWidth
                         type="number"
                         id="cpu_weight"
                         formControlName="cpu_weight"
-                        placeholder="请输入 CPU 权重"
+                        [placeholder]="'请输入 CPU 权重' | translate"
                         min="1"
                         max="100"
                         [status]="form.get('cpu_weight')?.invalid && form.get('cpu_weight')?.touched ? 'danger' : 'basic'"
                         />
-                      <small class="form-text text-hint">相对权重，数值越大获得的 CPU 时间越多</small>
+                      <small class="form-text text-hint">{{  '相对权重，数值越大获得的 CPU 时间越多' | translate }}</small>
                       @if (form.get('cpu_weight')?.invalid && form.get('cpu_weight')?.touched) {
                         <small class="form-text text-danger">
                           @if (form.get('cpu_weight')?.errors?.['min']) {
-                            <span>CPU 权重最小值为 1</span>
+                            <span>{{  'CPU 权重最小值为 1' | translate }}</span>
                           }
                           @if (form.get('cpu_weight')?.errors?.['max']) {
-                            <span>CPU 权重最大值为 100</span>
+                            <span>{{  'CPU 权重最大值为 100' | translate }}</span>
                           }
                         </small>
                       }
@@ -82,22 +82,22 @@
                   </div>
                   <div class="col-md-6">
                     <div class="form-group">
-                      <label for="exclusive_cpu_cores" class="label">独占 CPU 核数</label>
-                      <input size="small"
+                      <label for="exclusive_cpu_cores" class="label">{{  '独占 CPU 核数' | translate }}</label>
+                      <input fieldSize="small"
                         nbInput
                         fullWidth
                         type="number"
                         id="exclusive_cpu_cores"
                         formControlName="exclusive_cpu_cores"
-                        placeholder="请输入独占 CPU 核数"
+                        [placeholder]="'请输入独占 CPU 核数' | translate"
                         min="0"
                         [status]="form.get('exclusive_cpu_cores')?.invalid && form.get('exclusive_cpu_cores')?.touched ? 'danger' : 'basic'"
                         />
-                      <small class="form-text text-hint">为该资源组独占的 CPU 核心数</small>
+                      <small class="form-text text-hint">{{  '为该资源组独占的 CPU 核心数' | translate }}</small>
                       @if (form.get('exclusive_cpu_cores')?.invalid && form.get('exclusive_cpu_cores')?.touched) {
                         <small class="form-text text-danger">
                           @if (form.get('exclusive_cpu_cores')?.errors?.['min']) {
-                            <span>独占 CPU 核数不能小于 0</span>
+                            <span>{{  '独占 CPU 核数不能小于 0' | translate }}</span>
                           }
                         </small>
                       }
@@ -106,61 +106,61 @@
                 </div>
               </nb-tab>
               <!-- 内存配置 -->
-              <nb-tab tabTitle="内存配置">
+              <nb-tab [tabTitle]="'内存配置' | translate">
                 <div class="row">
                   <div class="col-md-6">
                     <div class="form-group">
-                      <label for="mem_limit" class="label">内存限制</label>
-                      <input size="small"
+                      <label for="mem_limit" class="label">{{  '内存限制' | translate }}</label>
+                      <input fieldSize="small"
                         nbInput
                         fullWidth
                         type="text"
                         id="mem_limit"
                         formControlName="mem_limit"
-                        placeholder="如: 50% 或 10GB"
+                        [placeholder]="'如: 50% 或 10GB' | translate"
                         status="basic"
                         />
-                      <small class="form-text text-hint">支持百分比或绝对值，如: 50% 或 10GB</small>
+                      <small class="form-text text-hint">{{  '支持百分比或绝对值，如: 50% 或 10GB' | translate }}</small>
                     </div>
                   </div>
                   <div class="col-md-6">
                     <div class="form-group">
-                      <label for="spill_mem_limit_threshold" class="label">落盘内存阈值</label>
-                      <input size="small"
+                      <label for="spill_mem_limit_threshold" class="label">{{  '落盘内存阈值' | translate }}</label>
+                      <input fieldSize="small"
                         nbInput
                         fullWidth
                         type="text"
                         id="spill_mem_limit_threshold"
                         formControlName="spill_mem_limit_threshold"
-                        placeholder="如: 80%"
+                        [placeholder]="'如: 80%' | translate"
                         status="basic"
                         />
-                      <small class="form-text text-hint">内存使用超过此阈值时开始落盘</small>
+                      <small class="form-text text-hint">{{  '内存使用超过此阈值时开始落盘' | translate }}</small>
                     </div>
                   </div>
                 </div>
               </nb-tab>
               <!-- 并发控制 -->
-              <nb-tab tabTitle="并发控制">
+              <nb-tab [tabTitle]="'并发控制' | translate">
                 <div class="row">
                   <div class="col-md-6">
                     <div class="form-group">
-                      <label for="concurrency_limit" class="label">并发限制</label>
-                      <input size="small"
+                      <label for="concurrency_limit" class="label">{{  '并发限制' | translate }}</label>
+                      <input fieldSize="small"
                         nbInput
                         fullWidth
                         type="number"
                         id="concurrency_limit"
                         formControlName="concurrency_limit"
-                        placeholder="请输入最大并发查询数"
+                        [placeholder]="'请输入最大并发查询数' | translate"
                         min="1"
                         [status]="form.get('concurrency_limit')?.invalid && form.get('concurrency_limit')?.touched ? 'danger' : 'basic'"
                         />
-                      <small class="form-text text-hint">同时运行的最大查询数量</small>
+                      <small class="form-text text-hint">{{  '同时运行的最大查询数量' | translate }}</small>
                       @if (form.get('concurrency_limit')?.invalid && form.get('concurrency_limit')?.touched) {
                         <small class="form-text text-danger">
                           @if (form.get('concurrency_limit')?.errors?.['min']) {
-                            <span>并发限制最小值为 1</span>
+                            <span>{{  '并发限制最小值为 1' | translate }}</span>
                           }
                         </small>
                       }
@@ -169,68 +169,68 @@
                 </div>
               </nb-tab>
               <!-- 大查询限制 -->
-              <nb-tab tabTitle="大查询限制">
+              <nb-tab [tabTitle]="'大查询限制' | translate">
                 <div class="row">
                   <div class="col-md-4">
                     <div class="form-group">
-                      <label for="big_query_cpu_second_limit" class="label">CPU 时间上限 (秒)</label>
-                      <input size="small"
+                      <label for="big_query_cpu_second_limit" class="label">{{  'CPU 时间上限 (秒)' | translate }}</label>
+                      <input fieldSize="small"
                         nbInput
                         fullWidth
                         type="number"
                         id="big_query_cpu_second_limit"
                         formControlName="big_query_cpu_second_limit"
-                        placeholder="请输入 CPU 时间上限"
+                        [placeholder]="'请输入 CPU 时间上限' | translate"
                         min="0"
                         status="basic"
                         />
-                      <small class="form-text text-hint">单个查询的最大 CPU 时间</small>
+                      <small class="form-text text-hint">{{  '单个查询的最大 CPU 时间' | translate }}</small>
                     </div>
                   </div>
                   <div class="col-md-4">
                     <div class="form-group">
-                      <label for="big_query_scan_rows_limit" class="label">扫描行数上限</label>
-                      <input size="small"
+                      <label for="big_query_scan_rows_limit" class="label">{{  '扫描行数上限' | translate }}</label>
+                      <input fieldSize="small"
                         nbInput
                         fullWidth
                         type="number"
                         id="big_query_scan_rows_limit"
                         formControlName="big_query_scan_rows_limit"
-                        placeholder="请输入扫描行数上限"
+                        [placeholder]="'请输入扫描行数上限' | translate"
                         min="0"
                         status="basic"
                         />
-                      <small class="form-text text-hint">单个查询的最大扫描行数</small>
+                      <small class="form-text text-hint">{{  '单个查询的最大扫描行数' | translate }}</small>
                     </div>
                   </div>
                   <div class="col-md-4">
                     <div class="form-group">
-                      <label for="big_query_mem_limit" class="label">内存上限</label>
-                      <input size="small"
+                      <label for="big_query_mem_limit" class="label">{{  '内存上限' | translate }}</label>
+                      <input fieldSize="small"
                         nbInput
                         fullWidth
                         type="text"
                         id="big_query_mem_limit"
                         formControlName="big_query_mem_limit"
-                        placeholder="如: 10GB"
+                        [placeholder]="'如: 10GB' | translate"
                         status="basic"
                         />
-                      <small class="form-text text-hint">单个查询的最大内存使用</small>
+                      <small class="form-text text-hint">{{  '单个查询的最大内存使用' | translate }}</small>
                     </div>
                   </div>
                 </div>
               </nb-tab>
               <!-- 分类器配置 -->
-              <nb-tab tabTitle="分类器配置">
+              <nb-tab [tabTitle]="'分类器配置' | translate">
                 <div class="tab-required-hint">
                   <nb-icon icon="alert-circle-outline"></nb-icon>
-                  <span>至少添加一个分类器（必填）</span>
+                  <span>{{  '至少添加一个分类器（必填）' | translate }}</span>
                 </div>
                 <div class="classifier-intro">
                   <nb-icon icon="info-outline" class="info-icon"></nb-icon>
                   <div class="intro-content">
-                    <p class="intro-title">关于分类器</p>
-                    <p class="intro-text">分类器用于自动将查询分配到此资源组。您可以根据用户名、角色名、查询类型、来源 IP 或数据库名等条件进行配置。</p>
+                    <p class="intro-title">{{  '关于分类器' | translate }}</p>
+                    <p class="intro-text">{{  '分类器用于自动将查询分配到此资源组。您可以根据用户名、角色名、查询类型、来源 IP 或数据库名等条件进行配置。' | translate }}</p>
                   </div>
                 </div>
                 <div class="mb-3">
@@ -242,7 +242,7 @@
                     (click)="addClassifier()"
                     >
                     <nb-icon icon="plus-outline"></nb-icon>
-                    添加分类器
+                    {{ '添加分类器' | translate }}
                   </button>
                 </div>
                 <div formArrayName="classifiers">
@@ -251,7 +251,7 @@
                       class="classifier-card"
                       >
                       <nb-card-header class="d-flex justify-content-between align-items-center">
-                        <span>分类器 {{ i + 1 }}</span>
+                        <span>{{ '分类器' | translate }} {{ i + 1 }}</span>
                         <button
                           type="button"
                           nbButton
@@ -267,42 +267,42 @@
                         <div class="row">
                           <div class="col-md-4">
                             <div class="form-group">
-                              <label [for]="'user_' + i" class="label">用户名</label>
-                              <input size="small"
+                              <label [for]="'user_' + i" class="label">{{  '用户名' | translate }}</label>
+                              <input fieldSize="small"
                                 nbInput
                                 fullWidth
                                 type="text"
                                 [id]="'user_' + i"
                                 formControlName="user"
-                                placeholder="请输入用户名"
+                                [placeholder]="'请输入用户名' | translate"
                                 status="basic"
                                 />
                             </div>
                           </div>
                           <div class="col-md-4">
                             <div class="form-group">
-                              <label [for]="'role_' + i" class="label">角色名</label>
-                              <input size="small"
+                              <label [for]="'role_' + i" class="label">{{  '角色名' | translate }}</label>
+                              <input fieldSize="small"
                                 nbInput
                                 fullWidth
                                 type="text"
                                 [id]="'role_' + i"
                                 formControlName="role"
-                                placeholder="请输入角色名"
+                                [placeholder]="'请输入角色名' | translate"
                                 status="basic"
                                 />
                             </div>
                           </div>
                           <div class="col-md-4">
                             <div class="form-group">
-                              <label [for]="'query_type_' + i" class="label">查询类型</label>
+                              <label [for]="'query_type_' + i" class="label">{{  '查询类型' | translate }}</label>
                               <nb-form-field>
                                 <nb-select size="small"
                                   fullWidth
                                   multiple
                                   [id]="'query_type_' + i"
                                   formControlName="query_type"
-                                  placeholder="请选择查询类型"
+                                  [placeholder]="'请选择查询类型' | translate"
                                   >
                                   @for (option of queryTypeOptions; track option) {
                                     <nb-option
@@ -319,43 +319,43 @@
                         <div class="row">
                           <div class="col-md-4">
                             <div class="form-group">
-                              <label [for]="'source_ip_' + i" class="label">来源 IP</label>
-                              <input size="small"
+                              <label [for]="'source_ip_' + i" class="label">{{  '来源 IP' | translate }}</label>
+                              <input fieldSize="small"
                                 nbInput
                                 fullWidth
                                 type="text"
                                 [id]="'source_ip_' + i"
                                 formControlName="source_ip"
-                                placeholder="如: 192.168.1.0/24"
+                                [placeholder]="'如: 192.168.1.0/24' | translate"
                                 status="basic"
                                 />
-                              <small class="form-text text-hint">支持 CIDR 格式</small>
+                              <small class="form-text text-hint">{{  '支持 CIDR 格式' | translate }}</small>
                             </div>
                           </div>
                           <div class="col-md-4">
                             <div class="form-group">
-                              <label [for]="'db_' + i" class="label">数据库名</label>
-                              <input size="small"
+                              <label [for]="'db_' + i" class="label">{{  '数据库名' | translate }}</label>
+                              <input fieldSize="small"
                                 nbInput
                                 fullWidth
                                 type="text"
                                 [id]="'db_' + i"
                                 formControlName="db"
-                                placeholder="请输入数据库名"
+                                [placeholder]="'请输入数据库名' | translate"
                                 status="basic"
                                 />
                             </div>
                           </div>
                           <div class="col-md-4">
                             <div class="form-group">
-                              <label [for]="'weight_' + i" class="label">权重</label>
-                              <input size="small"
+                              <label [for]="'weight_' + i" class="label">{{  '权重' | translate }}</label>
+                              <input fieldSize="small"
                                 nbInput
                                 fullWidth
                                 type="number"
                                 [id]="'weight_' + i"
                                 formControlName="weight"
-                                placeholder="请输入权重"
+                                [placeholder]="'请输入权重' | translate"
                                 min="1"
                                 status="basic"
                                 />
@@ -369,8 +369,8 @@
                 @if (classifiers.length === 0) {
                   <div class="empty-state">
                     <nb-icon icon="layers-outline" class="empty-icon"></nb-icon>
-                    <p class="empty-text">暂无分类器</p>
-                    <p class="empty-hint">点击上方"添加分类器"按钮开始配置</p>
+                    <p class="empty-text">{{  '暂无分类器' | translate }}</p>
+                    <p class="empty-hint">{{  '点击上方"添加分类器"按钮开始配置' | translate }}</p>
                   </div>
                 }
               </nb-tab>
@@ -381,10 +381,10 @@
 
       <nb-card-footer class="d-flex justify-content-end">
         <button type="button" class="icon-btn" (click)="cancel()" [disabled]="loading"
-           nbTooltip="取消" nbTooltipPlacement="top" aria-label="取消"><nb-icon icon="close-outline"></nb-icon></button>
+           [nbTooltip]="'取消' | translate" nbTooltipPlacement="top" [aria-label]="'取消' | translate"><nb-icon icon="close-outline"></nb-icon></button>
         <button type="submit" class="icon-btn is-primary" (click)="onSubmit()" 
           (click)="onSubmit()"
           [disabled]="loading || form.invalid"
-           nbTooltip="保存" nbTooltipPlacement="top" aria-label="保存"><nb-icon icon="checkmark-outline"></nb-icon></button>
+           [nbTooltip]="'保存' | translate" nbTooltipPlacement="top" [aria-label]="'保存' | translate"><nb-icon icon="checkmark-outline"></nb-icon></button>
       </nb-card-footer>
 </nb-card>

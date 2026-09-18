@@ -1,26 +1,55 @@
 @import '../../../../@theme/styles/themes';
 
 @include nb-install-component() {
-  /* 卡片头紧凑化：标题小一号，上下留白收半 */
-  nb-card-header {
-    padding: 0.75rem 1rem;
-
-    h6 {
-      font-size: 0.9rem;
-    }
-  }
-
   .permission-request-container {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
     width: 100%;
   }
 
-  // 表单分区：标题 + 弹性栅格字段
-  .form-step {
-    padding-bottom: 1rem;
-    margin-bottom: 1rem;
+  .request-card,
+  .request-history {
+    margin: 0 0 1rem;
+  }
+
+  .history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+
+    h6 {
+      margin: 0;
+      font-size: 0.9375rem;
+      font-weight: 600;
+    }
+  }
+
+  .request-card nb-card-body {
+    padding: 0;
+  }
+
+  .form-load-error {
+    margin: 0;
+    padding: 0.75rem 1.25rem;
+    border-bottom: 1px solid nb-theme(divider-color);
+    color: nb-theme(color-danger-default);
+    font-size: 0.8125rem;
+  }
+
+  .request-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(15rem, 18rem);
+    align-items: start;
+    gap: 1.5rem;
+    padding: 1.25rem;
+  }
+
+  .request-fields {
+    min-width: 0;
+  }
+
+  .workflow-section {
+    padding-bottom: 1.25rem;
+    margin-bottom: 1.25rem;
     border-bottom: 1px solid nb-theme(divider-color);
 
     &:last-child {
@@ -30,84 +59,269 @@
     }
   }
 
-  .step-title {
-    margin-bottom: 0.75rem;
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: nb-theme(text-hint-color);
+  .workflow-section--final {
+    padding-bottom: 0;
   }
 
-  .step-fields {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem 1rem;
-  }
+  .section-heading {
+    margin-bottom: 1rem;
 
-  .form-field {
-    flex: 1 1 11rem;
-    min-width: 9rem;
-    max-width: 16rem;
-  }
-
-  .form-field-reason {
-    flex: 1 1 20rem;
-  }
-
-  .form-field-actions {
-    display: flex;
-    align-items: flex-end;
-    gap: 0.5rem;
-    margin-left: auto;
-  }
-
-  .form-step-submit {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    gap: 0.75rem 1rem;
-  }
-
-  // 权限多选 chips：原生按钮形态，选中用主题透明主色
-  .permission-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-  }
-
-  .permission-chip {
-    padding: 0.3125rem 0.875rem;
-    border: 1px solid nb-theme(border-basic-color-3);
-    border-radius: nb-theme(border-radius);
-    background: nb-theme(background-basic-color-2);
-    color: nb-theme(text-basic-color);
-    font-size: 0.8125rem;
-    cursor: pointer;
-    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-
-    &:hover {
-      background: nb-theme(background-basic-color-3);
-    }
-
-    &.selected {
-      border-color: nb-theme(color-primary-default);
-      background: nb-theme(color-primary-transparent-100);
-      color: nb-theme(color-primary-default);
+    h6 {
+      margin: 0;
+      font-size: 0.875rem;
       font-weight: 600;
     }
   }
 
+  .field-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+
+  .form-field {
+    min-width: 0;
+  }
+
+  .form-field--wide {
+    max-width: none;
+  }
+
+  .label {
+    display: block;
+    margin-bottom: 0.375rem;
+    color: nb-theme(text-hint-color);
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  nb-button-group {
+    display: inline-flex;
+    max-width: 100%;
+
+    button {
+      white-space: nowrap;
+    }
+  }
+
+  .scope-path {
+    display: flex;
+    align-items: flex-end;
+    max-width: 44rem;
+    gap: 0.625rem;
+  }
+
+  .scope-step {
+    flex: 1 1 11rem;
+    min-width: 0;
+  }
+
+  .scope-separator {
+    flex: 0 0 auto;
+    margin-bottom: 0.4375rem;
+    color: nb-theme(text-hint-color);
+    font-size: 1rem;
+  }
+
+  .permission-selection {
+    max-width: 44rem;
+    margin-top: 1rem;
+  }
+
+  .permission-selection-header {
+    margin-bottom: 0.5rem;
+
+    .label {
+      margin: 0;
+    }
+  }
+
+  .permission-options {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.5rem 1rem;
+    padding: 0.75rem;
+    border: 1px solid nb-theme(border-basic-color-3);
+    border-radius: nb-theme(border-radius);
+    background: nb-theme(background-basic-color-2);
+
+    nb-checkbox {
+      min-width: 0;
+      margin: 0;
+    }
+  }
+
+  .permission-name {
+    display: block;
+    color: nb-theme(text-basic-color);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.25;
+  }
+
+  .permission-description {
+    display: block;
+    margin-top: 0.125rem;
+    color: nb-theme(text-hint-color);
+    font-size: 0.6875rem;
+    line-height: 1.25;
+  }
+
+  .reason-field {
+    max-width: 44rem;
+  }
+
+  .field-caption {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 0.375rem;
+    color: nb-theme(text-hint-color);
+    font-size: 0.6875rem;
+  }
+
+  .field-error {
+    display: block;
+    margin-top: 0.375rem;
+    color: nb-theme(color-danger-default);
+    font-size: 0.75rem;
+  }
+
+  .field-hint {
+    display: block;
+    margin-top: 0.375rem;
+    color: nb-theme(text-hint-color);
+    font-size: 0.6875rem;
+    line-height: 1.3;
+  }
+
+  .request-review {
+    position: sticky;
+    top: 1rem;
+    align-self: start;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding-left: 1.25rem;
+    border-left: 1px solid nb-theme(divider-color);
+  }
+
+  .request-review-content {
+    dl {
+      display: grid;
+      gap: 0.625rem;
+      margin: 0;
+    }
+
+    dl div {
+      display: grid;
+      gap: 0.125rem;
+    }
+
+    dt {
+      color: nb-theme(text-hint-color);
+      font-size: 0.6875rem;
+      font-weight: 500;
+    }
+
+    dd {
+      overflow-wrap: anywhere;
+      margin: 0;
+      color: nb-theme(text-basic-color);
+      font-size: 0.8125rem;
+      line-height: 1.35;
+    }
+  }
+
+  .request-actions,
+  .history-tools {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .request-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+    padding-top: 0.75rem;
+    border-top: 1px solid nb-theme(divider-color);
+  }
+
+  .history-header {
+    .history-tools {
+      margin-left: auto;
+    }
+
+    nb-select {
+      width: 8.5rem;
+    }
+  }
+
+  .request-history {
+    nb-card-header {
+      padding: 0.75rem 1.25rem;
+    }
+  }
+
+  @media (max-width: 60rem) {
+    .request-workspace {
+      grid-template-columns: 1fr;
+    }
+
+    .request-review {
+      position: static;
+      border-top: 1px solid nb-theme(divider-color);
+      border-left: 0;
+    }
+
+  }
+
   @media (max-width: 48rem) {
-    .form-field {
-      flex: 1 1 100%;
+    .permission-request-container {
+      width: 100%;
+    }
+
+    .request-card nb-card-header,
+    .request-fields,
+    .request-history nb-card-header {
+      padding-right: 1rem;
+      padding-left: 1rem;
+    }
+
+    .form-grid,
+    .permission-options {
+      grid-template-columns: 1fr;
+    }
+
+    .form-field--wide,
+    .reason-field {
       max-width: none;
     }
 
-    .form-field-actions {
-      width: 100%;
-      margin-left: 0;
+    .scope-path {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.75rem;
+    }
 
-      button {
-        flex: 1;
+    .scope-separator {
+      display: none;
+    }
+
+    .request-review {
+      padding: 1rem;
+    }
+
+    .history-header {
+      align-items: center;
+
+      nb-select {
+        width: 8rem;
       }
     }
   }

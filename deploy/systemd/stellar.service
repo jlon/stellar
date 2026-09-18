@@ -1,0 +1,30 @@
+# Stellar systemd unit - for npm/tarball deployments
+#
+# Usage (as root):
+#   1. useradd --system --home /var/lib/stellar --shell /usr/sbin/nologin stellar
+#   2. mkdir -p /var/lib/stellar && chown -R stellar:stellar /var/lib/stellar
+#   3. cp stellar.service /etc/systemd/system/
+#      systemctl daemon-reload && systemctl enable --now stellar
+#
+# ExecStart targets the npm global bin (default prefix /usr/local); adjust if
+# your npm prefix differs (`npm config get prefix`). The data-directory mode
+# persists stellar.db, .jwt-secret and logs/ under /var/lib/stellar.
+# Use --config only when APP_JWT_SECRET or auth.jwt_secret is explicitly set.
+[Unit]
+Description=Stellar - OLAP Cluster Management Platform
+After=network.target
+
+[Service]
+Type=simple
+User=stellar
+Group=stellar
+WorkingDirectory=/var/lib/stellar
+ExecStart=/usr/local/bin/stellar server /var/lib/stellar
+Restart=on-failure
+RestartSec=3
+LimitNOFILE=65536
+# Optional: environment overrides (priority: CLI > APP_* env > config.toml > defaults)
+# Environment=STELLAR_ROOT_PASSWORD=change-me
+
+[Install]
+WantedBy=multi-user.target

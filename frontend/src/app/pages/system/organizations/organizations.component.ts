@@ -1,3 +1,5 @@
+import { I18nService } from '../../../@core/i18n/i18n.service';
+import { TranslatePipe } from '@ngx-translate/core';
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { NbDialogService, NbToastrService, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule, NbAlertModule } from '@nebular/theme';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
@@ -28,6 +30,7 @@ import { HasPermissionDirective } from '../../../@core/directives/has-permission
     templateUrl: './organizations.component.html',
     styleUrls: ['./organizations.component.scss'],
     imports: [
+    TranslatePipe,
     NbCardModule,
     NbButtonModule,
     HasPermissionDirective,
@@ -38,7 +41,8 @@ import { HasPermissionDirective } from '../../../@core/directives/has-permission
 ],
 })
 export class OrganizationsComponent implements OnInit, OnDestroy {
-  private organizationService = inject(OrganizationService);
+  private organizationService = inject(OrganizationService)
+  private i18n = inject(I18nService);
   private permissionService = inject(PermissionService);
   private dialogService = inject(NbDialogService);
   private confirmDialog = inject(ConfirmDialogService);
@@ -178,7 +182,7 @@ export class OrganizationsComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.organizationService.createOrganization(payload).subscribe({
       next: () => {
-        this.toastrService.success('组织创建成功', '成功');
+        this.toastrService.success(this.i18n.instant('组织创建成功'), this.i18n.instant('成功'));
         this.loadOrganizations();
       },
       error: (error) => {
@@ -198,7 +202,7 @@ export class OrganizationsComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.organizationService.updateOrganization(id, payload).subscribe({
       next: () => {
-        this.toastrService.success('组织更新成功', '成功');
+        this.toastrService.success(this.i18n.instant('组织更新成功'), this.i18n.instant('成功'));
         this.loadOrganizations();
       },
       error: (error) => {
@@ -212,7 +216,7 @@ export class OrganizationsComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.organizationService.deleteOrganization(id).subscribe({
       next: () => {
-        this.toastrService.success('组织删除成功', '成功');
+        this.toastrService.success(this.i18n.instant('组织删除成功'), this.i18n.instant('成功'));
         this.loadOrganizations();
       },
       error: (error) => {
@@ -251,22 +255,22 @@ export class OrganizationsComponent implements OnInit, OnDestroy {
       },
       columns: {
         code: {
-          title: '组织代码',
+          title: this.i18n.instant('组织代码'),
           type: 'string',
           width: '15%',
         },
         name: {
-          title: '组织名称',
+          title: this.i18n.instant('组织名称'),
           type: 'string',
           width: '20%',
         },
         description: {
-          title: '描述',
+          title: this.i18n.instant('描述'),
           type: 'string',
           width: '30%',
         },
         is_system: {
-          title: '系统组织',
+          title: this.i18n.instant('系统组织'),
           type: 'html',
           sanitizer: { bypassHtml: true },
           width: '10%',
@@ -277,7 +281,7 @@ export class OrganizationsComponent implements OnInit, OnDestroy {
           },
         },
         created_at: {
-          title: '创建时间',
+          title: this.i18n.instant('创建时间'),
           type: 'string',
           width: '15%',
           valuePrepareFunction: (cell: string) => {
@@ -285,7 +289,7 @@ export class OrganizationsComponent implements OnInit, OnDestroy {
           },
         },
         actions: {
-          title: '操作',
+          title: this.i18n.instant('操作'),
           type: 'custom',
           width: '10%',
           isFilterable: false,

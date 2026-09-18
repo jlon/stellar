@@ -2,26 +2,7 @@ import { NgModule } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 
-import {
-  NbCardModule,
-  NbButtonModule,
-  NbInputModule,
-  NbSelectModule,
-  NbCheckboxModule,
-  NbSpinnerModule,
-  NbAlertModule,
-  NbTabsetModule,
-  NbAccordionModule,
-  NbIconModule,
-  NbDialogModule,
-  NbToastrModule,
-  NbListModule,
-  NbBadgeModule,
-  NbTooltipModule,
-  NbFormFieldModule,
-  NbUserModule,
-  NbRadioModule,
-} from '@nebular/theme';
+import { NbCardModule, NbButtonModule, NbInputModule, NbSelectModule, NbCheckboxModule, NbSpinnerModule, NbAlertModule, NbTabsetModule, NbAccordionModule, NbIconModule, NbDialogModule, NbToastrModule, NbListModule, NbBadgeModule, NbTooltipModule, NbFormFieldModule, NbUserModule, NbRadioModule } from '@nebular/theme';
 
 import { Angular2SmartTableModule } from 'angular2-smart-table';
 import { ThemeModule } from '../../@theme/theme.module';

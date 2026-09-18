@@ -1,67 +1,114 @@
-# Multi-stage build for Stellar
-FROM rust:1.85.0 AS builder
+# syntax=docker/dockerfile:1.7
 
-# Install Node.js for frontend build
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
-    && apt-get install -y nodejs
+ARG NODE_VERSION=22
+ARG RUST_VERSION=1.90.0
+ARG ZIG_VERSION=0.13.0
+ARG ZIG_AMD64_SHA256=d45312e61ebcc48032b77bc4cf7fd6915c11fa16e4aad116b66c9468211230ea
+ARG ZIG_ARM64_SHA256=041ac42323837eb5624068acd8b00cd5777dac4cf91179e8dad7a7e90dd0c556
+ARG CARGO_ZIGBUILD_VERSION=0.23.4
 
+# Build the frontend through the same script used by release packages so the
+# embedded assets (including gzip compression) are identical across channels.
+FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-bookworm-slim AS frontend-builder
 WORKDIR /app
-
-# Step 1: Build frontend first (required for embedding)
+COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./frontend/
+RUN cd frontend && npm ci
 COPY frontend/ ./frontend/
-WORKDIR /app/frontend
+COPY build/build-frontend.sh ./build/build-frontend.sh
+RUN SKIP_NPM_INSTALL=1 bash ./build/build-frontend.sh
 
-# Install dependencies and build (outputs to frontend/dist)
-# Use relative base href (./) to support sub-path deployments (e.g., /stellar/)
-# This follows Flink's approach for sub-path deployment support
-# Note: Removed --silent to see detailed error messages during build
-RUN npm ci
-RUN npm run build -- --configuration production --base-href ./
+# Build on Buildx's native builder and use Zig to cross-compile the requested
+# target. This avoids QEMU-emulating a full Rust build for the arm64 image.
+FROM --platform=$BUILDPLATFORM rust:${RUST_VERSION}-bookworm AS backend-builder
+ARG BUILDARCH
+ARG TARGETARCH
+ARG ZIG_VERSION
+ARG ZIG_AMD64_SHA256
+ARG ZIG_ARM64_SHA256
+ARG CARGO_ZIGBUILD_VERSION
+RUN case "$BUILDARCH" in \
+        amd64) ZIG_ARCH=x86_64; ZIG_SHA256="$ZIG_AMD64_SHA256" ;; \
+        arm64) ZIG_ARCH=aarch64; ZIG_SHA256="$ZIG_ARM64_SHA256" ;;  \
+        *) echo "Unsupported build architecture: $BUILDARCH" >&2; exit 1 ;; \
+    esac; \
+    case "$TARGETARCH" in \
+        amd64) RUST_TARGET=x86_64-unknown-linux-musl ;; \
+        arm64) RUST_TARGET=aarch64-unknown-linux-musl ;; \
+        *) echo "Unsupported target architecture: $TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates curl file xz-utils; \
+    rm -rf /var/lib/apt/lists/*; \
+    curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-${ZIG_ARCH}-${ZIG_VERSION}.tar.xz" -o /tmp/zig.tar.xz; \
+    echo "$ZIG_SHA256  /tmp/zig.tar.xz" | sha256sum --check; \
+    tar -xf /tmp/zig.tar.xz -C /opt; \
+    ln -s "/opt/zig-linux-${ZIG_ARCH}-${ZIG_VERSION}/zig" /usr/local/bin/zig; \
+    rm /tmp/zig.tar.xz; \
+    rustup target add "$RUST_TARGET"; \
+    cargo install cargo-zigbuild --version "$CARGO_ZIGBUILD_VERSION" --locked
 
-# Step 2: Build backend (rust-embed will directly embed from ../frontend/dist)
 WORKDIR /app
 COPY backend/ ./backend/
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 WORKDIR /app/backend
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/app/backend/target \
+    case "$TARGETARCH" in \
+        amd64) RUST_TARGET=x86_64-unknown-linux-musl ;; \
+        arm64) RUST_TARGET=aarch64-unknown-linux-musl ;; \
+        *) echo "Unsupported target architecture: $TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    cargo zigbuild --locked --release --target "$RUST_TARGET" --bin stellar; \
+    install -Dm755 "target/${RUST_TARGET}/release/stellar" /out/stellar; \
+    file /out/stellar; \
+    file /out/stellar | grep -q 'statically linked'
 
-# Build backend (rust-embed reads directly from ../frontend/dist, no copy needed)
-RUN cargo build --release
-
-# Final stage
+# Debian remains the runtime base for CA roots and curl-based HEALTHCHECK; the
+# application binary itself is fully static and has no glibc runtime dependency.
 FROM debian:bookworm-slim
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --no-create-home --shell /usr/sbin/nologin starrocks
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create app user
-RUN useradd -r -s /bin/false starrocks
-
-# Create app directory structure
 WORKDIR /app
 RUN mkdir -p bin conf lib data logs
+COPY --from=backend-builder --chown=starrocks:starrocks /out/stellar ./bin/stellar
+COPY --chmod=755 deploy/docker/entrypoint.sh /usr/local/bin/stellar-entrypoint
+RUN printf '%s\n' \
+    '[server]' \
+    'host = "0.0.0.0"' \
+    'port = 8080' \
+    '' \
+    '[database]' \
+    'url = "sqlite://data/stellar.db"' \
+    '' \
+    '[auth]' \
+    '# Required with --config; the default `server /data` mode generates .jwt-secret.' \
+    'jwt_secret = ""' \
+    'jwt_expires_in = "24h"' \
+    '' \
+    '[logging]' \
+    'level = "info,stellar_backend=debug"' \
+    'file = "logs/stellar.log"' \
+    '' \
+    '[metrics]' \
+    'interval_secs = "30s"' \
+    'retention_days = "7d"' \
+    'enabled = true' \
+    '' \
+    '[audit]' \
+    'database = "starrocks_audit_db__"' \
+    'table = "starrocks_audit_tbl__"' \
+    > ./conf/config.toml \
+    && chown -R starrocks:starrocks /app
 
-# Copy built artifacts
-# Frontend is embedded in the binary (from frontend/dist during build)
-COPY --from=builder /app/backend/target/release/stellar ./bin/
-
-# Create default config
-RUN echo '[server]\nhost = "0.0.0.0"\nport = 8080\n\n[database]\nurl = "sqlite://data/stellar.db"  # or "mysql://user:pass@host:3306/stellar?charset=utf8mb4"\n\n[auth]\njwt_secret = "dev-secret-key-change-in-production"\njwt_expires_in = "24h"\n\n[logging]\nlevel = "info,stellar_backend=debug"\nfile = "logs/stellar.log"\n\n[metrics]\ninterval_secs = "30s"\nretention_days = "7d"\nenabled = true\n\n[audit]\ndatabase = "starrocks_audit_db__"\ntable = "starrocks_audit_tbl__"' > ./conf/config.toml
-
-# Set permissions
-RUN chown -R starrocks:starrocks /app
-RUN chmod +x ./bin/stellar
-
-# Switch to non-root user
-USER starrocks
-
-# Expose port
+# Entrypoint normalizes /data ownership then drops to this user via setpriv.
 EXPOSE 8080
-
-# Health check
+# Everything (SQLite, .jwt-secret, logs) lives in one volume; the entrypoint
+# defaults to `stellar server /data` when no command is given.
+VOLUME "/data"
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
-
-# Start command
-CMD ["./bin/stellar"]
+ENTRYPOINT ["/usr/local/bin/stellar-entrypoint"]

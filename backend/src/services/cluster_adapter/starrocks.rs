@@ -33,7 +33,9 @@ impl StarRocksAdapter {
 
     async fn mysql_client(&self) -> ApiResult<MySQLClient> {
         let pool = self.mysql_pool_manager.get_pool(&self.cluster).await?;
-        Ok(MySQLClient::from_pool(pool))
+        Ok(MySQLClient::from_pool(pool).with_timeout(std::time::Duration::from_secs(
+            self.cluster.connection_timeout.max(1) as u64,
+        )))
     }
 
     fn normalize_proc_path(path: &str) -> String {
@@ -91,7 +93,10 @@ impl StarRocksAdapter {
 
     /// Get compute nodes for shared-data architecture
     async fn get_compute_nodes(&self) -> ApiResult<Vec<Backend>> {
-        let compute_nodes = match self.query_sql_entities::<Backend>("SHOW COMPUTE NODES").await {
+        let compute_nodes = match self
+            .query_sql_entities::<Backend>("SHOW COMPUTE NODES")
+            .await
+        {
             Ok(nodes) => nodes,
             Err(e) => {
                 tracing::warn!(
@@ -115,37 +120,59 @@ impl StarRocksAdapter {
     /// - catalog level: CATALOG catalog_name or ALL CATALOGS
     /// - database level: database.* or catalog.database.* or *.* (all databases)
     /// - table level: database.table or catalog.database.table or database.* (all tables)
-    fn build_resource_path(resource_type: &str, database: &str, table: Option<&str>) -> String {
+    fn build_resource_path(
+        resource_type: &str,
+        catalog: Option<&str>,
+        database: &str,
+        table: Option<&str>,
+    ) -> String {
         match resource_type.to_uppercase().as_str() {
             "CATALOG" => {
                 // Catalog level permissions
-                if database == "*" {
+                let catalog = catalog.unwrap_or(database);
+                if catalog == "*" {
                     "ALL CATALOGS".to_string()
                 } else {
-                    format!("CATALOG {}", database)
+                    format!("CATALOG {}", catalog)
                 }
             },
             "TABLE" => {
                 // Table level permissions
                 if database == "*" {
                     // All databases, all tables
-                    "*.*".to_string()
+                    catalog.map_or_else(|| "*.*".to_string(), |catalog| format!("{catalog}.*.*"))
                 } else if let Some(table_name) = table {
                     if table_name == "*" {
                         // Specific database, all tables
-                        format!("{}.*", database)
+                        catalog.map_or_else(
+                            || format!("{database}.*"),
+                            |catalog| format!("{catalog}.{database}.*"),
+                        )
                     } else {
                         // Specific database and table
-                        format!("{}.{}", database, table_name)
+                        catalog.map_or_else(
+                            || format!("{database}.{table_name}"),
+                            |catalog| format!("{catalog}.{database}.{table_name}"),
+                        )
                     }
                 } else {
                     // No table specified, default to all tables in database
-                    format!("{}.*", database)
+                    catalog.map_or_else(
+                        || format!("{database}.*"),
+                        |catalog| format!("{catalog}.{database}.*"),
+                    )
                 }
             },
             _ => {
                 // Database level permissions (default)
-                if database == "*" { "*.*".to_string() } else { format!("{}.*", database) }
+                if database == "*" {
+                    catalog.map_or_else(|| "*.*".to_string(), |catalog| format!("{catalog}.*.*"))
+                } else {
+                    catalog.map_or_else(
+                        || format!("{database}.*"),
+                        |catalog| format!("{catalog}.{database}.*"),
+                    )
+                }
             },
         }
     }
@@ -274,22 +301,52 @@ impl ClusterAdapter for StarRocksAdapter {
         use crate::models::Session;
 
         let mysql_client = self.mysql_client().await?;
-        let (_, rows) = mysql_client.query_raw("SHOW PROCESSLIST").await?;
+        let (columns, rows) = mysql_client.query_raw("SHOW PROCESSLIST").await?;
+
+        // StarRocks 的 PROCESSLIST 列随版本增减（实测含 ServerName/ConnectionStartTime
+        // 等额外列，顺序与 MySQL 不同），禁止裸下标；按列名定位。
+        // 裸下标曾导致全表错位：user 格装连接号、time 格装命令、info 格装秒数。
+        let pos = |name: &str| columns.iter().position(|c| c == name);
+        let (id_i, user_i, host_i, db_i, cmd_i, time_i, state_i, info_i) = (
+            pos("Id"),
+            pos("User"),
+            pos("Host"),
+            pos("Db"),
+            pos("Command"),
+            pos("Time"),
+            pos("State"),
+            pos("Info"),
+        );
+        if id_i.is_none() {
+            tracing::warn!("SHOW PROCESSLIST 缺少 Id 列，返回空会话列表");
+            return Ok(Vec::new());
+        }
+        let cell = |row: &[String], i: Option<usize>| -> String {
+            i.and_then(|idx| row.get(idx)).cloned().unwrap_or_default()
+        };
+        let cell_opt = |row: &[String], i: Option<usize>| -> Option<String> {
+            let v = cell(row, i);
+            if v.is_empty() { None } else { Some(v) }
+        };
 
         let mut sessions = Vec::new();
-        for row in rows {
-            if row.len() >= 7 {
-                sessions.push(Session {
-                    id: row.first().cloned().unwrap_or_default(),
-                    user: row.get(1).cloned().unwrap_or_default(),
-                    host: row.get(2).cloned().unwrap_or_default(),
-                    db: row.get(3).cloned(),
-                    command: row.get(4).cloned().unwrap_or_default(),
-                    time: row.get(5).cloned().unwrap_or_else(|| "0".to_string()),
-                    state: row.get(6).cloned().unwrap_or_default(),
-                    info: row.get(7).cloned(),
-                });
+        for row in &rows {
+            let id = cell(row, id_i);
+            // Id 缺失的行无法展示更无法 KILL，直接丢弃（宁缺勿错位）。
+            if id.is_empty() {
+                continue;
             }
+            let time = cell(row, time_i);
+            sessions.push(Session {
+                id,
+                user: cell(row, user_i),
+                host: cell(row, host_i),
+                db: cell_opt(row, db_i),
+                command: cell(row, cmd_i),
+                time: if time.is_empty() { "0".to_string() } else { time },
+                state: cell(row, state_i),
+                info: cell_opt(row, info_i),
+            });
         }
 
         Ok(sessions)
@@ -604,15 +661,20 @@ impl ClusterAdapter for StarRocksAdapter {
     }
 
     async fn create_user(&self, username: &str, password: &str) -> ApiResult<String> {
+        let username = Self::escape_sql_literal(username);
         if password.is_empty() {
             Ok(format!("CREATE USER '{}'@'%';", username))
         } else {
-            Ok(format!("CREATE USER '{}'@'%' IDENTIFIED BY '{}';", username, password))
+            Ok(format!(
+                "CREATE USER '{}'@'%' IDENTIFIED BY '{}';",
+                username,
+                Self::escape_sql_literal(password)
+            ))
         }
     }
 
     async fn create_role(&self, role_name: &str) -> ApiResult<String> {
-        Ok(format!("CREATE ROLE '{}';", role_name))
+        Ok(format!("CREATE ROLE '{}';", Self::escape_sql_literal(role_name)))
     }
 
     async fn grant_permissions(
@@ -621,18 +683,19 @@ impl ClusterAdapter for StarRocksAdapter {
         principal_name: &str,
         permissions: &[&str],
         resource_type: &str,
+        catalog: Option<&str>,
         database: &str,
         table: Option<&str>,
         with_grant_option: bool,
     ) -> ApiResult<String> {
         let perm_str = permissions.join(", ");
-        let resource = Self::build_resource_path(resource_type, database, table);
+        let resource = Self::build_resource_path(resource_type, catalog, database, table);
 
         let with_grant = if with_grant_option { " WITH GRANT OPTION" } else { "" };
 
         let principal = match principal_type {
-            "ROLE" => format!("ROLE '{}'", principal_name),
-            "USER" => format!("USER '{}'@'%'", principal_name),
+            "ROLE" => format!("ROLE '{}'", Self::escape_sql_literal(principal_name)),
+            "USER" => format!("USER '{}'@'%'", Self::escape_sql_literal(principal_name)),
             _ => {
                 return Err(ApiError::ValidationError(
                     "Principal type must be USER or ROLE".to_string(),
@@ -640,7 +703,7 @@ impl ClusterAdapter for StarRocksAdapter {
             },
         };
 
-        Ok(format!("GRANT {} ON {} TO {};{}", perm_str, resource, principal, with_grant))
+        Ok(format!("GRANT {} ON {} TO {}{};", perm_str, resource, principal, with_grant))
     }
 
     async fn revoke_permissions(
@@ -649,15 +712,16 @@ impl ClusterAdapter for StarRocksAdapter {
         principal_name: &str,
         permissions: &[&str],
         resource_type: &str,
+        catalog: Option<&str>,
         database: &str,
         table: Option<&str>,
     ) -> ApiResult<String> {
         let perm_str = permissions.join(", ");
-        let resource = Self::build_resource_path(resource_type, database, table);
+        let resource = Self::build_resource_path(resource_type, catalog, database, table);
 
         let principal = match principal_type {
-            "ROLE" => format!("ROLE '{}'", principal_name),
-            "USER" => format!("USER '{}'@'%'", principal_name),
+            "ROLE" => format!("ROLE '{}'", Self::escape_sql_literal(principal_name)),
+            "USER" => format!("USER '{}'@'%'", Self::escape_sql_literal(principal_name)),
             _ => {
                 return Err(ApiError::ValidationError(
                     "Principal type must be USER or ROLE".to_string(),
@@ -669,7 +733,11 @@ impl ClusterAdapter for StarRocksAdapter {
     }
 
     async fn grant_role(&self, role_name: &str, username: &str) -> ApiResult<String> {
-        Ok(format!("GRANT '{}' TO USER '{}'@'%';", role_name, username))
+        Ok(format!(
+            "GRANT '{}' TO USER '{}'@'%';",
+            Self::escape_sql_literal(role_name),
+            Self::escape_sql_literal(username)
+        ))
     }
 
     async fn list_user_permissions(
@@ -906,6 +974,10 @@ impl ClusterAdapter for StarRocksAdapter {
 }
 
 impl StarRocksAdapter {
+    fn escape_sql_literal(value: &str) -> String {
+        value.replace('\'', "''")
+    }
+
     /// Parse user identity string like 'username'@'host' or username@host
     fn parse_user_identity(identity: &str) -> (String, String) {
         if identity.contains('@') {

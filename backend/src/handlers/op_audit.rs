@@ -8,8 +8,8 @@ use std::sync::Arc;
 use stellar_macros::app_db;
 
 use crate::AppState;
-use crate::db::query as db_query;
 use crate::db::AppDb;
+use crate::db::query as db_query;
 use crate::middleware::OrgContext;
 use crate::utils::ApiResult;
 use chrono::{DateTime, Utc};

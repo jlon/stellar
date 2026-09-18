@@ -82,10 +82,11 @@ impl QueryComplexity {
             .any(|t| t == "UNION" || t == "INTERSECT" || t == "EXCEPT");
 
         // Count distinct aggregations (expensive operations)
-        let distinct_agg_count = ["COUNT(DISTINCT", "COUNT (DISTINCT", "SUM(DISTINCT", "AVG(DISTINCT"]
-            .iter()
-            .map(|p| sql_upper.matches(p).count())
-            .sum::<usize>();
+        let distinct_agg_count =
+            ["COUNT(DISTINCT", "COUNT (DISTINCT", "SUM(DISTINCT", "AVG(DISTINCT"]
+                .iter()
+                .map(|p| sql_upper.matches(p).count())
+                .sum::<usize>();
 
         let has_order = tokens.iter().any(|t| t == "ORDER");
         let has_limit = tokens.iter().any(|t| t == "LIMIT");
@@ -124,7 +125,7 @@ impl QueryComplexity {
             0 => 0,
             1 => 3,
             2 => 5,
-            3 => 8,  // 3 JOINs should be Complex
+            3 => 8, // 3 JOINs should be Complex
             _ => join_count * 2 + 3,
         };
 
@@ -142,7 +143,7 @@ impl QueryComplexity {
         score += match distinct_agg_count {
             0 => 0,
             1 => 3,
-            _ => distinct_agg_count * 3 + 2,  // Multiple DISTINCT aggs = Complex+
+            _ => distinct_agg_count * 3 + 2, // Multiple DISTINCT aggs = Complex+
         };
         if has_expensive_sort {
             score += 2;

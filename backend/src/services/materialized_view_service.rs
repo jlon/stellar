@@ -72,17 +72,51 @@ impl MaterializedViewService {
         Ok(mvs)
     }
 
-    /// Get a specific materialized view by name
+    /// Get a specific materialized view by name.
+    /// 先单条 information_schema 查询（覆盖全部异步 MV，通常 1 次命中）；
+    /// 未命中再逐库 SHOW ALTER 找 ROLLUP（同步物化视图不在 information_schema 里）。
+    /// 原逻辑逐库 N×2 次 SHOW，已优化为 1+N（罕见路径）。
     pub async fn get_materialized_view(&self, mv_name: &str) -> ApiResult<MaterializedView> {
+        if mv_name.is_empty()
+            || !mv_name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_')
+        {
+            return Err(ApiError::invalid_data("物化视图名称非法"));
+        }
+        let sql = "SELECT
+                    mv.MATERIALIZED_VIEW_ID as `id`,
+                    mv.TABLE_NAME as `name`,
+                    mv.TABLE_SCHEMA as database_name,
+                    mv.REFRESH_TYPE as refresh_type,
+                    mv.IS_ACTIVE as is_active,
+                    mv.PARTITION_TYPE as partition_type,
+                    mv.TASK_ID as task_id,
+                    mv.TASK_NAME as task_name,
+                    mv.LAST_REFRESH_START_TIME as last_refresh_start_time,
+                    mv.LAST_REFRESH_FINISHED_TIME as last_refresh_finished_time,
+                    mv.LAST_REFRESH_DURATION as last_refresh_duration,
+                    mv.LAST_REFRESH_STATE as last_refresh_state,
+                    COALESCE(t.TABLE_ROWS, 0) as `rows`,
+                    mv.MATERIALIZED_VIEW_DEFINITION as `text`
+                FROM information_schema.materialized_views mv
+                LEFT JOIN information_schema.tables t
+                    ON mv.TABLE_SCHEMA = t.TABLE_SCHEMA AND mv.TABLE_NAME = t.TABLE_NAME";
+        let sql = format!(
+            "{} WHERE mv.TABLE_NAME = '{}' AND mv.TABLE_SCHEMA NOT IN \
+             ('information_schema', '_statistics_') ORDER BY mv.TABLE_SCHEMA LIMIT 1",
+            sql, mv_name
+        );
+        let results = self.mysql_client.query(&sql).await?;
+        if let Some(mv) = Self::parse_system_table_results(results)?
+            .into_iter()
+            .next()
+        {
+            return Ok(mv);
+        }
+        // ROLLUP 回退：逐库 SHOW ALTER。
         let databases = self.get_all_databases().await?;
-
         for db in &databases {
-            if let Ok(mvs) = self.get_async_mvs_from_db(db).await
-                && let Some(mv) = mvs.into_iter().find(|m| m.name == mv_name)
-            {
-                return Ok(mv);
-            }
-
             if let Ok(mvs) = self.get_sync_mvs_from_db(db).await
                 && let Some(mv) = mvs.into_iter().find(|m| m.name == mv_name)
             {
@@ -276,15 +310,6 @@ impl MaterializedViewService {
         Ok(databases)
     }
 
-    /// Get async materialized views from a specific database
-    async fn get_async_mvs_from_db(&self, database: &str) -> ApiResult<Vec<MaterializedView>> {
-        let sql = format!("SHOW MATERIALIZED VIEWS FROM `{}`", database);
-        tracing::debug!("Querying async MVs: {}", sql);
-
-        let results = self.mysql_client.query(&sql).await?;
-        Self::parse_async_mv_results(results, database)
-    }
-
     /// Get sync materialized views (ROLLUP) from a specific database
     async fn get_sync_mvs_from_db(&self, database: &str) -> ApiResult<Vec<MaterializedView>> {
         let sql = format!("SHOW ALTER MATERIALIZED VIEW FROM `{}`", database);
@@ -292,82 +317,6 @@ impl MaterializedViewService {
 
         let results = self.mysql_client.query(&sql).await?;
         Self::parse_sync_mv_results(results, database)
-    }
-
-    /// Parse SHOW MATERIALIZED VIEWS result
-    fn parse_async_mv_results(
-        results: Vec<serde_json::Value>,
-        database: &str,
-    ) -> ApiResult<Vec<MaterializedView>> {
-        let mut mvs = Vec::new();
-
-        for row in results {
-            let mv = MaterializedView {
-                id: row
-                    .get("id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
-                name: row
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
-                database_name: row
-                    .get("database_name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(database)
-                    .to_string(),
-                refresh_type: row
-                    .get("refresh_type")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("UNKNOWN")
-                    .to_string(),
-                is_active: row
-                    .get("is_active")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s == "true" || s == "1")
-                    .unwrap_or(false),
-                partition_type: row
-                    .get("partition_type")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-                task_id: row
-                    .get("task_id")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-                task_name: row
-                    .get("task_name")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-                last_refresh_start_time: row
-                    .get("last_refresh_start_time")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-                last_refresh_finished_time: row
-                    .get("last_refresh_finished_time")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-                last_refresh_duration: row
-                    .get("last_refresh_duration")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-                last_refresh_state: row
-                    .get("last_refresh_state")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-                rows: row.get("rows").and_then(|v| v.as_i64()),
-                text: row
-                    .get("text")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
-            };
-
-            mvs.push(mv);
-        }
-
-        Ok(mvs)
     }
 
     /// Parse SHOW ALTER MATERIALIZED VIEW result (sync MVs/ROLLUP)

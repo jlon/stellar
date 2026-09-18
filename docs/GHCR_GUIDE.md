@@ -19,7 +19,6 @@ GitHub Container Registry (ghcr.io) 是 GitHub 提供的容器镜像托管服务
 flowchart TB
     A[代码提交到 GitHub] --> B{触发条件?}
     B -->|打 Tag v1.0.0| C[GitHub Actions 启动]
-    B -->|推送到 main 分支| C
     B -->|手动触发| C
     
     C --> D[拉取代码]
@@ -54,28 +53,21 @@ git tag v1.0.0
 git push origin v1.0.0
 
 # 自动生成的镜像标签:
-# - ghcr.io/jlon/stellar:v1.0.0
+# - ghcr.io/jlon/stellar:1.0.0
 # - ghcr.io/jlon/stellar:1.0
 # - ghcr.io/jlon/stellar:1
 # - ghcr.io/jlon/stellar:latest
 ```
 
-#### 方式 2: 推送到 main 分支
+`latest` 只会由稳定版标签更新；预发布标签不会覆盖它。
 
-```bash
-git push origin main
+#### 方式 2: 手动触发
 
-# 自动生成的镜像标签:
-# - ghcr.io/jlon/stellar:main
-# - ghcr.io/jlon/stellar:main-<commit-sha>
-```
+1. 打开 GitHub 仓库页面并点击 **Actions**。
+2. 选择 **Docker Build and Publish** workflow。
+3. 在 **Use workflow from** 中选择已有的 `vX.Y.Z` 标签，再点击 **Run workflow**。
 
-#### 方式 3: 手动触发
-
-1. 打开 GitHub 仓库页面
-2. 点击 **Actions** 标签
-3. 选择 **Docker Image CI/CD** workflow
-4. 点击 **Run workflow** 按钮
+手动运行不会接受分支名：镜像标签必须与已验证的发布版本一致。
 
 ### 3. 查看构建状态
 
@@ -92,7 +84,7 @@ git push origin main
 docker pull ghcr.io/jlon/stellar:latest
 
 # 拉取特定版本
-docker pull ghcr.io/jlon/stellar:v1.0.0
+docker pull ghcr.io/jlon/stellar:1.0.0
 
 # 如果是私有镜像，需要先登录
 echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
@@ -104,10 +96,11 @@ echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
 docker run -d \
   --name stellar \
   -p 8080:8080 \
-  -v $(pwd)/data:/app/data \
-  -v $(pwd)/logs:/app/logs \
+  -v $(pwd)/data:/data \
   ghcr.io/jlon/stellar:latest
 ```
+
+首次启动在 `docker logs stellar` 中打印一次性管理员密码（默认用户 `admin`）。
 
 ## 镜像标签说明
 
@@ -115,15 +108,14 @@ docker run -d \
 
 | 触发方式 | 生成的标签 | 示例 |
 |---------|-----------|------|
-| 推送 `v1.2.3` 标签 | `v1.2.3`, `1.2`, `1`, `latest` | `ghcr.io/jlon/stellar:v1.2.3` |
-| 推送到 `main` 分支 | `main`, `main-<sha>` | `ghcr.io/jlon/stellar:main` |
-| Pull Request | `pr-<number>` | `ghcr.io/jlon/stellar:pr-42` |
+| 推送稳定版 `v1.2.3` 标签 | `1.2.3`, `1.2`, `1`, `latest` | `ghcr.io/jlon/stellar:1.2.3` |
+| 推送预发布标签 | 对应的 SemVer 标签，不更新 `latest` | `ghcr.io/jlon/stellar:1.2.3-rc.1` |
 
 ### 推荐的标签使用策略
 
-- **生产环境**: 使用具体版本号 `v1.2.3`
-- **测试环境**: 使用 `main` 或分支名
-- **开发环境**: 使用 `latest` 或特定分支
+- **生产环境**: 使用具体版本号 `1.2.3`
+- **测试环境**: 使用预发布版本号
+- **开发环境**: 使用 `latest`
 
 ## 高级配置
 
@@ -207,8 +199,7 @@ docker run -d \
 # 使用 GitHub Container Registry 镜像（推荐）
 docker pull ghcr.io/jlon/stellar:latest
 docker run -d -p 8080:8080 --name stellar \
-  -v $(pwd)/data:/app/data \
-  -v $(pwd)/logs:/app/logs \
+  -v $(pwd)/data:/data \
   ghcr.io/jlon/stellar:latest
 
 # 或者使用 Docker Hub 镜像

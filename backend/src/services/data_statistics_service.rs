@@ -102,20 +102,23 @@ impl<DB: AppDb> DataStatisticsService<DB> {
             time_range_start.unwrap_or_else(|| chrono::Utc::now() - chrono::Duration::days(3));
         let hours = (chrono::Utc::now() - time_range_start).num_hours().max(1) as i32;
         let audit_table = self.audit_log_service.audit_table_name(&cluster);
-        let (top_tables_by_access, access_error) =
-            match self.audit_log_service.get_top_tables_by_access(&cluster, hours, 20).await {
-                Ok(tables) => (tables, None),
-                Err(e) => {
-                    let reason =
-                        crate::services::audit_log_service::audit_query_user_message(&e, &audit_table);
-                    tracing::warn!(
-                        "Failed to get top tables by access for cluster {}: {}",
-                        cluster.name,
-                        e
-                    );
-                    (Vec::new(), Some(reason))
-                },
-            };
+        let (top_tables_by_access, access_error) = match self
+            .audit_log_service
+            .get_top_tables_by_access(&cluster, hours, 20)
+            .await
+        {
+            Ok(tables) => (tables, None),
+            Err(e) => {
+                let reason =
+                    crate::services::audit_log_service::audit_query_user_message(&e, &audit_table);
+                tracing::warn!(
+                    "Failed to get top tables by access for cluster {}: {}",
+                    cluster.name,
+                    e
+                );
+                (Vec::new(), Some(reason))
+            },
+        };
 
         let total_data_size = self.get_total_data_size_mysql(&mysql_client).await?;
         let total_index_size: i64 = 0;

@@ -1,6 +1,8 @@
-import { Component, Input, OnInit, inject } from '@angular/core';
+import { I18nService } from '../../../../@core/i18n/i18n.service';
+import { TranslatePipe } from '@ngx-translate/core';
+import { Component, Input, OnInit, inject, ChangeDetectorRef } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { DatePipe } from '@angular/common';
+import { DatePipe, CommonModule } from '@angular/common';
 import { NbDialogRef, NbToastrService, NbCardModule, NbFormFieldModule, NbSelectModule, NbOptionModule, NbIconModule, NbInputModule, NbCheckboxModule, NbButtonModule, NbSpinnerModule, NbTooltipModule } from '@nebular/theme';
 import { Subscription, timeout } from 'rxjs';
 import { ClusterService, Cluster } from '../../../../@core/data/cluster.service';
@@ -14,6 +16,8 @@ import { ErrorHandler } from '../../../../@core/utils/error-handler';
     templateUrl: './cluster-form.component.html',
     styleUrls: ['./cluster-form.component.scss'],
     imports: [
+    TranslatePipe,
+    CommonModule,
     NbCardModule,
     FormsModule,
     ReactiveFormsModule,
@@ -31,7 +35,8 @@ import { ErrorHandler } from '../../../../@core/utils/error-handler';
 })
 export class ClusterFormComponent implements OnInit {
   private dialogRef = inject<NbDialogRef<ClusterFormComponent>>(NbDialogRef);
-  private fb = inject(FormBuilder);
+  private fb = inject(FormBuilder)
+  private i18n = inject(I18nService);
   private clusterService = inject(ClusterService);
   private organizationService = inject(OrganizationService);
   private authService = inject(AuthService);
@@ -61,6 +66,8 @@ export class ClusterFormComponent implements OnInit {
   isSuperAdmin = false;
   isOrgAdmin = false;  // Check if user is organization admin
   organizationsLoading = false;
+
+  private cdRef = inject(ChangeDetectorRef);
 
   constructor() {
     this.clusterForm = this.fb.group({
@@ -109,11 +116,17 @@ export class ClusterFormComponent implements OnInit {
       this.organizationsLoading = true;
       this.organizationService.listOrganizations().subscribe({
         next: (orgs) => {
-          this.organizations = orgs;
+                    this.organizations = orgs;
+          // Organizations 响应到达晚于对话框首次 CD，需手动触发检测（异步下拉才可见）
+          this.cdRef.detectChanges();
           this.organizationsLoading = false;
           // Set organization_id as required for super admin
           this.clusterForm.get('organization_id')?.setValidators([Validators.required]);
           this.clusterForm.get('organization_id')?.updateValueAndValidity();
+          // 只有一个组织时没有选择余地，直接默认选中
+          if (orgs.length === 1 && !this.clusterForm.get('organization_id')?.value) {
+            this.clusterForm.get('organization_id')?.setValue(orgs[0].id);
+          }
         },
         error: (error) => {
           ErrorHandler.handleHttpError(error, this.toastrService);
@@ -208,7 +221,7 @@ export class ClusterFormComponent implements OnInit {
     } else {
       // If admin_user is provided, admin_password is required
       if (clusterData.admin_user && !clusterData.admin_password) {
-        this.toastrService.danger('管理用户密码不能为空', '错误');
+        this.toastrService.danger(this.i18n.instant('管理用户密码不能为空'), this.i18n.instant('错误'));
         this.saving = false;
         return;
       }
@@ -233,7 +246,7 @@ export class ClusterFormComponent implements OnInit {
         if (!this.isEditMode && cluster.id) {
           this.testConnectionAfterCreate(cluster.id);
         } else {
-          this.toastrService.success('集群更新成功', '成功');
+          this.toastrService.success(this.i18n.instant('集群更新成功'), this.i18n.instant('成功'));
           this.dialogRef.close(true);
         }
       },
@@ -251,16 +264,16 @@ export class ClusterFormComponent implements OnInit {
     this.clusterService.getHealth(clusterId).subscribe({
       next: (health) => {
         if (health.status === 'healthy') {
-          this.toastrService.success('集群创建成功，健康检查通过', '成功');
+          this.toastrService.success(this.i18n.instant('集群创建成功，健康检查通过'), this.i18n.instant('成功'));
         } else if (health.status === 'warning') {
-          this.toastrService.warning('集群已创建，但健康检查发现问题。请检查配置', '警告');
+          this.toastrService.warning(this.i18n.instant('集群已创建，但健康检查发现问题。请检查配置'), this.i18n.instant('警告'));
         } else {
-          this.toastrService.warning('集群已创建，但健康检查失败。请检查配置', '警告');
+          this.toastrService.warning(this.i18n.instant('集群已创建，但健康检查失败。请检查配置'), this.i18n.instant('警告'));
         }
         this.dialogRef.close(true);
       },
       error: () => {
-        this.toastrService.warning('集群已创建，但健康检查失败。请检查配置', '警告');
+        this.toastrService.warning(this.i18n.instant('集群已创建，但健康检查失败。请检查配置'), this.i18n.instant('警告'));
         this.dialogRef.close(true);
       },
     });
@@ -282,7 +295,7 @@ export class ClusterFormComponent implements OnInit {
       const missingFields = requiredFields.filter(field => !this.clusterForm.get(field)?.value);
       
       if (missingFields.length > 0) {
-        this.toastrService.warning('请先填写完整的连接信息（FE地址、端口、用户名、密码）', '提示');
+        this.toastrService.warning(this.i18n.instant('请先填写完整的连接信息（FE地址、端口、用户名、密码）'), this.i18n.instant('提示'));
         return;
       }
     }

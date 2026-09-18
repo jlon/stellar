@@ -1,11 +1,15 @@
+import { I18nService } from '../../../../@core/i18n/i18n.service';
+import { TranslatePipe } from '@ngx-translate/core';
 import { Component, OnInit, inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { NbDialogService, NbToastrService, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule } from '@nebular/theme';
+import { timeout } from 'rxjs/operators';
+import { NbDialogService, NbToastrService, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule, NbTooltipModule } from '@nebular/theme';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { ClusterService, Cluster } from '../../../../@core/data/cluster.service';
 import { ErrorHandler } from '../../../../@core/utils/error-handler';
 import { ConfirmDialogService } from '../../../../@core/services/confirm-dialog.service';
 import { assignTableRows } from '../../../../@core/utils/table-rows';
+import { ClusterFormComponent } from '../cluster-form/cluster-form.component';
 
 
 @Component({
@@ -13,15 +17,18 @@ import { assignTableRows } from '../../../../@core/utils/table-rows';
     templateUrl: './cluster-list.component.html',
     styleUrls: ['./cluster-list.component.scss'],
     imports: [
+    TranslatePipe,
     NbCardModule,
     NbButtonModule,
     NbIconModule,
     NbSpinnerModule,
+    NbTooltipModule,
     Angular2SmartTableModule
 ],
 })
 export class ClusterListComponent implements OnInit {
-  private clusterService = inject(ClusterService);
+  private clusterService = inject(ClusterService)
+  private i18n = inject(I18nService);
   private router = inject(Router);
   private dialogService = inject(NbDialogService);
   private toastrService = inject(NbToastrService);
@@ -33,19 +40,19 @@ export class ClusterListComponent implements OnInit {
   settings = {
     mode: 'external',
     hideSubHeader: false,  // Enable search
-    noDataMessage: '暂无集群数据，点击上方按钮添加集群',
+    noDataMessage: this.i18n.instant('暂无集群数据，点击上方按钮添加集群'),
     actions: {
-      columnTitle: '操作',
+      columnTitle: this.i18n.instant('操作'),
       add: false,
       edit: true,
       delete: true,
       position: 'right',
     },
     edit: {
-      editButtonContent: '<i class="nb-edit"></i>',
+      editButtonContent: '<i class="nb-edit" title="编辑"></i>',
     },
     delete: {
-      deleteButtonContent: '<i class="nb-trash"></i>',
+      deleteButtonContent: '<i class="nb-trash" title="删除"></i>',
       confirmDelete: false,
     },
     pager: {
@@ -59,34 +66,34 @@ export class ClusterListComponent implements OnInit {
         width: '5%',
       },
       name: {
-        title: '集群名称',
+        title: this.i18n.instant('集群名称'),
         type: 'string',
       },
       fe_host: {
-        title: 'FE 地址',
+        title: this.i18n.instant('FE 地址'),
         type: 'string',
       },
       fe_http_port: {
-        title: 'HTTP 端口',
+        title: this.i18n.instant('HTTP 端口'),
         type: 'number',
         width: '10%',
       },
       fe_query_port: {
-        title: '查询端口',
+        title: this.i18n.instant('查询端口'),
         type: 'number',
         width: '10%',
       },
       username: {
-        title: '用户名',
+        title: this.i18n.instant('用户名'),
         type: 'string',
         width: '10%',
       },
       description: {
-        title: '描述',
+        title: this.i18n.instant('描述'),
         type: 'string',
       },
       created_at: {
-        title: '创建时间',
+        title: this.i18n.instant('创建时间'),
         type: 'string',
         valuePrepareFunction: (date: string) => {
           return new Date(date).toLocaleString('zh-CN');
@@ -120,11 +127,23 @@ export class ClusterListComponent implements OnInit {
   }
 
   onCreate(): void {
-    this.router.navigate(['/pages/starrocks/clusters/new']);
+    this.dialogService
+      .open(ClusterFormComponent, { context: { clusterId: null }, dialogClass: 'side-sheet' })
+      .onClose.subscribe((saved) => {
+        if (saved) {
+          this.loadClusters();
+        }
+      });
   }
 
   onEdit(event: any): void {
-    this.router.navigate(['/pages/starrocks/clusters', event.data.id, 'edit']);
+    this.dialogService
+      .open(ClusterFormComponent, { context: { clusterId: event.data.id }, dialogClass: 'side-sheet' })
+      .onClose.subscribe((saved) => {
+        if (saved) {
+          this.loadClusters();
+        }
+      });
   }
 
   onDelete(event: any): void {
@@ -138,7 +157,7 @@ export class ClusterListComponent implements OnInit {
 
         this.clusterService.deleteCluster(cluster.id).subscribe({
           next: () => {
-            this.toastrService.success('集群删除成功', '成功');
+            this.toastrService.success(this.i18n.instant('集群删除成功'), this.i18n.instant('成功'));
             this.loadClusters();
           },
           error: (error) => {
@@ -156,7 +175,7 @@ export class ClusterListComponent implements OnInit {
   }
 
   testConnection(cluster: Cluster): void {
-    this.clusterService.getHealth(cluster.id).subscribe({
+    this.clusterService.getHealth(cluster.id).pipe(timeout(20000)).subscribe({
       next: (health) => {
         if (health.status === 'healthy') {
           const details = health.checks.map(c => `${c.name}: ${c.message}`).join('\n');

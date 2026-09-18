@@ -1,7 +1,9 @@
+import { I18nService } from '../../../@core/i18n/i18n.service';
+import { TranslatePipe } from '@ngx-translate/core';
 import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { Subject } from 'rxjs';
 import { takeUntil, timeout } from 'rxjs/operators';
-import { NbToastrService, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule } from '@nebular/theme';
+import { NbToastrService, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule, NbTooltipModule } from '@nebular/theme';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { NodeService, Backend } from '../../../@core/data/node.service';
 import { Cluster, ClusterService } from '../../../@core/data/cluster.service';
@@ -17,15 +19,18 @@ import { assignTableRows } from '../../../@core/utils/table-rows';
     templateUrl: './backends.component.html',
     styleUrls: ['./backends.component.scss'],
     imports: [
+    TranslatePipe,
     NbCardModule,
     NbButtonModule,
     NbIconModule,
     NbSpinnerModule,
+    NbTooltipModule,
     Angular2SmartTableModule
 ],
 })
 export class BackendsComponent implements OnInit, OnDestroy {
-  private nodeService = inject(NodeService);
+  private nodeService = inject(NodeService)
+  private i18n = inject(I18nService);
   private clusterService = inject(ClusterService);
   private clusterContext = inject(ClusterContextService);
   private toastrService = inject(NbToastrService);
@@ -46,15 +51,16 @@ export class BackendsComponent implements OnInit, OnDestroy {
 
   settings = {
     hideSubHeader: false,
-    noDataMessage: '暂无计算节点数据',
+    noDataMessage: this.i18n.instant('暂无计算节点数据'),
     actions: {
       add: false,
       edit: false,
       delete: true,
       position: 'right',
+      columnTitle: this.i18n.instant('操作'),
     },
     delete: {
-      deleteButtonContent: '<i class="nb-trash"></i>',
+      deleteButtonContent: '<i class="nb-trash" title="删除"></i>',
       confirmDelete: true,
     },
     pager: {
@@ -62,13 +68,13 @@ export class BackendsComponent implements OnInit, OnDestroy {
       perPage: 15,
     },
     columns: {
-      BackendId: { title: '节点ID', type: 'string' },
-      IP: { title: '主机地址', type: 'string' },
-      HeartbeatPort: { title: '心跳端口', type: 'string' },
-      BePort: { title: '服务端口', type: 'string' },
-      HttpPort: { title: 'HTTP端口', type: 'string' },
+      BackendId: { title: this.i18n.instant('节点ID'), type: 'string' },
+      IP: { title: this.i18n.instant('主机地址'), type: 'string' },
+      HeartbeatPort: { title: this.i18n.instant('心跳端口'), type: 'string' },
+      BePort: { title: this.i18n.instant('服务端口'), type: 'string' },
+      HttpPort: { title: this.i18n.instant('HTTP端口'), type: 'string' },
       Alive: {
-        title: '状态',
+        title: this.i18n.instant('状态'),
         type: 'html',
         sanitizer: { bypassHtml: true },
         valuePrepareFunction: (value: string) => {
@@ -78,32 +84,32 @@ export class BackendsComponent implements OnInit, OnDestroy {
           return `<span class="badge badge-${status}">${text}</span>`;
         },
       },
-      Version: { title: '版本', type: 'string' },
-      TabletNum: { title: 'Tablet数', type: 'string' },
-      DataUsedCapacity: { title: '已用容量', type: 'string' },
-      TotalCapacity: { title: '总容量', type: 'string' },
+      Version: { title: this.i18n.instant('版本'), type: 'string' },
+      TabletNum: { title: this.i18n.instant('Tablet数'), type: 'string' },
+      DataUsedCapacity: { title: this.i18n.instant('已用容量'), type: 'string' },
+      TotalCapacity: { title: this.i18n.instant('总容量'), type: 'string' },
       UsedPct: {
-        title: '使用率',
+        title: this.i18n.instant('使用率'),
         type: 'html',
         sanitizer: { bypassHtml: true },
         valuePrepareFunction: (value: string | number) => renderMetricBadge(value, this.diskThresholds),
       },
-      CpuCores: { title: 'CPU核数', type: 'string' },
+      CpuCores: { title: this.i18n.instant('CPU核数'), type: 'string' },
       CpuUsedPct: {
-        title: 'CPU使用率',
+        title: this.i18n.instant('CPU使用率'),
         type: 'html',
         sanitizer: { bypassHtml: true },
         valuePrepareFunction: (value: string | number) => renderMetricBadge(value, this.cpuThresholds),
       },
-      MemLimit: { title: '内存限制', type: 'string' },
+      MemLimit: { title: this.i18n.instant('内存限制'), type: 'string' },
       MemUsedPct: {
-        title: '内存使用率',
+        title: this.i18n.instant('内存使用率'),
         type: 'html',
         sanitizer: { bypassHtml: true },
         valuePrepareFunction: (value: string | number) => renderMetricBadge(value, this.memoryThresholds),
       },
-      NumRunningQueries: { title: '运行查询', type: 'string' },
-      LastHeartbeat: { title: '最后心跳', type: 'string' },
+      NumRunningQueries: { title: this.i18n.instant('运行查询'), type: 'string' },
+      LastHeartbeat: { title: this.i18n.instant('最后心跳'), type: 'string' },
     },
   };
 
@@ -127,7 +133,11 @@ export class BackendsComponent implements OnInit, OnDestroy {
           this.loadBackends();
         }
       });
-    this.loadBackends();
+    // clusterId 为 0 说明活动集群尚未就绪，等 activeCluster$ 推送后再加载
+    //（此前会打出无效请求；frontends 页同款修复）。
+    if (this.clusterId) {
+      this.loadBackends();
+    }
   }
 
   ngOnDestroy(): void {

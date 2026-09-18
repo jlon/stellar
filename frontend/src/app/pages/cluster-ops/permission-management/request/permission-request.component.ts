@@ -1,3 +1,5 @@
+import { I18nService } from '../../../../@core/i18n/i18n.service';
+import { TranslatePipe } from '@ngx-translate/core';
 import { Component, OnInit, OnDestroy, Input, Output, EventEmitter, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
@@ -8,7 +10,8 @@ import { TablePaginationComponent } from '../../../../@theme/components/table-pa
 import { PermissionRequestService } from '../../../../@core/data/permission-request.service';
 import { PermissionRequestResponse, SubmitRequestDto, DbAccountDto, DbRoleDto } from '../../../../@core/data/permission-request.model';
 import { NodeService } from '../../../../@core/data/node.service';
-import { NbButtonModule, NbCardModule, NbIconModule, NbInputModule, NbOptionModule, NbSelectModule, NbSpinnerModule, NbToastrService, NbTooltipModule } from '@nebular/theme';
+import { ClusterContextService } from '../../../../@core/data/cluster-context.service';
+import { NbButtonGroupModule, NbButtonModule, NbCardModule, NbCheckboxModule, NbIconModule, NbInputModule, NbOptionModule, NbSelectModule, NbSpinnerModule, NbToastrService, NbTooltipModule } from '@nebular/theme';
 
 
 /**
@@ -36,6 +39,7 @@ import { NbButtonModule, NbCardModule, NbIconModule, NbInputModule, NbOptionModu
     templateUrl: './permission-request.component.html',
     styleUrls: ['./permission-request.component.scss'],
     imports: [
+    TranslatePipe,
     NbCardModule,
     FormsModule,
     ReactiveFormsModule,
@@ -44,16 +48,21 @@ import { NbButtonModule, NbCardModule, NbIconModule, NbInputModule, NbOptionModu
     NbInputModule,
     NbIconModule,
     NbButtonModule,
+    NbButtonGroupModule,
+    NbCheckboxModule,
     NbSpinnerModule,
+    NbTooltipModule,
     TablePaginationComponent,
     Angular2SmartTableModule,
     CommonModule
 ],
 })
 export class PermissionRequestComponent implements OnInit, OnDestroy {
-  private fb = inject(FormBuilder);
+  private fb = inject(FormBuilder)
+  private i18n = inject(I18nService);
   private permissionService = inject(PermissionRequestService);
   private nodeService = inject(NodeService);
+  private clusterContext = inject(ClusterContextService);
   private toastr = inject(NbToastrService);
 
   @Input() refresh$: Subject<void>;
@@ -63,8 +72,10 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
   requestForm: FormGroup;
   showForm = true;
   formSubmitting = false;
+  formAttempted = false;
 
-  // Inline create modes for user/role
+  // 授权主体与按需创建状态。撤销权限仅支持用户主体（后端执行语义）。
+  principalType: 'user' | 'role' = 'user';
   isCreatingUser = false;
   isCreatingRole = false;
 
@@ -77,9 +88,9 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
 
   // Resource types
   resourceTypes = [
-    { label: 'Catalog', value: 'catalog' },
-    { label: 'Database', value: 'database' },
-    { label: 'Table', value: 'table' },
+    { label: '数据目录', value: 'catalog' },
+    { label: '数据库', value: 'database' },
+    { label: '数据表', value: 'table' },
   ];
 
   // Real data from API
@@ -88,6 +99,9 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
   tables: string[] = [];
   dbAccounts: string[] = []; // Database accounts list
   dbRoles: string[] = []; // Database roles list
+  activeClusterId: number | null = null;
+  activeClusterName = '';
+  initialDataError = '';
 
   // Loading states
   loadingAccounts = false;
@@ -172,7 +186,7 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
         width: '60px',
       },
       request_type: {
-        title: '类型',
+        title: this.i18n.instant('类型'),
         type: 'html',
         sanitizer: { bypassHtml: true },
         width: '100px',
@@ -186,19 +200,19 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
         },
       },
       target: {
-        title: '目标',
+        title: this.i18n.instant('目标'),
         type: 'string',
       },
       permissions: {
-        title: '权限',
+        title: this.i18n.instant('权限'),
         type: 'string',
       },
       reason: {
-        title: '原因',
+        title: this.i18n.instant('原因'),
         type: 'string',
       },
       status: {
-        title: '状态',
+        title: this.i18n.instant('状态'),
         type: 'html',
         sanitizer: { bypassHtml: true },
         width: '90px',
@@ -209,6 +223,7 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
             'executing': { label: '执行中', badge: 'primary' },
             'completed': { label: '已完成', badge: 'success' },
             'rejected': { label: '已拒绝', badge: 'danger' },
+            'cancelled': { label: '已撤销', badge: 'basic' },
             'failed': { label: '失败', badge: 'danger' },
           };
           const s = statusMap[value] || { label: value, badge: 'default' };
@@ -216,7 +231,7 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
         },
       },
       created_at: {
-        title: '创建时间',
+        title: this.i18n.instant('创建时间'),
         type: 'string',
         width: '150px',
         valuePrepareFunction: (value: string) => {
@@ -236,6 +251,7 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
     { label: '执行中', value: 'executing' },
     { label: '已完成', value: 'completed' },
     { label: '已拒绝', value: 'rejected' },
+    { label: '已撤销', value: 'cancelled' },
     { label: '失败', value: 'failed' },
   ];
 
@@ -254,8 +270,23 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
         });
     }
 
-    // Load initial data
-    this.loadInitialData();
+    this.clusterContext.activeCluster$
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((cluster) => {
+        const changed = this.activeClusterId !== cluster?.id;
+        this.activeClusterId = cluster?.id ?? null;
+        this.activeClusterName = cluster?.name ?? '';
+        if (changed && cluster) {
+          this.loadInitialData();
+        } else if (!cluster) {
+          this.dbAccounts = [];
+          this.dbRoles = [];
+          this.catalogs = [];
+          this.databases = [];
+          this.tables = [];
+          this.initialDataError = '请先选择当前组织的活跃集群。';
+        }
+      });
     this.loadMyRequests();
   }
 
@@ -270,22 +301,22 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
   private initForm(): void {
     this.requestForm = this.fb.group({
       request_type: ['grant_permission', Validators.required],
-      target_user: ['', Validators.required],
-      target_role: [''], // For grant_role or role-based operations
-      resource_type: [''], // For grant_permission, revoke_permission
-      catalog: [''], // For catalog/database/table level permissions
+      target_user: [''],
+      target_role: [''],
+      resource_type: [''],
+      catalog: [''],
       database: [''],
-      table: [''], // Added: Table selector
-      permissions: [[]], // Array of permission values (e.g., ['SELECT', 'INSERT'])
-      reason: ['', Validators.required],
+      table: [''],
+      permissions: [[]],
+      reason: ['', [Validators.required, Validators.maxLength(500)]],
       // Inline create fields
       new_user_name: [''],
       new_user_password: [''],
       new_role_name: [''],
     });
 
-    // Setup cascade watchers
     this.setupCascadeWatchers();
+    this.applyRequestValidators();
   }
 
   /**
@@ -337,15 +368,21 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
     }).subscribe({
       next: (result) => {
         this.catalogs = result.catalogs;
-        this.dbAccounts = result.accounts.map(acc => acc.account_name || '');
-        this.dbRoles = result.roles.map(role => role.role_name || '');
+        this.dbAccounts = result.accounts
+          .filter(account => account.host === '%' && account.account_name.toLowerCase() !== 'root')
+          .map(account => account.account_name);
+        this.dbRoles = result.roles
+          .filter(role => role.role_type === 'custom' && !this.isProtectedRole(role.role_name))
+          .map(role => role.role_name);
+        this.initialDataError = '';
         this.loadingCatalogs = false;
         this.loadingAccounts = false;
         this.loadingRoles = false;
       },
       error: (err) => {
         console.error('Failed to load initial data:', err);
-        this.toastr.danger('加载基础数据失败', '错误');
+        this.initialDataError = '无法加载当前集群的账户、角色或资源，请检查集群连接后重试。';
+        this.toastr.danger(this.initialDataError, '错误');
         this.loadingCatalogs = false;
         this.loadingAccounts = false;
         this.loadingRoles = false;
@@ -357,6 +394,7 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
    * Load databases for selected catalog
    */
   private loadDatabases(catalog: string): void {
+    if (!this.activeClusterId) return;
     this.loadingDatabases = true;
     this.nodeService.getDatabases(catalog).subscribe({
       next: (dbs) => {
@@ -365,7 +403,7 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         console.error('Failed to load databases:', err);
-        this.toastr.danger('加载数据库列表失败', '错误');
+        this.toastr.danger(this.i18n.instant('加载数据库列表失败'), this.i18n.instant('错误'));
         this.loadingDatabases = false;
       },
     });
@@ -375,6 +413,7 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
    * Load tables for selected database
    */
   private loadTables(catalog: string, database: string): void {
+    if (!this.activeClusterId || database === '*') return;
     this.loadingTables = true;
     this.nodeService.getTables(catalog, database).subscribe({
       next: (tables) => {
@@ -383,7 +422,7 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         console.error('Failed to load tables:', err);
-        this.toastr.danger('加载表列表失败', '错误');
+        this.toastr.danger(this.i18n.instant('加载表列表失败'), this.i18n.instant('错误'));
         this.loadingTables = false;
       },
     });
@@ -410,131 +449,232 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
     return this.currentRequestType === 'grant_permission' || this.currentRequestType === 'revoke_permission';
   }
 
-  /**
-   * Get current resource type
-   */
-  get currentResourceType(): string {
-    return this.requestForm.get('resource_type')?.value || 'database';
+  get isGrantPermission(): boolean {
+    return this.currentRequestType === 'grant_permission';
   }
 
-  /**
-   * Handle request type change
-   */
-  onRequestTypeChange(): void {
-    // Clear form based on type
-    if (this.isGrantRole) {
-      this.requestForm.patchValue({
-        target_role: '',
-        resource_type: '',
-        catalog: '',
-        database: '',
-        table: '',
-        permissions: [],
-      });
-    }
+  get isRevokePermission(): boolean {
+    return this.currentRequestType === 'revoke_permission';
+  }
+
+  get currentResourceType(): string {
+    return this.requestForm.get('resource_type')?.value || '';
+  }
+
+  get reasonLength(): number {
+    return String(this.requestForm.get('reason')?.value || '').length;
+  }
+
+  get requestTargetSummary(): string {
+    if (this.isCreatingUser) return this.requestForm.get('new_user_name')?.value || '新建用户';
+    if (this.isCreatingRole) return this.requestForm.get('new_role_name')?.value || '新建角色';
+    return this.principalType === 'role'
+      ? this.requestForm.get('target_role')?.value || '目标角色'
+      : this.requestForm.get('target_user')?.value || '目标用户';
+  }
+
+  get resourceScopeSummary(): string {
+    const scope = [
+      this.requestForm.get('catalog')?.value,
+      this.requestForm.get('database')?.value,
+      this.requestForm.get('table')?.value,
+    ].filter(Boolean);
+    return scope.length ? scope.join('.') : '未选择资源范围';
+  }
+
+  get permissionSummary(): string {
+    const permissions = this.requestForm.get('permissions')?.value || [];
+    return permissions.length ? permissions.join('、') : '未选择操作';
+  }
+
+  onRequestTypeSelected(values: string[]): void {
+    const requestType = values[0];
+    if (!requestType || requestType === this.currentRequestType) return;
+
+    this.principalType = 'user';
+    this.isCreatingUser = false;
+    this.isCreatingRole = false;
+    this.requestForm.patchValue({
+      request_type: requestType,
+      target_user: '',
+      target_role: '',
+      resource_type: '',
+      catalog: '',
+      database: '',
+      table: '',
+      permissions: [],
+      new_user_name: '',
+      new_user_password: '',
+      new_role_name: '',
+    });
+    this.applyRequestValidators();
+  }
+
+  onPrincipalTypeSelected(values: string[]): void {
+    const principalType = values[0] as 'user' | 'role';
+    if (!principalType || principalType === this.principalType) return;
+
+    this.principalType = principalType;
+    this.isCreatingUser = false;
+    this.isCreatingRole = false;
+    this.requestForm.patchValue({
+      target_user: '',
+      target_role: '',
+      new_user_name: '',
+      new_user_password: '',
+      new_role_name: '',
+    });
+    this.applyRequestValidators();
+  }
+
+  onResourceTypeSelected(values: string[]): void {
+    const resourceType = values[0];
+    if (!resourceType || resourceType === this.currentResourceType) return;
+
+    this.requestForm.patchValue({
+      resource_type: resourceType,
+      catalog: '',
+      database: '',
+      table: '',
+      permissions: [],
+    });
+    this.databases = [];
+    this.tables = [];
+    this.applyRequestValidators();
   }
 
   onTargetUserChange(value: string): void {
-    if (value === '__CREATE_NEW_USER__') {
-      this.isCreatingUser = true;
-      this.requestForm.patchValue({
-        target_user: '',
-        new_user_name: '',
-        new_user_password: '',
-      });
-    } else {
-      this.isCreatingUser = false;
-      this.requestForm.patchValue({
-        target_user: value,
-        new_user_name: '',
-        new_user_password: '',
-      });
-    }
+    this.isCreatingUser = value === '__CREATE_NEW_USER__';
+    this.requestForm.patchValue({
+      target_user: this.isCreatingUser ? '' : value,
+      new_user_name: '',
+      new_user_password: '',
+    });
+    this.applyRequestValidators();
+  }
+
+  onNewUserNameChange(): void {
+    this.applyRequestValidators();
   }
 
   onTargetRoleChange(value: string): void {
-    if (value === '__CREATE_NEW_ROLE__') {
-      this.isCreatingRole = true;
-      this.requestForm.patchValue({
-        target_role: '',
-        new_role_name: '',
-      });
-    } else {
-      this.isCreatingRole = false;
-      this.requestForm.patchValue({
-        target_role: value,
-        new_role_name: '',
-      });
-    }
+    this.isCreatingRole = value === '__CREATE_NEW_ROLE__';
+    this.requestForm.patchValue({
+      target_role: this.isCreatingRole ? '' : value,
+      new_role_name: '',
+    });
+    this.applyRequestValidators();
   }
 
-  /**
-   * Toggle permission selection
-   */
-  togglePermission(permission: string): void {
-    const permissions = this.requestForm.get('permissions')?.value || [];
-    const index = permissions.indexOf(permission);
-
-    if (index > -1) {
-      permissions.splice(index, 1);
-    } else {
-      permissions.push(permission);
-    }
-
-    this.requestForm.patchValue({ permissions });
+  setPermissionSelected(permission: string, selected: boolean): void {
+    const permissions: string[] = this.requestForm.get('permissions')?.value || [];
+    const next = selected && permission === 'ALL'
+      ? ['ALL']
+      : selected
+      ? Array.from(new Set([...permissions.filter(value => value !== 'ALL'), permission]))
+      : permissions.filter(value => value !== permission);
+    this.requestForm.patchValue({ permissions: next });
   }
 
-  /**
-   * Check if permission is selected
-   */
   isPermissionSelected(permission: string): boolean {
-    const permissions = this.requestForm.get('permissions')?.value || [];
-    return permissions.includes(permission);
+    return (this.requestForm.get('permissions')?.value || []).includes(permission);
+  }
+
+  getPermissionDescription(permission: string): string {
+    const descriptions: Record<string, string> = {
+      USAGE: '使用资源',
+      SELECT: '读取数据',
+      INSERT: '写入数据',
+      UPDATE: '更新数据',
+      DELETE: '删除数据',
+      ALTER: '修改结构',
+      DROP: '删除对象',
+      EXPORT: '导出数据',
+      ALL: '完全控制',
+    };
+    return descriptions[permission] || '执行该操作';
+  }
+
+  showControlError(controlName: string): boolean {
+    const control = this.requestForm.get(controlName);
+    return !!control?.invalid && (this.formAttempted || control.touched);
+  }
+
+  resetRequestForm(): void {
+    this.formAttempted = false;
+    this.principalType = 'user';
+    this.isCreatingUser = false;
+    this.isCreatingRole = false;
+    this.databases = [];
+    this.tables = [];
+    this.requestForm.reset({ request_type: 'grant_permission', permissions: [] });
+    this.applyRequestValidators();
+  }
+
+  private applyRequestValidators(): void {
+    const requiresPermissionScope = this.isPermissionType;
+    const requiresUser = this.isGrantRole || this.isRevokePermission || (this.isGrantPermission && this.principalType === 'user' && !this.isCreatingUser) || (this.isGrantPermission && this.principalType === 'role' && this.isCreatingRole);
+    const requiresRole = this.isGrantRole || (this.isGrantPermission && this.principalType === 'role' && !this.isCreatingRole);
+    const isCatalogScope = requiresPermissionScope && !!this.currentResourceType;
+    const isDatabaseScope = this.currentResourceType === 'database' || this.currentResourceType === 'table';
+    const isTableScope = this.currentResourceType === 'table';
+
+    this.setControlValidators('target_user', requiresUser);
+    this.setControlValidators('target_role', requiresRole);
+    this.setControlValidators('resource_type', requiresPermissionScope);
+    this.setControlValidators('catalog', isCatalogScope);
+    this.setControlValidators('database', isDatabaseScope);
+    this.setControlValidators('table', isTableScope);
+    this.setControlValidators('permissions', requiresPermissionScope);
+    this.setControlValidators('new_user_name', this.isCreatingUser);
+    this.setControlValidators('new_user_password', this.isCreatingUser);
+    this.setControlValidators('new_role_name', this.isCreatingRole);
+  }
+
+  private setControlValidators(controlName: string, required: boolean): void {
+    const control = this.requestForm.get(controlName);
+    const validators = required ? [Validators.required] : [];
+    if (controlName === 'new_user_name' || controlName === 'new_role_name') {
+      validators.push(Validators.maxLength(64), Validators.pattern(/^[A-Za-z_][A-Za-z0-9_]*$/));
+    }
+    if (controlName === 'new_user_password') {
+      validators.push(Validators.maxLength(256));
+    }
+    control?.setValidators(validators);
+    control?.updateValueAndValidity({ emitEvent: false });
   }
 
   /**
    * Submit permission request
    */
   onSubmitRequest(): void {
-    if (!this.requestForm.valid) {
-      this.toastr.warning('请填写必要字段', '验证失败');
+    if (!this.activeClusterId) {
+      this.toastr.warning(this.i18n.instant('请先选择活跃集群后再提交申请'), this.i18n.instant('未选择集群'));
+      return;
+    }
+    this.formAttempted = true;
+    this.requestForm.markAllAsTouched();
+    this.applyRequestValidators();
+    if (this.requestForm.invalid) {
+      this.toastr.warning(this.i18n.instant('请补全必填项后再提交'), this.i18n.instant('验证失败'));
       return;
     }
 
     this.formSubmitting = true;
     const formValue = this.requestForm.value;
 
-    // Build final reason with inline new user/role information
-    let reason: string = formValue.reason || '';
-    const extraInfo: string[] = [];
-
-    if (formValue.new_user_name) {
-      extraInfo.push(`新建数据库账户: ${formValue.new_user_name}`);
-    }
-    if (formValue.new_user_password) {
-      extraInfo.push(`账户初始密码: ${formValue.new_user_password}`);
-    }
-    if (formValue.new_role_name) {
-      extraInfo.push(`新建数据库角色: ${formValue.new_role_name}`);
-    }
-
-    if (extraInfo.length > 0) {
-      const extraBlock = `[系统自动补充信息]\n${extraInfo.join('\n')}`;
-      reason = reason ? `${reason}\n\n${extraBlock}` : extraBlock;
-    }
-
-    // Build request DTO
+    // 新建用户/角色的信息在 request_details 中传递；绝不把密码复制进可见的申请原因。
     const dto: SubmitRequestDto = {
-      cluster_id: 1, // TODO: Get from active cluster context
+      cluster_id: this.activeClusterId,
       request_type: formValue.request_type,
       request_details: this.buildRequestDetails(formValue),
-      reason,
+      reason: formValue.reason.trim(),
     };
 
     this.permissionService.submitRequest(dto).subscribe({
       next: (requestId) => {
         this.toastr.success(`权限申请提交成功 (ID: ${requestId})`, '提交成功');
-        this.requestForm.reset({ request_type: 'grant_permission' });
+        this.resetRequestForm();
         this.formSubmitting = false;
         this.submitted.emit();
         this.loadMyRequests();
@@ -553,9 +693,11 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
   private buildRequestDetails(formValue: any): any {
     const details: any = {
       action: formValue.request_type,
-      target_user: formValue.target_user,
     };
 
+    if (formValue.target_user) {
+      details.target_user = formValue.target_user;
+    }
     if (formValue.request_type === 'grant_role') {
       details.target_role = formValue.target_role;
     } else {
@@ -613,7 +755,7 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
         },
         error: (err) => {
           console.error('Failed to load requests:', err);
-          this.toastr.danger('加载申请列表失败', '错误');
+          this.toastr.danger(this.i18n.instant('加载申请列表失败'), this.i18n.instant('错误'));
           this.requestsLoading = false;
         },
       });
@@ -668,6 +810,8 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
         return 'success';
       case 'rejected':
         return 'danger';
+      case 'cancelled':
+        return 'basic';
       case 'failed':
         return 'danger';
       default:
@@ -685,6 +829,7 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
       executing: '执行中',
       completed: '已完成',
       rejected: '已拒绝',
+      cancelled: '已撤销',
       failed: '失败',
     };
     return statusMap[status] || status;
@@ -726,11 +871,16 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
    * Prefill form for revoke request (called from dashboard)
    */
   prefillRevokeRequest(permission: any): void {
-    // Set request type to revoke_permission first
+    this.formAttempted = false;
+    this.principalType = 'user';
+    this.isCreatingUser = false;
+    this.isCreatingRole = false;
     this.requestForm.patchValue({
       request_type: 'revoke_permission',
+      target_user: '',
+      target_role: '',
       permissions: [permission.privilege_type],
-      reason: `申请撤销权限: ${permission.privilege_type} on ${permission.resource_path}`,
+      reason: `申请撤销权限：${permission.privilege_type}（${permission.resource_path}）`,
     }, { emitEvent: false });
 
     // Set resource type without triggering cascade
@@ -739,17 +889,9 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
       resource_type: resourceType,
     }, { emitEvent: false });
 
-    // If granted through a role, set target_role
-    if (permission.granted_role) {
-      this.requestForm.patchValue({
-        target_role: permission.granted_role,
-      }, { emitEvent: false });
-    }
-
-    // Note: Don't auto-fill catalog/database/table as it triggers API calls
-    // User should select them manually
-
-    this.toastr.info('已预填撤销信息，请选择用户并补充申请原因', '预填完成');
+    // 不自动填充资源路径，避免无效地触发级联请求；用户仍需确认撤销范围。
+    this.applyRequestValidators();
+    this.toastr.info(this.i18n.instant('已预填撤销操作，请选择目标用户并确认资源范围'), this.i18n.instant('预填完成'));
   }
 
   /**
@@ -765,6 +907,10 @@ export class PermissionRequestComponent implements OnInit, OnDestroy {
       'ROLE': 'catalog', // Role grants are at catalog level
     };
     return mapping[backendType?.toUpperCase()] || 'database';
+  }
+
+  private isProtectedRole(roleName: string): boolean {
+    return ['root', 'admin', 'operator', 'public'].includes(roleName.toLowerCase());
   }
 
   /**

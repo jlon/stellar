@@ -1,3 +1,4 @@
+import { TranslatePipe } from '@ngx-translate/core';
 // @ts-nocheck
 import { Component, OnDestroy, ViewChild, inject } from '@angular/core';
 import { Subject } from 'rxjs';
@@ -5,7 +6,7 @@ import { takeUntil } from 'rxjs/operators';
 import { PermissionService } from '../../../@core/data/permission.service';
 import { AuthService } from '../../../@core/data/auth.service';
 import { PermissionRequestComponent } from './request/permission-request.component';
-import { NbCardModule, NbTabsetModule } from '@nebular/theme';
+import { NbTabsetModule, NbTabsetComponent } from '@nebular/theme';
 import { PermissionDashboardStandardComponent } from './dashboard/permission-dashboard-standard.component';
 
 import { PermissionApprovalComponent } from './approval/permission-approval.component';
@@ -15,8 +16,8 @@ import { PermissionApprovalComponent } from './approval/permission-approval.comp
     templateUrl: './permission-management.component.html',
     styleUrls: ['./permission-management.component.scss'],
     imports: [
-    NbCardModule,
     NbTabsetModule,
+    TranslatePipe,
     PermissionDashboardStandardComponent,
     PermissionRequestComponent,
     PermissionApprovalComponent
@@ -37,6 +38,8 @@ export class PermissionManagementComponent implements OnDestroy {
   refreshPendingApprovals$ = new Subject<void>();
 
   @ViewChild(PermissionRequestComponent) requestComponent: PermissionRequestComponent;
+  // 本版 NbTabset 无 selectedTab 双向绑定，编程式切 tab 只能调 selectTab()。
+  @ViewChild(NbTabsetComponent) tabsetRef: NbTabsetComponent;
 
   private destroy$ = new Subject<void>();
 
@@ -117,18 +120,18 @@ export class PermissionManagementComponent implements OnDestroy {
    * - Prefill revoke data if provided
    */
   onSwitchToRequest(event: {type: string, permission?: any}): void {
-    this.activeTabIndex = 1; // Switch to request tab
+    if (this.activeTabIndex !== 1) {
+      this.activeTabIndex = 1;
+      // tab 内容常驻渲染，直接通过 tabset 选中「权限申请」tab（静态绑定的 tabId 是字符串）。
+      const target = this.tabsetRef?.tabs?.find(t => String(t.tabId) === '1');
+      if (target) {
+        this.tabsetRef.selectTab(target);
+      }
+    }
 
     if (event.type === 'revoke_permission' && event.permission) {
-      // Store prefill data for request component
       this.prefillRevokeData = event.permission;
-
-      // If request component is already loaded, prefill it
-      setTimeout(() => {
-        if (this.requestComponent) {
-          this.requestComponent.prefillRevokeRequest(event.permission);
-        }
-      }, 100);
+      this.requestComponent?.prefillRevokeRequest(event.permission);
     }
   }
 }

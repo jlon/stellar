@@ -173,7 +173,9 @@ pub async fn analyze_profile_handler(
     }
 
     if query.refresh {
-        state.profile_analysis_cache.invalidate(cluster.id, &safe_query_id);
+        state
+            .profile_analysis_cache
+            .invalidate(cluster.id, &safe_query_id);
     } else if let Some(cached) = state.profile_analysis_cache.get(cluster.id, &safe_query_id) {
         tracing::info!(
             "Profile analysis cache hit for query {} in cluster {}",

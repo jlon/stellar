@@ -23,7 +23,7 @@ export interface RequestDetails {
 
 export interface SubmitRequestDto {
   cluster_id: number;
-  request_type: 'create_account' | 'grant_role' | 'grant_permission' | 'revoke_permission';
+  request_type: 'grant_role' | 'grant_permission' | 'revoke_permission';
   request_details: RequestDetails;
   reason: string;
   valid_until?: string;
@@ -40,11 +40,11 @@ export interface PermissionRequest {
   applicant_id: number;
   applicant_name?: string;
   applicant_org_id: number;
-  request_type: 'create_account' | 'grant_role' | 'grant_permission' | 'revoke_permission';
+  request_type: 'grant_role' | 'grant_permission' | 'revoke_permission';
   request_details: RequestDetails;
   reason: string;
   valid_until?: string;
-  status: 'pending' | 'approved' | 'rejected' | 'executing' | 'completed' | 'failed';
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'executing' | 'completed' | 'failed';
   approver_id?: number;
   approver_name?: string;
   approval_comment?: string;
@@ -68,7 +68,7 @@ export interface PermissionRequestResponse {
   request_details: RequestDetails;
   reason: string;
   valid_until?: string;
-  status: 'pending' | 'approved' | 'rejected' | 'executing' | 'completed' | 'failed';
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'executing' | 'completed' | 'failed';
   approver_id?: number;
   approver_name?: string;
   approval_comment?: string;

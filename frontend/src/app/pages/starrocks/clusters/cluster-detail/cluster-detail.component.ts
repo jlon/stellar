@@ -1,6 +1,8 @@
+import { I18nService } from '../../../../@core/i18n/i18n.service';
+import { TranslatePipe } from '@ngx-translate/core';
 import { Component, OnInit, TemplateRef, inject } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { NbDialogService, NbToastrService, NbCardModule, NbIconModule, NbTagModule, NbButtonModule, NbTooltipModule, NbSpinnerModule, NbInputModule } from '@nebular/theme';
+import { NbButtonModule, NbCardModule, NbDialogService, NbIconModule, NbInputModule, NbSpinnerModule, NbTagModule, NbToastrService, NbTooltipModule } from '@nebular/theme';
 import { ClusterService, Cluster, ClusterHealth } from '../../../../@core/data/cluster.service';
 import { ConfirmDialogService } from '../../../../@core/services/confirm-dialog.service';
 import { NodeService, Variable } from '../../../../@core/data/node.service';
@@ -12,6 +14,7 @@ import { FormsModule } from '@angular/forms';
     templateUrl: './cluster-detail.component.html',
     styleUrls: ['./cluster-detail.component.scss'],
     imports: [
+    TranslatePipe,
     NbCardModule,
     NbIconModule,
     NbTagModule,
@@ -24,7 +27,8 @@ import { FormsModule } from '@angular/forms';
 ],
 })
 export class ClusterDetailComponent implements OnInit {
-  private clusterService = inject(ClusterService);
+  private clusterService = inject(ClusterService)
+  private i18n = inject(I18nService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private toastrService = inject(NbToastrService);
@@ -46,6 +50,11 @@ export class ClusterDetailComponent implements OnInit {
   }
 
   ngOnInit(): void {
+    // 非数字 id（旧 /new 书签等）直接回列表，不发无效请求。
+    if (!Number.isFinite(this.clusterId)) {
+      this.router.navigate(['/pages/starrocks/clusters']);
+      return;
+    }
     this.loadCluster();
     this.loadHealth();
   }
@@ -117,7 +126,7 @@ export class ClusterDetailComponent implements OnInit {
 
         this.clusterService.deleteCluster(this.clusterId).subscribe({
           next: () => {
-            this.toastrService.success('集群删除成功', '成功');
+            this.toastrService.success(this.i18n.instant('集群删除成功'), this.i18n.instant('成功'));
             this.router.navigate(['/pages/starrocks/clusters']);
           },
           error: (error) => {

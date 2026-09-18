@@ -55,7 +55,9 @@ pub async fn list_backends(
     }
     let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
     let mut backends = adapter.get_backends().await?;
-    state.metrics_collector_service.store_backends(cluster_id, backends.clone());
+    state
+        .metrics_collector_service
+        .store_backends(cluster_id, backends.clone());
     fill_storage(&mut backends);
     Ok(Json(backends))
 }
@@ -97,7 +99,9 @@ pub async fn delete_backend(
     let cluster_id = cluster.id;
     let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
     adapter.drop_backend(&host, &port).await?;
-    state.metrics_collector_service.invalidate_backends(cluster_id);
+    state
+        .metrics_collector_service
+        .invalidate_backends(cluster_id);
 
     Ok(Json(serde_json::json!({
         "message": format!("Backend {}:{} deleted successfully", host, port)

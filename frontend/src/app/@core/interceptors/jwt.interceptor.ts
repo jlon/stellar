@@ -14,7 +14,7 @@ import { NbToastrService } from '@nebular/theme';
 
 @Injectable()
 export class JwtInterceptor implements HttpInterceptor {
-  private authService = inject(AuthService);
+  private authService = inject(AuthService)
   private toastrService = inject(NbToastrService);
   private router = inject(Router);
 

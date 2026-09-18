@@ -16,6 +16,11 @@ const routes: Routes = [
         (m) => m.ResourceGroupsModule
       ),
   },
+  {
+    path: 'agent',
+    loadChildren: () =>
+      import('./agent/agent.module').then((m) => m.AgentModule),
+  },
 ];
 
 @NgModule({

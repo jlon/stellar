@@ -1,65 +1,20 @@
-<div class="row">
-  <div class="col-12">
-    <nb-card>
-      <nb-card-body>
-        <div class="d-flex flex-wrap">
-          <div class="mr-4 mb-2">
-            <nb-icon icon="shield-outline" status="primary"></nb-icon>
-            <span class="h6 mb-0 ml-1">{{ stats.totalRoles }}</span>
-            <span class="text-hint ml-1">角色</span>
-          </div>
-          <div class="mr-4 mb-2">
-            <nb-icon icon="globe-outline" status="success"></nb-icon>
-            <span class="h6 mb-0 ml-1">{{ stats.globalPermissions }}</span>
-            <span class="text-hint ml-1">全局</span>
-          </div>
-          <div class="mr-4 mb-2">
-            <nb-icon icon="layers-outline" status="info"></nb-icon>
-            <span class="h6 mb-0 ml-1">{{ stats.dbPermissions }}</span>
-            <span class="text-hint ml-1">库级</span>
-          </div>
-          <div class="mb-2">
-            <nb-icon icon="grid-outline" status="warning"></nb-icon>
-            <span class="h6 mb-0 ml-1">{{ stats.tablePermissions }}</span>
-            <span class="text-hint ml-1">表级</span>
-          </div>
-        </div>
-      </nb-card-body>
-    </nb-card>
-  </div>
-</div>
-
-<nb-card>
-  <nb-card-header>
-    <div class="d-flex justify-content-between align-items-center">
-      <span>权限列表 <span class="text-hint">共 {{ filteredPermissions.length }} 条</span></span>
-      <button nbButton status="primary" size="small" (click)="loadPermissions()">
-        <nb-icon icon="refresh-outline"></nb-icon>
-      </button>
-    </div>
-  </nb-card-header>
-
+<nb-card [nbSpinner]="loading" nbSpinnerStatus="primary" nbSpinnerSize="medium" [nbSpinnerMessage]="'加载中' | translate">
   <nb-card-body>
-    @if (loading) {
-      <div class="text-center">
-        <nb-spinner status="primary"></nb-spinner>
-      </div>
-    }
+    <angular2-smart-table
+      [settings]="settings"
+      [source]="source"
+      (edit)="onEditRow($event)">
+    </angular2-smart-table>
 
-    @if (!loading && filteredPermissions.length > 0) {
-      <angular2-smart-table
-        [settings]="settings"
-        [source]="source"
-        (edit)="onEditRow($event)">
-      </angular2-smart-table>
-    }
-
-    @if (!loading && filteredPermissions.length === 0) {
-      <div class="text-center p-4">
-        <p class="text-hint">暂无权限数据</p>
-        <button nbButton status="primary" size="small" (click)="switchToRequest.emit({type: 'grant_permission'})">
-          <nb-icon icon="plus-outline"></nb-icon>
-          申请权限
+    @if (!loading && permissions.length === 0) {
+      <div class="empty-state">
+        <nb-icon icon="shield-outline"></nb-icon>
+        <div>
+          <strong>{{  '暂无数据库权限' | translate }}</strong>
+          <p>{{  '当前账号尚未被授予任何库表权限，先提交权限申请。' | translate }}</p>
+        </div>
+        <button nbButton size="small" status="primary" (click)="requestPermission()">
+          {{ '去申请权限' | translate }} <nb-icon icon="arrow-forward-outline"></nb-icon>
         </button>
       </div>
     }
@@ -68,28 +23,28 @@
 
 <ng-template #detailDialog let-ref="dialogRef">
   <nb-card>
-    <nb-card-header>{{ isRolePermission ? '角色权限详情' : '权限详情' }}</nb-card-header>
+    <nb-card-header>{{  isRolePermission ? ('角色权限详情' | translate) : ('权限详情' | translate)  }}</nb-card-header>
     @if (selectedPermission) {
       <nb-card-body>
         <nb-list>
           <nb-list-item>
-            <span class="text-hint">权限类型</span>
+            <span class="text-hint">{{  '权限类型' | translate }}</span>
             <nb-badge [text]="selectedPermission.privilege_type" status="primary"></nb-badge>
           </nb-list-item>
           <nb-list-item>
-            <span class="text-hint">资源类型</span>
+            <span class="text-hint">{{  '资源类型' | translate }}</span>
             <nb-badge [text]="selectedPermission.resource_type" status="info"></nb-badge>
           </nb-list-item>
           <nb-list-item>
-            <span class="text-hint">资源路径</span>
+            <span class="text-hint">{{  '资源路径' | translate }}</span>
             <span>{{ selectedPermission.resource_path }}</span>
           </nb-list-item>
           <nb-list-item>
-            <span class="text-hint">授权方式</span>
-            <span>{{ selectedPermission.granted_role || '直接授权' }}</span>
+            <span class="text-hint">{{  '授权方式' | translate }}</span>
+            <span>{{  selectedPermission.granted_role || ('直接授权' | translate)  }}</span>
           </nb-list-item>
           <nb-list-item>
-            <span class="text-hint">风险等级</span>
+            <span class="text-hint">{{  '风险等级' | translate }}</span>
             <nb-badge
               [text]="getRiskLabel(selectedPermission.risk_level)"
               [status]="getRiskColor(selectedPermission.risk_level)">
@@ -98,24 +53,20 @@
         </nb-list>
         <nb-accordion>
           <nb-accordion-item [expanded]="true">
-            <nb-accordion-item-header>权限说明</nb-accordion-item-header>
+            <nb-accordion-item-header>{{  '权限说明' | translate }}</nb-accordion-item-header>
             <nb-accordion-item-body>
               <p>{{ getPrivilegeDescription(selectedPermission.privilege_type) }}</p>
               <p class="text-hint">
-                影响范围：{{ getResourceScopeDescription(selectedPermission.resource_type, selectedPermission.resource_path) }}
-              </p>
+{{ '影响范围' | translate }}
               @if (getPrivilegeUsage(selectedPermission.privilege_type)) {
                 <p class="text-hint">
-                  使用场景：{{ getPrivilegeUsage(selectedPermission.privilege_type) }}
-                </p>
+{{ '使用场景' | translate }}
               }
             </nb-accordion-item-body>
           </nb-accordion-item>
           @if (isRolePermission) {
             <nb-accordion-item [expanded]="true">
-              <nb-accordion-item-header>
-                角色 "{{ selectedPermission.resource_path }}" 包含的权限
-              </nb-accordion-item-header>
+              <nb-accordion-item-header>{{ '角色 "' | translate }}{{ selectedPermission.resource_path }}{{ '" 包含的权限' | translate }}</nb-accordion-item-header>
               <nb-accordion-item-body>
                 @if (loadingRolePermissions) {
                   <div class="text-center">
@@ -124,7 +75,7 @@
                 }
                 @if (!loadingRolePermissions && rolePermissions.length === 0) {
                   <p class="text-hint">
-                    该角色暂无权限或无法查询
+                    {{ '该角色暂无权限或无法查询' | translate }}
                   </p>
                 }
                 @if (!loadingRolePermissions && rolePermissions.length > 0) {
@@ -145,9 +96,9 @@
       </nb-card-body>
     }
     <nb-card-footer class="d-flex justify-content-end">
-      <button nbButton ghost status="basic" class="mr-2" (click)="ref.close()">关闭</button>
+      <button nbButton ghost status="basic" class="mr-2" (click)="ref.close()">{{  '关闭' | translate }}</button>
       <button nbButton status="danger" outline (click)="requestRevoke(selectedPermission); ref.close()">
-        申请撤销
+        {{ '申请撤销' | translate }}
       </button>
     </nb-card-footer>
   </nb-card>

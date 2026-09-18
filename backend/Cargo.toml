@@ -7,6 +7,12 @@ edition = "2024"
 name = "stellar"
 path = "src/lib.rs"
 
+[profile.release]
+strip = true
+# fat LTO + 单 codegen unit 在不降低运行时优化级别或改变 panic 语义的前提下缩小静态发布包。
+lto = "fat"
+codegen-units = 1
+
 [[bin]]
 name = "stellar"
 path = "src/main.rs"
@@ -21,6 +27,8 @@ all = "warn"
 [dependencies]
 # Web framework
 axum = { version = "0.7", features = ["macros"] }
+futures = "0.3"
+tokio-stream = { version = "0.1", features = ["sync"] }
 tower = { version = "0.4", features = ["util"] }
 tower-http = { version = "0.5", features = ["cors", "trace", "fs"] }
 tokio = { version = "1", features = ["full"] }
@@ -39,7 +47,7 @@ jsonwebtoken = "9.2"
 bcrypt = "0.15"
 
 # HTTP client for StarRocks
-reqwest = { version = "0.11", features = ["json", "native-tls-vendored"] }
+reqwest = { version = "0.11", features = ["json", "stream", "native-tls-vendored"] }
 
 # Configuration
 dotenvy = "0.15"
@@ -67,6 +75,10 @@ dashmap = "6.1"
 urlencoding = "2.1"
 uuid = { version = "1.6", features = ["v4"] }
 async-trait = "0.1"
+rand = "0.8"
+aes-gcm = "0.10"
+base64 = "0.22"
+sha2 = "0.10"
 
 # Validation
 validator = { version = "0.18", features = ["derive"] }
@@ -85,5 +97,8 @@ rust-embed = "8.0"
 
 # Command line argument parsing
 clap = { version = "4.5", features = ["derive"] }
+
+# Support log archive generation (Deflate only: no bzip2/zstd/aes needed)
+zip = { version = "0.6", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]

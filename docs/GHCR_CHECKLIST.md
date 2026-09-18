@@ -93,8 +93,8 @@ docker pull ghcr.io/jlon/stellar:latest
 # 查看镜像信息
 docker images | grep stellar
 
-# 测试运行
-docker run --rm ghcr.io/jlon/stellar:latest ./bin/stellar --version
+# 测试运行（版本查询不需要服务密钥）
+docker run --rm ghcr.io/jlon/stellar:latest --version
 ```
 
 ## 📊 构建流程图
@@ -206,10 +206,9 @@ docker pull ghcr.io/jlon/stellar:latest
 # 拉取最新镜像
 docker pull ghcr.io/jlon/stellar:latest
 
-# 运行容器
+# 运行容器（首次启动在 docker logs 中打印一次性管理员密码）
 docker run -d -p 8080:8080 --name stellar \
-  -v $(pwd)/data:/app/data \
-  -v $(pwd)/logs:/app/logs \
+  -v $(pwd)/data:/data \
   ghcr.io/jlon/stellar:latest
 
 # 访问应用
@@ -218,9 +217,9 @@ open http://localhost:8080
 
 ### 版本说明
 
-- \`latest\` - 最新稳定版本（自动构建自 main 分支）
-- \`v1.0.0\` - 特定版本
-- \`main\` - 开发版本
+- \`latest\` - 最新稳定发布标签生成的镜像
+- \`1.0.0\` - 特定版本
+- \`1.0\`、\`1\` - 对应的次版本和主版本
 
 查看所有可用版本: https://github.com/jlon/stellar/pkgs/container/stellar
 ```
@@ -230,14 +229,14 @@ open http://localhost:8080
 ### 1. 优化 Dockerfile
 
 - [x] 使用多阶段构建（已实现）
-- [ ] 添加 `.dockerignore` 文件
-- [ ] 优化层顺序，将不常变的层放前面
+- [x] 添加 `.dockerignore` 文件
+- [x] 依赖清单先复制，提升层缓存命中
 
 ### 2. 优化构建时间
 
 - [x] 启用构建缓存（已配置）
 - [ ] 使用自托管 Runner（可选）
-- [ ] 并行构建多个架构（可选）
+- [x] 通过 Buildx 构建并发布 amd64/arm64 manifest
 
 ### 3. 镜像大小优化
 

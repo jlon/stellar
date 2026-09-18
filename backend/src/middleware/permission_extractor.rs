@@ -13,12 +13,14 @@ pub fn extract_permission(method: &str, uri: &str) -> Option<(String, String)> {
     let path = uri.strip_prefix("/api/").unwrap_or(uri);
     let segments: Vec<&str> = path.split('/').collect();
 
+    // System support archive: /api/system/logs/archive
+    if segments.as_slice() == ["system", "logs", "archive"] && method == "GET" {
+        return Some(("system".to_string(), "logs:archive".to_string()));
+    }
+
     // Op audit logs: /api/op-audit-logs -- 平台操作审计
     if segments.first() == Some(&"op-audit-logs") {
-        return Some((
-            "op-audit-logs".to_string(),
-            "logs:list".to_string(),
-        ));
+        return Some(("op-audit-logs".to_string(), "logs:list".to_string()));
     }
 
     // Notifications resource: /api/notifications -- 用户通知（铃铛）
@@ -30,18 +32,16 @@ pub fn extract_permission(method: &str, uri: &str) -> Option<(String, String)> {
     }
 
     // Chat actions resource: /api/agent/chat-actions -- 对话内动作确认
-    if segments.first() == Some(&"agent")
-        && segments.get(1) == Some(&"chat-actions")
-    {
+    if segments.first() == Some(&"agent") && segments.get(1) == Some(&"chat-actions") {
         return match (segments.len(), method, segments.get(2).copied()) {
             // 资源复用 "agent"（权限码 api:agent:chat-actions:*，与播种一致）
             (2, "GET", _) => Some(("agent".to_string(), "chat-actions:list".to_string())),
             (3, "POST", Some("confirm")) => {
                 Some(("agent".to_string(), "chat-actions:confirm".to_string()))
-            }
+            },
             (3, "POST", Some("cancel")) => {
                 Some(("agent".to_string(), "chat-actions:cancel".to_string()))
-            }
+            },
             _ => None,
         };
     }
@@ -51,6 +51,29 @@ pub fn extract_permission(method: &str, uri: &str) -> Option<(String, String)> {
         return Some(("agent".to_string(), extract_agent_action(&segments, method)?));
     }
 
+    // Permission requests are a workflow resource, not an implicit clusters fallback.
+    if segments.first() == Some(&"permission-requests") {
+        let action =
+            match (segments.len(), method, segments.get(1).copied(), segments.get(2).copied()) {
+                (2, "GET", Some("my"), _) => "my",
+                (2, "GET", Some("pending"), _) => "pending",
+                (1, "POST", _, _) => "create",
+                (2, "GET", _, _) => "get",
+                (3, "POST", _, Some("approve")) => "approve",
+                (3, "POST", _, Some("reject")) => "reject",
+                (3, "POST", _, Some("cancel")) => "cancel",
+                _ => return None,
+            };
+        return Some(("permission-requests".to_string(), action.to_string()));
+    }
+
+    if segments.first() == Some(&"db-auth")
+        && segments.get(1) == Some(&"preview-sql")
+        && method == "POST"
+    {
+        return Some(("db-auth".to_string(), "preview-sql".to_string()));
+    }
+
     // Special handling for /api/clusters/db-auth/* paths
     // db-auth is a separate resource in the permissions model, not under clusters
     if segments.first() == Some(&"clusters") && segments.get(1) == Some(&"db-auth") {
@@ -58,11 +81,28 @@ pub fn extract_permission(method: &str, uri: &str) -> Option<(String, String)> {
             let action = match segments.get(2) {
                 Some(&"accounts") => Some("accounts:list".to_string()),
                 Some(&"roles") => Some("roles:list".to_string()),
+                Some(&"my-permissions") => Some("my-permissions".to_string()),
                 _ => None,
             }?;
             return Some(("db-auth".to_string(), action));
         }
+        if method == "GET" && segments.len() == 4 && segments.get(2) == Some(&"role-permissions") {
+            return Some(("db-auth".to_string(), "role-permissions".to_string()));
+        }
         return None;
+    }
+
+    if segments.first() == Some(&"clusters")
+        && segments.get(2) == Some(&"db-auth")
+        && method == "GET"
+        && segments.len() == 4
+    {
+        let action = match segments.get(3) {
+            Some(&"accounts") => "accounts:list",
+            Some(&"roles") => "roles:list",
+            _ => return None,
+        };
+        return Some(("db-auth".to_string(), action.to_string()));
     }
 
     // Special handling for /api/clusters/resource-groups/* paths
@@ -124,7 +164,7 @@ fn extract_agent_action(segments: &[&str], method: &str) -> Option<String> {
         (Some("incidents"), 2, "GET") => Some("incidents".to_string()),
         (Some("incidents"), 3, "GET") if segments.get(2) == Some(&"actions") => {
             Some("incidents:actions:get".to_string())
-        }
+        },
         (Some("incidents"), 3, "GET") => Some("incidents:get".to_string()),
         (Some("incidents"), 4, "POST") => match segments.get(3).copied() {
             Some("investigate") => Some("incidents:investigate".to_string()),
@@ -144,7 +184,7 @@ fn extract_agent_action(segments: &[&str], method: &str) -> Option<String> {
         // 回答点赞/点踩：POST /api/agent/messages/:id/feedback
         (Some("messages"), 4, "POST") if segments.get(3) == Some(&"feedback") => {
             Some("messages:feedback".to_string())
-        }
+        },
         _ => None,
     }
 }
@@ -265,7 +305,9 @@ fn extract_clusters_special_paths(segments: &[&str], method: &str) -> Option<Str
         }),
         Box::new(|seg, m| {
             // 按指纹取消在跑查询：与 KILL 同风险等级，复用 queries:kill 权限码（零迁移）。
-            if m == "POST" && seg.len() == 3 && seg.get(1) == Some(&"queries")
+            if m == "POST"
+                && seg.len() == 3
+                && seg.get(1) == Some(&"queries")
                 && seg.get(2) == Some(&"cancel")
             {
                 Some("queries:kill".to_string())

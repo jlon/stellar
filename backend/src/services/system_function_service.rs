@@ -8,9 +8,10 @@ use std::sync::Arc;
 use stellar_macros::app_impl;
 
 use crate::models::{
-    CreateFunctionRequest, SystemFunction, SystemFunctionPreference, UpdateFunctionRequest,
-    UpdateOrderRequest,
+    Cluster, CreateFunctionRequest, DeploymentMode, SystemFunction, SystemFunctionPreference,
+    UpdateFunctionRequest, UpdateOrderRequest,
 };
+use crate::services::cluster_timeout;
 use crate::services::{ClusterService, MySQLClient, MySQLPoolManager};
 use crate::utils::{ApiError, ApiResult, StringExt, vec_to_map};
 
@@ -31,7 +32,8 @@ impl<DB: AppDb> SystemFunctionService<DB> {
         Self { db, mysql_pool_manager, cluster_service }
     }
 
-    pub async fn get_functions(&self, cluster_id: i64) -> ApiResult<Vec<SystemFunction>> {
+    pub async fn get_functions(&self, cluster: &Cluster) -> ApiResult<Vec<SystemFunction>> {
+        let cluster_id = cluster.id;
         tracing::debug!("Getting system functions for cluster_id: {}", cluster_id);
 
         let all_functions = db_query::query_as::<_, SystemFunction>(
@@ -39,7 +41,23 @@ impl<DB: AppDb> SystemFunctionService<DB> {
         )
         .bind(cluster_id)
         .fetch_all(&*self.db)
-        .await?;
+        .await?
+        .into_iter()
+        // Deployment-mode gate: system presets tied to one storage architecture
+        // are hidden on clusters running the other mode (custom functions unaffected).
+        .filter(|func| {
+            let mode = cluster.deployment_mode.clone();
+            let pass =
+                func.cluster_id == cluster_id || function_supports_mode(&func.function_name, mode);
+            tracing::debug!(
+                "[mode-gate] func={} cluster_id={:?} pass={}",
+                func.function_name,
+                func.cluster_id,
+                pass
+            );
+            pass
+        })
+        .collect::<Vec<_>>();
 
         tracing::debug!("Found {} function definitions", all_functions.len());
 
@@ -180,9 +198,10 @@ impl<DB: AppDb> SystemFunctionService<DB> {
 
     pub async fn execute_function(
         &self,
-        cluster_id: i64,
+        cluster: &Cluster,
         function_id: i64,
     ) -> ApiResult<Vec<HashMap<String, Value>>> {
+        let cluster_id = cluster.id;
         let function = db_query::query_as::<_, SystemFunction>(
             "SELECT * FROM system_functions WHERE id = ? AND cluster_id = ?",
         )
@@ -200,7 +219,7 @@ impl<DB: AppDb> SystemFunctionService<DB> {
         let cluster = self.cluster_service.get_cluster(cluster_id).await?;
 
         let pool = self.mysql_pool_manager.get_pool(&cluster).await?;
-        let mysql_client = MySQLClient::from_pool(pool);
+        let mysql_client = MySQLClient::from_pool(pool).with_timeout(cluster_timeout(&cluster));
 
         let (columns, rows) = mysql_client.query_raw(&function.sql_query).await?;
 
@@ -262,9 +281,10 @@ impl<DB: AppDb> SystemFunctionService<DB> {
 
     pub async fn toggle_favorite(
         &self,
-        cluster_id: i64,
+        cluster: &Cluster,
         function_id: i64,
     ) -> ApiResult<SystemFunction> {
+        let cluster_id = cluster.id;
         let current_favorited: Option<bool> = db_query::query_scalar(
             "SELECT is_favorited FROM system_function_preferences WHERE cluster_id = ? AND function_id = ?"
         )
@@ -309,7 +329,7 @@ impl<DB: AppDb> SystemFunctionService<DB> {
         .execute(&*self.db)
         .await?;
 
-        self.get_functions(cluster_id)
+        self.get_functions(cluster)
             .await?
             .into_iter()
             .find(|f| f.id == function_id)
@@ -318,10 +338,11 @@ impl<DB: AppDb> SystemFunctionService<DB> {
 
     pub async fn update_function(
         &self,
-        cluster_id: i64,
+        cluster: &Cluster,
         function_id: i64,
         req: UpdateFunctionRequest,
     ) -> ApiResult<SystemFunction> {
+        let cluster_id = cluster.id;
         // 使用 StringExt trait 进行字符串清理
         let category_name = req.category_name.trimmed();
         let function_name = req.function_name.trimmed();
@@ -356,7 +377,7 @@ impl<DB: AppDb> SystemFunctionService<DB> {
         .execute(&*self.db)
         .await?;
 
-        self.get_functions(cluster_id)
+        self.get_functions(cluster)
             .await?
             .into_iter()
             .find(|f| f.id == function_id)
@@ -438,5 +459,28 @@ impl<DB: AppDb> SystemFunctionService<DB> {
         .await?;
 
         Ok(())
+    }
+}
+
+/// Whether a system preset function applies to the cluster's deployment mode.
+///
+/// Verdicts come from StarRocks FE sources (ProcService registration + managers):
+/// - `/compactions` reads CompactionMgr (lake compaction, shared-data only)
+/// - `/replications` reads ReplicationMgr (lake data replication, shared-data only)
+/// - `/historical_nodes` reads HistoricalNodeMgr/StarOS workers (shared-data only)
+/// - `/cluster_balance` reads TabletScheduler/TabletChecker (local replica balance,
+///   shared-nothing only; shared-data has no local tablet replicas)
+/// - `/compute_nodes` is the CN listing (shared-data only; shared-nothing clusters
+///   have no CNs, `/backends` covers nodes there)
+///
+/// Everything else works in both modes.
+fn function_supports_mode(function_name: &str, mode: DeploymentMode) -> bool {
+    let name = function_name.trim();
+    match name {
+        "compactions" | "replications" | "historical_nodes" | "compute_nodes" => {
+            mode == DeploymentMode::SharedData
+        },
+        "cluster_balance" => mode == DeploymentMode::SharedNothing,
+        _ => true,
     }
 }

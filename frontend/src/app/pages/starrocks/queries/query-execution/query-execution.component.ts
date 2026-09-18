@@ -1,3 +1,5 @@
+import { I18nService } from '../../../../@core/i18n/i18n.service';
+import { TranslatePipe } from '@ngx-translate/core';
 import { Component, OnInit, OnDestroy, ViewChild, AfterViewInit, ElementRef, HostListener, TemplateRef, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
 import { NbAlertModule, NbBadgeModule, NbButtonModule, NbCardModule, NbCheckboxModule, NbDialogRef, NbDialogService, NbIconModule, NbInputModule, NbMenuItem, NbMenuService, NbOptionModule, NbSelectModule, NbSidebarService, NbSidebarState, NbSpinnerModule, NbTabsetModule, NbThemeService, NbToastrService, NbTooltipModule } from '@nebular/theme';
@@ -141,6 +143,7 @@ interface NavTreeNode {
         ]),
     ],
     imports: [
+    TranslatePipe,
     NbSpinnerModule,
     NbCardModule,
     NbTabsetModule,
@@ -166,7 +169,8 @@ interface NavTreeNode {
 ],
 })
 export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit {
-  private nodeService = inject(NodeService);
+  private nodeService = inject(NodeService)
+  private i18n = inject(I18nService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private toastrService = inject(NbToastrService);
@@ -513,7 +517,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       edit: true,
       delete: true,
       position: 'right',
-      columnTitle: '操作',
+      columnTitle: this.i18n.instant('操作'),
     },
     edit: {
       editButtonContent: '<i class="nb-search" title="查看"></i>',
@@ -533,37 +537,37 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         width: '15%',
       },
       User: { 
-        title: '用户', 
+        title: this.i18n.instant('用户'), 
         type: 'string', 
         width: '8%' 
       },
       Database: { 
-        title: '数据库', 
+        title: this.i18n.instant('数据库'), 
         type: 'string', 
         width: '10%' 
       },
       ExecTime: {
-        title: '执行时间',
+        title: this.i18n.instant('执行时间'),
         type: 'html',
         sanitizer: { bypassHtml: true },
         width: '10%',
         valuePrepareFunction: (value: string | number, row: any) => this.renderSlowQueryBadge(value),
       },
       ScanBytes: {
-        title: '扫描数据量',
+        title: this.i18n.instant('扫描数据量'),
         type: 'html',
         sanitizer: { bypassHtml: true },
         width: '10%',
         valuePrepareFunction: (value: string | number) => this.formatBytes(value),
       },
       ProcessRows: {
-        title: '处理行数',
+        title: this.i18n.instant('处理行数'),
         type: 'string',
         width: '10%',
         valuePrepareFunction: (value: string | number) => this.formatNumber(value),
       },
       CPUTime: {
-        title: 'CPU时间',
+        title: this.i18n.instant('CPU时间'),
         type: 'html',
         sanitizer: { bypassHtml: true },
         width: '10%',
@@ -982,8 +986,12 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   private clampEditorHeight(h: number): number {
-    const reserved = 80 + 28 + (this.queryResult ? 160 : 0);
-    const maxH = Math.max(200, this.treePanelHeight - reserved);
+    // Keep the toolbar + footer visible; the results section scrolls within
+    // whatever space remains, so the editor may take up to the full panel.
+    const reserved = 108;
+    const container = document.querySelector('.editor-panel');
+    const available = container instanceof HTMLElement ? container.clientHeight : 560;
+    const maxH = Math.max(this.editorMinHeight, available - reserved);
     return Math.min(maxH, Math.max(this.editorMinHeight, h));
   }
 
@@ -1312,11 +1320,11 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
           // Only regular tables can trigger compaction manually
           const tableType = targetNode.data?.tableType;
           if (tableType === 'VIEW') {
-            this.toastrService.warning('视图不支持手动触发Compaction', '提示');
+            this.toastrService.warning(this.i18n.instant('视图不支持手动触发Compaction'), this.i18n.instant('提示'));
             return;
           }
           if (tableType === 'MATERIALIZED_VIEW') {
-            this.toastrService.warning('物化视图的Compaction由系统自动管理，不建议手动触发', '提示');
+            this.toastrService.warning(this.i18n.instant('物化视图的Compaction由系统自动管理，不建议手动触发'), this.i18n.instant('提示'));
             return;
           }
           this.openCompactionTriggerDialog(targetNode);
@@ -1341,7 +1349,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
           const tableType = targetNode.data?.tableType;
           // Only regular tables and materialized views support bucket analysis
           if (tableType === 'VIEW') {
-            this.toastrService.warning('视图是逻辑表，没有分桶信息', '提示');
+            this.toastrService.warning(this.i18n.instant('视图是逻辑表，没有分桶信息'), this.i18n.instant('提示'));
             return;
           }
           // CLOUD_NATIVE tables are supported, but some analysis may show limited data
@@ -1412,7 +1420,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
   private insertTextAtCursor(text: string): void {
     if (!text) {
-      this.toastrService.warning('无法识别表名', '提示');
+      this.toastrService.warning(this.i18n.instant('无法识别表名'), this.i18n.instant('提示'));
       return;
     }
     if (this.sqlEditorCollapsed) {
@@ -1443,7 +1451,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   private previewTableRows(node: NavTreeNode): void {
     const name = this.qualifiedTableName(node);
     if (!name) {
-      this.toastrService.warning('无法识别表名', '提示');
+      this.toastrService.warning(this.i18n.instant('无法识别表名'), this.i18n.instant('提示'));
       return;
     }
     this.onNodeSelect(node);
@@ -1510,7 +1518,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
     if (!result || !Array.isArray(result.results) || result.results.length === 0) {
       this.currentTableSchema = '';
-      this.toastrService.warning('未返回表结构信息', '提示');
+      this.toastrService.warning(this.i18n.instant('未返回表结构信息'), this.i18n.instant('提示'));
       return;
     }
 
@@ -1528,7 +1536,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
     if (!rows || rows.length === 0) {
       this.currentTableSchema = '';
-      this.toastrService.warning('未获取到建表语句', '提示');
+      this.toastrService.warning(this.i18n.instant('未获取到建表语句'), this.i18n.instant('提示'));
       return;
     }
 
@@ -1544,7 +1552,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
     if (!matchedRow) {
       this.currentTableSchema = '';
-      this.toastrService.warning('未获取到建表语句', '提示');
+      this.toastrService.warning(this.i18n.instant('未获取到建表语句'), this.i18n.instant('提示'));
       return;
     }
 
@@ -1614,7 +1622,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     customErrorMessage?: { database?: string; table?: string }
   ): boolean {
     if (!info) {
-      this.toastrService.warning('节点信息无效', '提示');
+      this.toastrService.warning(this.i18n.instant('节点信息无效'), this.i18n.instant('提示'));
       return false;
     }
 
@@ -1753,23 +1761,23 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
     // Define columns for transaction display
     const transactionColumns = {
-      TransactionId: { title: '事务ID', type: 'string', width: '12%' },
+      TransactionId: { title: this.i18n.instant('事务ID'), type: 'string', width: '12%' },
       Label: { 
-        title: '标签', 
+        title: this.i18n.instant('标签'), 
         type: 'html', 
         sanitizer: { bypassHtml: true },
         width: '20%',
         valuePrepareFunction: (value: any) => this.renderLongText(value, 30),
       },
       Coordinator: { 
-        title: '协调者', 
+        title: this.i18n.instant('协调者'), 
         type: 'html', 
         sanitizer: { bypassHtml: true },
         width: '15%',
         valuePrepareFunction: (value: any) => this.renderLongText(value, 25),
       },
       TransactionStatus: { 
-        title: '状态', 
+        title: this.i18n.instant('状态'), 
         type: 'html', 
         sanitizer: { bypassHtml: true },
         width: '10%',
@@ -1786,15 +1794,15 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         },
       },
       LoadJobSourceType: { 
-        title: '来源类型', 
+        title: this.i18n.instant('来源类型'), 
         type: 'html', 
         sanitizer: { bypassHtml: true },
         width: '12%',
         valuePrepareFunction: (value: any) => this.renderLongText(value, 20),
       },
-      PrepareTime: { title: '准备时间', type: 'string', width: '12%' },
+      PrepareTime: { title: this.i18n.instant('准备时间'), type: 'string', width: '12%' },
       CommitTime: { 
-        title: '提交时间', 
+        title: this.i18n.instant('提交时间'), 
         type: 'html', 
         sanitizer: { bypassHtml: true },
         width: '12%',
@@ -1805,9 +1813,9 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
           return String(value);
         },
       },
-      PublishTime: { title: '发布时间', type: 'string', width: '12%' },
+      PublishTime: { title: this.i18n.instant('发布时间'), type: 'string', width: '12%' },
       FinishTime: { 
-        title: '完成时间', 
+        title: this.i18n.instant('完成时间'), 
         type: 'html', 
         sanitizer: { bypassHtml: true },
         width: '12%',
@@ -1819,7 +1827,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         },
       },
       ErrMsg: { 
-        title: '错误信息', 
+        title: this.i18n.instant('错误信息'), 
         type: 'html', 
         sanitizer: { bypassHtml: true },
         width: '15%',
@@ -1975,7 +1983,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     }, {
       columns: {
         Partition: { 
-          title: '分区', 
+          title: this.i18n.instant('分区'), 
           type: 'html', 
           sanitizer: { bypassHtml: true },
           width: '25%',
@@ -1993,10 +2001,10 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
             return this.renderLongText(partitionStr, 30);
           },
         },
-        TxnID: { title: '事务ID', type: 'string', width: '10%' },
-        StartTime: { title: '开始时间', type: 'string', width: '12%' },
+        TxnID: { title: this.i18n.instant('事务ID'), type: 'string', width: '10%' },
+        StartTime: { title: this.i18n.instant('开始时间'), type: 'string', width: '12%' },
         CommitTime: { 
-          title: '提交时间', 
+          title: this.i18n.instant('提交时间'), 
           type: 'html', 
           sanitizer: { bypassHtml: true },
           width: '12%',
@@ -2008,7 +2016,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
           },
         },
         FinishTime: { 
-          title: '完成时间', 
+          title: this.i18n.instant('完成时间'), 
           type: 'html', 
           sanitizer: { bypassHtml: true },
           width: '12%',
@@ -2020,7 +2028,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
           },
         },
         Error: { 
-          title: '错误', 
+          title: this.i18n.instant('错误'), 
           type: 'html', 
           sanitizer: { bypassHtml: true },
           width: '15%',
@@ -2081,29 +2089,29 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       return this.nodeService.executeSQL(sql, 100, catalogName || undefined, databaseName);
     }, {
       columns: {
-        JOB_ID: { title: '作业ID', type: 'string', width: '10%' },
+        JOB_ID: { title: this.i18n.instant('作业ID'), type: 'string', width: '10%' },
         LABEL: { 
-          title: '标签', 
+          title: this.i18n.instant('标签'), 
           type: 'html', 
           sanitizer: { bypassHtml: true },
           width: '15%',
           valuePrepareFunction: (value: any) => this.renderLongText(value, 30),
         },
         STATE: { 
-          title: '状态', 
+          title: this.i18n.instant('状态'), 
           type: 'html', 
           sanitizer: { bypassHtml: true },
           width: '10%',
           valuePrepareFunction: (value: string) => this.renderLoadState(value),
         },
-        PROGRESS: { title: '进度', type: 'string', width: '12%' },
-        TYPE: { title: '类型', type: 'string', width: '8%' },
-        PRIORITY: { title: '优先级', type: 'string', width: '8%' },
-        SCAN_ROWS: { title: '扫描行数', type: 'string', width: '10%' },
-        SINK_ROWS: { title: '导入行数', type: 'string', width: '10%' },
-        CREATE_TIME: { title: '创建时间', type: 'string', width: '12%' },
+        PROGRESS: { title: this.i18n.instant('进度'), type: 'string', width: '12%' },
+        TYPE: { title: this.i18n.instant('类型'), type: 'string', width: '8%' },
+        PRIORITY: { title: this.i18n.instant('优先级'), type: 'string', width: '8%' },
+        SCAN_ROWS: { title: this.i18n.instant('扫描行数'), type: 'string', width: '10%' },
+        SINK_ROWS: { title: this.i18n.instant('导入行数'), type: 'string', width: '10%' },
+        CREATE_TIME: { title: this.i18n.instant('创建时间'), type: 'string', width: '12%' },
         ERROR_MSG: { 
-          title: '错误信息', 
+          title: this.i18n.instant('错误信息'), 
           type: 'html', 
           sanitizer: { bypassHtml: true },
           width: '5%',
@@ -2144,11 +2152,11 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       return this.nodeService.executeSQL(sql, 100, catalogName || undefined, databaseName);
     }, {
       columns: {
-        TABLE_NAME: { title: '表名', type: 'string', width: '20%' },
-        PARTITION_COUNT: { title: '分区数', type: 'string', width: '12%' },
-        TOTAL_ROWS: { title: '总行数', type: 'string', width: '15%' },
+        TABLE_NAME: { title: this.i18n.instant('表名'), type: 'string', width: '20%' },
+        PARTITION_COUNT: { title: this.i18n.instant('分区数'), type: 'string', width: '12%' },
+        TOTAL_ROWS: { title: this.i18n.instant('总行数'), type: 'string', width: '15%' },
         TOTAL_SIZE_MB: { 
-          title: '总大小(MB)', 
+          title: this.i18n.instant('总大小(MB)'), 
           type: 'html', 
           sanitizer: { bypassHtml: true },
           width: '15%',
@@ -2161,14 +2169,14 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
           },
         },
         AVG_MAX_CS: { 
-          title: '平均最大CS', 
+          title: this.i18n.instant('平均最大CS'), 
           type: 'html', 
           sanitizer: { bypassHtml: true },
           width: '15%',
           valuePrepareFunction: (value: number) => this.renderCompactionScore(value),
         },
         MAX_CS_OVERALL: { 
-          title: '最大CS', 
+          title: this.i18n.instant('最大CS'), 
           type: 'html', 
           sanitizer: { bypassHtml: true },
           width: '15%',
@@ -2192,7 +2200,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
     // Views don't have partitions
     if (node.data?.tableType === 'VIEW') {
-      this.toastrService.warning('视图是逻辑表，没有物理分区信息', '提示');
+      this.toastrService.warning(this.i18n.instant('视图是逻辑表，没有物理分区信息'), this.i18n.instant('提示'));
       return;
     }
 
@@ -2217,42 +2225,42 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       return this.nodeService.executeSQL(sql, 100, catalogName || undefined, databaseName);
     }, {
       columns: {
-        PARTITION_NAME: { title: '分区名', type: 'string', width: '15%' },
-        PARTITION_ID: { title: '分区ID', type: 'string', width: '10%' },
+        PARTITION_NAME: { title: this.i18n.instant('分区名'), type: 'string', width: '15%' },
+        PARTITION_ID: { title: this.i18n.instant('分区ID'), type: 'string', width: '10%' },
         PARTITION_KEY: { 
-          title: '分区键', 
+          title: this.i18n.instant('分区键'), 
           type: 'html', 
           sanitizer: { bypassHtml: true },
           width: '12%',
           valuePrepareFunction: (value: any) => this.renderLongText(value, 40),
         },
         PARTITION_VALUE: { 
-          title: '分区值', 
+          title: this.i18n.instant('分区值'), 
           type: 'html', 
           sanitizer: { bypassHtml: true },
           width: '12%',
           valuePrepareFunction: (value: any) => this.renderLongText(value, 40),
         },
-        DATA_SIZE: { title: '数据大小', type: 'string', width: '10%' },
-        ROW_COUNT: { title: '行数', type: 'string', width: '10%' },
+        DATA_SIZE: { title: this.i18n.instant('数据大小'), type: 'string', width: '10%' },
+        ROW_COUNT: { title: this.i18n.instant('行数'), type: 'string', width: '10%' },
         AVG_CS: { 
-          title: '平均CS', 
+          title: this.i18n.instant('平均CS'), 
           type: 'html', 
           sanitizer: { bypassHtml: true },
           width: '8%',
           valuePrepareFunction: (value: number) => this.renderCompactionScore(value),
         },
         MAX_CS: { 
-          title: '最大CS', 
+          title: this.i18n.instant('最大CS'), 
           type: 'html', 
           sanitizer: { bypassHtml: true },
           width: '8%',
           valuePrepareFunction: (value: number) => this.renderCompactionScore(value),
         },
-        COMPACT_VERSION: { title: 'Compact版本', type: 'string', width: '10%' },
-        VISIBLE_VERSION: { title: '可见版本', type: 'string', width: '10%' },
+        COMPACT_VERSION: { title: this.i18n.instant('Compact版本'), type: 'string', width: '10%' },
+        VISIBLE_VERSION: { title: this.i18n.instant('可见版本'), type: 'string', width: '10%' },
         STORAGE_PATH: { 
-          title: '存储路径', 
+          title: this.i18n.instant('存储路径'), 
           type: 'html', 
           sanitizer: { bypassHtml: true },
           width: '7%',
@@ -2275,7 +2283,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
     // Views don't have compaction score
     if (node.data?.tableType === 'VIEW') {
-      this.toastrService.warning('视图是逻辑表，没有Compaction Score信息', '提示');
+      this.toastrService.warning(this.i18n.instant('视图是逻辑表，没有Compaction Score信息'), this.i18n.instant('提示'));
       return;
     }
 
@@ -2296,9 +2304,9 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       return this.nodeService.executeSQL(sql, 100, catalogName || undefined, databaseName);
     }, {
       columns: {
-        PARTITION_NAME: { title: '分区名', type: 'string', width: '15%' },
+        PARTITION_NAME: { title: this.i18n.instant('分区名'), type: 'string', width: '15%' },
         AVG_CS: { 
-          title: '平均CS', 
+          title: this.i18n.instant('平均CS'), 
           type: 'html', 
           sanitizer: { bypassHtml: true },
           width: '12%',
@@ -2312,16 +2320,16 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
           valuePrepareFunction: (value: number) => this.renderCompactionScore(value),
         },
         MAX_CS: { 
-          title: '最大CS', 
+          title: this.i18n.instant('最大CS'), 
           type: 'html', 
           sanitizer: { bypassHtml: true },
           width: '12%',
           valuePrepareFunction: (value: number) => this.renderCompactionScore(value),
         },
-        DATA_SIZE: { title: '数据大小', type: 'string', width: '12%' },
-        ROW_COUNT: { title: '行数', type: 'string', width: '12%' },
-        COMPACT_VERSION: { title: 'Compact版本', type: 'string', width: '12%' },
-        VISIBLE_VERSION: { title: '可见版本', type: 'string', width: '13%' },
+        DATA_SIZE: { title: this.i18n.instant('数据大小'), type: 'string', width: '12%' },
+        ROW_COUNT: { title: this.i18n.instant('行数'), type: 'string', width: '12%' },
+        COMPACT_VERSION: { title: this.i18n.instant('Compact版本'), type: 'string', width: '12%' },
+        VISIBLE_VERSION: { title: this.i18n.instant('可见版本'), type: 'string', width: '13%' },
       },
     }, catalogName, databaseName);
   }
@@ -2339,7 +2347,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
     // Views don't have physical partitions
     if (node.data?.tableType === 'VIEW') {
-      this.toastrService.warning('视图是逻辑表，没有物理分区信息', '提示');
+      this.toastrService.warning(this.i18n.instant('视图是逻辑表，没有物理分区信息'), this.i18n.instant('提示'));
       return;
     }
 
@@ -2358,9 +2366,9 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
     // Define columns for each tab
     const partitionColumns = {
-      PARTITION_NAME: { title: '分区名', type: 'string', width: '20%' },
+      PARTITION_NAME: { title: this.i18n.instant('分区名'), type: 'string', width: '20%' },
       PARTITION_ID: { 
-        title: '分区ID', 
+        title: this.i18n.instant('分区ID'), 
         type: 'html', 
         sanitizer: { bypassHtml: true },
         width: '15%',
@@ -2372,7 +2380,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         },
       },
       PARTITION_KEY: { 
-        title: '分区键', 
+        title: this.i18n.instant('分区键'), 
         type: 'html', 
         sanitizer: { bypassHtml: true },
         width: '25%',
@@ -2384,7 +2392,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         },
       },
       PARTITION_VALUE: { 
-        title: '分区值', 
+        title: this.i18n.instant('分区值'), 
         type: 'html', 
         sanitizer: { bypassHtml: true },
         width: '25%',
@@ -2395,10 +2403,10 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
           return this.renderLongText(value, 40);
         },
       },
-      DATA_SIZE: { title: '数据大小', type: 'string', width: '15%' },
-      ROW_COUNT: { title: '行数', type: 'string', width: '15%' },
+      DATA_SIZE: { title: this.i18n.instant('数据大小'), type: 'string', width: '15%' },
+      ROW_COUNT: { title: this.i18n.instant('行数'), type: 'string', width: '15%' },
       STORAGE_PATH: { 
-        title: '存储路径', 
+        title: this.i18n.instant('存储路径'), 
         type: 'html', 
         sanitizer: { bypassHtml: true },
         width: '20%',
@@ -2407,9 +2415,9 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     };
 
     const compactionColumns = {
-      PARTITION_NAME: { title: '分区名', type: 'string', width: '18%' },
+      PARTITION_NAME: { title: this.i18n.instant('分区名'), type: 'string', width: '18%' },
       AVG_CS: { 
-        title: '平均CS', 
+        title: this.i18n.instant('平均CS'), 
         type: 'html', 
         sanitizer: { bypassHtml: true },
         width: '15%',
@@ -2423,28 +2431,28 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         valuePrepareFunction: (value: number) => this.renderCompactionScore(value),
       },
       MAX_CS: { 
-        title: '最大CS', 
+        title: this.i18n.instant('最大CS'), 
         type: 'html', 
         sanitizer: { bypassHtml: true },
         width: '15%',
         valuePrepareFunction: (value: number) => this.renderCompactionScore(value),
       },
-      DATA_SIZE: { title: '数据大小', type: 'string', width: '12%' },
-      ROW_COUNT: { title: '行数', type: 'string', width: '12%' },
-      COMPACT_VERSION: { title: 'Compact版本', type: 'string', width: '14%' },
-      VISIBLE_VERSION: { title: '可见版本', type: 'string', width: '14%' },
+      DATA_SIZE: { title: this.i18n.instant('数据大小'), type: 'string', width: '12%' },
+      ROW_COUNT: { title: this.i18n.instant('行数'), type: 'string', width: '12%' },
+      COMPACT_VERSION: { title: this.i18n.instant('Compact版本'), type: 'string', width: '14%' },
+      VISIBLE_VERSION: { title: this.i18n.instant('可见版本'), type: 'string', width: '14%' },
     };
 
     const storageColumns = {
       METRIC: { 
-        title: '统计项', 
+        title: this.i18n.instant('统计项'), 
         type: 'string', 
         width: '35%',
         isFilterable: false,
         isSortable: false,
       },
       VALUE: { 
-        title: '数值', 
+        title: this.i18n.instant('数值'), 
         type: 'html', 
         sanitizer: { bypassHtml: true },
         width: '65%',
@@ -2812,9 +2820,9 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       return this.nodeService.executeSQL(sql, 100, catalogName || undefined, databaseName);
     }, {
       columns: {
-        TABLE_NAME: { title: '物化视图名', type: 'string', width: '15%' },
+        TABLE_NAME: { title: this.i18n.instant('物化视图名'), type: 'string', width: '15%' },
         IS_ACTIVE: { 
-          title: '是否激活', 
+          title: this.i18n.instant('是否激活'), 
           type: 'html', 
           sanitizer: { bypassHtml: true },
           width: '10%',
@@ -2826,7 +2834,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
           },
         },
         REFRESH_TYPE: { 
-          title: '刷新类型', 
+          title: this.i18n.instant('刷新类型'), 
           type: 'html', 
           sanitizer: { bypassHtml: true },
           width: '12%',
@@ -2841,7 +2849,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
           },
         },
         LAST_REFRESH_STATE: { 
-          title: '最后刷新状态', 
+          title: this.i18n.instant('最后刷新状态'), 
           type: 'html', 
           sanitizer: { bypassHtml: true },
           width: '12%',
@@ -2857,10 +2865,10 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
             return `<span class="badge badge-warning">${value || '-'}</span>`;
           },
         },
-        LAST_REFRESH_START_TIME: { title: '最后刷新开始时间', type: 'string', width: '15%' },
-        LAST_REFRESH_FINISHED_TIME: { title: '最后刷新完成时间', type: 'string', width: '15%' },
+        LAST_REFRESH_START_TIME: { title: this.i18n.instant('最后刷新开始时间'), type: 'string', width: '15%' },
+        LAST_REFRESH_FINISHED_TIME: { title: this.i18n.instant('最后刷新完成时间'), type: 'string', width: '15%' },
         LAST_REFRESH_DURATION: { 
-          title: '刷新耗时(秒)', 
+          title: this.i18n.instant('刷新耗时(秒)'), 
           type: 'html', 
           sanitizer: { bypassHtml: true },
           width: '10%',
@@ -2873,7 +2881,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
           },
         },
         LAST_REFRESH_ERROR_MESSAGE: { 
-          title: '错误信息', 
+          title: this.i18n.instant('错误信息'), 
           type: 'html', 
           sanitizer: { bypassHtml: true },
           width: '15%',
@@ -2885,7 +2893,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
           },
         },
         INACTIVE_REASON: { 
-          title: '未激活原因', 
+          title: this.i18n.instant('未激活原因'), 
           type: 'html', 
           sanitizer: { bypassHtml: true },
           width: '15%',
@@ -3752,37 +3760,37 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       case 'skew':
         data = this.bucketAnalysisSkewData;
         columns = {
-          BUCKET_ID: { title: '分桶ID', type: 'string', width: '12%' },
-          TABLET_COUNT: { title: 'Tablet数量', type: 'string', width: '12%' },
+          BUCKET_ID: { title: this.i18n.instant('分桶ID'), type: 'string', width: '12%' },
+          TABLET_COUNT: { title: this.i18n.instant('Tablet数量'), type: 'string', width: '12%' },
           TOTAL_SIZE: {
-            title: '总大小',
+            title: this.i18n.instant('总大小'),
             type: 'html',
             sanitizer: { bypassHtml: true },
             width: '15%',
             valuePrepareFunction: (value: any) => this.formatBytes(Number(value) || 0).toString(),
           },
           TOTAL_ROWS: {
-            title: '总行数',
+            title: this.i18n.instant('总行数'),
             type: 'string',
             width: '12%',
             valuePrepareFunction: (value: any) => this.formatNumber(value).toString(),
           },
           AVG_TABLET_SIZE: {
-            title: '平均Tablet大小',
+            title: this.i18n.instant('平均Tablet大小'),
             type: 'html',
             sanitizer: { bypassHtml: true },
             width: '15%',
             valuePrepareFunction: (value: any) => this.formatBytes(Number(value) || 0).toString(),
           },
           MAX_TABLET_SIZE: {
-            title: '最大Tablet大小',
+            title: this.i18n.instant('最大Tablet大小'),
             type: 'html',
             sanitizer: { bypassHtml: true },
             width: '15%',
             valuePrepareFunction: (value: any) => this.formatBytes(Number(value) || 0).toString(),
           },
           SKEW_RATIO: {
-            title: '倾斜度(%)',
+            title: this.i18n.instant('倾斜度(%)'),
             type: 'html',
             sanitizer: { bypassHtml: true },
             width: '12%',
@@ -3795,7 +3803,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
             }),
           },
           SKEW_LEVEL: {
-            title: '倾斜等级',
+            title: this.i18n.instant('倾斜等级'),
             type: 'html',
             sanitizer: { bypassHtml: true },
             width: '7%',
@@ -3814,31 +3822,31 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         columns = {
           BE_ID: { title: 'BE ID', type: 'string', width: '10%' },
           BE_IP: { title: 'BE IP', type: 'string', width: '15%' },
-          TABLET_COUNT: { title: 'Tablet数量', type: 'string', width: '12%' },
+          TABLET_COUNT: { title: this.i18n.instant('Tablet数量'), type: 'string', width: '12%' },
           TOTAL_SIZE: {
-            title: '总大小',
+            title: this.i18n.instant('总大小'),
             type: 'html',
             sanitizer: { bypassHtml: true },
             width: '15%',
             valuePrepareFunction: (value: any) => this.formatBytes(Number(value) || 0).toString(),
           },
           AVG_TABLET_SIZE: {
-            title: '平均Tablet大小',
+            title: this.i18n.instant('平均Tablet大小'),
             type: 'html',
             sanitizer: { bypassHtml: true },
             width: '15%',
             valuePrepareFunction: (value: any) => this.formatBytes(Number(value) || 0).toString(),
           },
           MAX_TABLET_SIZE: {
-            title: '最大Tablet大小',
+            title: this.i18n.instant('最大Tablet大小'),
             type: 'html',
             sanitizer: { bypassHtml: true },
             width: '15%',
             valuePrepareFunction: (value: any) => this.formatBytes(Number(value) || 0).toString(),
           },
-          BUCKET_COUNT: { title: '分桶数', type: 'string', width: '10%' },
+          BUCKET_COUNT: { title: this.i18n.instant('分桶数'), type: 'string', width: '10%' },
           BE_SKEW_RATIO: {
-            title: 'BE倾斜度(%)',
+            title: this.i18n.instant('BE倾斜度(%)'),
             type: 'html',
             sanitizer: { bypassHtml: true },
             width: '8%',
@@ -3855,12 +3863,12 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       case 'sortkey':
         data = this.bucketAnalysisSortKeyData;
         columns = {
-          FIELD_NAME: { title: '字段名', type: 'string', width: '15%' },
-          FIELD_TYPE: { title: '字段类型', type: 'string', width: '12%' },
-          IS_DISTRIBUTED_KEY: { title: '分桶键', type: 'string', width: '10%' },
-          IS_DUPLICATE_KEY: { title: '排序键', type: 'string', width: '10%' },
+          FIELD_NAME: { title: this.i18n.instant('字段名'), type: 'string', width: '15%' },
+          FIELD_TYPE: { title: this.i18n.instant('字段类型'), type: 'string', width: '12%' },
+          IS_DISTRIBUTED_KEY: { title: this.i18n.instant('分桶键'), type: 'string', width: '10%' },
+          IS_DUPLICATE_KEY: { title: this.i18n.instant('排序键'), type: 'string', width: '10%' },
           CARDINALITY: {
-            title: '基数',
+            title: this.i18n.instant('基数'),
             type: 'html',
             sanitizer: { bypassHtml: true },
             width: '15%',
@@ -3872,7 +3880,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
             },
           },
           CARDINALITY_LEVEL: {
-            title: '基数等级',
+            title: this.i18n.instant('基数等级'),
             type: 'html',
             sanitizer: { bypassHtml: true },
             width: '12%',
@@ -3884,13 +3892,13 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
             },
           },
           SUGGESTION: {
-            title: '建议',
+            title: this.i18n.instant('建议'),
             type: 'html',
             sanitizer: { bypassHtml: true },
             width: '20%',
             valuePrepareFunction: (value: any) => this.renderLongText(value, 50),
           },
-          FROM_CACHE: { title: '缓存', type: 'string', width: '6%' },
+          FROM_CACHE: { title: this.i18n.instant('缓存'), type: 'string', width: '6%' },
         };
         break;
       case 'adjust':
@@ -3946,12 +3954,12 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
   previewBucketAdjustment(): void {
     if (!this.bucketAdjustmentNewBuckets || this.bucketAdjustmentNewBuckets <= 0) {
-      this.toastrService.warning('请输入有效的分桶数', '提示');
+      this.toastrService.warning(this.i18n.instant('请输入有效的分桶数'), this.i18n.instant('提示'));
       return;
     }
 
     if (this.bucketAdjustmentNewBuckets === this.bucketAnalysisCurrentBuckets) {
-      this.toastrService.info('新分桶数与当前分桶数相同，无需调整', '提示');
+      this.toastrService.info(this.i18n.instant('新分桶数与当前分桶数相同，无需调整'), this.i18n.instant('提示'));
       return;
     }
 
@@ -3988,12 +3996,12 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
   executeBucketAdjustment(): void {
     if (!this.bucketAdjustmentNewBuckets || this.bucketAdjustmentNewBuckets <= 0) {
-      this.toastrService.warning('请输入有效的分桶数', '提示');
+      this.toastrService.warning(this.i18n.instant('请输入有效的分桶数'), this.i18n.instant('提示'));
       return;
     }
 
     if (this.bucketAdjustmentNewBuckets === this.bucketAnalysisCurrentBuckets) {
-      this.toastrService.info('新分桶数与当前分桶数相同，无需调整', '提示');
+      this.toastrService.info(this.i18n.instant('新分桶数与当前分桶数相同，无需调整'), this.i18n.instant('提示'));
       return;
     }
 
@@ -4034,7 +4042,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
     // Views don't have transactions (they are logical, not physical)
     if (node.data?.tableType === 'VIEW') {
-      this.toastrService.warning('视图是逻辑表，不涉及物理事务', '提示');
+      this.toastrService.warning(this.i18n.instant('视图是逻辑表，不涉及物理事务'), this.i18n.instant('提示'));
       return;
     }
 
@@ -4267,7 +4275,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       this.toastrService.success('已复制到剪贴板', '成功', { duration: 2000 });
     } catch (err) {
       console.error('Fallback copy failed:', err);
-      this.toastrService.danger('复制失败', '错误');
+      this.toastrService.danger(this.i18n.instant('复制失败'), this.i18n.instant('错误'));
     }
     
     document.body.removeChild(textArea);
@@ -4322,11 +4330,11 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     // Only regular tables can trigger compaction manually
     const tableType = node.data?.tableType;
     if (tableType === 'VIEW') {
-      this.toastrService.warning('视图不支持手动触发Compaction', '提示');
+      this.toastrService.warning(this.i18n.instant('视图不支持手动触发Compaction'), this.i18n.instant('提示'));
       return;
     }
     if (tableType === 'MATERIALIZED_VIEW') {
-      this.toastrService.warning('物化视图的Compaction由系统自动管理，不建议手动触发', '提示');
+      this.toastrService.warning(this.i18n.instant('物化视图的Compaction由系统自动管理，不建议手动触发'), this.i18n.instant('提示'));
       return;
     }
     
@@ -4406,7 +4414,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     }
 
     if (this.compactionTriggerMode === 'partition' && this.compactionSelectedPartitions.length === 0) {
-      this.toastrService.warning('请至少选择一个分区', '提示');
+      this.toastrService.warning(this.i18n.instant('请至少选择一个分区'), this.i18n.instant('提示'));
       return;
     }
 
@@ -4460,7 +4468,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
             next: (result) => {
               this.compactionTriggering = false;
               if (result.results && result.results.length > 0 && result.results[0].success) {
-                this.toastrService.success('Compaction任务已触发', '成功');
+                this.toastrService.success(this.i18n.instant('Compaction任务已触发'), this.i18n.instant('成功'));
                 this.closeCompactionTriggerDialog();
               } else {
                 const error = result.results?.[0]?.error || '触发失败';
@@ -4584,7 +4592,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         this.loadingDatabases = false;
         console.error('Failed to load databases:', error);
         node.children = [];
-        this.toastrService.danger('加载数据库列表失败', '错误');
+        this.toastrService.danger(this.i18n.instant('加载数据库列表失败'), this.i18n.instant('错误'));
         this.refreshSqlSchema();
       },
     });
@@ -5143,7 +5151,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   // Batch kill queries
   batchKillQueries(queryIds: string[]): void {
     if (queryIds.length === 0) {
-      this.toastrService.warning('请选择要查杀的查询', '提示');
+      this.toastrService.warning(this.i18n.instant('请选择要查杀的查询'), this.i18n.instant('提示'));
       return;
     }
 
@@ -5193,7 +5201,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
               if (successCount > 0) {
                 this.toastrService.warning(`成功查杀 ${successCount} 个，失败 ${failCount} 个`, '部分成功');
               } else {
-                this.toastrService.danger('批量查杀失败', '错误');
+                this.toastrService.danger(this.i18n.instant('批量查杀失败'), this.i18n.instant('错误'));
               }
               this.cdr.markForCheck();
               this.loadRunningQueries();
@@ -5225,7 +5233,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       .map((query) => query.QueryId)
       .filter((queryId) => !!queryId);
     if (queryIds.length === 0) {
-      this.toastrService.warning('请先勾选要查杀的查询', '提示');
+      this.toastrService.warning(this.i18n.instant('请先勾选要查杀的查询'), this.i18n.instant('提示'));
       return;
     }
     this.batchKillQueries(queryIds);
@@ -5299,11 +5307,11 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       return;
     }
     if (!this.clusterId) {
-      this.toastrService.warning('请先选择集群', '提示');
+      this.toastrService.warning(this.i18n.instant('请先选择集群'), this.i18n.instant('提示'));
       return;
     }
     if (!this.sqlInput || this.sqlInput.trim() === '') {
-      this.toastrService.warning('请输入SQL语句', '提示');
+      this.toastrService.warning(this.i18n.instant('请输入SQL语句'), this.i18n.instant('提示'));
       return;
     }
 
@@ -5348,7 +5356,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     this.executing = false;
     this.cdr.markForCheck();
     if (!fp) {
-      this.toastrService.info('已断开等待', '已取消');
+      this.toastrService.info(this.i18n.instant('已断开等待'), this.i18n.instant('已取消'));
       return;
     }
     this.nodeService.cancelQuery(fp, started).subscribe({
@@ -5359,7 +5367,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
           '已取消',
         );
       },
-      error: () => this.toastrService.warning('终止指令发送失败，FE 侧任务状态未知', '已取消'),
+      error: () => this.toastrService.warning(this.i18n.instant('终止指令发送失败，FE 侧任务状态未知'), this.i18n.instant('已取消')),
     });
   }
 
@@ -5394,7 +5402,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   toggleFavorite(): void {
     const sql = (this.sqlInput || '').trim();
     if (!sql) {
-      this.toastrService.warning('先写点 SQL 再收藏', '提示');
+      this.toastrService.warning(this.i18n.instant('先写点 SQL 再收藏'), this.i18n.instant('提示'));
       return;
     }
     if (this.favorites.length === 0) {
@@ -5403,7 +5411,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     const idx = this.favorites.findIndex((f) => f.sql === sql);
     if (idx >= 0) {
       this.favorites.splice(idx, 1);
-      this.toastrService.success('已取消收藏', '成功');
+      this.toastrService.success(this.i18n.instant('已取消收藏'), this.i18n.instant('成功'));
     } else {
       const firstLine = sql.split('\n')[0].trim().slice(0, 30) || '未命名查询';
       this.favorites.unshift({
@@ -5415,7 +5423,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         uses: 0,
         updatedAt: Date.now(),
       });
-      this.toastrService.success('已收藏当前 SQL', '成功');
+      this.toastrService.success(this.i18n.instant('已收藏当前 SQL'), this.i18n.instant('成功'));
     }
     this.persistFavorites();
     this.cdr.markForCheck();
@@ -5458,6 +5466,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       this.queryLimit,
       this.selectedCatalog || undefined,
       this.selectedDatabase || undefined,
+      true,
     ).subscribe({
       next: (result) => {
         this.queryResult = result;
@@ -5596,7 +5605,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       });
       this.setEditorContent(formatted);
     } catch (error) {
-      this.toastrService.warning('格式化失败，使用原始SQL', '提示');
+      this.toastrService.warning(this.i18n.instant('格式化失败，使用原始SQL'), this.i18n.instant('提示'));
     }
   }
 
@@ -5611,12 +5620,12 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       // Export single result
       resultToExport = this.queryResults[0];
     } else {
-      this.toastrService.warning('请选择要导出的结果', '提示');
+      this.toastrService.warning(this.i18n.instant('请选择要导出的结果'), this.i18n.instant('提示'));
       return;
     }
     
     if (!resultToExport || !resultToExport.success || !resultToExport.rows || resultToExport.rows.length === 0) {
-      this.toastrService.warning('没有数据可导出', '提示');
+      this.toastrService.warning(this.i18n.instant('没有数据可导出'), this.i18n.instant('提示'));
       return;
     }
 
@@ -5650,7 +5659,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       link.click();
       document.body.removeChild(link);
 
-      this.toastrService.success('导出成功', '成功');
+      this.toastrService.success(this.i18n.instant('导出成功'), this.i18n.instant('成功'));
     } catch (error) {
       console.error('Export error:', error);
       this.toastrService.danger(ErrorHandler.extractErrorMessage(error), '导出失败');
@@ -5675,11 +5684,11 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
   diagnoseSQL(): void {
     if (!this.sqlInput?.trim()) {
-      this.toastrService.warning('请输入SQL语句', '提示');
+      this.toastrService.warning(this.i18n.instant('请输入SQL语句'), this.i18n.instant('提示'));
       return;
     }
     if (!this.clusterId) {
-      this.toastrService.warning('请先选择集群', '提示');
+      this.toastrService.warning(this.i18n.instant('请先选择集群'), this.i18n.instant('提示'));
       return;
     }
 
@@ -5733,7 +5742,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     if (this.diagResult?.sql && this.diagResult.changed) {
       this.sqlInput = this.diagResult.sql;
       this.editorView?.dispatch({ changes: { from: 0, to: this.editorView.state.doc.length, insert: this.diagResult.sql } });
-      this.toastrService.success('已应用优化后的SQL', '成功');
+      this.toastrService.success(this.i18n.instant('已应用优化后的SQL'), this.i18n.instant('成功'));
     }
     this.closeDiagDialog();
   }
@@ -5833,9 +5842,9 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   copyHistorySQL(item: QueryExecutionHistoryItem, event: Event): void {
     event.stopPropagation();
     navigator.clipboard.writeText(item.sql_statement).then(() => {
-      this.toastrService.success('SQL 已复制到剪贴板', '成功');
+      this.toastrService.success(this.i18n.instant('SQL 已复制到剪贴板'), this.i18n.instant('成功'));
     }).catch(() => {
-      this.toastrService.danger('复制失败', '错误');
+      this.toastrService.danger(this.i18n.instant('复制失败'), this.i18n.instant('错误'));
     });
   }
 
@@ -5860,7 +5869,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: () => {
-          this.toastrService.success('已删除', '成功');
+          this.toastrService.success(this.i18n.instant('已删除'), this.i18n.instant('成功'));
           // 当前页删空时回退一页，避免空页
           if (this.executionHistory.length === 1 && this.historyPage > 1) {
             this.loadExecutionHistory(this.historyPage - 1);
@@ -5869,7 +5878,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
           }
         },
         error: () => {
-          this.toastrService.danger('删除失败', '错误');
+          this.toastrService.danger(this.i18n.instant('删除失败'), this.i18n.instant('错误'));
         },
       });
   }
@@ -5890,11 +5899,11 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
               this.executionHistory = [];
               this.executionHistoryTotal = 0;
               this.historyPage = 1;
-              this.toastrService.success('已清空历史', '成功');
+              this.toastrService.success(this.i18n.instant('已清空历史'), this.i18n.instant('成功'));
               this.cdr.markForCheck();
             },
             error: () => {
-              this.toastrService.danger('清空失败', '错误');
+              this.toastrService.danger(this.i18n.instant('清空失败'), this.i18n.instant('错误'));
             },
           });
       }
@@ -6097,7 +6106,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
   generateChartFromSelection(chartType: ChartType): void {
     if (this.selectedChartFields.length === 0) {
-      this.toastrService.warning('请先选择字段', '提示');
+      this.toastrService.warning(this.i18n.instant('请先选择字段'), this.i18n.instant('提示'));
       return;
     }
 
@@ -6155,7 +6164,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
   smartGenerateChart(): void {
     if (this.selectedChartFields.length === 0) {
-      this.toastrService.warning('请先选择字段', '提示');
+      this.toastrService.warning(this.i18n.instant('请先选择字段'), this.i18n.instant('提示'));
       return;
     }
 

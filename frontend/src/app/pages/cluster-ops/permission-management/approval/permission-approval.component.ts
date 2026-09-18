@@ -1,9 +1,10 @@
+import { I18nService } from '../../../../@core/i18n/i18n.service';
+import { TranslatePipe } from '@ngx-translate/core';
 import { Component, OnInit, OnDestroy, Input, Output, EventEmitter, inject } from '@angular/core';
-import { FormBuilder, FormGroup } from '@angular/forms';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
-import { NbDialogService, NbToastrService, NbCardModule, NbSelectModule, NbOptionModule, NbButtonModule, NbIconModule, NbSpinnerModule } from '@nebular/theme';
+import { NbBadgeModule, NbButtonModule, NbCardModule, NbDialogService, NbIconModule, NbOptionModule, NbSelectModule, NbSpinnerModule, NbToastrService, NbTooltipModule } from '@nebular/theme';
 import { PermissionRequestService } from '../../../../@core/data/permission-request.service';
 import { PermissionRequestResponse } from '../../../../@core/data/permission-request.model';
 import { PermissionApprovalDetailDialogComponent } from './permission-approval-detail-dialog.component';
@@ -15,18 +16,21 @@ import { ConfirmationDialogComponent } from '../shared/confirmation-dialog.compo
     templateUrl: './permission-approval.component.html',
     styleUrls: ['./permission-approval.component.scss'],
     imports: [
+    TranslatePipe,
     NbCardModule,
     NbSelectModule,
     NbOptionModule,
     NbButtonModule,
     NbIconModule,
+    NbBadgeModule,
+    NbTooltipModule,
     NbSpinnerModule,
     Angular2SmartTableModule
 ],
 })
 export class PermissionApprovalComponent implements OnInit, OnDestroy {
-  private fb = inject(FormBuilder);
-  private permissionService = inject(PermissionRequestService);
+  private permissionService = inject(PermissionRequestService)
+  private i18n = inject(I18nService);
   private dialogService = inject(NbDialogService);
   private toastr = inject(NbToastrService);
 
@@ -46,14 +50,14 @@ export class PermissionApprovalComponent implements OnInit, OnDestroy {
     hideSubHeader: true,
     noDataMessage: '暂无待审批申请',
     actions: {
-      columnTitle: '操作',
+      columnTitle: this.i18n.instant('操作'),
       add: false,
       edit: true,
       delete: false,
       position: 'right',
     },
     edit: {
-      editButtonContent: '<i class="nb-search"></i>',  // 使用搜索图标表示查看详情
+      editButtonContent: '<i class="nb-search" title="查看"></i>',  // 使用搜索图标表示查看详情
     },
     pager: {
       display: true,
@@ -66,7 +70,7 @@ export class PermissionApprovalComponent implements OnInit, OnDestroy {
         width: '50px',
       },
       request_type: {
-        title: '类型',
+        title: this.i18n.instant('类型'),
         type: 'html',
         sanitizer: { bypassHtml: true },
         width: '90px',
@@ -80,20 +84,20 @@ export class PermissionApprovalComponent implements OnInit, OnDestroy {
         },
       },
       applicant_name: {
-        title: '申请人',
+        title: this.i18n.instant('申请人'),
         type: 'string',
         width: '80px',
       },
       target: {
-        title: '目标',
+        title: this.i18n.instant('目标'),
         type: 'string',
       },
       reason: {
-        title: '申请原因',
+        title: this.i18n.instant('申请原因'),
         type: 'string',
       },
       created_at: {
-        title: '申请时间',
+        title: this.i18n.instant('申请时间'),
         type: 'string',
         width: '180px',
         valuePrepareFunction: (value: string) => {
@@ -112,16 +116,9 @@ export class PermissionApprovalComponent implements OnInit, OnDestroy {
   ];
 
   selectedRequest: PermissionRequestResponse | null = null;
-  approvalForm: FormGroup;
   approvalInProgress = false;
 
   private destroy$ = new Subject<void>();
-
-  constructor() {
-    this.approvalForm = this.fb.group({
-      comment: [''],
-    });
-  }
 
   ngOnInit(): void {
     if (this.refresh$) {
@@ -147,7 +144,7 @@ export class PermissionApprovalComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         console.error('Failed to load pending requests:', err);
-        this.toastr.danger('加载待审批申请失败', '错误');
+        this.toastr.danger(this.i18n.instant('加载待审批申请失败'), this.i18n.instant('错误'));
         this.requestsLoading = false;
       },
     });
@@ -197,91 +194,57 @@ export class PermissionApprovalComponent implements OnInit, OnDestroy {
     });
 
     dialogRef.onClose.subscribe((result) => {
-      if (result) {
-        if (result.action === 'approve') {
-          this.performApproval(request);
-        } else if (result.action === 'reject') {
-          this.performRejection(request);
-        }
+      if (result?.action === 'approve') {
+        this.openDecisionDialog(request, true);
+      } else if (result?.action === 'reject') {
+        this.openDecisionDialog(request, false);
       }
     });
   }
 
-
-  private performApproval(request: PermissionRequestResponse): void {
+  private openDecisionDialog(request: PermissionRequestResponse, approve: boolean): void {
+    const action = approve ? '批准' : '拒绝';
     const dialogRef = this.dialogService.open(ConfirmationDialogComponent, {
       context: {
-        title: `批准申请 #${request.id}`,
-        message: `确定要批准 ${request.applicant_name} 的权限申请吗？`,
-        confirmText: '批准',
+        title: `${action}申请 #${request.id}`,
+        message: approve
+          ? `确定要批准 ${request.applicant_name} 的权限申请吗？`
+          : `请说明拒绝 ${request.applicant_name} 权限申请的原因。`,
+        confirmText: action,
         cancelText: '取消',
-        confirmButtonStatus: 'success',
-        confirmIcon: 'checkmark-outline',
+        confirmButtonStatus: approve ? 'success' : 'danger',
+        confirmIcon: approve ? 'checkmark-outline' : 'close-outline',
         showCommentInput: true,
-        commentLabel: '审批备注',
-        commentPlaceholder: '请输入审批备注（可选）...',
-        commentRequired: false,
+        commentLabel: approve ? '审批备注' : '拒绝原因',
+        commentPlaceholder: approve ? '可选，说明审批结论' : '请说明拒绝原因',
+        commentRequired: !approve,
+        commentHint: approve ? '' : '拒绝申请时必须填写原因',
       },
       hasBackdrop: true,
       closeOnBackdropClick: false,
     });
 
     dialogRef.onClose.subscribe((result) => {
-      if (result && result.confirmed) {
-        this.approvalInProgress = true;
-        this.permissionService.approveRequest(request.id, { comment: result.comment || '' }).subscribe({
-          next: () => {
-            this.toastr.success(`已批准申请 #${request.id}`, '批准成功');
-            this.approvalInProgress = false;
-            this.processed.emit();
-            this.loadPendingRequests();
-          },
-          error: (err) => {
-            console.error('Failed to approve request:', err);
-            this.toastr.danger('批准申请失败: ' + (err.error?.message || err.message), '错误');
-            this.approvalInProgress = false;
-          },
-        });
-      }
-    });
-  }
+      if (!result?.confirmed) return;
 
-  private performRejection(request: PermissionRequestResponse): void {
-    const dialogRef = this.dialogService.open(ConfirmationDialogComponent, {
-      context: {
-        title: `拒绝申请 #${request.id}`,
-        message: `请说明拒绝 ${request.applicant_name} 权限申请的原因。`,
-        confirmText: '拒绝',
-        cancelText: '取消',
-        confirmButtonStatus: 'danger',
-        confirmIcon: 'close-outline',
-        showCommentInput: true,
-        commentLabel: '拒绝原因',
-        commentPlaceholder: '请输入拒绝原因...',
-        commentRequired: true,
-        commentHint: '拒绝申请时必须填写原因',
-      },
-      hasBackdrop: true,
-      closeOnBackdropClick: false,
-    });
+      this.approvalInProgress = true;
+      const request$ = approve
+        ? this.permissionService.approveRequest(request.id, { comment: result.comment || '' })
+        : this.permissionService.rejectRequest(request.id, { comment: result.comment });
 
-    dialogRef.onClose.subscribe((result) => {
-      if (result && result.confirmed && result.comment) {
-        this.approvalInProgress = true;
-        this.permissionService.rejectRequest(request.id, { comment: result.comment }).subscribe({
-          next: () => {
-            this.toastr.success(`已拒绝申请 #${request.id}`, '拒绝成功');
-            this.approvalInProgress = false;
-            this.processed.emit();
-            this.loadPendingRequests();
-          },
-          error: (err) => {
-            console.error('Failed to reject request:', err);
-            this.toastr.danger('拒绝申请失败: ' + (err.error?.message || err.message), '错误');
-            this.approvalInProgress = false;
-          },
-        });
-      }
+      request$.subscribe({
+        next: () => {
+          this.toastr.success(`已${action}申请 #${request.id}`, `${action}成功`);
+          this.approvalInProgress = false;
+          this.processed.emit();
+          this.loadPendingRequests();
+        },
+        error: (err) => {
+          console.error(`Failed to ${approve ? 'approve' : 'reject'} request:`, err);
+          this.toastr.danger(`${action}申请失败: ${err.error?.message || err.message}`, '错误');
+          this.approvalInProgress = false;
+        },
+      });
     });
   }
 

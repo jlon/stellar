@@ -1,0 +1,241 @@
+<div class="agent-layout">
+  <!-- 会话列表 -->
+  <nb-card class="agent-sessions-card" [nbSpinner]="loadingSessions" nbSpinnerStatus="info" nbSpinnerSize="small">
+    <nb-card-header class="sessions-header">
+      <span class="sessions-title">{{  '会话' | translate }}</span>
+      <button nbButton size="tiny" status="primary" ghost (click)="newSession()" [title]="'新建会话' | translate" [aria-label]="'新建会话' | translate">
+        <nb-icon icon="plus-outline"></nb-icon>
+      </button>
+    </nb-card-header>
+    <nb-card-body class="sessions-body">
+      <input
+        class="session-search"
+        [placeholder]="'搜索会话' | translate"
+        [(ngModel)]="sessionQuery"
+      />
+      <nb-list>
+        <nb-list-item
+          *ngFor="let s of filteredSessions()"
+          class="session-item"
+          [class.active]="s.id === activeSessionId"
+          (click)="openSession(s.id)"
+        >
+          <div class="session-main">
+            <div *ngIf="renamingId !== s.id" class="session-title">{{  s.title || ('(无标题)' | translate)  }}</div>
+            <input
+              *ngIf="renamingId === s.id"
+              class="session-rename"
+              [(ngModel)]="renameDraft"
+              (click)="$event.stopPropagation()"
+              (keydown.enter)="saveRename(s)"
+              (keydown.escape)="cancelRename()"
+              (blur)="saveRename(s)"
+              maxlength="60"
+            />
+            <div class="session-meta">{{ s.last_active_at | date: 'MM-dd HH:mm' }}</div>
+          </div>
+          <button
+            *ngIf="renamingId !== s.id"
+            nbButton
+            size="tiny"
+            ghost
+            [nbTooltip]="'重命名' | translate"
+            (click)="startRename(s, $event)"
+          >
+            <nb-icon icon="edit-outline"></nb-icon>
+          </button>
+          <button
+            nbButton
+            size="tiny"
+            status="danger"
+            ghost
+            [nbTooltip]="'删除会话' | translate"
+            (click)="deleteSession(s.id, $event)"
+          >
+            <nb-icon icon="trash-2-outline"></nb-icon>
+          </button>
+        </nb-list-item>
+      </nb-list>
+      <div *ngIf="!loadingSessions && sessions.length === 0" class="sessions-empty">
+        <ngx-ai-illustration kind="sessions" class="sessions-empty-art"></ngx-ai-illustration>
+        <span>{{  '暂无会话，输入问题开始对话' | translate }}</span>
+      </div>
+      <div *ngIf="!loadingSessions && sessions.length > 0 && filteredSessions().length === 0" class="sessions-empty">
+        <span>{{  '无匹配会话' | translate }}</span>
+      </div>
+    </nb-card-body>
+  </nb-card>
+
+  <!-- 对话区 -->
+  <nb-card class="agent-chat-card">
+    <nb-card-header class="chat-header">
+      <span class="chat-title">{{  '智能运维助手' | translate }}<span *ngIf="cluster" class="chat-subtitle">· {{ cluster.name }}</span></span>
+      <button
+        *ngIf="messages.length > 0"
+        nbButton
+        size="tiny"
+        ghost
+        [nbTooltip]="'导出为 Markdown' | translate"
+        (click)="exportMarkdown()"
+      >
+        <nb-icon icon="download-outline"></nb-icon>
+      </button>
+    </nb-card-header>
+
+    <nb-card-body class="agent-messages" #msgPane (scroll)="onMessagesScroll()">
+      <div class="transcript" [class.dimmed]="loadingTranscript && messages.length > 0">
+
+      <div *ngIf="messages.length === 0 && !loadingTranscript" class="chat-empty">
+        <ngx-ai-illustration kind="chat"></ngx-ai-illustration>
+        <div class="chat-empty-title">{{  '集群出问题了吗？问我' | translate }}</div>
+        <p class="chat-hint">{{  '集群查询变慢 · 磁盘告急 · 节点异常 · 导入积压 —— 我先取证，再给有数据依据的结论' | translate }}</p>
+        <div class="preset-grid">
+          <button *ngFor="let q of presets" class="preset-card" (click)="askPreset(q)">{{ q }}</button>
+        </div>
+      </div>
+
+      <div *ngFor="let m of messages; trackBy: trackMessage" class="msg-row" [class.user]="m.role === 'user'">
+        <ng-container *ngIf="m.role === 'assistant'">
+          <div class="msg-avatar msg-avatar-ai" [title]="('智能运维助手' | translate)">
+            <svg viewBox="0 0 48 48" width="30" height="30" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="24" cy="24" r="22" fill="var(--color-primary-500)"/>
+              <ellipse cx="24" cy="24" rx="15" ry="7" transform="rotate(-20 24 24)" stroke="#fff" stroke-opacity="0.35" stroke-width="1.6"/>
+              <path d="M24 24 L33 15 M24 24 L15 16 M24 24 L24 35" stroke="#fff" stroke-opacity="0.55" stroke-width="2" stroke-linecap="round"/>
+              <circle cx="33" cy="15" r="2.6" fill="#fff"/>
+              <circle cx="15" cy="16" r="2.6" fill="#fff"/>
+              <circle cx="24" cy="35" r="2.6" fill="#fff"/>
+              <circle cx="24" cy="24" r="5" fill="#fff"/>
+              <circle cx="24" cy="24" r="2" fill="var(--color-primary-500)"/>
+            </svg>
+          </div>
+        </ng-container>
+        <div class="msg-main" [class.assistant-col]="m.role === 'assistant'">
+          <!-- 思考 / 工具链时间线：独立于回答气泡（ChatGPT 风格） -->
+          <div *ngIf="m.role === 'assistant' && m.streaming && !m.liveText && !m.content" class="thinking-line">
+            <nb-icon icon="loader-outline" class="spin"></nb-icon>
+            <span>{{  '正在采集证据与推理…' | translate }}</span>
+          </div>
+          <div *ngIf="m.role === 'assistant' && timeline(m).length > 0" class="trace">
+            <button class="trace-toggle" (click)="m.traceOpen = !m.traceOpen" [class.open]="m.traceOpen">
+              <nb-icon icon="chevron-right-outline" class="trace-chevron"></nb-icon>
+              <span>{{ '思考过程（' | translate }}{{ timeline(m).length }}{{ '步）' | translate }}</span>
+              <nb-icon *ngIf="m.streaming" icon="loader-outline" class="spin trace-live"></nb-icon>
+            </button>
+            <div *ngIf="m.traceOpen" class="trace-body">
+              <div *ngFor="let t of timeline(m)" class="trace-step" [class.open]="t.open" [class.clickable]="isLong(t.detail)" (click)="isLong(t.detail) && (t.open = !t.open)">
+                <nb-icon
+                  class="trace-icon"
+                  [class.thinking]="t.kind === 'thinking'"
+                  [class.err]="t.kind === 'error' || t.ok === false"
+                  [class.running]="t.ok === undefined && t.kind === 'tool'"
+                  [icon]="traceIcon(t)">
+                </nb-icon>
+                <div class="trace-step-main">
+                  <div class="trace-step-line">
+                    <span *ngIf="t.kind !== 'thinking'" class="trace-kind">{{  t.kind === 'error' ? ('错误' | translate) : ('工具' | translate)  }}</span>
+                    <span class="trace-label">{{ t.title }}</span>
+                    <span *ngIf="t.ok === undefined && t.kind === 'tool'" class="trace-running">{{  '执行中' | translate }}</span>
+                    <span *ngIf="t.durationMs && t.durationMs > 0" class="step-ms">{{ t.durationMs }}ms</span>
+                  </div>
+                  <div *ngIf="t.detail" class="step-result" [class.clamped]="!t.open">{{ t.detail }}</div>
+                  <button *ngIf="isLong(t.detail)" class="step-expand" type="button" (click)="$event.stopPropagation(); t.open = !t.open">
+                    {{  t.open ? ('收起' | translate) : ('展开全文' | translate)  }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="bubble" [class.user-bubble]="m.role === 'user'" [class.assistant-bubble]="m.role === 'assistant'">
+          <div *ngIf="m.role === 'user'" class="msg-content">{{ m.content }}</div>
+          <markdown
+            *ngIf="m.role === 'assistant' && (m.streaming ? m.liveText : m.content) && !m.content.startsWith('⚠️')"
+            class="msg-content assistant-content markdown-body"
+            [data]="m.streaming ? m.liveText : m.content"
+            [clipboard]="!m.streaming"
+          ></markdown>
+          <div *ngIf="m.role === 'assistant' && m.content && m.content.startsWith('⚠️')" class="msg-content">
+            {{ m.content }}
+            <button nbButton size="tiny" status="danger" outline class="retry-btn" (click)="retryMessage(m)">
+              <nb-icon icon="refresh-outline"></nb-icon> {{ '重试' | translate }}
+            </button>
+          </div>
+
+          <span *ngIf="m.role === 'assistant' && m.streaming && (m.liveText || m.content)" class="stream-caret" [aria-label]="'正在生成' | translate"></span>
+        </div>
+          <div *ngIf="m.role === 'assistant' && m.stopped" class="stopped-note">{{  '已手动停止' | translate }}</div>
+          <div *ngIf="m.role === 'assistant' && !m.streaming && m.content && !m.content.startsWith('⚠️')" class="msg-actions">
+            <button class="mini-btn" [class.copied]="m.copied" (click)="copyMessage(m)" [title]="m.copied ? ('已复制' | translate) : ('复制' | translate)">
+              <nb-icon [icon]="m.copied ? 'checkmark-outline' : 'copy-outline'"></nb-icon>
+            </button>
+            <button class="mini-btn" [class.active]="m.feedback === 'up'" (click)="rate(m, 'up')" [title]="'回答有帮助' | translate">
+              <nb-icon icon="arrow-upward-outline"></nb-icon>
+            </button>
+            <button class="mini-btn" [class.active]="m.feedback === 'down'" (click)="rate(m, 'down')" [title]="'回答没帮助' | translate">
+              <nb-icon icon="arrow-downward-outline"></nb-icon>
+            </button>
+            <button class="mini-btn" (click)="regenerate(m)" [title]="'换一种思路再答一次' | translate">
+              <nb-icon icon="refresh-outline"></nb-icon>
+            </button>
+          </div>
+          <div *ngIf="m.role === 'user'" class="msg-actions user-actions">
+            <button class="mini-btn" [class.copied]="m.copied" (click)="copyMessage(m)" [title]="m.copied ? ('已复制' | translate) : ('复制' | translate)">
+              <nb-icon [icon]="m.copied ? 'checkmark-outline' : 'copy-outline'"></nb-icon>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 对话内动作确认卡（AI 申请 → 用户确认） -->
+      <div *ngFor="let a of pendingActions" class="action-card">
+        <div class="action-card-head">
+          <nb-icon icon="flash-outline" class="action-card-icon"></nb-icon>
+          <b>{{ a.title }}</b>
+        </div>
+        <div class="action-card-reason" *ngIf="a.reason">{{ a.reason }}</div>
+        <div class="action-card-meta muted small">{{ '类型' | translate }} {{ a.kind }} · {{ a.expires_at | date: 'MM-dd HH:mm' }} {{ '前确认（单次执行）' | translate }}</div>
+        <div class="action-card-ops">
+          <button nbButton size="small" status="success" (click)="confirmActionCard(a)">
+            <nb-icon icon="checkmark-outline"></nb-icon> {{ '确认并执行' | translate }}
+          </button>
+          <button nbButton size="small" status="danger" outline (click)="rejectActionCard(a)">
+            <nb-icon icon="close-outline"></nb-icon> {{ '拒绝' | translate }}
+          </button>
+        </div>
+      </div>
+
+      </div>
+      <div *ngIf="loadingTranscript" class="transcript-loading" role="status" aria-live="polite">
+        <div class="transcript-loading-card">
+          <nb-icon icon="loader-outline" class="typing-icon"></nb-icon>
+          <span>{{  '正在打开会话' | translate }}</span>
+        </div>
+        <div *ngIf="messages.length === 0" class="transcript-skeleton" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
+      <button *ngIf="showBackToBottom" class="back-bottom" (click)="scrollToBottom(true)" [title]="'回到底部' | translate">
+        <nb-icon icon="arrow-down-outline"></nb-icon>
+      </button>
+    </nb-card-body>
+
+    <nb-card-footer class="chat-input">
+      <div class="input-pill">
+        <textarea
+          class="input-field"
+          rows="2"
+          [placeholder]="'问点关于集群的什么…（Enter 发送，Shift+Enter 换行）' | translate"
+          [(ngModel)]="input"
+          (keydown)="onInputKey($event)"
+          (input)="autoGrow($event)"
+          [disabled]="sending"
+        ></textarea>
+        <button *ngIf="!sending" class="send-btn" [disabled]="!input.trim()" (click)="send()" [title]="'发送' | translate">
+          <nb-icon icon="arrow-up-outline"></nb-icon>
+        </button>
+        <button *ngIf="sending" class="stop-btn" (click)="stopTurn()" [title]="'停止生成' | translate">
+          <nb-icon icon="stop-circle-outline"></nb-icon>
+        </button>
+      </div>
+    </nb-card-footer>
+  </nb-card>
+</div>

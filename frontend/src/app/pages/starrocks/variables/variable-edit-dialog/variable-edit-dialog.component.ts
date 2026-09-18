@@ -1,3 +1,4 @@
+import { TranslatePipe } from '@ngx-translate/core';
 import { Component, Input, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NbDialogRef, NbCardModule, NbButtonModule, NbTooltipModule, NbIconModule, NbInputModule } from '@nebular/theme';
@@ -7,7 +8,8 @@ import { NbDialogRef, NbCardModule, NbButtonModule, NbTooltipModule, NbIconModul
   selector: 'ngx-variable-edit-dialog',
   templateUrl: './variable-edit-dialog.component.html',
   standalone: true,
-  imports: [FormsModule, NbCardModule, NbButtonModule, NbIconModule, NbInputModule,
+  imports: [
+    TranslatePipe,FormsModule, NbCardModule, NbButtonModule, NbIconModule, NbInputModule,
     NbTooltipModule,],
   styles: [
     `

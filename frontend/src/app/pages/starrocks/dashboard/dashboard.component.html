@@ -2,8 +2,8 @@
   <div class="cluster-toolbar" *ngIf="hasClusterAccess">
     <div class="cluster-toolbar__facts">
       <ng-container *ngIf="!loading && clusters.length">
-        <span>{{ clusters.length }} 个</span>
-        <span *ngIf="alertCount" data-tone="warning">{{ alertCount }} 告警</span>
+        <span>{{ clusters.length }}{{ ' 个' | translate }}</span>
+        <span *ngIf="alertCount" data-tone="warning">{{ alertCount }} {{ '告警' | translate }}</span>
       </ng-container>
     </div>
     <button
@@ -14,8 +14,8 @@
       status="primary"
       (click)="addCluster()"
       [disabled]="!canCreateCluster"
-      title="添加集群"
-      aria-label="添加集群">
+      [title]="'添加集群' | translate"
+      [aria-label]="'添加集群' | translate">
       <nb-icon icon="plus-outline"></nb-icon>
     </button>
   </div>
@@ -25,19 +25,19 @@
   </div>
 
   <div *ngIf="!loading && !hasClusterAccess" class="cluster-page__state">
-    <p>暂无权限</p>
-    <p class="cluster-page__hint">请联系管理员授予集群相关权限</p>
+    <p>{{  '暂无权限' | translate }}</p>
+    <p class="cluster-page__hint">{{  '请联系管理员授予集群相关权限' | translate }}</p>
   </div>
 
   <div *ngIf="!loading && hasClusterAccess && clusters.length === 0" class="cluster-page__state setup-guide">
-    <h6>三步接入第一个集群</h6>
+    <h6>{{  '三步接入第一个集群' | translate }}</h6>
     <ol>
-      <li><strong>填写连接</strong><span>FE 地址、端口、账号密码</span></li>
-      <li><strong>测试连接</strong><span>确认网络与权限没问题</span></li>
-      <li><strong>设为当前集群</strong><span>开始查看概览与实时查询</span></li>
+      <li><strong>{{  '填写连接' | translate }}</strong><span>{{  'FE 地址、端口、账号密码' | translate }}</span></li>
+      <li><strong>{{  '测试连接' | translate }}</strong><span>{{  '确认网络与权限没问题' | translate }}</span></li>
+      <li><strong>{{  '设为当前集群' | translate }}</strong><span>{{  '开始查看概览与实时查询' | translate }}</span></li>
     </ol>
     <button nbButton status="primary" size="small" (click)="addCluster()" [disabled]="!canCreateCluster">
-      <nb-icon icon="plus-outline"></nb-icon>添加集群
+      <nb-icon icon="plus-outline"></nb-icon>{{ '添加集群' | translate }}
     </button>
   </div>
 
@@ -60,7 +60,7 @@
               (click)="$event.stopPropagation(); navigateToClusterOverview(card)">
               {{ card.cluster.name }}
             </button>
-            <span class="cluster-card__current" *ngIf="card.isActive">当前</span>
+            <span class="cluster-card__current" *ngIf="card.isActive">{{  '当前' | translate }}</span>
           </div>
           <span class="cluster-card__meta" *ngIf="card.organization && isSuperAdmin">
             {{ card.organization.name }}
@@ -79,7 +79,7 @@
             status="basic"
             (click)="$event.stopPropagation(); toggleActiveCluster(card)"
             [disabled]="!canActivateCluster"
-            aria-label="设为当前集群">
+            [aria-label]="'设为当前集群' | translate">
             <nb-icon icon="star-outline"></nb-icon>
           </button>
           <button
@@ -90,7 +90,7 @@
             status="basic"
             (click)="$event.stopPropagation(); editCluster(card.cluster)"
             [disabled]="!canUpdateCluster"
-            aria-label="设置">
+            [aria-label]="'设置' | translate">
             <nb-icon icon="settings-2-outline"></nb-icon>
           </button>
           <button
@@ -101,7 +101,7 @@
             status="basic"
             (click)="$event.stopPropagation(); deleteCluster(card.cluster)"
             [disabled]="!canDeleteCluster"
-            aria-label="删除">
+            [aria-label]="'删除' | translate">
             <nb-icon icon="trash-2-outline"></nb-icon>
           </button>
         </div>
@@ -120,7 +120,7 @@
         </button>
         <span *ngIf="!card.health" class="cluster-card__status">
           <span class="cluster-card__dot" aria-hidden="true"></span>
-          未知
+          {{ '未知' | translate }}
         </span>
         <button type="button" class="cluster-card__link" (click)="$event.stopPropagation(); navigateToFrontends(card.cluster.id)">
           FE {{ getFeCount(card) }}
@@ -139,18 +139,18 @@
         </div>
         <div class="meter" [attr.data-tone]="usageTone(card.resources.memory_usage_pct)">
           <nb-icon icon="pie-chart-outline"></nb-icon>
-          <span>内存 {{ formatPct(card.resources.memory_usage_pct) }}</span>
+          <span>{{ '内存' | translate }} {{ formatPct(card.resources.memory_usage_pct) }}</span>
           <span class="meter__track"><span class="meter__fill" [style.width.%]="clampPct(card.resources.memory_usage_pct)"></span></span>
         </div>
         <div class="meter" [attr.data-tone]="usageTone(card.resources.disk_usage_pct)"
-          [attr.title]="card.resources.disk_usage_pct == null ? '暂无磁盘指标（采集中，或存算分离集群无本地存储）' : null">
+          [attr.title]="card.resources.disk_usage_pct == null ? ('暂无磁盘指标（采集中，或存算分离集群无本地存储）' | translate) : null">
           <nb-icon icon="hard-drive-outline"></nb-icon>
-          <span>磁盘 {{ formatPct(card.resources.disk_usage_pct) }}</span>
+          <span>{{ '磁盘' | translate }} {{ formatPct(card.resources.disk_usage_pct) }}</span>
           <span class="meter__track"><span class="meter__fill" [style.width.%]="clampPct(card.resources.disk_usage_pct)"></span></span>
         </div>
       </div>
       <ng-template #metersLoading>
-        <div class="cluster-card__meters-empty">指标采集中…</div>
+        <div class="cluster-card__meters-empty">{{  '指标采集中…' | translate }}</div>
       </ng-template>
 
       <span class="cluster-card__tags" *ngIf="card.cluster.tags?.length">

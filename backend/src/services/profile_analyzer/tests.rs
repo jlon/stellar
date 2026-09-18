@@ -2328,20 +2328,39 @@ Query:
                     } else {
                         "N/A"
                     };
-                let time_pct = node.time_percentage.map(|p| format!("{:.2}%", p)).unwrap_or_else(|| "None".to_string());
-                let time_ns = node.metrics.operator_total_time.map(|t| format!("{}ns", t)).unwrap_or_else(|| "None".to_string());
+                let time_pct = node
+                    .time_percentage
+                    .map(|p| format!("{:.2}%", p))
+                    .unwrap_or_else(|| "None".to_string());
+                let time_ns = node
+                    .metrics
+                    .operator_total_time
+                    .map(|t| format!("{}ns", t))
+                    .unwrap_or_else(|| "None".to_string());
                 println!(
                     "     Node {}: {} - ExecTime: {}, time_percentage: {}, operator_total_time: {}, Rows: {:?}, Memory: {:?}",
-                    i, node.operator_name, exec_time_display, time_pct, time_ns, node.rows, node.metrics.memory_usage
+                    i,
+                    node.operator_name,
+                    exec_time_display,
+                    time_pct,
+                    time_ns,
+                    node.rows,
+                    node.metrics.memory_usage
                 );
             }
-            
+
             // Print top nodes
             if let Some(top_nodes) = &profile.summary.top_time_consuming_nodes {
                 println!("   - Top time consuming nodes: {}", top_nodes.len());
                 for (i, top_node) in top_nodes.iter().take(5).enumerate() {
-                    println!("     {}. {}: {:.2}% (plan_node_id={}, total_time={})", 
-                        i + 1, top_node.operator_name, top_node.time_percentage, top_node.plan_node_id, top_node.total_time);
+                    println!(
+                        "     {}. {}: {:.2}% (plan_node_id={}, total_time={})",
+                        i + 1,
+                        top_node.operator_name,
+                        top_node.time_percentage,
+                        top_node.plan_node_id,
+                        top_node.total_time
+                    );
                 }
             }
         }
@@ -2435,31 +2454,48 @@ MergedProfile:
             // Step 3: Verify summary fields
             assert!(!profile.summary.query_id.is_empty(), "Query ID should not be empty");
             assert_eq!(profile.summary.total_time, "15ms", "Total time should be 15ms");
-            assert_eq!(profile.summary.starrocks_version, "doris-4.0.1-test", "Doris version should match");
+            assert_eq!(
+                profile.summary.starrocks_version, "doris-4.0.1-test",
+                "Doris version should match"
+            );
 
             // Step 4: Verify fragments
             assert!(!profile.fragments.is_empty(), "Fragments should not be empty");
             assert!(profile.fragments.len() >= 2, "Should have at least 2 fragments");
 
             // Count total operators across all fragments
-            let total_operators: usize = profile.fragments
+            let total_operators: usize = profile
+                .fragments
                 .iter()
                 .map(|f| f.pipelines.iter().map(|p| p.operators.len()).sum::<usize>())
                 .sum();
             println!("Total Operators: {}", total_operators);
-            assert_eq!(total_operators, 10, "Should have exactly 10 operators. Found: {}", total_operators);
+            assert_eq!(
+                total_operators, 10,
+                "Should have exactly 10 operators. Found: {}",
+                total_operators
+            );
 
             // Step 5: Verify execution tree
-            let tree = profile.execution_tree.as_ref().expect("Execution tree is missing");
+            let tree = profile
+                .execution_tree
+                .as_ref()
+                .expect("Execution tree is missing");
             assert!(!tree.nodes.is_empty(), "Execution tree should not be empty");
             println!("Execution Tree Nodes: {}", tree.nodes.len());
-            assert_eq!(tree.nodes.len(), 10, "Should have exactly 10 nodes in execution tree. Found: {}", tree.nodes.len());
+            assert_eq!(
+                tree.nodes.len(),
+                10,
+                "Should have exactly 10 nodes in execution tree. Found: {}",
+                tree.nodes.len()
+            );
 
             // Step 6: Verify all expected operators are present
             // Note: For Doris format, "_OPERATOR" suffix is removed (e.g., "OLAP_SCAN_OPERATOR" -> "OLAP_SCAN")
-            let operator_names: Vec<String> = tree.nodes.iter().map(|n| n.operator_name.clone()).collect();
+            let operator_names: Vec<String> =
+                tree.nodes.iter().map(|n| n.operator_name.clone()).collect();
             println!("Operators found: {:?}", operator_names);
-            
+
             let expected_operators = vec![
                 "RESULT_SINK",
                 "EXCHANGE",
@@ -2470,7 +2506,7 @@ MergedProfile:
                 "SORT_SINK",
                 "OLAP_SCAN",
             ];
-            
+
             for expected_op in &expected_operators {
                 assert!(
                     operator_names.iter().any(|name| name.contains(expected_op)),
@@ -2481,11 +2517,21 @@ MergedProfile:
             }
 
             // Step 7: Verify time_percentage is calculated for all nodes
-            let nodes_with_time_percentage = tree.nodes.iter()
+            let nodes_with_time_percentage = tree
+                .nodes
+                .iter()
                 .filter(|n| n.time_percentage.is_some())
                 .count();
-            println!("Nodes with time_percentage: {}/{}", nodes_with_time_percentage, tree.nodes.len());
-            assert_eq!(nodes_with_time_percentage, tree.nodes.len(), "All nodes should have time_percentage");
+            println!(
+                "Nodes with time_percentage: {}/{}",
+                nodes_with_time_percentage,
+                tree.nodes.len()
+            );
+            assert_eq!(
+                nodes_with_time_percentage,
+                tree.nodes.len(),
+                "All nodes should have time_percentage"
+            );
 
             // Step 8: Verify top_time_consuming_nodes is populated
             assert!(
@@ -2520,7 +2566,11 @@ MergedProfile:
             println!("   - Fragments: {}", profile.fragments.len());
             println!("   - Total Operators: {}", total_operators);
             println!("   - Execution Tree Nodes: {}", tree.nodes.len());
-            println!("   - Nodes with time_percentage: {}/{}", nodes_with_time_percentage, tree.nodes.len());
+            println!(
+                "   - Nodes with time_percentage: {}/{}",
+                nodes_with_time_percentage,
+                tree.nodes.len()
+            );
             println!("   - Top time consuming nodes: {}", top_nodes.len());
             println!("   - Reachable Nodes: {}/{}", visited.len(), tree.nodes.len());
         }

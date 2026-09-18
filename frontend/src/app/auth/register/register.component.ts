@@ -1,3 +1,5 @@
+import { I18nService } from '../../@core/i18n/i18n.service';
+import { TranslatePipe } from '@ngx-translate/core';
 import { Component, inject, ViewEncapsulation } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
@@ -12,11 +14,13 @@ import { FormsModule } from '@angular/forms';
     templateUrl: './register.component.html',
     styleUrls: ['./register.component.scss'],
     encapsulation: ViewEncapsulation.None,
-    imports: [CommonModule, NbAlertModule, FormsModule, NbInputModule, NbButtonModule, NbIconModule, RouterLink]
+    imports: [
+    TranslatePipe,CommonModule, NbAlertModule, FormsModule, NbInputModule, NbButtonModule, NbIconModule, RouterLink]
 })
 export class RegisterComponent {
   protected router = inject(Router);
-  private authService = inject(AuthService);
+  private authService = inject(AuthService)
+  private i18n = inject(I18nService);;
   private toastrService = inject(NbToastrService);
   private diceBearService = inject(DiceBearService);
 
@@ -92,7 +96,7 @@ export class RegisterComponent {
       next: (response) => {
         this.submitted = false;
         // Show single toast notification for registration success
-        this.toastrService.success('注册成功，请使用你的账号登录。', '注册成功');
+        this.toastrService.success(this.i18n.instant('注册成功，请使用你的账号登录。'), this.i18n.instant('注册成功'));
         // Navigate to login after short delay
         setTimeout(() => {
           this.router.navigate(['/auth/login']);

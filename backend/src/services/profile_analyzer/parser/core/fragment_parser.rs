@@ -16,8 +16,9 @@ static FRAGMENT_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^\s*Fragment\s+(\
 // Doris: "Pipeline : 0(instance_num=1):" or "Pipeline 0(instance_num=1):" -> capture group 2 (id) and group 3 (instance_num)
 // According to Doris profile-dag-parser.md: `^Pipeline (\\d+)\\(instance_num=(\\d+)\\):`
 // Note: Doris can have space and colon: "Pipeline : 0" or just "Pipeline 0"
-static PIPELINE_REGEX: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^\s*Pipeline\s*:?\s*(?:\(id=(\d+)\)|(\d+)\(instance_num=(\d+)\))").unwrap());
+static PIPELINE_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^\s*Pipeline\s*:?\s*(?:\(id=(\d+)\)|(\d+)\(instance_num=(\d+)\))").unwrap()
+});
 
 /// Parser for Fragment and Pipeline structures
 pub struct FragmentParser;
@@ -179,7 +180,7 @@ impl FragmentParser {
                 while i < lines.len() {
                     let line = lines[i];
                     let trimmed = line.trim();
-                    
+
                     if trimmed.is_empty() {
                         i += 1;
                         continue;
@@ -216,7 +217,8 @@ impl FragmentParser {
                 // Note: Doris operator pattern: ^([A-Z_]+_OPERATOR)(?:\\([^)]+\\))?\\(id=(\\d+)\\)
                 // This means id= must be followed by digits, but there can be additional info after
                 let plan_node_id = if full_header.contains("plan_node_id=") {
-                    OperatorParser::parse_starrocks_plan_node_id(&full_header).map(|n| n.to_string())
+                    OperatorParser::parse_starrocks_plan_node_id(&full_header)
+                        .map(|n| n.to_string())
                 } else if let Some(id_start) = full_header.find("(id=") {
                     // Doris format: (id=0) or (id=0. nereids_id=32...) or (id=0. nereids_id=74. table name = xxx)
                     // Extract the number immediately after "id=", before any dot or closing paren
@@ -256,7 +258,7 @@ impl FragmentParser {
                 } else {
                     Self::parse_metrics_to_hashmap(&common_metrics_text)
                 };
-                
+
                 let unique_metrics = if unique_metrics_text.trim().is_empty() {
                     // If CustomCounters is also missing, we might have some metrics in the operator block
                     // that aren't in CommonCounters. For now, return empty as CustomCounters are operator-specific.
@@ -316,40 +318,36 @@ impl FragmentParser {
     /// Excludes PlanInfo section and nested operators
     fn parse_metrics_directly_from_operator_block(text: &str) -> HashMap<String, String> {
         use crate::services::profile_analyzer::parser::core::operator_parser::OperatorParser;
-        
+
         let mut metrics = HashMap::new();
         let lines: Vec<&str> = text.lines().collect();
-        
+
         // Skip the operator header line
         let mut i = if lines.is_empty() { 0 } else { 1 };
         let mut in_plan_info = false;
-        
+
         while i < lines.len() {
             let line = lines[i];
             let trimmed = line.trim();
-            
+
             // Skip empty lines
             if trimmed.is_empty() {
                 i += 1;
                 continue;
             }
-            
+
             // Check if this is PlanInfo section (starts with "- PlanInfo")
             if trimmed == "- PlanInfo" {
                 in_plan_info = true;
                 i += 1;
                 continue;
             }
-            
+
             // Skip PlanInfo content (lines with more indent after "- PlanInfo")
             if in_plan_info {
                 let current_indent = Self::get_indent(line);
-                let plan_info_indent = if i > 0 {
-                    Self::get_indent(lines[i - 1])
-                } else {
-                    0
-                };
-                
+                let plan_info_indent = if i > 0 { Self::get_indent(lines[i - 1]) } else { 0 };
+
                 // If indent decreases or we hit another metric/operator, exit PlanInfo
                 if current_indent <= plan_info_indent && trimmed.starts_with("- ") {
                     in_plan_info = false;
@@ -360,28 +358,28 @@ impl FragmentParser {
                     continue;
                 }
             }
-            
+
             // Check if this is another operator header - stop parsing
             if OperatorParser::is_operator_header(trimmed) {
                 break;
             }
-            
+
             // Check if this is a metric line (starts with "- ")
             if trimmed.starts_with("- ") {
                 let rest = trimmed.trim_start_matches("- ");
                 if let Some(colon_pos) = rest.find(": ") {
                     let key = rest[..colon_pos].trim().to_string();
                     let value = rest[colon_pos + 2..].trim().to_string();
-                    
+
                     if !value.is_empty() && !key.starts_with("__MIN_OF_") {
                         metrics.insert(key, value);
                     }
                 }
             }
-            
+
             i += 1;
         }
-        
+
         metrics
     }
 

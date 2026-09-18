@@ -12,6 +12,7 @@ use stellar_macros::app_db;
 
 use crate::{
     models::starrocks::{UpdateVariableRequest, Variable},
+    services::cluster_timeout,
     services::mysql_client::MySQLClient,
     utils::error::{ApiError, ApiResult},
 };
@@ -66,7 +67,7 @@ pub async fn get_variables(
     };
 
     let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
-    let mysql_client = MySQLClient::from_pool(pool);
+    let mysql_client = MySQLClient::from_pool(pool).with_timeout(cluster_timeout(&cluster));
 
     let sql = match params.r#type.as_str() {
         "session" => "SHOW SESSION VARIABLES",
@@ -120,7 +121,7 @@ pub async fn get_configure_info(
     };
 
     let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
-    let mysql_client = MySQLClient::from_pool(pool);
+    let mysql_client = MySQLClient::from_pool(pool).with_timeout(cluster_timeout(&cluster));
 
     let mut configs: Vec<ConfigEntry> = Vec::new();
     let mut errors: Vec<String> = Vec::new();
@@ -210,7 +211,7 @@ pub async fn update_variable(
     };
 
     let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
-    let mysql_client = MySQLClient::from_pool(pool);
+    let mysql_client = MySQLClient::from_pool(pool).with_timeout(cluster_timeout(&cluster));
 
     let scope = match request.scope.to_uppercase().as_str() {
         "GLOBAL" => "GLOBAL",

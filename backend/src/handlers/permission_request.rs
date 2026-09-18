@@ -1,9 +1,7 @@
-use crate::db::query as db_query;
 use axum::{
     Json,
     extract::{Extension, Path, Query, State},
 };
-use sqlx::Row;
 use std::sync::Arc;
 use stellar_macros::app_db;
 
@@ -12,7 +10,10 @@ use crate::models::{
     ApprovalDto, DbAccountDto, DbRoleDto, DbUserPermissionDto, PaginatedResponse,
     PermissionRequestResponse, RequestQueryFilter, SubmitRequestDto,
 };
-use crate::utils::ApiResult;
+use crate::{
+    middleware::OrgContext,
+    utils::{ApiError, ApiResult, check_org_access, get_active_cluster_for_org},
+};
 
 /// List my permission requests
 #[utoipa::path(
@@ -67,26 +68,20 @@ pub async fn list_my_requests(
 pub async fn list_pending_approvals(
     State(state): State<Arc<AppState<DB>>>,
     Extension(user_id): Extension<i64>,
+    Extension(org_ctx): Extension<OrgContext>,
     Query(filter): Query<RequestQueryFilter>,
 ) -> ApiResult<Json<Vec<PermissionRequestResponse>>> {
     tracing::debug!("User {} listing pending approvals", user_id);
 
-    // Get user's org_id from database
-    let user = db_query::query("SELECT organization_id FROM users WHERE id = ?")
-        .bind(user_id)
-        .fetch_one(&state.db)
+    state
+        .permission_request_service
+        .ensure_can_review_requests(user_id)
         .await?;
-
-    let org_id: Option<i64> = user.get("organization_id");
-    let org_id = org_id.unwrap_or(0);
-
-    // TODO: Check if user is super_admin from roles table
-    // For now, assume any user can view approvals for their org
-    let is_super_admin = false;
+    let org_id = org_ctx.organization_id.unwrap_or_default();
 
     let result = state
         .permission_request_service
-        .list_pending_approvals(org_id, is_super_admin, filter)
+        .list_pending_approvals(org_id, org_ctx.is_super_admin, filter)
         .await?;
 
     Ok(Json(result))
@@ -109,13 +104,14 @@ pub async fn list_pending_approvals(
 #[app_db]
 pub async fn get_request(
     State(state): State<Arc<AppState<DB>>>,
+    Extension(user_id): Extension<i64>,
     Path(request_id): Path<i64>,
 ) -> ApiResult<Json<PermissionRequestResponse>> {
     tracing::debug!("Getting request details for request_id: {}", request_id);
 
     let request = state
         .permission_request_service
-        .get_request_detail(request_id)
+        .get_request_detail_for_user(request_id, user_id)
         .await?;
     Ok(Json(request))
 }
@@ -270,10 +266,13 @@ pub async fn cancel_request(
 #[app_db]
 pub async fn list_db_accounts(
     State(state): State<Arc<AppState<DB>>>,
+    Extension(org_ctx): Extension<OrgContext>,
     Path(cluster_id): Path<i64>,
 ) -> ApiResult<Json<Vec<DbAccountDto>>> {
     tracing::debug!("Listing database accounts for cluster {}", cluster_id);
 
+    let cluster = state.cluster_service.get_cluster(cluster_id).await?;
+    check_org_access(&org_ctx, cluster.organization_id, "view database accounts")?;
     let accounts = state
         .db_auth_query_service
         .list_accounts(cluster_id)
@@ -298,10 +297,13 @@ pub async fn list_db_accounts(
 #[app_db]
 pub async fn list_db_roles(
     State(state): State<Arc<AppState<DB>>>,
+    Extension(org_ctx): Extension<OrgContext>,
     Path(cluster_id): Path<i64>,
 ) -> ApiResult<Json<Vec<DbRoleDto>>> {
     tracing::debug!("Listing database roles for cluster {}", cluster_id);
 
+    let cluster = state.cluster_service.get_cluster(cluster_id).await?;
+    check_org_access(&org_ctx, cluster.organization_id, "view database roles")?;
     let roles = state.db_auth_query_service.list_roles(cluster_id).await?;
     Ok(Json(roles))
 }
@@ -321,21 +323,21 @@ pub async fn list_db_roles(
 #[app_db]
 pub async fn preview_sql(
     State(state): State<Arc<AppState<DB>>>,
+    Extension(org_ctx): Extension<OrgContext>,
     Json(req): Json<SubmitRequestDto>,
 ) -> ApiResult<Json<serde_json::Value>> {
     tracing::debug!("Previewing SQL for request type: {}", req.request_type);
 
-    // Get cluster for SQL generation
-    let cluster = state.cluster_service.get_cluster(req.cluster_id).await?;
-
-    // Use the static method from permission_request_service
-    let sql = crate::services::PermissionRequestService::generate_preview_sql_static(
-        &cluster,
-        &req.request_type,
-        &req.request_details,
-        state.mysql_pool_manager.clone(),
-    )
-    .await?;
+    let cluster = get_active_cluster_for_org(&state.cluster_service, &org_ctx).await?;
+    if req.cluster_id != cluster.id {
+        return Err(ApiError::validation_error(
+            "Preview is only available for the active cluster.",
+        ));
+    }
+    let sql = state
+        .permission_request_service
+        .preview_sql(&cluster, &req, state.mysql_pool_manager.clone())
+        .await?;
 
     Ok(Json(serde_json::json!({
         "sql": sql,
@@ -358,22 +360,11 @@ pub async fn preview_sql(
 pub async fn list_db_accounts_active(
     State(state): State<Arc<AppState<DB>>>,
     Extension(user_id): Extension<i64>,
+    Extension(org_ctx): Extension<OrgContext>,
 ) -> ApiResult<Json<Vec<DbAccountDto>>> {
     tracing::debug!("Listing database accounts for active cluster of user {}", user_id);
 
-    // Get user's organization_id
-    let user = db_query::query("SELECT organization_id FROM users WHERE id = ?")
-        .bind(user_id)
-        .fetch_one(&state.db)
-        .await?;
-
-    let org_id: Option<i64> = user.get("organization_id");
-
-    // Get active cluster for this organization
-    let active_cluster = state
-        .cluster_service
-        .get_active_cluster_by_org(org_id)
-        .await?;
+    let active_cluster = get_active_cluster_for_org(&state.cluster_service, &org_ctx).await?;
 
     // List accounts for the active cluster
     let accounts = state
@@ -398,22 +389,11 @@ pub async fn list_db_accounts_active(
 pub async fn list_db_roles_active(
     State(state): State<Arc<AppState<DB>>>,
     Extension(user_id): Extension<i64>,
+    Extension(org_ctx): Extension<OrgContext>,
 ) -> ApiResult<Json<Vec<DbRoleDto>>> {
     tracing::debug!("Listing database roles for active cluster of user {}", user_id);
 
-    // Get user's organization_id
-    let user = db_query::query("SELECT organization_id FROM users WHERE id = ?")
-        .bind(user_id)
-        .fetch_one(&state.db)
-        .await?;
-
-    let org_id: Option<i64> = user.get("organization_id");
-
-    // Get active cluster for this organization
-    let active_cluster = state
-        .cluster_service
-        .get_active_cluster_by_org(org_id)
-        .await?;
+    let active_cluster = get_active_cluster_for_org(&state.cluster_service, &org_ctx).await?;
 
     // List roles for the active cluster
     let roles = state
@@ -440,22 +420,11 @@ pub async fn list_db_roles_active(
 pub async fn list_my_db_permissions(
     State(state): State<Arc<AppState<DB>>>,
     Extension(user_id): Extension<i64>,
+    Extension(org_ctx): Extension<OrgContext>,
 ) -> ApiResult<Json<Vec<DbUserPermissionDto>>> {
     tracing::debug!("Listing database permissions for user {}", user_id);
 
-    // Get user's organization_id
-    let user = db_query::query("SELECT organization_id FROM users WHERE id = ?")
-        .bind(user_id)
-        .fetch_one(&state.db)
-        .await?;
-
-    let org_id: Option<i64> = user.get("organization_id");
-
-    // Get active cluster for this organization
-    let active_cluster = state
-        .cluster_service
-        .get_active_cluster_by_org(org_id)
-        .await?;
+    let active_cluster = get_active_cluster_for_org(&state.cluster_service, &org_ctx).await?;
 
     // Use the cluster's registered database username (e.g., starrocks, root)
     // NOT the Stellar system username
@@ -494,23 +463,15 @@ pub async fn list_my_db_permissions(
 pub async fn list_role_permissions(
     State(state): State<Arc<AppState<DB>>>,
     Extension(user_id): Extension<i64>,
+    Extension(org_ctx): Extension<OrgContext>,
     Path(role_name): Path<String>,
 ) -> ApiResult<Json<Vec<DbUserPermissionDto>>> {
     tracing::debug!("Listing permissions for role {} by user {}", role_name, user_id);
 
-    // Get user's organization_id
-    let user = db_query::query("SELECT organization_id FROM users WHERE id = ?")
-        .bind(user_id)
-        .fetch_one(&state.db)
-        .await?;
-
-    let org_id: Option<i64> = user.get("organization_id");
-
-    // Get active cluster for this organization
-    let active_cluster = state
-        .cluster_service
-        .get_active_cluster_by_org(org_id)
-        .await?;
+    if !is_safe_identifier(&role_name) {
+        return Err(ApiError::validation_error("Invalid role identifier."));
+    }
+    let active_cluster = get_active_cluster_for_org(&state.cluster_service, &org_ctx).await?;
 
     tracing::debug!(
         "Querying permissions for role '{}' on cluster '{}'",
@@ -525,4 +486,15 @@ pub async fn list_role_permissions(
         .await?;
 
     Ok(Json(permissions))
+}
+
+fn is_safe_identifier(value: &str) -> bool {
+    value.len() <= 64
+        && value
+            .chars()
+            .next()
+            .is_some_and(|character| character.is_ascii_alphabetic() || character == '_')
+        && value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '_')
 }

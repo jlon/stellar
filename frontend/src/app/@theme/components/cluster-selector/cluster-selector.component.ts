@@ -1,3 +1,5 @@
+import { I18nService } from '../../../@core/i18n/i18n.service';
+import { TranslatePipe } from '@ngx-translate/core';
 import { Component, ChangeDetectorRef, OnInit, OnDestroy, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Subject } from 'rxjs';
@@ -12,6 +14,7 @@ import { ClusterContextService } from '../../../@core/data/cluster-context.servi
     templateUrl: './cluster-selector.component.html',
     styleUrls: ['./cluster-selector.component.scss'],
     imports: [
+    TranslatePipe,
     NbSelectModule,
     NbOptionModule,
     NbButtonModule,
@@ -19,7 +22,8 @@ import { ClusterContextService } from '../../../@core/data/cluster-context.servi
 ],
 })
 export class ClusterSelectorComponent implements OnInit, OnDestroy {
-  private clusterService = inject(ClusterService);
+  private clusterService = inject(ClusterService)
+  private i18n = inject(I18nService);
   private cdRef = inject(ChangeDetectorRef);
   private clusterContext = inject(ClusterContextService);
   private router = inject(Router);
@@ -71,7 +75,7 @@ export class ClusterSelectorComponent implements OnInit, OnDestroy {
         }
       },
       error: (error) => {
-        this.toastr.danger('加载集群列表失败', '错误');
+        this.toastr.danger(this.i18n.instant('加载集群列表失败'), this.i18n.instant('错误'));
         this.loading = false;
       },
     });
@@ -79,7 +83,7 @@ export class ClusterSelectorComponent implements OnInit, OnDestroy {
 
   selectCluster(cluster: Cluster): void {
     this.clusterContext.setActiveCluster(cluster);
-    this.toastr.success(`已切换到集群: ${cluster.name}`, '成功');
+    this.toastr.success(this.i18n.instant('已切换到集群') + ': ' + cluster.name, this.i18n.instant('成功'));
   }
 
   onClusterChange(cluster: Cluster): void {

@@ -14,19 +14,19 @@
         </div>
         <h1 class="brand-name">Stellar</h1>
       </div>
-      <p class="brand-tagline">一站式 StarRocks 集群运维管理平台</p>
+      <p class="brand-tagline">{{  '一站式 StarRocks 集群运维管理平台' | translate }}</p>
       <div class="visual-metrics">
         <div class="metric">
-          <span class="metric__value">多集群</span>
-          <span class="metric__label">统一纳管</span>
+          <span class="metric__value">{{  '多集群' | translate }}</span>
+          <span class="metric__label">{{  '统一纳管' | translate }}</span>
         </div>
         <div class="metric">
-          <span class="metric__value">实时</span>
-          <span class="metric__label">集群监控</span>
+          <span class="metric__value">{{  '实时' | translate }}</span>
+          <span class="metric__label">{{  '集群监控' | translate }}</span>
         </div>
         <div class="metric">
-          <span class="metric__value">智能</span>
-          <span class="metric__label">Profile 诊断</span>
+          <span class="metric__value">{{  '智能' | translate }}</span>
+          <span class="metric__label">{{  'Profile 诊断' | translate }}</span>
         </div>
       </div>
     </div>
@@ -35,8 +35,8 @@
   <div class="register-panel">
     <div class="panel-glow" aria-hidden="true"></div>
     <div class="panel-header">
-      <h2 id="title" class="title">创建账号</h2>
-      <p class="sub-title">注册后开始管理你的 StarRocks 集群</p>
+      <h2 id="title" class="title">{{  '创建账号' | translate }}</h2>
+      <p class="sub-title">{{  '注册后开始管理你的 StarRocks 集群' | translate }}</p>
     </div>
 
     <nb-alert *ngIf="errors?.length && !submitted" outline="danger" role="alert">
@@ -53,14 +53,14 @@
 
     <form (ngSubmit)="register()" #form="ngForm" aria-labelledby="title">
       <div class="form-control-group">
-        <label class="label" for="input-username">用户名</label>
+        <label class="label" for="input-username">{{  '用户名' | translate }}</label>
         <input nbInput
                fullWidth
                [(ngModel)]="user.username"
                #username="ngModel"
                name="username"
                id="input-username"
-               placeholder="请输入用户名"
+               [placeholder]="'请输入用户名' | translate"
                autofocus
                [status]="username.dirty ? (username.invalid ? 'danger' : 'success') : 'basic'"
                [required]="true"
@@ -68,16 +68,16 @@
                [attr.aria-invalid]="username.invalid && username.touched ? true : null">
         <ng-container *ngIf="username.invalid && username.touched">
           <p class="caption status-danger" *ngIf="username.errors?.['required']">
-            请填写用户名
+            {{ '请填写用户名' | translate }}
           </p>
           <p class="caption status-danger" *ngIf="username.errors?.['minlength']">
-            用户名至少 3 个字符
+            {{ '用户名至少 3 个字符' | translate }}
           </p>
         </ng-container>
       </div>
 
       <div class="form-control-group">
-        <label class="label" for="input-email">邮箱地址</label>
+        <label class="label" for="input-email">{{  '邮箱地址' | translate }}</label>
         <input nbInput
                fullWidth
                [(ngModel)]="user.email"
@@ -85,23 +85,23 @@
                name="email"
                type="email"
                id="input-email"
-               placeholder="请输入邮箱地址"
+               [placeholder]="'请输入邮箱地址' | translate"
                [status]="email.dirty ? (email.invalid ? 'danger' : 'success') : 'basic'"
                [required]="true"
                pattern="^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,4}$"
                [attr.aria-invalid]="email.invalid && email.touched ? true : null">
         <ng-container *ngIf="email.invalid && email.touched">
           <p class="caption status-danger" *ngIf="email.errors?.['required']">
-            请填写邮箱地址
+            {{ '请填写邮箱地址' | translate }}
           </p>
           <p class="caption status-danger" *ngIf="email.errors?.['pattern']">
-            邮箱格式不正确
+            {{ '邮箱格式不正确' | translate }}
           </p>
         </ng-container>
       </div>
 
       <div class="form-control-group">
-        <label class="label" for="input-password">密码</label>
+        <label class="label" for="input-password">{{  '密码' | translate }}</label>
         <input nbInput
                fullWidth
                [(ngModel)]="user.password"
@@ -109,23 +109,23 @@
                name="password"
                type="password"
                id="input-password"
-               placeholder="请设置密码（至少 6 位）"
+               [placeholder]="'请设置密码（至少 6 位）' | translate"
                [status]="password.dirty ? (password.invalid ? 'danger' : 'success') : 'basic'"
                [required]="true"
                [minlength]="6"
                [attr.aria-invalid]="password.invalid && password.touched ? true : null">
         <ng-container *ngIf="password.invalid && password.touched">
           <p class="caption status-danger" *ngIf="password.errors?.['required']">
-            请设置密码
+            {{ '请设置密码' | translate }}
           </p>
           <p class="caption status-danger" *ngIf="password.errors?.['minlength']">
-            密码至少 6 个字符
+            {{ '密码至少 6 个字符' | translate }}
           </p>
         </ng-container>
       </div>
 
       <div class="form-control-group">
-        <label class="label" for="input-confirm-password">确认密码</label>
+        <label class="label" for="input-confirm-password">{{  '确认密码' | translate }}</label>
         <input nbInput
                fullWidth
                [(ngModel)]="user.confirmPassword"
@@ -133,17 +133,17 @@
                name="confirmPassword"
                type="password"
                id="input-confirm-password"
-               placeholder="请再次输入密码"
+               [placeholder]="'请再次输入密码' | translate"
                [status]="confirmPassword.dirty ? (confirmPassword.invalid ? 'danger' : 'success') : 'basic'"
                [required]="true"
                [attr.aria-invalid]="confirmPassword.invalid && confirmPassword.touched ? true : null">
         <p class="caption status-danger" *ngIf="user.password !== user.confirmPassword && confirmPassword.touched">
-          两次输入的密码不一致
+          {{ '两次输入的密码不一致' | translate }}
         </p>
       </div>
 
       <div class="form-control-group">
-        <label class="label">头像</label>
+        <label class="label">{{  '头像' | translate }}</label>
         <div class="avatar-options">
           <button
             type="button"
@@ -155,7 +155,7 @@
           </button>
         </div>
         <button type="button" nbButton ghost size="small" (click)="generateAvatarOptions()">
-          换一批头像
+          {{ '换一批头像' | translate }}
         </button>
       </div>
 
@@ -166,12 +166,12 @@
               [disabled]="submitted || !form.valid || user.password !== user.confirmPassword"
               [class.btn-pulse]="submitted">
         <nb-icon *ngIf="!submitted" icon="person-add-outline"></nb-icon>
-        {{ submitted ? '正在注册...' : '注册' }}
+        {{  submitted ? ('正在注册...' | translate) : ('注册' | translate)  }}
       </button>
     </form>
 
     <section class="another-action">
-      已有账号？<a class="text-link" routerLink="../login">登录</a>
+      已有账号？<a class="text-link" routerLink="../login">{{  '登录' | translate }}</a>
     </section>
   </div>
 </div>

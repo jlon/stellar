@@ -4,11 +4,14 @@ import { NbMediaBreakpointsService, NbMenuService, NbSidebarService, NbThemeServ
 
 import { LayoutService } from '../../../@core/utils';
 import { AuthService } from '../../../@core/data/auth.service';
+import { I18nService, Lang } from '../../../@core/i18n/i18n.service';
 import { persistTheme } from '../../styles/theme-preference';
 import { map, takeUntil, filter } from 'rxjs/operators';
 import { Subject } from 'rxjs';
 
+import { TranslatePipe } from '@ngx-translate/core';
 import { ClusterSelectorComponent } from '../cluster-selector/cluster-selector.component';
+import { NotificationBellComponent } from './notification-bell.component';
 import { NbSecurityModule } from '@nebular/security';
 
 @Component({
@@ -17,13 +20,15 @@ import { NbSecurityModule } from '@nebular/security';
     templateUrl: './header.component.html',
     imports: [
     NbIconModule,
+    TranslatePipe,
     NbSelectModule,
     NbOptionModule,
     ClusterSelectorComponent,
     NbActionsModule,
     NbSecurityModule,
     NbUserModule,
-    NbContextMenuModule
+    NbContextMenuModule,
+    NotificationBellComponent
 ],
 })
 export class HeaderComponent implements OnInit, OnDestroy {
@@ -35,6 +40,7 @@ export class HeaderComponent implements OnInit, OnDestroy {
   private breakpointService = inject(NbMediaBreakpointsService);
   private router = inject(Router);
   private toastr = inject(NbToastrService);
+  i18n = inject(I18nService);
 
 
   private destroy$: Subject<void> = new Subject<void>();
@@ -51,8 +57,8 @@ export class HeaderComponent implements OnInit, OnDestroy {
   currentTheme = 'cosmic';
 
   userMenu = [
-    { title: '用户设置', icon: 'settings-outline', data: { id: 'settings' } },
-    { title: '退出登录', icon: 'log-out-outline', data: { id: 'logout' } },
+    { title: this.i18n.instant('用户设置'), icon: 'settings-outline', data: { id: 'settings' } },
+    { title: this.i18n.instant('退出登录'), icon: 'log-out-outline', data: { id: 'logout' } },
   ];
 
   ngOnInit() {
@@ -145,7 +151,7 @@ export class HeaderComponent implements OnInit, OnDestroy {
   }
 
   logout() {
-    this.toastr.success('退出登录成功', '提示');
+    this.toastr.success(this.i18n.instant('退出登录成功'), this.i18n.instant('提示'));
     setTimeout(() => {
       this.authService.logout();
     }, 500);

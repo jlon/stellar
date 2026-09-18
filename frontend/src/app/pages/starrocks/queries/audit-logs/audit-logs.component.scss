@@ -3,50 +3,27 @@
 @include nb-install-component() {
   .search-filters {
     margin-bottom: 1.5rem;
-    
-    .filter-card {
-      border: 1px solid nb-theme(border-basic-color-3);
-      box-shadow: none;
-      
-      nb-card-body {
-        padding: 1rem;
-      }
-    }
-    
-    // 确保所有表单元素高度一致
-    .row {
+
+    // 紧凑单行：关键词收窄，两时间固定宽，搜索按钮右对齐
+    .filter-row {
       display: flex;
       align-items: center;
-      
-      nb-form-field {
-        height: 2.5rem;
-        display: flex;
-        align-items: center;
-        
-        input {
-          height: 2.5rem;
-          line-height: 2.5rem;
-        }
-        
-        nb-icon {
-          height: 2.5rem;
-          display: flex;
-          align-items: center;
-        }
-      }
-      
-      button {
-        height: 2.5rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        line-height: 1;
-        
-        nb-icon {
-          height: 1rem;
-          width: 1rem;
-        }
-      }
+      gap: 0.5rem;
+    }
+
+    .filter-keyword {
+      flex: 0 1 20rem;
+      min-width: 12rem;
+    }
+
+    .filter-time {
+      flex: 0 1 13rem;
+      min-width: 10rem;
+    }
+
+    .filter-submit {
+      margin-left: auto;
+      flex-shrink: 0;
     }
     
     .active-filters {
@@ -72,37 +49,6 @@
       
       .clear-filters-btn {
         margin-left: auto;
-      }
-    }
-  }
-
-  .pagination-container {
-    margin-top: 1.5rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 1rem;
-    
-    .pagination-info {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      
-      .page-size-select {
-        min-width: 100px;
-      }
-    }
-    
-    .pagination-controls {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      
-      .page-info {
-        margin: 0 0.5rem;
-        font-size: 14px;
-        color: nb-theme(text-hint-color);
       }
     }
   }

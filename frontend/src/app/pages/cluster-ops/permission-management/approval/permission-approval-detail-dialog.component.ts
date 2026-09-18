@@ -13,9 +13,13 @@ import { NgClass } from '@angular/common';
     template: `
     <nb-card class="approval-detail-dialog">
       <nb-card-header>
-        申请详情
-        <nb-badge [text]="getRequestTypeLabel(request.request_type)" [status]="getRequestTypeStatus(request.request_type)"></nb-badge>
-        <nb-badge [text]="getStatusLabel(request.status)" [status]="getStatusBadge(request.status)"></nb-badge>
+        <div class="dialog-header">
+          <h6>申请详情</h6>
+          <div class="dialog-status">
+            <nb-badge [text]="getRequestTypeLabel(request.request_type)" [status]="getRequestTypeStatus(request.request_type)"></nb-badge>
+            <nb-badge [text]="getStatusLabel(request.status)" [status]="getStatusBadge(request.status)"></nb-badge>
+          </div>
+        </div>
       </nb-card-header>
     
       <nb-card-body>
@@ -206,27 +210,19 @@ import { NgClass } from '@angular/common';
         }
       </nb-card-body>
     
-      @if (showActions && request.status === 'pending') {
-        <nb-card-footer>
-          <button type="button" class="icon-btn is-success" (click)="approve()" nbTooltip="批准" nbTooltipPlacement="top" aria-label="批准">
+      <nb-card-footer>
+        <button type="button" nbButton ghost size="small" status="basic" (click)="close()">关闭</button>
+        @if (showActions && request.status === 'pending') {
+          <button type="button" nbButton size="small" status="danger" outline (click)="reject()">
+            <nb-icon icon="close-outline"></nb-icon>
+            拒绝
+          </button>
+          <button type="button" nbButton size="small" status="success" (click)="approve()">
             <nb-icon icon="checkmark-outline"></nb-icon>
+            批准
           </button>
-          <button type="button" class="icon-btn is-danger-active" (click)="reject()" nbTooltip="拒绝" nbTooltipPlacement="top" aria-label="拒绝">
-            <nb-icon icon="close-circle-outline"></nb-icon>
-          </button>
-          <button type="button" class="icon-btn" (click)="close()" nbTooltip="关闭" nbTooltipPlacement="top" aria-label="关闭">
-            <nb-icon icon="close-outline"></nb-icon>
-          </button>
-        </nb-card-footer>
-      }
-    
-      @if (!showActions || request.status !== 'pending') {
-        <nb-card-footer>
-          <button type="button" class="icon-btn" (click)="close()" nbTooltip="关闭" nbTooltipPlacement="top" aria-label="关闭">
-            <nb-icon icon="close-outline"></nb-icon>
-          </button>
-        </nb-card-footer>
-      }
+        }
+      </nb-card-footer>
     </nb-card>
     `,
     styles: [`
@@ -240,7 +236,7 @@ import { NgClass } from '@angular/common';
       margin: 0;
       
       nb-card-header {
-        padding: 0.625rem 1rem !important;
+        padding: 0.75rem 1rem !important;
       }
       
       nb-card-body {
@@ -248,6 +244,25 @@ import { NgClass } from '@angular/common';
         max-height: calc(80vh - 120px);
         overflow-y: auto;
       }
+    }
+
+    .dialog-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+
+      h6 {
+        margin: 0;
+        font-size: 0.9375rem;
+      }
+    }
+
+    .dialog-status {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 0.25rem;
     }
 
     .section {
@@ -402,7 +417,7 @@ import { NgClass } from '@angular/common';
       display: flex;
       justify-content: flex-end;
       gap: 0.5rem;
-      padding: 0.625rem 1rem !important;
+      padding: 0.75rem 1rem !important;
       border-top: 1px solid var(--border-basic-color-3);
     }
 

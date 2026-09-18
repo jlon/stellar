@@ -1,6 +1,6 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { Router, NavigationEnd, RouterOutlet } from '@angular/router';
-import { NbMenuService, NbMenuModule } from '@nebular/theme';
+import { NbMenuService, NbMenuModule, NbMenuItem } from '@nebular/theme';
 import { filter, map } from 'rxjs/operators';
 
 import { MENU_ITEMS } from './pages-menu';
@@ -8,6 +8,7 @@ import { AuthService } from '../@core/data/auth.service';
 import { TabService } from '../@core/services/tab.service';
 import { MenuFilterService } from '../@core/services/menu-filter.service';
 import { PermissionService } from '../@core/data/permission.service';
+import { I18nService } from '../@core/i18n/i18n.service';
 import { OneColumnLayoutComponent } from '../@theme/layouts/one-column/one-column.layout';
 
 @Component({
@@ -32,13 +33,28 @@ export class PagesComponent implements OnInit {
   private tabService = inject(TabService);
   private menuFilterService = inject(MenuFilterService);
   private permissionService = inject(PermissionService);
+  private i18n = inject(I18nService);
 
-  menu = MENU_ITEMS;
+  menu: NbMenuItem[] = MENU_ITEMS;
+
+  /** 菜单 title 双语化：title 即中文 key，en 词表提供英文 */
+  private localize(items: NbMenuItem[]): NbMenuItem[] {
+    return items.map(it => ({
+      ...it,
+      title: this.i18n.instant(it.title),
+      children: it.children ? this.localize(it.children) : undefined,
+    }));
+  }
 
   ngOnInit() {
+    this.menu = this.localize(this.menuFilterService.filterMenuItems(MENU_ITEMS));
+    // 语言切换时重建菜单
+    this.i18n.lang$.subscribe(() => {
+      this.menu = this.localize(this.menuFilterService.filterMenuItems(MENU_ITEMS));
+    });
     // Filter menu items based on permissions
     this.permissionService.permissions$.subscribe(() => {
-      this.menu = this.menuFilterService.filterMenuItems(MENU_ITEMS);
+      this.menu = this.localize(this.menuFilterService.filterMenuItems(MENU_ITEMS));
     });
 
     // Initialize permissions if not already initialized
@@ -114,7 +130,7 @@ export class PagesComponent implements OnInit {
       // 路由变化时不再触发导航（因为已经在目标路由了）
       this.tabService.addTab({
         id: tabId,
-        title: title,
+        title: this.i18n.instant(title),
         url: url,
         closable: true,
         pinned: false,

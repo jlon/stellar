@@ -1,5 +1,5 @@
 <nb-card class="llm-provider-dialog">
-  <nb-card-header>{{ mode === 'create' ? '添加 LLM 提供商' : '编辑 LLM 提供商' }}</nb-card-header>
+  <nb-card-header>{{  mode === 'create' ? ('添加 LLM 提供商' | translate) : ('编辑 LLM 提供商' | translate)  }}</nb-card-header>
 
   <nb-card-body>
     <form [formGroup]="form" novalidate>
@@ -7,8 +7,8 @@
       @if (mode === 'create') {
         <div class="form-row">
           <div class="form-group full">
-            <label class="label">快速选择</label>
-            <nb-select size="small" placeholder="选择预设模板" fullWidth (selectedChange)="applyPreset($event)">
+            <label class="label">{{  '快速选择' | translate }}</label>
+            <nb-select size="small" [placeholder]="'选择预设模板' | translate" fullWidth (selectedChange)="applyPreset($event)">
               @for (preset of presets; track preset) {
                 <nb-option [value]="preset">
                   {{ preset.display }}
@@ -22,23 +22,23 @@
       <!-- Name & Display Name -->
       <div class="form-row">
         <div class="form-group">
-          <label class="label">标识名称 <span class="required">*</span></label>
-          <input nbInput size="small" fullWidth formControlName="name" placeholder="如: openai"
+          <label class="label">{{  '标识名称' | translate }}<span class="required">*</span></label>
+          <input nbInput fieldSize="small" fullWidth formControlName="name" [placeholder]="'如: openai' | translate"
             [status]="form.get('name')?.invalid && form.get('name')?.touched ? 'danger' : 'basic'" />
-          <span class="hint-text">仅支持小写字母、数字、下划线和连字符</span>
+          <span class="hint-text">{{  '仅支持小写字母、数字、下划线和连字符' | translate }}</span>
           @if (form.get('name')?.touched && form.get('name')?.hasError('required')) {
-            <span class="error-text">标识名称不能为空</span>
+            <span class="error-text">{{  '标识名称不能为空' | translate }}</span>
           }
           @if (form.get('name')?.touched && form.get('name')?.hasError('pattern')) {
-            <span class="error-text">格式错误：仅支持小写字母、数字、下划线和连字符</span>
+            <span class="error-text">{{  '格式错误：仅支持小写字母、数字、下划线和连字符' | translate }}</span>
           }
         </div>
         <div class="form-group">
-          <label class="label">显示名称 <span class="required">*</span></label>
-          <input nbInput size="small" fullWidth formControlName="display_name" placeholder="如: OpenAI GPT-4"
+          <label class="label">{{  '显示名称' | translate }}<span class="required">*</span></label>
+          <input nbInput fieldSize="small" fullWidth formControlName="display_name" [placeholder]="'如: OpenAI GPT-4' | translate"
             [status]="form.get('display_name')?.invalid && form.get('display_name')?.touched ? 'danger' : 'basic'" />
           @if (form.get('display_name')?.touched && form.get('display_name')?.hasError('required')) {
-            <span class="error-text">显示名称不能为空</span>
+            <span class="error-text">{{  '显示名称不能为空' | translate }}</span>
           }
         </div>
       </div>
@@ -46,15 +46,15 @@
       <!-- API Base -->
       <div class="form-row">
         <div class="form-group full">
-          <label class="label">API 地址 <span class="required">*</span></label>
-          <input nbInput size="small" fullWidth formControlName="api_base" placeholder="https://api.openai.com/v1"
+          <label class="label">{{  'API 地址' | translate }}<span class="required">*</span></label>
+          <input nbInput fieldSize="small" fullWidth formControlName="api_base" placeholder="https://api.openai.com/v1"
             [status]="form.get('api_base')?.invalid && form.get('api_base')?.touched ? 'danger' : 'basic'" />
-          <span class="hint-text">必须以 http:// 或 https:// 开头</span>
+          <span class="hint-text">{{  '必须以 http:// 或 https:// 开头' | translate }}</span>
           @if (form.get('api_base')?.touched && form.get('api_base')?.hasError('required')) {
-            <span class="error-text">API 地址不能为空</span>
+            <span class="error-text">{{  'API 地址不能为空' | translate }}</span>
           }
           @if (form.get('api_base')?.touched && form.get('api_base')?.hasError('pattern')) {
-            <span class="error-text">格式错误：必须以 http:// 或 https:// 开头</span>
+            <span class="error-text">{{  '格式错误：必须以 http:// 或 https:// 开头' | translate }}</span>
           }
         </div>
       </div>
@@ -62,28 +62,28 @@
       <!-- Model & API Key -->
       <div class="form-row">
         <div class="form-group">
-          <label class="label">模型名称 <span class="required">*</span></label>
-          <input nbInput size="small" fullWidth formControlName="model_name" placeholder="如: gpt-4o"
+          <label class="label">{{  '模型名称' | translate }}<span class="required">*</span></label>
+          <input nbInput fieldSize="small" fullWidth formControlName="model_name" [placeholder]="'如: gpt-4o' | translate"
             [status]="form.get('model_name')?.invalid && form.get('model_name')?.touched ? 'danger' : 'basic'" />
           @if (form.get('model_name')?.touched && form.get('model_name')?.hasError('required')) {
-            <span class="error-text">模型名称不能为空</span>
+            <span class="error-text">{{  '模型名称不能为空' | translate }}</span>
           }
         </div>
         <div class="form-group">
           <label class="label">API Key @if (mode === 'create') {
             <span class="required">*</span>
             }@if (mode === 'edit') {
-            <span class="hint">(留空不改)</span>
+            <span class="hint">{{  '(留空不改)' | translate }}</span>
           }</label>
           <nb-form-field>
-            <input nbInput size="small" fullWidth [type]="showApiKey ? 'text' : 'password'" formControlName="api_key" placeholder="sk-..."
+            <input nbInput fieldSize="small" fullWidth [type]="showApiKey ? 'text' : 'password'" formControlName="api_key" placeholder="sk-..."
               [status]="form.get('api_key')?.invalid && form.get('api_key')?.touched ? 'danger' : 'basic'" />
             <button nbSuffix nbButton ghost size="small" type="button" (click)="toggleApiKeyVisibility()">
               <nb-icon [icon]="showApiKey ? 'eye-off-outline' : 'eye-outline'"></nb-icon>
             </button>
           </nb-form-field>
           @if (form.get('api_key')?.touched && form.get('api_key')?.hasError('required')) {
-            <span class="error-text">API Key 不能为空</span>
+            <span class="error-text">{{  'API Key 不能为空' | translate }}</span>
           }
         </div>
       </div>
@@ -91,28 +91,28 @@
       <!-- Advanced Settings -->
       <nb-accordion>
         <nb-accordion-item [expanded]="false">
-          <nb-accordion-item-header>高级设置</nb-accordion-item-header>
+          <nb-accordion-item-header>{{  '高级设置' | translate }}</nb-accordion-item-header>
           <nb-accordion-item-body>
             <div class="advanced-grid">
               <div class="form-group">
-                <label class="label">最大 Token</label>
-                <input nbInput size="small" fullWidth type="number" formControlName="max_tokens" />
-                <span class="hint-text">单次请求最大 Token 数 (1-128000)</span>
+                <label class="label">{{  '最大 Token' | translate }}</label>
+                <input nbInput fieldSize="small" fullWidth type="number" formControlName="max_tokens" />
+                <span class="hint-text">{{  '单次请求最大 Token 数 (1-128000)' | translate }}</span>
               </div>
               <div class="form-group">
-                <label class="label">温度</label>
-                <input nbInput size="small" fullWidth type="number" formControlName="temperature" step="0.1" />
-                <span class="hint-text">生成随机性，0=确定，2=随机</span>
+                <label class="label">{{  '温度' | translate }}</label>
+                <input nbInput fieldSize="small" fullWidth type="number" formControlName="temperature" step="0.1" />
+                <span class="hint-text">{{  '生成随机性，0=确定，2=随机' | translate }}</span>
               </div>
               <div class="form-group">
-                <label class="label">超时(秒)</label>
-                <input nbInput size="small" fullWidth type="number" formControlName="timeout_seconds" />
-                <span class="hint-text">API 请求超时时间 (5-600)</span>
+                <label class="label">{{  '超时(秒)' | translate }}</label>
+                <input nbInput fieldSize="small" fullWidth type="number" formControlName="timeout_seconds" />
+                <span class="hint-text">{{  'API 请求超时时间 (5-600)' | translate }}</span>
               </div>
               <div class="form-group">
-                <label class="label">优先级</label>
-                <input nbInput size="small" fullWidth type="number" formControlName="priority" />
-                <span class="hint-text">数值越小优先级越高 (0-100)</span>
+                <label class="label">{{  '优先级' | translate }}</label>
+                <input nbInput fieldSize="small" fullWidth type="number" formControlName="priority" />
+                <span class="hint-text">{{  '数值越小优先级越高 (0-100)' | translate }}</span>
               </div>
             </div>
           </nb-accordion-item-body>
@@ -122,7 +122,7 @@
   </nb-card-body>
 
   <nb-card-footer>
-    <button type="button" class="icon-btn" (click)="cancel()" nbTooltip="取消" nbTooltipPlacement="top" aria-label="取消"><nb-icon icon="close-outline"></nb-icon></button>
-    <button type="button" class="icon-btn is-primary" (click)="submit()" [disabled]="form.invalid" nbTooltip="保存" nbTooltipPlacement="top" aria-label="保存"><nb-icon icon="checkmark-outline"></nb-icon></button>
+    <button type="button" class="icon-btn" (click)="cancel()" [nbTooltip]="'取消' | translate" nbTooltipPlacement="top" [aria-label]="'取消' | translate"><nb-icon icon="close-outline"></nb-icon></button>
+    <button type="button" class="icon-btn is-primary" (click)="submit()" [disabled]="form.invalid" [nbTooltip]="'保存' | translate" nbTooltipPlacement="top" [aria-label]="'保存' | translate"><nb-icon icon="checkmark-outline"></nb-icon></button>
   </nb-card-footer>
 </nb-card>

@@ -1,3 +1,126 @@
+@import 'github-markdown-css';
+
+/* 长代码块压高 + 块内滚动（页面不被超长 SQL 撑成几屏） */
+.markdown-body pre {
+  max-height: 24rem;
+}
+
+/* 代码高亮 token 配色（prism.js 运行时高亮，颜色跟随 Nebular 深浅主题） */
+.nb-theme-dark .markdown-body,
+.nb-theme-cosmic .markdown-body {
+  code[class*='language-'] .token.comment,
+  code[class*='language-'] .token.prolog,
+  code[class*='language-'] .token.cdata { color: #7d8590; }
+  code[class*='language-'] .token.punctuation { color: #c9d1d9; }
+  code[class*='language-'] .token.property,
+  code[class*='language-'] .token.boolean,
+  code[class*='language-'] .token.number,
+  code[class*='language-'] .token.constant { color: #79c0ff; }
+  code[class*='language-'] .token.string,
+  code[class*='language-'] .token.char { color: #a5d6ff; }
+  code[class*='language-'] .token.keyword,
+  code[class*='language-'] .token.operator { color: #ff7b72; }
+  code[class*='language-'] .token.function,
+  code[class*='language-'] .token.class-name { color: #d2a8ff; }
+}
+
+.nb-theme-default .markdown-body,
+.nb-theme-corporate .markdown-body {
+  code[class*='language-'] .token.comment,
+  code[class*='language-'] .token.prolog,
+  code[class*='language-'] .token.cdata { color: #57606a; }
+  code[class*='language-'] .token.punctuation { color: #24292f; }
+  code[class*='language-'] .token.property,
+  code[class*='language-'] .token.boolean,
+  code[class*='language-'] .token.number,
+  code[class*='language-'] .token.constant { color: #0550ae; }
+  code[class*='language-'] .token.string,
+  code[class*='language-'] .token.char { color: #0a3069; }
+  code[class*='language-'] .token.keyword,
+  code[class*='language-'] .token.operator { color: #cf222e; }
+  code[class*='language-'] .token.function,
+  code[class*='language-'] .token.class-name { color: #8250df; }
+}
+
+/* 代码块复制栏（ngx-markdown 原生无样式，hover 才出现，GPT 同款） */
+.markdown-body {
+  position: relative;
+}
+
+.markdown-body .markdown-clipboard-toolbar {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.markdown-body pre:hover .markdown-clipboard-toolbar,
+.markdown-body .markdown-clipboard-toolbar.hover {
+  opacity: 1;
+}
+
+.markdown-body .markdown-clipboard-button {
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--border-basic-color-3);
+  border-radius: 0.45rem;
+  background: var(--background-basic-color-2);
+  color: var(--text-hint-color);
+  font-size: 0.72rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.markdown-body .markdown-clipboard-button:hover,
+.markdown-body .markdown-clipboard-button.copied {
+  color: var(--color-primary-500);
+  border-color: var(--color-primary-400);
+}
+
+/* Markdown 表格跟随 Nebular 主题（对齐 Flink：显式主题而非 OS 暗色）。
+   github-markdown-css v5 用 prefers-color-scheme 跟随操作系统，在暗色 OS 下
+   把表格渲染成全黑。以下用主题变量强制覆盖 th/td/tr，各主题（包含事件中心）生效。 */
+.markdown-body table {
+  /* github-markdown-css 为横向滚动设 display:block + width:max-content，
+     会让 thead/tbody 各自计算列宽（实测表头 56px 对正文 388px）。
+     改回原生表格布局保证对齐；横向滚动由各 markdown 容器自身承担。 */
+  display: table;
+  width: 100%;
+  border-color: var(--border-basic-color-4);
+}
+
+.markdown-body table th,
+.markdown-body table td {
+  border-color: var(--border-basic-color-4);
+  color: var(--text-basic-color);
+}
+
+.markdown-body table tr {
+  background-color: transparent;
+  border-top-color: var(--border-basic-color-4);
+}
+
+.markdown-body table tr:nth-child(2n) {
+  background-color: var(--background-basic-color-2);
+}
+
+.markdown-body table th {
+  /* ChatGPT 风格：表头与正文同底、加粗 + 粗底边，不再是一条更暗的色块 */
+  background-color: transparent;
+  border-bottom: 2px solid var(--border-basic-color-3);
+  font-weight: 600;
+}
+
+/* 宽表横向滚动容器（表格自身已改回原生布局，不能再靠 table 滚动） */
+.assistant-content.markdown-body,
+.float-md.markdown-body,
+.markdown-body.md-inline {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
 @font-face {
   font-family: 'Open Sans';
   font-style: normal;
@@ -32,8 +155,6 @@
 @import 'bootstrap/scss/mixins';
 @import 'bootstrap/scss/grid';
 
-@import './pace.theme';
-
 @import './layout';
 @import './overrides';
 
@@ -42,8 +163,6 @@
   @include nb-auth-global();
 
   @include ngx-layout();
-  @include ngx-pace-theme();
-
   @include nb-overrides();
 };
 

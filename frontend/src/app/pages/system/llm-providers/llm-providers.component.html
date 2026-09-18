@@ -1,13 +1,13 @@
-<nb-card [nbSpinner]="loading" nbSpinnerStatus="primary" nbSpinnerSize="medium" nbSpinnerMessage="加载中">
+<nb-card [nbSpinner]="loading" nbSpinnerStatus="primary" nbSpinnerSize="medium" [nbSpinnerMessage]="'加载中' | translate">
   <nb-card-header>
     <div class="d-flex justify-content-between align-items-center">
-      <span>LLM 提供商管理</span>
+      <span>{{  'LLM 提供商管理' | translate }}</span>
       <div class="header-actions page-actions">
-        <button nbButton ghost status="basic" size="small" (click)="loadProviders()" [disabled]="loading || !hasListPermission" title="刷新列表">
+        <button nbButton ghost status="basic" size="small" (click)="loadProviders()" [disabled]="loading || !hasListPermission" [title]="'刷新列表' | translate">
           <nb-icon icon="refresh-outline"></nb-icon>
-          刷新
+          {{ '刷新' | translate }}
         </button>
-        <button nbButton ghost status="primary" size="small" (click)="openCreateProvider()" [disabled]="!canCreate" title="添加 LLM 提供商" aria-label="添加 LLM 提供商">
+        <button nbButton ghost status="primary" size="small" (click)="openCreateProvider()" [disabled]="!canCreate" [title]="'添加 LLM 提供商' | translate" [aria-label]="'添加 LLM 提供商' | translate">
           <nb-icon icon="plus-outline"></nb-icon>
         </button>
       </div>
@@ -17,13 +17,13 @@
   <nb-card-body>
     <nb-alert status="info" class="page-note info-note">
       <nb-icon icon="info-outline"></nb-icon>
-      <span>用于增强 Profile 根因分析；系统使用已激活的提供商，兼容 OpenAI API。</span>
+      <span>{{  '用于增强 Profile 根因分析；系统使用已激活的提供商，兼容 OpenAI API。' | translate }}</span>
     </nb-alert>
 
     @if (!hasListPermission) {
       <nb-alert status="warning" class="page-note permission-note">
         <nb-icon icon="lock-outline"></nb-icon>
-        <span>您暂无查看 LLM 提供商的权限，请联系管理员获取授权。</span>
+        <span>{{  '您暂无查看 LLM 提供商的权限，请联系管理员获取授权。' | translate }}</span>
       </nb-alert>
     }
 
@@ -31,7 +31,7 @@
       <nb-alert status="danger" class="page-note error-note">
         <nb-icon icon="alert-circle-outline"></nb-icon>
         <span>{{ loadError }}</span>
-        <button nbButton ghost size="tiny" status="danger" (click)="loadProviders()">重试</button>
+        <button nbButton ghost size="tiny" status="danger" (click)="loadProviders()">{{  '重试' | translate }}</button>
       </nb-alert>
     }
 

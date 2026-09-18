@@ -1,6 +1,8 @@
+import { I18nService } from '../../../../@core/i18n/i18n.service';
+import { TranslatePipe } from '@ngx-translate/core';
 import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { NbToastrService, NbCardModule, NbSelectModule, NbOptionModule, NbButtonModule, NbTooltipModule, NbIconModule, NbSpinnerModule, NbAlertModule, NbTabsetModule } from '@nebular/theme';
+import { NbAlertModule, NbButtonModule, NbCardModule, NbIconModule, NbOptionModule, NbSelectModule, NbSpinnerModule, NbTabsetModule, NbToastrService, NbTooltipModule } from '@nebular/theme';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
@@ -19,6 +21,7 @@ import {
     templateUrl: './resource-group-analysis.component.html',
     styleUrls: ['./resource-group-analysis.component.scss'],
     imports: [
+    TranslatePipe,
     NbCardModule,
     NbSelectModule,
     NbOptionModule,
@@ -32,7 +35,8 @@ import {
 ],
 })
 export class ResourceGroupAnalysisComponent implements OnInit, OnDestroy {
-  private resourceGroupService = inject(ResourceGroupService);
+  private resourceGroupService = inject(ResourceGroupService)
+  private i18n = inject(I18nService);
   private router = inject(Router);
   private toastrService = inject(NbToastrService);
 
@@ -56,25 +60,25 @@ export class ResourceGroupAnalysisComponent implements OnInit, OnDestroy {
     actions: false,
     columns: {
       user: {
-        title: '用户',
+        title: this.i18n.instant('用户'),
         type: 'string',
       },
       total_cpu_seconds: {
-        title: 'CPU 总时间 (秒)',
+        title: this.i18n.instant('CPU 总时间 (秒)'),
         type: 'number',
         valuePrepareFunction: (value: number) => value.toFixed(2),
       },
       cpu_usage_percentage: {
-        title: 'CPU 使用占比 (%)',
+        title: this.i18n.instant('CPU 使用占比 (%)'),
         type: 'number',
         valuePrepareFunction: (value: number) => value.toFixed(2) + '%',
       },
       suggested_cpu_weight: {
-        title: '建议 CPU 权重',
+        title: this.i18n.instant('建议 CPU 权重'),
         type: 'number',
       },
       suggested_exclusive_cores: {
-        title: '建议独占核数',
+        title: this.i18n.instant('建议独占核数'),
         type: 'number',
       },
     },
@@ -84,20 +88,20 @@ export class ResourceGroupAnalysisComponent implements OnInit, OnDestroy {
     actions: false,
     columns: {
       user: {
-        title: '用户',
+        title: this.i18n.instant('用户'),
         type: 'string',
       },
       max_mem_mb: {
-        title: '最大内存 (MB)',
+        title: this.i18n.instant('最大内存 (MB)'),
         type: 'number',
         valuePrepareFunction: (value: number) => value.toFixed(2),
       },
       suggested_mem_limit: {
-        title: '建议内存限制',
+        title: this.i18n.instant('建议内存限制'),
         type: 'string',
       },
       suggested_big_query_mem_limit: {
-        title: '建议大查询内存限制',
+        title: this.i18n.instant('建议大查询内存限制'),
         type: 'string',
       },
     },
@@ -107,16 +111,16 @@ export class ResourceGroupAnalysisComponent implements OnInit, OnDestroy {
     actions: false,
     columns: {
       user: {
-        title: '用户',
+        title: this.i18n.instant('用户'),
         type: 'string',
       },
       max_concurrency_per_second: {
-        title: '最大并发 (每秒)',
+        title: this.i18n.instant('最大并发 (每秒)'),
         type: 'number',
         valuePrepareFunction: (value: number) => value.toFixed(2),
       },
       suggested_concurrency_limit: {
-        title: '建议并发限制',
+        title: this.i18n.instant('建议并发限制'),
         type: 'number',
       },
     },
@@ -146,7 +150,7 @@ export class ResourceGroupAnalysisComponent implements OnInit, OnDestroy {
         },
         error: (error) => {
           console.error('Failed to load resource usage analysis:', error);
-          this.toastrService.danger('加载资源使用分析失败', '错误');
+          this.toastrService.danger(this.i18n.instant('加载资源使用分析失败'), this.i18n.instant('错误'));
           this.loading = false;
         },
       });

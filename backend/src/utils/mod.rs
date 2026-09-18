@@ -14,4 +14,4 @@ pub use handler_helpers::{
 };
 pub use jwt::JwtUtil;
 pub use scheduled_executor::{ScheduledExecutor, ScheduledTask};
-pub use string_ext::{clean_optional_string, trim_string, StringExt};
+pub use string_ext::{StringExt, clean_optional_string, trim_string};

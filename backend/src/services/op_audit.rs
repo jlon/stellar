@@ -16,7 +16,10 @@ pub struct OpAuditEntry<'a> {
 
 /// 记录一条操作审计。失败时返回 Err，由调用方决定忽略（默认忽略）。
 #[app_db]
-pub async fn log_op<DB: crate::db::AppDb>(pool: &Pool<DB>, entry: OpAuditEntry<'_>) -> anyhow::Result<()> {
+pub async fn log_op<DB: crate::db::AppDb>(
+    pool: &Pool<DB>,
+    entry: OpAuditEntry<'_>,
+) -> anyhow::Result<()> {
     db_query::query(
         "INSERT INTO op_audit_logs (user_id, username, organization_id, action, target_type, target_id, target_name) \
          VALUES (?, ?, ?, ?, ?, ?, ?)",
