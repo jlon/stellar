@@ -163,7 +163,7 @@ jobs:
 
           #### Docker (static binary; amd64/arm64)
           \`\`\`bash
-          docker run -d -p 8080:8080 \\
+          docker run -d -p 9527:9527 \\
             -v "\$(pwd)/data:/data" \\
             ghcr.io/${{ github.repository }}:${VERSION}
           \`\`\`

@@ -125,7 +125,7 @@ jobs:
           }
           trap cleanup EXIT
 
-          docker run -d --rm --name stellar-smoke -p 18080:8080 "$IMAGE"
+          docker run -d --rm --name stellar-smoke -p 18080:9527 "$IMAGE"
           for _ in $(seq 1 30); do
             if curl --fail --silent --show-error http://127.0.0.1:18080/health >/dev/null; then
               echo "✅ Docker image started and /health passed"
