@@ -1,0 +1,296 @@
+<div class="load-page">
+  <div class="load-page__heading">
+    <div>
+      <div class="eyebrow">DATA OPERATIONS</div>
+      <h1>导入任务</h1>
+      <p>统一查看 StarRocks / Doris 的批量、流式和 Routine Load 任务。</p>
+    </div>
+    <div class="heading-actions">
+      @if (refreshing) {
+        <span class="refreshing-label"><nb-icon icon="loader-outline"></nb-icon>刷新中</span>
+      }
+      <button nbButton ghost status="basic" size="small" (click)="loadJobs()" [disabled]="loading || !activeCluster" aria-label="刷新导入任务">
+        <nb-icon icon="refresh-outline"></nb-icon>
+        刷新
+      </button>
+    </div>
+  </div>
+
+  @if (!activeCluster) {
+    <nb-alert status="warning">请先激活一个集群，再查看导入任务。</nb-alert>
+  }
+
+  @if (errorMessage) {
+    <nb-alert status="danger" closable (close)="errorMessage = ''">
+      {{ errorMessage }}
+      <button nbButton ghost size="tiny" status="danger" (click)="loadJobs()">重试</button>
+    </nb-alert>
+  }
+
+  <div class="load-summary" aria-label="导入任务概览">
+    <div class="summary-card summary-card--running">
+      <span class="summary-card__label">运行中</span>
+      <strong>{{ summary.running }}</strong>
+      <nb-icon icon="activity-outline"></nb-icon>
+    </div>
+    <div class="summary-card summary-card--queued">
+      <span class="summary-card__label">排队中</span>
+      <strong>{{ summary.queued }}</strong>
+      <nb-icon icon="clock-outline"></nb-icon>
+    </div>
+    <div class="summary-card summary-card--failed">
+      <span class="summary-card__label">失败</span>
+      <strong>{{ summary.failed }}</strong>
+      <nb-icon icon="alert-circle-outline"></nb-icon>
+    </div>
+    <div class="summary-card summary-card--finished">
+      <span class="summary-card__label">已完成</span>
+      <strong>{{ summary.finished }}</strong>
+      <nb-icon icon="checkmark-circle-2-outline"></nb-icon>
+    </div>
+  </div>
+
+  <nb-card class="load-card" [nbSpinner]="loading" nbSpinnerStatus="primary" nbSpinnerMessage="加载中">
+    <nb-card-body>
+      <div class="load-toolbar">
+        <div class="load-toolbar__filters">
+          <nb-form-field class="search-field">
+            <nb-icon nbPrefix icon="search-outline"></nb-icon>
+            <input
+              nbInput
+              fullWidth
+              [(ngModel)]="filters.search"
+              (keydown)="onSearchKeydown($event)"
+              placeholder="搜索 Job ID、Label、表名或错误信息"
+              aria-label="搜索导入任务">
+          </nb-form-field>
+
+          <nb-select [(selected)]="filters.db" (selectedChange)="applyFilters()" placeholder="全部数据库" size="small" aria-label="数据库">
+            <nb-option value="">全部数据库</nb-option>
+            @for (database of databases; track database) {
+              <nb-option [value]="database">{{ database }}</nb-option>
+            }
+          </nb-select>
+
+          <nb-select [(selected)]="filters.type" (selectedChange)="applyFilters()" placeholder="全部类型" size="small" aria-label="导入类型">
+            <nb-option value="">全部类型</nb-option>
+            <nb-option value="STREAM_LOAD">Stream Load</nb-option>
+            <nb-option value="ROUTINE_LOAD">Routine Load</nb-option>
+            <nb-option value="BROKER_LOAD">Broker Load</nb-option>
+            <nb-option value="SPARK_LOAD">Spark Load</nb-option>
+            <nb-option value="INSERT">INSERT</nb-option>
+          </nb-select>
+
+          <nb-select [(selected)]="filters.state" (selectedChange)="applyFilters()" placeholder="全部状态" size="small" aria-label="任务状态">
+            <nb-option value="">全部状态</nb-option>
+            <nb-option value="PENDING">待处理</nb-option>
+            <nb-option value="QUEUEING">排队中</nb-option>
+            <nb-option value="LOADING">导入中</nb-option>
+            <nb-option value="FINISHED">已完成</nb-option>
+            <nb-option value="CANCELLED">已取消</nb-option>
+          </nb-select>
+
+          <nb-select [(selected)]="filters.range" (selectedChange)="applyFilters()" size="small" aria-label="时间范围">
+            <nb-option value="24h">最近 24 小时</nb-option>
+            <nb-option value="7d">最近 7 天</nb-option>
+            <nb-option value="30d">最近 30 天</nb-option>
+            <nb-option value="all">全部时间</nb-option>
+          </nb-select>
+        </div>
+        <div class="load-toolbar__actions">
+          <button nbButton ghost size="small" status="basic" (click)="clearFilters()" [disabled]="loading">清除筛选</button>
+          <button nbButton outline size="small" status="primary" (click)="goToQueryExecution()">
+            <nb-icon icon="code-outline"></nb-icon>
+            SQL 工作台
+          </button>
+        </div>
+      </div>
+
+      <div class="load-meta">
+        <span>共 {{ jobs.length }} 个任务</span>
+        @if (lastUpdated) {
+          <span>更新于 {{ lastUpdated | date:'HH:mm:ss' }}</span>
+        }
+      </div>
+
+      <div class="load-table-wrap">
+        <table class="load-table">
+          <thead>
+            <tr>
+              <th>任务</th>
+              <th>类型 / 状态</th>
+              <th>阶段</th>
+              <th>数据量</th>
+              <th>过滤</th>
+              <th>创建时间</th>
+              <th class="load-table__action">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (job of jobs; track trackJob($index, job)) {
+              <tr
+                class="load-row"
+                tabindex="0"
+                [class.load-row--selected]="selectedJob?.job_id === job.job_id"
+                (click)="openDetails(job)"
+                (keydown)="onRowKeydown($event, job)">
+                <td data-label="任务">
+                  <div class="job-primary">{{ job.label || job.job_id || '未命名任务' }}</div>
+                  <div class="job-secondary">{{ job.database || '-' }}<span> / </span>{{ job.table_name || '目标表未提供' }}</div>
+                  @if (job.job_id && job.label) {
+                    <div class="job-id">{{ job.job_id }}</div>
+                  }
+                </td>
+                <td data-label="类型 / 状态">
+                  <span class="load-type">{{ typeLabel(job.load_type) }}</span>
+                  <span [class]="'load-status load-status--' + statusClass(job.state)">{{ statusLabel(job.state) }}</span>
+                  @if (job.progress) {
+                    <div class="progress-inline">
+                      <nb-progress-bar [value]="progressValue(job)" [status]="statusClass(job.state) === 'failed' ? 'danger' : 'primary'" size="tiny"></nb-progress-bar>
+                      <span>{{ job.progress }}</span>
+                    </div>
+                  }
+                </td>
+                <td data-label="阶段">
+                  @if (job.stage_timeline.length) {
+                    <div class="stage-strip" [nbTooltip]="formatDuration(job)">
+                      @for (stage of job.stage_timeline; track stage.key) {
+                        <span
+                          class="stage-strip__segment"
+                          [class.stage-strip__segment--running]="stage.status === 'running'"
+                          [class.stage-strip__segment--failed]="stage.status === 'failed'"
+                          [style.flex]="stage.duration_ms || 1"
+                          [attr.aria-label]="stage.label + ' ' + stage.duration_ms + 'ms'"></span>
+                      }
+                    </div>
+                    <small class="stage-caption">{{ job.stage_timeline[job.stage_timeline.length - 1].label }} · {{ formatDuration(job) }}</small>
+                  } @else {
+                    <span class="muted">引擎未提供阶段时间</span>
+                  }
+                </td>
+                <td data-label="数据量">
+                  <strong>{{ formatNumber(job.sink_rows ?? job.scan_rows) }}</strong>
+                  <small>{{ formatBytes(job.scan_bytes) }}</small>
+                </td>
+                <td data-label="过滤">
+                  <span [class.quality-warning]="hasQualityWarning(job)">{{ qualityRate(job) }}</span>
+                  <small>{{ formatNumber(job.filtered_rows) }} 行</small>
+                </td>
+                <td data-label="创建时间">
+                  <span>{{ job.create_time || '-' }}</span>
+                  <small>{{ formatDuration(job) }}</small>
+                </td>
+                <td class="load-table__action" data-label="操作">
+                  <button nbButton ghost size="tiny" status="primary" (click)="$event.stopPropagation(); openDetails(job)" aria-label="查看详情">
+                    <nb-icon icon="arrow-ios-forward-outline"></nb-icon>
+                  </button>
+                </td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="7" class="load-empty">
+                  <nb-icon icon="inbox-outline"></nb-icon>
+                  <strong>暂无导入任务</strong>
+                  <span>可以调整时间范围或清除筛选条件。</span>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </nb-card-body>
+  </nb-card>
+
+  @if (selectedJob; as job) {
+    <div class="load-detail-backdrop" (click)="closeDetails()" role="presentation"></div>
+    <aside class="load-detail-panel" role="dialog" aria-modal="true" aria-label="导入任务详情">
+      <div class="load-detail-panel__header">
+        <div>
+          <span class="eyebrow">LOAD DETAIL</span>
+          <h2>{{ job.label || job.job_id || '导入任务详情' }}</h2>
+          <span class="job-id">{{ job.job_id || 'Job ID 未提供' }}</span>
+        </div>
+        <button nbButton ghost size="small" status="basic" (click)="closeDetails()" aria-label="关闭详情">
+          <nb-icon icon="close-outline"></nb-icon>
+        </button>
+      </div>
+
+      <div class="load-detail-panel__body">
+        <div class="detail-status-line">
+          <span [class]="'load-status load-status--' + statusClass(job.state)">{{ statusLabel(job.state) }}</span>
+          <span class="load-type">{{ typeLabel(job.load_type) }}</span>
+          @if (job.progress) {
+            <span class="detail-progress">{{ job.progress }}</span>
+          }
+        </div>
+
+        <div class="detail-grid">
+          <div><span>数据库</span><strong>{{ job.database || '-' }}</strong></div>
+          <div><span>目标表</span><strong>{{ job.table_name || '-' }}</strong></div>
+          <div><span>提交用户</span><strong>{{ job.user || '-' }}</strong></div>
+          <div><span>Warehouse</span><strong>{{ job.warehouse || '-' }}</strong></div>
+          <div><span>扫描行数</span><strong>{{ formatNumber(job.scan_rows) }}</strong></div>
+          <div><span>写入行数</span><strong>{{ formatNumber(job.sink_rows) }}</strong></div>
+          <div><span>扫描字节</span><strong>{{ formatBytes(job.scan_bytes) }}</strong></div>
+          <div><span>过滤行数</span><strong [class.quality-warning]="hasQualityWarning(job)">{{ formatNumber(job.filtered_rows) }}</strong></div>
+        </div>
+
+        <section class="detail-section">
+          <div class="detail-section__title"><span>真实阶段</span><small>仅展示引擎返回的时间字段</small></div>
+          @if (job.stage_timeline.length) {
+            <div class="timeline">
+              @for (stage of job.stage_timeline; track stage.key) {
+                <div class="timeline__item">
+                  <span [class]="'timeline__dot timeline__dot--' + stage.status"></span>
+                  <div class="timeline__content">
+                    <div><strong>{{ stage.label }}</strong><span>{{ stage.duration_ms / 1000 | number:'1.0-1' }}s</span></div>
+                    <small>{{ stage.start_time || '-' }} → {{ stage.end_time || '进行中' }}</small>
+                  </div>
+                </div>
+              }
+            </div>
+          } @else {
+            <p class="muted">当前引擎没有提供可计算的阶段时间，不估算进度。</p>
+          }
+        </section>
+
+        @if (job.failure_cause || job.error_msg) {
+          <section class="detail-section detail-section--error">
+            <div class="detail-section__title"><span>失败详情</span></div>
+            @if (job.failure_cause; as cause) {
+              <div class="failure-cause">
+                <strong>{{ cause.label }}</strong>
+                <span>{{ cause.code }}</span>
+                <p>{{ cause.suggestion }}</p>
+              </div>
+            }
+            @if (job.error_msg) {
+              <pre class="error-message">{{ job.error_msg }}</pre>
+            }
+          </section>
+        }
+
+        @if (job.tracking_sql) {
+          <section class="detail-section">
+            <div class="detail-section__title"><span>Tracking SQL</span></div>
+            <pre class="code-block">{{ job.tracking_sql }}</pre>
+          </section>
+        }
+
+        @if (job.rejected_record_path) {
+          <section class="detail-section">
+            <div class="detail-section__title"><span>拒绝记录</span></div>
+            <code class="path-block">{{ job.rejected_record_path }}</code>
+          </section>
+        }
+
+        @if (job.runtime_details) {
+          <section class="detail-section">
+            <div class="detail-section__title"><span>Runtime Details</span></div>
+            <pre class="code-block">{{ prettyJson(job.runtime_details) }}</pre>
+          </section>
+        }
+      </div>
+    </aside>
+  }
+</div>

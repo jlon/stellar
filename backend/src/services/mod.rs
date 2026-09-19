@@ -10,6 +10,7 @@ pub mod cluster_service;
 pub mod data_statistics_service;
 pub mod db_auth_query_service;
 pub mod llm;
+pub mod load_service;
 pub mod materialized_view_service;
 pub mod metrics_collector_service;
 pub mod mysql_client;

@@ -10,7 +10,7 @@
 
 | 现有能力 | 位置 | 局限 |
 |---|---|---|
-| 树节点右键"查看导入作业" | `query-execution.component.ts` `viewLoads` | 仅库级 `information_schema.loads` 通用表格（最多 100 条），无状态聚合、无失败分析、无自动刷新 |
+| 树节点右键"查看导入作业" | `query-execution.component.ts` `viewLoads` | 已跳转到 `/pages/starrocks/loads?db=<db>`，由独立页面统一展示状态聚合、失败详情和阶段时间线 |
 | 导入查询兼容层 | `backend/src/handlers/query.rs`、`cluster_adapter/*` | StarRocks/Doris 已有字段归一化和 Doris error hub 降级，但尚未形成独立 Load DTO/API |
 | Doris `load_error_hub` 适配 | `cluster_adapter/doris.rs:56` | 已实现"聚合 SHOW LOAD 错误"的降级路径 |
 | 系统函数入口 | `routine_loads / stream_loads / load_error_hub`（initial schema） | HTTP_QUERY 原始结果，面向开发者而非运维 |
@@ -24,7 +24,7 @@
 - **组件映射**：`Card → nb-card`，`Badge → nb-tag/nb-badge`，`Alert → nb-alert`，`Progress → nb-progress-bar`，`Sheet/Drawer → NbDialogService 的响应式全屏详情模板`，`Table → 语义化 HTML table + 现有页面表格样式`。
 - **保留 shadcn 的有效原则**：语义色、组件组合、清晰的空态/加载态/错误态、可访问的标题与焦点、按钮状态不自定义造轮子；不照搬 React API、Tailwind class 或 Radix 的 `asChild` 约定。
 - **现有 sibling 前端仅作兼容参考**：`/mnt/data/starrocks-admin` 是 Angular 15 + Nebular 11 的旧版前端，当前 `viewDatabaseLoads()` 通过 `information_schema.loads` 查询 100 条记录，再放进通用 `NbDialog + ng2-smart-table`。Stellar 当前已升级到 Angular 21 + Nebular 17，不能复制旧实现，只复用领域入口和用户习惯。
-- **引擎源码作为字段真相**：`/mnt/data/starrocks-4.1.4` 的 `information_schema.loads` 与 `statistics.loads_history` 才是 StarRocks 字段、状态和历史留存的依据；页面不得根据示意图臆造字段。
+- **引擎源码作为字段真相**：`/mnt/data/starrocks-4.1.4` 的 `information_schema.loads` 与 `_statistics_.loads_history` 才是 StarRocks 字段、状态和历史留存的依据；页面不得根据示意图臆造字段。
 
 ## 2. 核心设计决策：任务详情用不用 DAG/流程图？
 
@@ -52,7 +52,7 @@
 │   ├── 库选择（默认跟随树节点上下文）
 │   ├── 时间范围（默认近 24h，可选 7d / 30d；按目标引擎的 loads/history 视图下推时间条件）
 │   ├── 搜索（Label / JobId）
-│   └── 自动刷新开关（运行中任务 5s 轮询，仅在有运行中任务时启用）+ 手动刷新
+│   └── 自动刷新（P1 为 30s 静默轮询）+ 手动刷新
 ├── 任务列表（语义化 table，遵循设计系统表格规范）
 │   └── 行展开（expand）：可用时显示阶段时间线；Routine Load 显示消费概览；错误详情见 §4
 └── 任务详情抽屉（点击行打开，宽 42rem，窄屏全屏）
@@ -79,14 +79,14 @@ ORDER BY CREATE_TIME DESC
 | 展示阶段 | 数据来源 | 说明 |
 |---|---|---|
 | 创建/排队 | `CREATE_TIME → LOAD_START_TIME` | 只有两个时间都存在时计算等待时长 |
-| 执行/接收 | `RUNTIME_DETAILS` | Broker/Insert 可读 ETL 时间；Stream 可读 `plan_time_ms`、`receive_data_time_ms` |
-| 提交 | `LOAD_START_TIME → LOAD_COMMIT_TIME` 或 Stream 的 `commit_publish_time_ms` | 缺失时不绘制该段 |
-| 完成 | `LOAD_COMMIT_TIME → LOAD_FINISH_TIME` | 只表达真实时间，不用估算补齐 |
+| 执行 | `LOAD_START_TIME → LOAD_COMMIT_TIME` 或 `LOAD_FINISH_TIME` | 当前 P1 只使用真实时间戳；缺失时不估算 |
+| 提交 | `LOAD_COMMIT_TIME → LOAD_FINISH_TIME` | 两个时间都存在且顺序有效时才绘制 |
+| Runtime Details | `RUNTIME_DETAILS` 原文 | 当前 P1 原样展示，不将 JSON 内部字段猜测成阶段 |
 | 数据质量 | `FILTERED_ROWS / UNSELECTED_ROWS / SINK_ROWS` | 这是指标，不是独立执行阶段 |
 
-`information_schema.loads` 是 StarRocks 3.4+ 的统一运行视图；历史页优先查询 `statistics.loads_history`，不要依赖 `SHOW LOAD LIMIT 100`。StarRocks 4.1.4 源码中历史表还包含 `RUNTIME_DETAILS`、`TRACKING_SQL` 和 `REJECTED_RECORD_PATH`，页面只展示目标集群实际返回的字段。
+`information_schema.loads` 是 StarRocks 3.4+ 的统一运行视图；历史查询的目标表是 `_statistics_.loads_history`，不能误写成 `statistics.loads_history`，也不能把 `SHOW LOAD LIMIT 100` 当成完整历史方案。当前 P1 先查询 `information_schema.loads`，失败时才回退到按数据库执行 `SHOW LOAD`；历史表接入、保留期和游标分页列入后续迭代。页面只展示目标集群实际返回的字段。
 
-Doris 继续通过 adapter 读取其 `SHOW LOAD` 字段（如 `EtlStartTime/EtlFinishTime/LoadStartTime/LoadFinishTime/URL`），在后端转换成相同的可选阶段 DTO。字段不存在就隐藏对应段，不显示虚假进度。
+Doris 当前通过统一查询优先读取 `information_schema.loads`，不可用时回退到按数据库执行 `SHOW LOAD`；后端只映射两者共有或已确认的字段。字段不存在就隐藏对应段，不显示虚假进度。`URL`、Routine Load 位点和 error hub 样本暂不在 P1 DTO 中强行补齐。
 
 Routine Load：不做批处理阶段时间线，改为**消费位点卡片**（父作业状态、分区进度、lag、子任务数量、最近 `ReasonOfStateChanged`/错误样本）。
 
@@ -113,79 +113,79 @@ Routine Load：不做批处理阶段时间线，改为**消费位点卡片**（�
 ## 5. 交互细节（响应式与人性化）
 
 - **状态徽章**：Nebular badge，`success/info/warning/danger/basic` 对应成功/运行中/排队/失败/取消；运行中徽章带呼吸点动画（reduced-motion 下为静态）
-- **自动刷新**：仅当存在运行中/排队任务时默认开启（5s），全部终态自动停止并静默关闭开关——不制造"永远在转"的假忙碌
-- **行展开 vs 抽屉**：列表行首 chevron 展开可用的阶段时间线（快速扫多任务）；点击行主体打开详情抽屉（深查：完整字段表、错误全文、`TRACKING_SQL`、拒绝记录路径）。窄屏（≤768px）无行展开，全部走响应式全屏详情模板
+- **自动刷新（P1）**：页面有活跃集群时每 30 秒静默刷新一次；请求进行中不会并发发起下一次刷新。更细粒度的运行中/排队自适应频率列入后续迭代。
+- **详情侧板**：点击列表行或操作按钮打开详情侧板，展示字段、真实阶段、错误全文、`TRACKING_SQL`、拒绝记录路径和 `RUNTIME_DETAILS`；窄屏（≤640px）侧板占满宽度
 - **失败优先排序**：默认排序 `失败 > 运行中 > 排队 > 已完成/取消`，组内按时间倒序——运维视角“先看坏消息”
 - **错误原因归类（对齐 EMR 原因分析）**：后端按 ERROR_MSG 模式匹配归类，输出 `cause: 超时 / 超阈值 / 格式错误 / 权限 / 目标表不存在 / 资源不足 / 未知`，每类附一句处置建议（如“Scan bytes exceed threshold → 减小单次导入体量或调大 `broker_load_scan_bytes_threshold`”）；归类结果在详情抽屉错误框顶部渲染为结论行，无法识别时回退原文展示，不臆断
-- **空态**：无任务时给两条指引——"从表树右键发起数据预览/导入"与文档链接；筛选无结果给"清除筛选"内联动作
+- **空态**：无任务时提示调整时间范围或清除筛选；树节点入口仍可直接带数据库筛选跳转
 - **错误详情**：`ERROR_MSG` 等宽字体、可复制；StarRocks 的 `TRACKING_SQL` 用复制 SQL 按钮，`REJECTED_RECORD_PATH` 用复制路径/下载按钮；Doris 失败任务自动带出 error hub 聚合样本（后端已有 `get_load_errors_compromise`）
-- **过滤行数提示**：`Filtered_Rows / Scan_Rows > 1%` 且分母有效时行内显示 warning 徽章 + tooltip（"过滤比例偏高，常见原因：分隔符不匹配/字段类型不兼容"）；分母缺失时不计算——把 EMR 的"失败原因分析"前移到"异常预警"
-- **Stream Load profile**：后端新增"开启 enable_load_profile"引导卡片（检测到全局变量关闭时显示 SET GLOBAL 语句 + 一键复制），不代执行 DDL——遵循"不静默改用户集群配置"原则
+- **过滤行数提示（P1）**：`Filtered_Rows / Scan_Rows > 1%` 且分母有效时行内显示 warning；StarRocks 源码中 `SCAN_ROWS` 已包含正常、异常和未选中行，不能再次把 `FILTERED_ROWS` 加入分母。阈值和原因提示后续再接入集群变量
+- **Stream Load profile**：P1 只展示可用的 `PROFILE_ID`/`RUNTIME_DETAILS` 原文，不自动修改集群变量；Profile 引导卡片列入后续迭代
 - **键盘可达**：列表行可 Tab 聚焦、Enter 打开详情；抽屉 Esc 关闭；所有图标按钮带 `aria-label`
 
 ## 6. 后端设计
 
-新增 `backend/src/services/load_service.rs`：
+P1 已落地 `backend/src/services/load_service.rs` 与 `backend/src/handlers/load.rs`：
 
 ```rust
-pub struct LoadJobSummary {   // 列表行
-    pub job_id: String, pub label: String, pub db: String,
-    pub load_type: LoadType,           // broker/stream/routine/insert/spark
-    pub state: LoadState,              // 映射两引擎状态词表 → 统一枚举
-    pub progress: Option<u8>,          // 百分比，routine 为消费 lag 派生
-    pub rows_scanned: Option<u64>, pub rows_filtered: Option<u64>, pub rows_loaded: Option<u64>,
-    pub created_at: Option<DateTime<Utc>>, pub finished_at: Option<DateTime<Utc>>,
+pub struct LoadJob {
+    pub job_id: Option<String>,
+    pub database: Option<String>,
+    pub table_name: Option<String>,
+    pub state: String,
+    pub load_type: String,
+    pub progress: Option<String>,
+    pub scan_rows: Option<u64>,
+    pub filtered_rows: Option<u64>,
+    pub sink_rows: Option<u64>,
+    pub load_start_time: Option<String>,
+    pub load_commit_time: Option<String>,
+    pub load_finish_time: Option<String>,
     pub error_msg: Option<String>,
-    pub tracking_sql: Option<String>, pub rejected_record_path: Option<String>,
-    pub profile_id: Option<String>, pub runtime_details: Option<serde_json::Value>,
-    pub cause: Option<LoadFailureCause>,   // 错误模式归类（对齐 EMR 原因分析）
+    pub tracking_sql: Option<String>,
+    pub rejected_record_path: Option<String>,
+    pub stage_timeline: Vec<LoadStage>,
+    pub failure_cause: Option<LoadFailureCause>,
 }
 
 /// 按 ERROR_MSG 关键模式归类；无法识别 → Unknown（前端回退原文，不臆断）
 pub enum LoadFailureCause { Timeout, ThresholdExceeded, FormatError, PermissionDenied,
                             TargetMissing, ResourceExhausted, Unknown }
 
-pub struct LoadStageTimeline {  // 详情-阶段条
-    pub stages: Vec<LoadStage>,  // 只由真实时间或 runtime_details 生成；字段缺失→None
-    pub source: StageSource,      // timestamps / runtime_details / unavailable
-}
-
-pub enum LoadState { Pending, Running, Finished, Cancelled, Failed }  // 两引擎词表统一
+// LoadStage 只由真实时间戳生成；字段缺失时不估算。
 ```
 
-- `GET /api/clusters/{id}/loads?db=&type=&state=&search=&from=&to=&cursor=`：列表；StarRocks 活跃任务查 `information_schema.loads`，历史查 `statistics.loads_history`，时间条件下推到集群
-- `GET /api/clusters/{id}/loads/{job_id}/timeline?db=`：从时间戳和 `RUNTIME_DETAILS` 生成阶段条；不可生成时返回 `unavailable`，前端展示指标而非空图
-- `GET /api/clusters/{id}/loads/routine/{job_name}`：Routine Load 父作业、子任务、位点和错误样本
-- 引擎差异收敛在 `cluster_adapter`（StarRocks 读取统一 loads 视图；Doris 使用 SHOW LOAD/已有 error hub 降级；`load_tracking_logs` 只作为错误追踪的可选能力，不作为所有版本的硬依赖）
-- 复用现有 `MySQLClient` 会话池与权限模型：沿用集群级连接 + `menu:starrocks` 权限树下新增 `api:loads:list/detail` 权限点（对齐 op-audit 的权限播种模式，migration 按三方言各一份）
+- `GET /api/clusters/loads?db=&type=&state=&search=&range=&limit=`：查询当前组织活跃集群；默认查询最近 24 小时，服务端限制最多 500 条
+- `GET /api/clusters/loads/{job_id}?db=`：按作业 ID 返回详情；详情查询使用 `range=all`，避免历史任务因默认时间范围被误判不存在
+- 首选 `information_schema.loads`；查询失败时按数据库回退到 `SHOW LOAD`，缺失字段保持 `null`
+- 阶段条只由 `CREATE_TIME`、`LOAD_START_TIME`、`LOAD_COMMIT_TIME`、`LOAD_FINISH_TIME` 计算；`RUNTIME_DETAILS` 当前作为原文保留，不把内部字段猜测成阶段
+- 失败原因按 `ERROR_MSG` 关键词归类为 `Timeout`、`ThresholdExceeded`、`FormatError`、`PermissionDenied`、`TargetMissing`、`ResourceExhausted`、`Unknown`
+- 当前复用已有 `api:clusters:queries` 权限；权限提取器将 `GET /api/clusters/loads*` 映射到该权限，不新增迁移，也不让旧角色突然失去访问
+- 后续接入 `_statistics_.loads_history`、Routine Load 位点/error hub 和游标分页时，再拆分专用 adapter 方法；不为当前一条查询链预先增加抽象层
 
 ## 7. 前端组件划分
 
 ```
 pages/starrocks/loads/
-├── loads.component.{ts,html,scss}      # 页面骨架 + 工具栏 + 概览计数
-├── load-table.component.{ts,html,scss}  # 语义化表格 + 行展开模板
-├── load-stage-timeline.component.ts    # 阶段条（纯 div，独立组件便于复用与单测）
-├── load-detail-drawer.component.ts     # 详情模板（字段表/错误/追踪 SQL）
-└── load-routine-panel.component.ts     # Routine Load 位点面板
+└── load-management.component.{ts,html,scss}  # 页面、工具栏、列表和响应式详情面板
 ```
 
-- 路由 `path: 'loads'` 挂在 starrocks 模块，菜单项"数据导入"（`menu:starrocks` 组）
+- 路由 `path: 'loads'` 挂在 starrocks 模块，菜单项"导入任务"复用 `menu:queries:execution` 可见性
 - 树节点 `viewLoads` 改为路由跳转携带 `?db=<db>` 预置筛选
-- 遵循 MASTER.md 与 shadcn 的可组合组件原则：单主卡、图标化工具栏、Nebular ghost 按钮、`nb-tag/nb-alert/nb-progress-bar`、语义化 table `table-layout: fixed` 桌面/自然宽窄屏、对话框标题与焦点、`prefers-reduced-motion` 兜底
+- 遵循 MASTER.md 与 shadcn 的可组合组件原则：单主卡、图标化工具栏、Nebular ghost 按钮、`nb-alert/nb-progress-bar`、语义化 table、桌面表格/窄屏卡片式行布局、详情侧板焦点与 Esc 关闭、`prefers-reduced-motion` 兜底
 
 ## 8. 测试
 
-- 后端：`load_service` 状态词表映射（StarRocks/Doris 两套→统一枚举，含未知状态兜底）、阶段时间线字段宽松映射（缺时间戳字段/乱序时间）、分页截断边界——`#[cfg(test)] mod tests` + `tests/` 集成（三方言迁移通过）
-- 前端：阶段条渲染（0 阶段/单阶段/全阶段/缺字段）、状态徽章映射、失败排序稳定性——spec 文件
-- E2E 手册：对接真实集群造 1 个成功 + 1 个失败 Broker Load，核对 `RUNTIME_DETAILS` 阶段、`TRACKING_SQL`、`REJECTED_RECORD_PATH` 与阶段时长；再验证一个 Routine Load 不被错误绘制成批处理阶段
+- 后端：`backend/src/tests/load_service_test.rs` 覆盖失败原因分类、真实时间阶段计算、终态缺时间戳不造假、SQL 字面量转义/limit 和路由权限映射
+- 前端：`npm run build` 验证路由、模板、Nebular 组件和响应式样式可编译；专项交互 spec 列入后续组件拆分阶段
+- E2E 手册：对接真实集群造 1 个成功 + 1 个失败 Broker Load，核对 `RUNTIME_DETAILS` 原文、`TRACKING_SQL`、`REJECTED_RECORD_PATH` 与真实时间阶段；再验证一个 Routine Load 不被错误绘制成批处理阶段
 
 ## 9. 分期
 
 | 期 | 内容 | 出口 |
 |---|---|---|
-| P1 | 列表页 + 状态聚合 + 详情抽屉 + 条件阶段条（Broker/Stream/Insert）+ 失败详情/追踪 SQL/拒绝记录路径 | 覆盖主要日常排障 |
-| P2 | Routine Load 位点面板 + 自动刷新策略 + 过滤比例预警 | 常驻导入场景闭环 |
+| P1 | 列表页 + 状态聚合 + 详情侧板 + 条件阶段条 + 失败详情/追踪 SQL/拒绝记录路径 + StarRocks/Doris 查询回退 | 覆盖主要日常排障 |
+| P2 | `_statistics_.loads_history` 历史查询、Routine Load 位点面板、error hub 样本和自适应刷新策略 | 常驻导入场景闭环 |
 | P3 | SQL 文件树联动发起导入向导、导入→Profile 诊断跳转、多表编排 DAG（有真实需求再评估） | — |
 
 ## 10. 明确不做（YAGNI）

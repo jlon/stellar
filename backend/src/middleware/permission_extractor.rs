@@ -271,6 +271,14 @@ fn extract_clusters_special_paths(segments: &[&str], method: &str) -> Option<Str
     let _len = segments.len();
 
     let handlers: Vec<RouteHandler> = vec![
+        // 导入任务属于查询运维能力，复用已有 api:clusters:queries 权限，避免旧角色因新增页面失去访问。
+        Box::new(|seg, m| {
+            if m == "GET" && seg.get(1) == Some(&"loads") {
+                Some("queries".to_string())
+            } else {
+                None
+            }
+        }),
         // Handle /api/clusters/db-auth/accounts and /api/clusters/db-auth/roles
         // Note: db-auth is a separate resource in permissions, not a clusters sub-action
         // So we need to handle it specially to extract it as a separate resource

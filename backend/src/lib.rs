@@ -41,6 +41,10 @@ mod bootstrap_test;
 #[path = "tests/config_test.rs"]
 mod config_test;
 
+#[cfg(test)]
+#[path = "tests/load_service_test.rs"]
+mod load_service_test;
+
 use crate::services::NotificationService;
 use crate::services::profile_analyzer::ProfileAnalysisCache;
 

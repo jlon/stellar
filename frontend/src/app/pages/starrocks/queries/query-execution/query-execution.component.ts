@@ -2064,61 +2064,10 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       return;
     }
 
-    const { catalogName, databaseName } = info!;
-
-    this.openInfoDialog('导入作业', 'loads', () => {
-      const sql = `SELECT 
-        JOB_ID,
-        LABEL,
-        STATE,
-        PROGRESS,
-        TYPE,
-        PRIORITY,
-        SCAN_ROWS,
-        FILTERED_ROWS,
-        SINK_ROWS,
-        CREATE_TIME,
-        LOAD_START_TIME,
-        LOAD_FINISH_TIME,
-        ERROR_MSG
-      FROM information_schema.loads 
-      WHERE DB_NAME = '${databaseName}'
-      ORDER BY CREATE_TIME DESC
-      LIMIT 100`;
-
-      return this.nodeService.executeSQL(sql, 100, catalogName || undefined, databaseName);
-    }, {
-      columns: {
-        JOB_ID: { title: this.i18n.instant('作业ID'), type: 'string', width: '10%' },
-        LABEL: { 
-          title: this.i18n.instant('标签'), 
-          type: 'html', 
-          sanitizer: { bypassHtml: true },
-          width: '15%',
-          valuePrepareFunction: (value: any) => this.renderLongText(value, 30),
-        },
-        STATE: { 
-          title: this.i18n.instant('状态'), 
-          type: 'html', 
-          sanitizer: { bypassHtml: true },
-          width: '10%',
-          valuePrepareFunction: (value: string) => this.renderLoadState(value),
-        },
-        PROGRESS: { title: this.i18n.instant('进度'), type: 'string', width: '12%' },
-        TYPE: { title: this.i18n.instant('类型'), type: 'string', width: '8%' },
-        PRIORITY: { title: this.i18n.instant('优先级'), type: 'string', width: '8%' },
-        SCAN_ROWS: { title: this.i18n.instant('扫描行数'), type: 'string', width: '10%' },
-        SINK_ROWS: { title: this.i18n.instant('导入行数'), type: 'string', width: '10%' },
-        CREATE_TIME: { title: this.i18n.instant('创建时间'), type: 'string', width: '12%' },
-        ERROR_MSG: { 
-          title: this.i18n.instant('错误信息'), 
-          type: 'html', 
-          sanitizer: { bypassHtml: true },
-          width: '5%',
-          valuePrepareFunction: (value: any) => this.renderLongText(value, 30),
-        },
-      },
-    }, catalogName, databaseName);
+    const { databaseName } = info!;
+    void this.router.navigate(['/pages/starrocks/loads'], {
+      queryParams: { db: databaseName },
+    });
   }
 
   private viewDatabaseStats(node: NavTreeNode): void {

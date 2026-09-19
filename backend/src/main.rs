@@ -76,6 +76,8 @@ use stellar::{AppState, handlers, middleware, services};
         handlers::query_execution_history::list_execution_history,
         handlers::query_execution_history::delete_execution_history,
         handlers::query_execution_history::clear_execution_history,
+        handlers::load::list_loads,
+        handlers::load::get_load,
 
         handlers::sessions::get_sessions,
         handlers::sessions::kill_session,
@@ -178,6 +180,12 @@ use stellar::{AppState, handlers, middleware, services};
             models::QueryHistoryResponse,
             models::QueryExecutionHistory,
             models::QueryExecutionHistoryResponse,
+            models::LoadQueryParams,
+            models::LoadStage,
+            models::LoadFailureCause,
+            models::LoadJob,
+            models::LoadSummary,
+            models::LoadListResponse,
             models::ProfileListItem,
             models::ProfileDetail,
             models::RuntimeInfo,
@@ -621,6 +629,8 @@ where
             get(handlers::query::list_catalogs_with_databases),
         )
         .route("/api/clusters/queries", get(handlers::query::list_queries))
+        .route("/api/clusters/loads", get(handlers::load::list_loads))
+        .route("/api/clusters/loads/:job_id", get(handlers::load::get_load))
         .route("/api/clusters/queries/execute", post(handlers::query::execute_sql))
         .route("/api/clusters/queries/cancel", post(handlers::query::cancel_running_query))
         .route("/api/clusters/queries/:query_id", delete(handlers::query::kill_query))
