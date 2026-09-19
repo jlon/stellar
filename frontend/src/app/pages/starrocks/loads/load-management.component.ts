@@ -1,8 +1,19 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, HostListener, OnDestroy, OnInit, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  ChangeDetectorRef,
+  Component,
+  ElementRef,
+  HostListener,
+  OnDestroy,
+  OnInit,
+  ViewChild,
+  inject,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
   NbAlertModule,
+  NbBadgeModule,
   NbButtonModule,
   NbCardModule,
   NbFormFieldModule,
@@ -33,6 +44,7 @@ import { ErrorHandler } from '../../../@core/utils/error-handler';
     CommonModule,
     FormsModule,
     NbAlertModule,
+    NbBadgeModule,
     NbButtonModule,
     NbCardModule,
     NbFormFieldModule,
@@ -53,15 +65,21 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly destroy$ = new Subject<void>();
+  private copyFeedbackTimer?: ReturnType<typeof setTimeout>;
+  private detailTrigger: HTMLElement | null = null;
+
+  @ViewChild('detailCloseButton') private detailCloseButton?: ElementRef<HTMLButtonElement>;
 
   activeCluster: Cluster | null = null;
   databases: string[] = [];
   jobs: LoadJob[] = [];
   selectedJob: LoadJob | null = null;
+  expandedJobKey: string | null = null;
   loading = false;
   refreshing = false;
   errorMessage = '';
   lastUpdated: Date | null = null;
+  copyFeedback = '';
 
   filters: {
     db: string;
@@ -97,6 +115,8 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
         if (!cluster) {
           this.jobs = [];
           this.selectedJob = null;
+          this.expandedJobKey = null;
+          this.copyFeedback = '';
           this.cdr.markForCheck();
           return;
         }
@@ -116,6 +136,9 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.destroy$.next();
     this.destroy$.complete();
+    if (this.copyFeedbackTimer) {
+      clearTimeout(this.copyFeedbackTimer);
+    }
   }
 
   loadDatabases(): void {
@@ -160,17 +183,22 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
       }),
     ).subscribe({
       next: response => {
-        this.jobs = response.items;
+        this.jobs = this.sortJobs(response.items);
         this.summary = response.summary;
         this.lastUpdated = new Date();
         if (this.selectedJob) {
-          this.selectedJob = this.jobs.find(job => job.job_id === this.selectedJob?.job_id) || null;
+          const selectedKey = this.jobKey(this.selectedJob);
+          this.selectedJob = this.jobs.find(job => this.jobKey(job) === selectedKey) || null;
+        }
+        if (this.expandedJobKey && !this.jobs.some(job => this.jobKey(job) === this.expandedJobKey)) {
+          this.expandedJobKey = null;
         }
         this.cdr.markForCheck();
       },
       error: error => {
         this.errorMessage = ErrorHandler.handleClusterError(error);
         this.jobs = [];
+        this.expandedJobKey = null;
         this.summary = { running: 0, queued: 0, failed: 0, finished: 0 };
         this.cdr.markForCheck();
       },
@@ -195,19 +223,41 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
   }
 
   openDetails(job: LoadJob): void {
+    this.detailTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    this.copyFeedback = '';
     this.selectedJob = job;
+    setTimeout(() => this.detailCloseButton?.nativeElement.focus());
+  }
+
+  toggleExpanded(job: LoadJob): void {
+    if (typeof window !== 'undefined' && window.matchMedia?.('(max-width: 768px)').matches) {
+      this.openDetails(job);
+      return;
+    }
+
+    const key = this.jobKey(job);
+    this.expandedJobKey = this.expandedJobKey === key ? null : key;
+  }
+
+  isExpanded(job: LoadJob): boolean {
+    return this.expandedJobKey === this.jobKey(job);
   }
 
   onRowKeydown(event: KeyboardEvent, job: LoadJob): void {
+    if (event.target !== event.currentTarget) return;
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      this.openDetails(job);
+      this.toggleExpanded(job);
     }
   }
 
   @HostListener('document:keydown.escape')
   closeDetails(): void {
+    const trigger = this.detailTrigger;
+    this.copyFeedback = '';
     this.selectedJob = null;
+    this.detailTrigger = null;
+    setTimeout(() => trigger?.focus());
   }
 
   goToQueryExecution(): void {
@@ -215,12 +265,30 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
   }
 
   trackJob(index: number, job: LoadJob): string {
-    return job.job_id || job.label || String(index);
+    return this.jobKey(job) || String(index);
+  }
+
+  jobKey(job: LoadJob): string {
+    return job.job_id || job.label || '';
+  }
+
+  private sortJobs(jobs: LoadJob[]): LoadJob[] {
+    const priority = (state: string): number => {
+      const value = state.toLowerCase();
+      if (value.includes('fail') || value.includes('error')) return 0;
+      if (['loading', 'preparing', 'prepared', 'begin', 'before_load'].includes(value)) return 1;
+      if (['pending', 'queueing', 'queued'].includes(value)) return 2;
+      if (value.includes('cancel')) return 3;
+      return 4;
+    };
+
+    return [...jobs].sort((left, right) => priority(left.state) - priority(right.state) || (right.create_time || '').localeCompare(left.create_time || ''));
   }
 
   statusLabel(state: string): string {
     const labels: Record<string, string> = {
       pending: '待处理',
+      begin: '开始',
       queueing: '排队中',
       before_load: '准备中',
       loading: '导入中',
@@ -242,6 +310,15 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
     if (['finished', 'committed', 'commited', 'success', 'succeed'].includes(value)) return 'finished';
     if (['pending', 'queueing', 'before_load', 'queued'].includes(value)) return 'queued';
     return 'running';
+  }
+
+  badgeStatus(state: string): 'success' | 'info' | 'warning' | 'danger' | 'basic' {
+    const value = state.toLowerCase();
+    if (value.includes('cancel')) return 'basic';
+    if (value.includes('fail') || value.includes('error')) return 'danger';
+    if (['finished', 'committed', 'commited', 'success', 'succeed'].includes(value)) return 'success';
+    if (['pending', 'queueing', 'before_load', 'queued'].includes(value)) return 'warning';
+    return 'info';
   }
 
   typeLabel(type: string): string {
@@ -290,6 +367,58 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
     const seconds = Math.round(duration / 1000);
     if (seconds < 60) return `${seconds}s`;
     return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  }
+
+  stageTooltip(stage: LoadJob['stage_timeline'][number]): string {
+    return `${stage.label} · ${stage.duration_ms} ms\n${stage.start_time || '-'} → ${stage.end_time || '进行中'}`;
+  }
+
+  qualityTooltip(job: LoadJob): string {
+    return this.hasQualityWarning(job)
+      ? '过滤比例偏高，常见原因：分隔符不匹配、字段类型不兼容或数据质量不满足阈值。'
+      : '';
+  }
+
+  copyToClipboard(value: string, label: string): void {
+    if (!value) return;
+
+    const done = () => {
+      this.copyFeedback = `${label}已复制`;
+      this.cdr.markForCheck();
+      if (this.copyFeedbackTimer) clearTimeout(this.copyFeedbackTimer);
+      this.copyFeedbackTimer = setTimeout(() => {
+        this.copyFeedback = '';
+        this.cdr.markForCheck();
+      }, 1500);
+    };
+
+    const failed = () => {
+      this.copyFeedback = '复制失败，请手动选择文本';
+      this.cdr.markForCheck();
+    };
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(value).then(done).catch(() => this.legacyCopy(value, done, failed));
+    } else {
+      this.legacyCopy(value, done, failed);
+    }
+  }
+
+  private legacyCopy(value: string, done: () => void, failed: () => void): void {
+    const textarea = document.createElement('textarea');
+    textarea.value = value;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+      document.execCommand('copy') ? done() : failed();
+    } catch {
+      failed();
+    } finally {
+      document.body.removeChild(textarea);
+    }
   }
 
   hasQualityWarning(job: LoadJob): boolean {

@@ -1,7 +1,6 @@
 <div class="load-page">
   <div class="load-page__heading">
     <div>
-      <div class="eyebrow">DATA OPERATIONS</div>
       <h1>导入任务</h1>
       <p>统一查看 StarRocks / Doris 的批量、流式和 Routine Load 任务。</p>
     </div>
@@ -84,10 +83,15 @@
           <nb-select [(selected)]="filters.state" (selectedChange)="applyFilters()" placeholder="全部状态" size="small" aria-label="任务状态">
             <nb-option value="">全部状态</nb-option>
             <nb-option value="PENDING">待处理</nb-option>
+            <nb-option value="BEGIN">开始</nb-option>
             <nb-option value="QUEUEING">排队中</nb-option>
+            <nb-option value="BEFORE_LOAD">准备中</nb-option>
             <nb-option value="LOADING">导入中</nb-option>
+            <nb-option value="PREPARING">准备提交</nb-option>
+            <nb-option value="PREPARED">待提交</nb-option>
+            <nb-option value="COMMITED">已提交</nb-option>
             <nb-option value="FINISHED">已完成</nb-option>
-            <nb-option value="CANCELLED">已取消</nb-option>
+            <nb-option value="CANCELLED">失败 / 已取消</nb-option>
           </nb-select>
 
           <nb-select [(selected)]="filters.range" (selectedChange)="applyFilters()" size="small" aria-label="时间范围">
@@ -131,11 +135,20 @@
               <tr
                 class="load-row"
                 tabindex="0"
-                [class.load-row--selected]="selectedJob?.job_id === job.job_id"
-                (click)="openDetails(job)"
+                [attr.aria-expanded]="isExpanded(job)"
+                [class.load-row--selected]="selectedJob && jobKey(selectedJob) === jobKey(job)"
+                [class.load-row--expanded]="isExpanded(job)"
+                [class.load-row--failed]="badgeStatus(job.state) === 'danger'"
+                (click)="toggleExpanded(job)"
                 (keydown)="onRowKeydown($event, job)">
                 <td data-label="任务">
-                  <div class="job-primary">{{ job.label || job.job_id || '未命名任务' }}</div>
+                  <div class="job-primary">
+                    <nb-icon
+                      class="expand-caret"
+                      [icon]="isExpanded(job) ? 'arrow-ios-downward-outline' : 'arrow-ios-forward-outline'"
+                      aria-hidden="true"></nb-icon>
+                    {{ job.label || job.job_id || '未命名任务' }}
+                  </div>
                   <div class="job-secondary">{{ job.database || '-' }}<span> / </span>{{ job.table_name || '目标表未提供' }}</div>
                   @if (job.job_id && job.label) {
                     <div class="job-id">{{ job.job_id }}</div>
@@ -143,7 +156,12 @@
                 </td>
                 <td data-label="类型 / 状态">
                   <span class="load-type">{{ typeLabel(job.load_type) }}</span>
-                  <span [class]="'load-status load-status--' + statusClass(job.state)">{{ statusLabel(job.state) }}</span>
+                  <nb-badge class="load-status" [status]="badgeStatus(job.state)">
+                    @if (statusClass(job.state) === 'running') {
+                      <span class="load-status__dot" aria-hidden="true"></span>
+                    }
+                    {{ statusLabel(job.state) }}
+                  </nb-badge>
                   @if (job.progress) {
                     <div class="progress-inline">
                       <nb-progress-bar [value]="progressValue(job)" [status]="statusClass(job.state) === 'failed' ? 'danger' : 'primary'" size="tiny"></nb-progress-bar>
@@ -160,6 +178,8 @@
                           [class.stage-strip__segment--running]="stage.status === 'running'"
                           [class.stage-strip__segment--failed]="stage.status === 'failed'"
                           [style.flex]="stage.duration_ms || 1"
+                          [nbTooltip]="stageTooltip(stage)"
+                          role="img"
                           [attr.aria-label]="stage.label + ' ' + stage.duration_ms + 'ms'"></span>
                       }
                     </div>
@@ -173,7 +193,15 @@
                   <small>{{ formatBytes(job.scan_bytes) }}</small>
                 </td>
                 <td data-label="过滤">
-                  <span [class.quality-warning]="hasQualityWarning(job)">{{ qualityRate(job) }}</span>
+                  <span
+                    [class.quality-warning]="hasQualityWarning(job)"
+                    [nbTooltip]="qualityTooltip(job)"
+                    [attr.aria-label]="hasQualityWarning(job) ? '过滤比例偏高 ' + qualityRate(job) : '过滤比例 ' + qualityRate(job)">
+                    @if (hasQualityWarning(job)) {
+                      <nb-icon icon="alert-triangle-outline" aria-hidden="true"></nb-icon>
+                    }
+                    {{ qualityRate(job) }}
+                  </span>
                   <small>{{ formatNumber(job.filtered_rows) }} 行</small>
                 </td>
                 <td data-label="创建时间">
@@ -186,6 +214,72 @@
                   </button>
                 </td>
               </tr>
+              @if (isExpanded(job)) {
+                <tr class="load-row-expanded">
+                  <td colspan="7">
+                    <div class="load-inline-details">
+                      @if (job.stage_timeline.length) {
+                        <div class="stage-strip stage-strip--expanded" [nbTooltip]="formatDuration(job)">
+                          @for (stage of job.stage_timeline; track stage.key) {
+                            <span
+                              class="stage-strip__segment"
+                              [class.stage-strip__segment--running]="stage.status === 'running'"
+                              [class.stage-strip__segment--failed]="stage.status === 'failed'"
+                              [style.flex]="stage.duration_ms || 1"
+                              [nbTooltip]="stageTooltip(stage)"
+                              role="img"
+                              [attr.aria-label]="stage.label + ' ' + stage.duration_ms + 'ms'">
+                              {{ stage.label }} {{ stage.duration_ms / 1000 | number:'1.0-1' }}s
+                            </span>
+                          }
+                        </div>
+                        <small class="stage-caption">{{ job.stage_timeline[job.stage_timeline.length - 1].status === 'failed' ? '失败于' : '当前阶段' }}「{{ job.stage_timeline[job.stage_timeline.length - 1].label }}」 · 总 {{ formatDuration(job) }}</small>
+                      } @else {
+                        <span class="muted">引擎未提供可计算的阶段时间，不估算进度。</span>
+                      }
+
+                      @if (job.error_msg) {
+                        <pre class="error-message">{{ job.error_msg }}</pre>
+                      }
+
+                      @if (hasQualityWarning(job)) {
+                        <div class="inline-quality-warning">
+                          <nb-icon icon="alert-triangle-outline" aria-hidden="true"></nb-icon>
+                          过滤比例 {{ qualityRate(job) }} 偏高，建议检查格式、字段类型和数据质量。
+                        </div>
+                      }
+
+                      <div class="load-inline-details__actions">
+                        @if (copyFeedback) {
+                          <span class="copy-feedback" aria-live="polite">{{ copyFeedback }}</span>
+                        }
+                        @if (job.error_msg) {
+                          <button nbButton ghost size="tiny" status="basic" (click)="$event.stopPropagation(); copyToClipboard(job.error_msg || '', '错误信息')">
+                            <nb-icon icon="copy-outline"></nb-icon>
+                            复制错误
+                          </button>
+                        }
+                        @if (job.tracking_sql) {
+                          <button nbButton ghost size="tiny" status="basic" (click)="$event.stopPropagation(); copyToClipboard(job.tracking_sql || '', 'Tracking SQL')">
+                            <nb-icon icon="copy-outline"></nb-icon>
+                            复制 Tracking SQL
+                          </button>
+                        }
+                        @if (job.rejected_record_path) {
+                          <button nbButton ghost size="tiny" status="basic" (click)="$event.stopPropagation(); copyToClipboard(job.rejected_record_path || '', '拒绝记录路径')">
+                            <nb-icon icon="copy-outline"></nb-icon>
+                            复制拒绝路径
+                          </button>
+                        }
+                        <button nbButton ghost size="tiny" status="primary" (click)="$event.stopPropagation(); openDetails(job)">
+                          <nb-icon icon="arrow-ios-forward-outline"></nb-icon>
+                          完整详情
+                        </button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              }
             } @empty {
               <tr>
                 <td colspan="7" class="load-empty">
@@ -206,18 +300,25 @@
     <aside class="load-detail-panel" role="dialog" aria-modal="true" aria-label="导入任务详情">
       <div class="load-detail-panel__header">
         <div>
-          <span class="eyebrow">LOAD DETAIL</span>
           <h2>{{ job.label || job.job_id || '导入任务详情' }}</h2>
           <span class="job-id">{{ job.job_id || 'Job ID 未提供' }}</span>
         </div>
-        <button nbButton ghost size="small" status="basic" (click)="closeDetails()" aria-label="关闭详情">
+        @if (copyFeedback) {
+          <span class="copy-feedback" aria-live="polite">{{ copyFeedback }}</span>
+        }
+        <button #detailCloseButton nbButton ghost size="small" status="basic" (click)="closeDetails()" aria-label="关闭详情">
           <nb-icon icon="close-outline"></nb-icon>
         </button>
       </div>
 
       <div class="load-detail-panel__body">
         <div class="detail-status-line">
-          <span [class]="'load-status load-status--' + statusClass(job.state)">{{ statusLabel(job.state) }}</span>
+          <nb-badge class="load-status" [status]="badgeStatus(job.state)">
+            @if (statusClass(job.state) === 'running') {
+              <span class="load-status__dot" aria-hidden="true"></span>
+            }
+            {{ statusLabel(job.state) }}
+          </nb-badge>
           <span class="load-type">{{ typeLabel(job.load_type) }}</span>
           @if (job.progress) {
             <span class="detail-progress">{{ job.progress }}</span>
@@ -256,7 +357,21 @@
 
         @if (job.failure_cause || job.error_msg) {
           <section class="detail-section detail-section--error">
-            <div class="detail-section__title"><span>失败详情</span></div>
+            <div class="detail-section__title">
+              <span>失败详情</span>
+              @if (job.error_msg) {
+                <button
+                  nbButton
+                  ghost
+                  size="tiny"
+                  status="basic"
+                  (click)="copyToClipboard(job.error_msg || '', '错误信息')"
+                  nbTooltip="复制错误信息"
+                  aria-label="复制错误信息">
+                  <nb-icon icon="copy-outline"></nb-icon>
+                </button>
+              }
+            </div>
             @if (job.failure_cause; as cause) {
               <div class="failure-cause">
                 <strong>{{ cause.label }}</strong>
@@ -272,14 +387,38 @@
 
         @if (job.tracking_sql) {
           <section class="detail-section">
-            <div class="detail-section__title"><span>Tracking SQL</span></div>
+            <div class="detail-section__title">
+              <span>Tracking SQL</span>
+              <button
+                nbButton
+                ghost
+                size="tiny"
+                status="basic"
+                (click)="copyToClipboard(job.tracking_sql || '', 'Tracking SQL')"
+                nbTooltip="复制 Tracking SQL"
+                aria-label="复制 Tracking SQL">
+                <nb-icon icon="copy-outline"></nb-icon>
+              </button>
+            </div>
             <pre class="code-block">{{ job.tracking_sql }}</pre>
           </section>
         }
 
         @if (job.rejected_record_path) {
           <section class="detail-section">
-            <div class="detail-section__title"><span>拒绝记录</span></div>
+            <div class="detail-section__title">
+              <span>拒绝记录</span>
+              <button
+                nbButton
+                ghost
+                size="tiny"
+                status="basic"
+                (click)="copyToClipboard(job.rejected_record_path || '', '拒绝记录路径')"
+                nbTooltip="复制拒绝记录路径"
+                aria-label="复制拒绝记录路径">
+                <nb-icon icon="copy-outline"></nb-icon>
+              </button>
+            </div>
             <code class="path-block">{{ job.rejected_record_path }}</code>
           </section>
         }

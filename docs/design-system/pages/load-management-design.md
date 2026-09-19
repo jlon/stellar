@@ -1,7 +1,7 @@
 # 数据导入管理（Load Management）设计文档
 
-> 状态：设计稿（未实施）
-> 目标：对齐阿里云 EMR StarRocks Manager 的导入任务管理能力，落地为 Stellar 自托管双引擎（StarRocks/Doris）场景下的新一代导入运维页面。
+> 状态：P1 已实施；P2/P3 按分期推进
+> 目标：对齐阿里云 EMR StarRocks Manager 的导入任务管理能力，落地为 Stellar 自托管双引擎（StarRocks/Doris）场景下的新一代导入运维页面。本文件同时记录已实现边界，避免设计稿与实际行为漂移。
 > 关联：`docs/design-system/MASTER.md`（全部 UI 决策遵循本设计系统）。前端技术约束：Angular 21 + Nebular 17；参考已安装的 shadcn/ui、frontend-design、ui-ux-pro-max 的交互原则，但不引入 React/Radix/Tailwind 依赖。
 
 ---
@@ -21,7 +21,7 @@
 ### 1.1 前端设计依据与技术边界
 
 - **不安装 shadcn/ui**：当前 `frontend/` 没有 `components.json`，依赖是 Angular 21 + Nebular 17，没有 React、Radix 或 Tailwind。shadcn 的 `Card / Table / Badge / Alert / Progress / Sheet` 作为交互模型参考，不能直接作为实现依赖。
-- **组件映射**：`Card → nb-card`，`Badge → nb-tag/nb-badge`，`Alert → nb-alert`，`Progress → nb-progress-bar`，`Sheet/Drawer → NbDialogService 的响应式全屏详情模板`，`Table → 语义化 HTML table + 现有页面表格样式`。
+- **组件映射**：`Card → nb-card`，`Badge → nb-badge`，`Alert → nb-alert`，`Progress → nb-progress-bar`，`Sheet/Drawer → fixed aside + backdrop`，`Table → 语义化 HTML table + 现有页面表格样式`。
 - **保留 shadcn 的有效原则**：语义色、组件组合、清晰的空态/加载态/错误态、可访问的标题与焦点、按钮状态不自定义造轮子；不照搬 React API、Tailwind class 或 Radix 的 `asChild` 约定。
 - **现有 sibling 前端仅作兼容参考**：`/mnt/data/starrocks-admin` 是 Angular 15 + Nebular 11 的旧版前端，当前 `viewDatabaseLoads()` 通过 `information_schema.loads` 查询 100 条记录，再放进通用 `NbDialog + ng2-smart-table`。Stellar 当前已升级到 Angular 21 + Nebular 17，不能复制旧实现，只复用领域入口和用户习惯。
 - **引擎源码作为字段真相**：`/mnt/data/starrocks-4.1.4` 的 `information_schema.loads` 与 `_statistics_.loads_history` 才是 StarRocks 字段、状态和历史留存的依据；页面不得根据示意图臆造字段。
@@ -47,15 +47,15 @@
 数据导入（/pages/starrocks/loads）
 ├── 概览条（4 个状态计数卡：运行中 / 排队 / 失败(24h) / 成功(24h)）
 ├── 工具栏
-│   ├── 类型筛选：全部 | Broker Load | Stream Load | Routine Load | Insert | Spark/Flink
+│   ├── 类型筛选：全部 | Broker Load | Stream Load | Routine Load | Insert | Spark Load（Flink 字段未确认，不在 P1 展示）
 │   ├── 状态筛选：全部 | 运行中 | 已完成 | 已取消 | 失败 | 排队
 │   ├── 库选择（默认跟随树节点上下文）
 │   ├── 时间范围（默认近 24h，可选 7d / 30d；按目标引擎的 loads/history 视图下推时间条件）
 │   ├── 搜索（Label / JobId）
 │   └── 自动刷新（P1 为 30s 静默轮询）+ 手动刷新
 ├── 任务列表（语义化 table，遵循设计系统表格规范）
-│   └── 行展开（expand）：可用时显示阶段时间线；Routine Load 显示消费概览；错误详情见 §4
-└── 任务详情抽屉（点击行打开，宽 42rem，窄屏全屏）
+│   └── 行展开（expand）：显示真实阶段时间线、错误全文和复制入口；Routine Load 的消费概览列入 P2
+└── 任务详情抽屉（桌面操作列打开，宽 42rem；≤768px 点击行直接全屏打开）
 ```
 
 ## 4. 任务详情：阶段时间线（核心组件）
@@ -99,10 +99,10 @@ Routine Load：不做批处理阶段时间线，改为**消费位点卡片**（�
 数据质量：扫描 12.4M · 过滤 0.2% · 写入 12.2M
 ```
 
-- 水平分段条，段宽=各阶段时长占比；悬停出 tooltip（阶段名/起止时刻/行数速率）
-- 颜色语义：成功段用 primary，过滤段用 warning，失败任务整体置 danger 描边
-- 失败任务：条终止于真实失败阶段，下方展开 `ERROR_MSG` 全文；有 `TRACKING_SQL` 时提供复制 SQL，有 `REJECTED_RECORD_PATH` 时提供复制路径/下载入口；Doris 的 `URL` 仅在确认是可访问错误地址时显示外链
-- 高度 2.25rem，纯 div + flex 实现，**不用任何图库**；`prefers-reduced-motion` 下无动画
+- 水平分段条，段宽=各阶段时长占比；P1 tooltip 展示阶段名、起止时刻和时长，行数速率字段未被引擎确认时不臆造
+- 颜色语义：成功段用 primary，运行中段用 warning，失败段用 danger；展开条高度 2.25rem，列表摘要保持紧凑
+- 失败任务：条终止于真实失败阶段，下方展开 `ERROR_MSG` 全文；有 `TRACKING_SQL` 时提供复制 SQL，有 `REJECTED_RECORD_PATH` 时提供复制路径；Doris 的 `URL` 仅在确认是可访问错误地址时显示外链
+- 阶段条用 div + flex 实现，**不用任何图库**；运行点、行展开、详情侧板和刷新状态均提供 reduced-motion 降级
 
 ### 4.3 为什么不是 DAG（本节回答评审必问）
 
@@ -114,14 +114,14 @@ Routine Load：不做批处理阶段时间线，改为**消费位点卡片**（�
 
 - **状态徽章**：Nebular badge，`success/info/warning/danger/basic` 对应成功/运行中/排队/失败/取消；运行中徽章带呼吸点动画（reduced-motion 下为静态）
 - **自动刷新（P1）**：页面有活跃集群时每 30 秒静默刷新一次；请求进行中不会并发发起下一次刷新。更细粒度的运行中/排队自适应频率列入后续迭代。
-- **详情侧板**：点击列表行或操作按钮打开详情侧板，展示字段、真实阶段、错误全文、`TRACKING_SQL`、拒绝记录路径和 `RUNTIME_DETAILS`；窄屏（≤640px）侧板占满宽度
+- **详情侧板**：桌面列表行展开查看摘要，操作列按钮打开详情侧板；≤768px 不做行展开，点击行直接打开全屏侧板。侧板展示字段、真实阶段、错误全文、`TRACKING_SQL`、拒绝记录路径和 `RUNTIME_DETAILS`；打开后焦点落到关闭按钮，Esc 关闭并尝试恢复触发元素焦点
 - **失败优先排序**：默认排序 `失败 > 运行中 > 排队 > 已完成/取消`，组内按时间倒序——运维视角“先看坏消息”
 - **错误原因归类（对齐 EMR 原因分析）**：后端按 ERROR_MSG 模式匹配归类，输出 `cause: 超时 / 超阈值 / 格式错误 / 权限 / 目标表不存在 / 资源不足 / 未知`，每类附一句处置建议（如“Scan bytes exceed threshold → 减小单次导入体量或调大 `broker_load_scan_bytes_threshold`”）；归类结果在详情抽屉错误框顶部渲染为结论行，无法识别时回退原文展示，不臆断
 - **空态**：无任务时提示调整时间范围或清除筛选；树节点入口仍可直接带数据库筛选跳转
-- **错误详情**：`ERROR_MSG` 等宽字体、可复制；StarRocks 的 `TRACKING_SQL` 用复制 SQL 按钮，`REJECTED_RECORD_PATH` 用复制路径/下载按钮；Doris 失败任务自动带出 error hub 聚合样本（后端已有 `get_load_errors_compromise`）
+- **错误详情**：`ERROR_MSG` 等宽字体、列表展开和详情侧板均提供复制入口；StarRocks 的 `TRACKING_SQL` 用复制 SQL 按钮，`REJECTED_RECORD_PATH` 用复制路径按钮；Doris 失败任务自动带出 error hub 聚合样本列入 P2（后端已有 `get_load_errors_compromise`）
 - **过滤行数提示（P1）**：`Filtered_Rows / Scan_Rows > 1%` 且分母有效时行内显示 warning；StarRocks 源码中 `SCAN_ROWS` 已包含正常、异常和未选中行，不能再次把 `FILTERED_ROWS` 加入分母。阈值和原因提示后续再接入集群变量
 - **Stream Load profile**：P1 只展示可用的 `PROFILE_ID`/`RUNTIME_DETAILS` 原文，不自动修改集群变量；Profile 引导卡片列入后续迭代
-- **键盘可达**：列表行可 Tab 聚焦、Enter 打开详情；抽屉 Esc 关闭；所有图标按钮带 `aria-label`
+- **键盘可达**：列表行可 Tab 聚焦、Enter/Space 展开摘要；操作列按钮打开详情侧板；抽屉 Esc 关闭；所有图标按钮带 `aria-label`
 
 ## 6. 后端设计
 
@@ -172,12 +172,12 @@ pages/starrocks/loads/
 
 - 路由 `path: 'loads'` 挂在 starrocks 模块，菜单项"导入任务"复用 `menu:queries:execution` 可见性
 - 树节点 `viewLoads` 改为路由跳转携带 `?db=<db>` 预置筛选
-- 遵循 MASTER.md 与 shadcn 的可组合组件原则：单主卡、图标化工具栏、Nebular ghost 按钮、`nb-alert/nb-progress-bar`、语义化 table、桌面表格/窄屏卡片式行布局、详情侧板焦点与 Esc 关闭、`prefers-reduced-motion` 兜底
+- 遵循 MASTER.md 与 shadcn 的可组合组件原则：单主卡、图标化工具栏、Nebular badge/ghost 按钮、`nb-alert/nb-progress-bar`、语义化 table、桌面表格/窄屏卡片式行布局、行展开与详情侧板、侧板焦点与 Esc 关闭、`prefers-reduced-motion` 兜底
 
 ## 8. 测试
 
 - 后端：`backend/src/tests/load_service_test.rs` 覆盖失败原因分类、真实时间阶段计算、终态缺时间戳不造假、SQL 字面量转义/limit 和路由权限映射
-- 前端：`npm run build` 验证路由、模板、Nebular 组件和响应式样式可编译；专项交互 spec 列入后续组件拆分阶段
+- 前端：`npm run build` 验证路由、模板、Nebular 组件和响应式样式可编译；当前仍缺少 Load 页面专项 spec，后续补齐行展开、复制反馈、阶段条和键盘交互覆盖
 - E2E 手册：对接真实集群造 1 个成功 + 1 个失败 Broker Load，核对 `RUNTIME_DETAILS` 原文、`TRACKING_SQL`、`REJECTED_RECORD_PATH` 与真实时间阶段；再验证一个 Routine Load 不被错误绘制成批处理阶段
 
 ## 9. 分期
