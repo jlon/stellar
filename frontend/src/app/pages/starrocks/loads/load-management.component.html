@@ -173,7 +173,7 @@
         </div>
 
         <div class="d-flex justify-content-between align-items-center mb-2">
-          <small>任务列表 · 共 {{ jobs.length }} 个任务</small>
+          <small>任务列表 · 已加载 {{ jobs.length }} 个任务</small>
         </div>
 
         <angular2-smart-table
@@ -188,7 +188,11 @@
 </div>
 
 <ng-template #detailDialog let-ref="dialogRef">
-  <nb-card (keydown.escape)="closeDetails(ref)">
+  <nb-card
+    class="load-detail-sheet"
+    tabindex="-1"
+    (keydown.escape)="closeDetails(ref)"
+  >
     <nb-card-header>
       <div class="d-flex justify-content-between align-items-center">
         <div>
@@ -216,6 +220,9 @@
 
     <nb-card-body>
       @if (selectedJob; as job) {
+        @if (detailLoading) {
+          <small class="text-hint d-block mb-3">正在读取实时详情</small>
+        }
         <section class="mb-4">
           <small class="text-hint d-block mb-2">任务概览</small>
           <nb-list>
@@ -312,6 +319,172 @@
           </section>
         }
 
+        @if (job.routine_load; as routine) {
+          <section class="mb-4">
+            <small class="text-hint d-block mb-2">Routine Load 消费</small>
+            <nb-list>
+              <nb-list-item>
+                <div
+                  class="d-flex justify-content-between align-items-center w-100 gap-2"
+                >
+                  <span class="text-hint">当前子任务</span>
+                  <span>{{ routine.current_task_num ?? "-" }}</span>
+                </div>
+              </nb-list-item>
+              @if (routine.offset_lag) {
+                <nb-list-item>
+                  <div class="w-100">
+                    <small class="text-hint d-block mb-2">Offset Lag</small>
+                    <textarea
+                      nbInput
+                      fullWidth
+                      fieldSize="small"
+                      rows="3"
+                      readonly
+                      [value]="prettyJson(routine.offset_lag)"
+                    ></textarea>
+                  </div>
+                </nb-list-item>
+              }
+              @if (routine.progress) {
+                <nb-list-item>
+                  <div class="w-100">
+                    <small class="text-hint d-block mb-2">消费位点</small>
+                    <textarea
+                      nbInput
+                      fullWidth
+                      fieldSize="small"
+                      rows="3"
+                      readonly
+                      [value]="prettyJson(routine.progress)"
+                    ></textarea>
+                  </div>
+                </nb-list-item>
+              }
+              @if (routine.latest_source_position) {
+                <nb-list-item>
+                  <div class="w-100">
+                    <small class="text-hint d-block mb-2">最新源位点</small>
+                    <textarea
+                      nbInput
+                      fullWidth
+                      fieldSize="small"
+                      rows="3"
+                      readonly
+                      [value]="prettyJson(routine.latest_source_position)"
+                    ></textarea>
+                  </div>
+                </nb-list-item>
+              }
+              @if (routine.timestamp_progress) {
+                <nb-list-item>
+                  <div class="w-100">
+                    <small class="text-hint d-block mb-2">时间戳进度</small>
+                    <textarea
+                      nbInput
+                      fullWidth
+                      fieldSize="small"
+                      rows="3"
+                      readonly
+                      [value]="prettyJson(routine.timestamp_progress)"
+                    ></textarea>
+                  </div>
+                </nb-list-item>
+              }
+              @if (routine.statistics) {
+                <nb-list-item>
+                  <div class="w-100">
+                    <small class="text-hint d-block mb-2">累计统计</small>
+                    <textarea
+                      nbInput
+                      fullWidth
+                      fieldSize="small"
+                      rows="4"
+                      readonly
+                      [value]="prettyJson(routine.statistics)"
+                    ></textarea>
+                  </div>
+                </nb-list-item>
+              }
+            </nb-list>
+
+            @if (routine.tasks.length) {
+              <small class="text-hint d-block mt-3 mb-2">当前子任务</small>
+              <nb-list>
+                @for (task of routine.tasks; track $index) {
+                  <nb-list-item>
+                    <div class="w-100">
+                      <div
+                        class="d-flex justify-content-between align-items-center gap-2"
+                      >
+                        <span>{{ task.task_id || "未命名任务" }}</span>
+                        <small class="text-hint">BE {{ task.be_id || "-" }}</small>
+                      </div>
+                      <small class="text-hint d-block mt-1">
+                        事务 {{ task.txn_id || "-" }} / {{ task.txn_status || "-" }}
+                      </small>
+                      @if (task.data_source_properties) {
+                        <textarea
+                          class="mt-2"
+                          nbInput
+                          fullWidth
+                          fieldSize="small"
+                          rows="3"
+                          readonly
+                          [value]="prettyJson(task.data_source_properties)"
+                        ></textarea>
+                      }
+                      @if (task.message) {
+                        <small class="text-hint d-block mt-2">{{ task.message }}</small>
+                      }
+                    </div>
+                  </nb-list-item>
+                }
+              </nb-list>
+            }
+          </section>
+
+          @if (
+            routine.reason_of_state_changed ||
+            routine.other_msg ||
+            routine.error_log_urls
+          ) {
+            <nb-alert class="mb-4" status="danger">
+              @if (routine.reason_of_state_changed) {
+                <div>{{ routine.reason_of_state_changed }}</div>
+              }
+              @if (routine.other_msg) {
+                <textarea
+                  class="mt-2"
+                  nbInput
+                  fullWidth
+                  fieldSize="small"
+                  rows="4"
+                  readonly
+                  [value]="routine.other_msg"
+                ></textarea>
+              }
+              @if (routine.error_log_urls) {
+                <div class="d-flex justify-content-between align-items-center mt-2">
+                  <span>错误日志地址</span>
+                  <button
+                    nbButton
+                    ghost
+                    size="tiny"
+                    status="basic"
+                    (click)="copyToClipboard(routine.error_log_urls || '', '错误日志地址')"
+                    nbTooltip="复制错误日志地址"
+                    title="复制错误日志地址"
+                    aria-label="复制错误日志地址"
+                  >
+                    <nb-icon icon="copy-outline"></nb-icon>
+                  </button>
+                </div>
+              }
+            </nb-alert>
+          }
+        }
+
         @if (job.failure_cause || job.error_msg) {
           <nb-alert class="mb-4" status="danger">
             @if (job.failure_cause; as cause) {
@@ -348,6 +521,90 @@
               ></textarea>
             }
           </nb-alert>
+        }
+
+        @if (job.doris_failure; as dorisFailure) {
+          <section class="mb-4">
+            <small class="text-hint d-block mb-2">Doris 原始失败信息</small>
+
+            @if (dorisFailure.url) {
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <span>URL</span>
+                <button
+                  nbButton
+                  ghost
+                  size="tiny"
+                  status="basic"
+                  (click)="copyToClipboard(dorisFailure.url || '', 'URL')"
+                  nbTooltip="复制 URL"
+                  title="复制 URL"
+                  aria-label="复制 URL"
+                >
+                  <nb-icon icon="copy-outline"></nb-icon>
+                </button>
+              </div>
+              <textarea
+                nbInput
+                fullWidth
+                fieldSize="small"
+                rows="3"
+                readonly
+                [value]="dorisFailure.url"
+              ></textarea>
+            }
+
+            @if (dorisFailure.error_msg) {
+              <div class="d-flex justify-content-between align-items-center mt-3 mb-2">
+                <span>ErrorMsg</span>
+                <button
+                  nbButton
+                  ghost
+                  size="tiny"
+                  status="basic"
+                  (click)="copyToClipboard(dorisFailure.error_msg || '', 'ErrorMsg')"
+                  nbTooltip="复制 ErrorMsg"
+                  title="复制 ErrorMsg"
+                  aria-label="复制 ErrorMsg"
+                >
+                  <nb-icon icon="copy-outline"></nb-icon>
+                </button>
+              </div>
+              <textarea
+                nbInput
+                fullWidth
+                fieldSize="small"
+                rows="6"
+                readonly
+                [value]="dorisFailure.error_msg"
+              ></textarea>
+            }
+
+            @if (dorisFailure.job_details) {
+              <div class="d-flex justify-content-between align-items-center mt-3 mb-2">
+                <span>JobDetails</span>
+                <button
+                  nbButton
+                  ghost
+                  size="tiny"
+                  status="basic"
+                  (click)="copyToClipboard(dorisFailure.job_details || '', 'JobDetails')"
+                  nbTooltip="复制 JobDetails"
+                  title="复制 JobDetails"
+                  aria-label="复制 JobDetails"
+                >
+                  <nb-icon icon="copy-outline"></nb-icon>
+                </button>
+              </div>
+              <textarea
+                nbInput
+                fullWidth
+                fieldSize="small"
+                rows="6"
+                readonly
+                [value]="prettyJson(dorisFailure.job_details)"
+              ></textarea>
+            }
+          </section>
         }
 
         @if (
@@ -433,18 +690,5 @@
         }
       }
     </nb-card-body>
-    <nb-card-footer>
-      <div class="d-flex justify-content-end">
-        <button
-          nbButton
-          outline
-          status="basic"
-          size="small"
-          (click)="closeDetails(ref)"
-        >
-          关闭
-        </button>
-      </div>
-    </nb-card-footer>
   </nb-card>
 </ng-template>

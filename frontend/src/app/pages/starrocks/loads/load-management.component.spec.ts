@@ -1,9 +1,9 @@
-import { ChangeDetectorRef, DOCUMENT } from "@angular/core";
+import { ChangeDetectorRef, DOCUMENT, TemplateRef } from "@angular/core";
 import { TestBed } from "@angular/core/testing";
 import { ActivatedRoute, Router, convertToParamMap } from "@angular/router";
 import { NbDialogService, NbToastrService } from "@nebular/theme";
 import { RowSelectionEvent } from "angular2-smart-table";
-import { of } from "rxjs";
+import { Subject, of } from "rxjs";
 
 import { ClusterContextService } from "../../../@core/data/cluster-context.service";
 import { LoadJob, LoadService } from "../../../@core/data/load.service";
@@ -12,6 +12,11 @@ import { LoadManagementComponent } from "./load-management.component";
 
 describe("LoadManagementComponent", () => {
   let component: LoadManagementComponent;
+  const dialogService = { open: jasmine.createSpy("open") };
+  const loadService = {
+    get: jasmine.createSpy("get").and.returnValue(of({})),
+    list: jasmine.createSpy("list"),
+  };
 
   beforeEach(() => {
     TestBed.configureTestingModule({
@@ -20,9 +25,9 @@ describe("LoadManagementComponent", () => {
           provide: ClusterContextService,
           useValue: { activeCluster$: of(null) },
         },
-        { provide: LoadService, useValue: { list: () => of({}) } },
+        { provide: LoadService, useValue: loadService },
         { provide: NodeService, useValue: { getDatabases: () => of([]) } },
-        { provide: NbDialogService, useValue: { open: () => undefined } },
+        { provide: NbDialogService, useValue: dialogService },
         { provide: NbToastrService, useValue: { show: () => undefined } },
         {
           provide: ActivatedRoute,
@@ -42,6 +47,9 @@ describe("LoadManagementComponent", () => {
     component = TestBed.runInInjectionContext(
       () => new LoadManagementComponent(),
     );
+    dialogService.open.calls.reset();
+    loadService.get.calls.reset();
+    loadService.list.calls.reset();
   });
 
   it("prioritizes failed tasks in the situation summary", () => {
@@ -93,5 +101,57 @@ describe("LoadManagementComponent", () => {
 
     expect(document.activeElement).toBe(table.querySelector("tr"));
     table.remove();
+  });
+
+  it("does not autofocus the Sheet close button", () => {
+    const onBackdropClick = new Subject<void>();
+    const onClose = new Subject<void>();
+    dialogService.open.and.returnValue({
+      close: jasmine.createSpy("close"),
+      onBackdropClick,
+      onClose,
+    });
+    const template = {} as TemplateRef<unknown>;
+    (
+      component as unknown as { detailDialog: TemplateRef<unknown> }
+    ).detailDialog = template;
+
+    component.openDetails({ job_id: "job-1", state: "FINISHED" } as LoadJob);
+
+    expect(dialogService.open).toHaveBeenCalledWith(
+      template,
+      jasmine.objectContaining({ autoFocus: false }),
+    );
+  });
+
+  it("keeps the selected Doris failure fields in the detail response", () => {
+    const onBackdropClick = new Subject<void>();
+    const onClose = new Subject<void>();
+    dialogService.open.and.returnValue({
+      close: jasmine.createSpy("close"),
+      onBackdropClick,
+      onClose,
+    });
+    loadService.get.and.returnValue(
+      of({
+        job_id: "42",
+        state: "CANCELLED",
+        load_type: "BROKER_LOAD",
+        stage_timeline: [],
+        doris_failure: {
+          url: "https://errors/42",
+          error_msg: "selected failure",
+          job_details: '{"id":42}',
+        },
+      } as LoadJob),
+    );
+    (
+      component as unknown as { detailDialog: TemplateRef<unknown> }
+    ).detailDialog = {} as TemplateRef<unknown>;
+
+    component.openDetails({ job_id: "42", state: "CANCELLED" } as LoadJob);
+
+    expect(component.selectedJob?.doris_failure?.url).toBe("https://errors/42");
+    expect(component.selectedJob?.doris_failure?.job_details).toBe('{"id":42}');
   });
 });

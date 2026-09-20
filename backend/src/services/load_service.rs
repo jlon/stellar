@@ -1,17 +1,26 @@
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{Duration as ChronoDuration, NaiveDateTime, Utc};
-use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 
 use crate::models::{
-    ClusterType, LoadFailureCause, LoadJob, LoadListResponse, LoadQueryParams, LoadStage,
-    LoadSummary,
+    ClusterType, DorisLoadFailureDetails, LoadFailureCause, LoadJob, LoadListResponse,
+    LoadQueryParams, LoadStage, LoadSummary, RoutineLoadDetails, RoutineLoadTask,
 };
 use crate::services::mysql_client::MySQLClient;
 use crate::utils::{ApiError, ApiResult};
 
 const DEFAULT_LIMIT: u32 = 100;
 const MAX_LIMIT: u32 = 500;
+const MAX_FETCH_LIMIT: u32 = MAX_LIMIT + 1;
 const MAX_FILTER_LENGTH: usize = 200;
 const MAX_DATABASES_IN_FALLBACK: usize = 50;
+
+#[derive(Debug, Deserialize, Serialize)]
+struct LoadCursor {
+    create_time: String,
+    job_id: i64,
+}
 
 /// 查询统一导入任务列表。
 ///
@@ -23,25 +32,54 @@ pub async fn list_loads(
     params: &LoadQueryParams,
 ) -> ApiResult<LoadListResponse> {
     let limit = params.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
+    let fetch_limit = limit + 1;
     tracing::debug!(engine = %cluster_type.display_name(), limit, "listing load jobs");
 
-    let information_schema_sql = build_information_schema_query(params, limit)?;
-    match client.query_raw(&information_schema_sql).await {
+    let primary_sql = match cluster_type {
+        ClusterType::StarRocks => build_starrocks_load_query(params, fetch_limit)?,
+        ClusterType::Doris => build_information_schema_query(params, fetch_limit)?,
+    };
+    match client.query_raw(&primary_sql).await {
         Ok((columns, rows)) => {
             let items = rows
                 .iter()
                 .map(|row| parse_load_job(&columns, row, None))
                 .collect::<Vec<_>>();
-            Ok(build_response(items, limit, "information_schema.loads"))
+            let source = match cluster_type {
+                ClusterType::StarRocks => "information_schema.loads + _statistics_.loads_history",
+                ClusterType::Doris => "information_schema.loads",
+            };
+            Ok(build_response(items, limit, source, true))
         },
         Err(information_schema_error) => {
+            if cluster_type == ClusterType::StarRocks {
+                tracing::debug!(
+                    error = %information_schema_error,
+                    "loads_history unavailable, retrying information_schema.loads"
+                );
+                let information_schema_sql = build_information_schema_query(params, fetch_limit)?;
+                if let Ok((columns, rows)) = client.query_raw(&information_schema_sql).await {
+                    let items = rows
+                        .iter()
+                        .map(|row| parse_load_job(&columns, row, None))
+                        .collect::<Vec<_>>();
+                    return Ok(build_response(items, limit, "information_schema.loads", true));
+                }
+            }
+            if params
+                .cursor
+                .as_deref()
+                .is_some_and(|cursor| !cursor.trim().is_empty())
+            {
+                return Err(information_schema_error);
+            }
             tracing::debug!(
                 engine = %cluster_type.display_name(),
                 error = %information_schema_error,
                 "information_schema.loads unavailable, falling back to SHOW LOAD"
             );
             match list_from_show_load(client, params, limit).await {
-                Ok(items) => Ok(build_response(items, limit, "SHOW LOAD")),
+                Ok(items) => Ok(build_response(items, limit, "SHOW LOAD", false)),
                 Err(fallback_error) => {
                     tracing::warn!(
                         error = %fallback_error,
@@ -54,13 +92,40 @@ pub async fn list_loads(
     }
 }
 
+/// 生成 StarRocks 运行视图和持久历史的合并查询。
+///
+/// `_statistics_.loads_history` 由运行视图同步而来，二者使用 `UNION` 去重，
+/// 以免同步窗口内的已完成任务重复出现在列表中。
+pub(crate) fn build_starrocks_load_query(
+    params: &LoadQueryParams,
+    limit: u32,
+) -> ApiResult<String> {
+    let limit = limit.clamp(1, MAX_FETCH_LIMIT);
+    let cursor = decode_load_cursor(params.cursor.as_deref())?;
+    let current = build_load_source_query(params, "information_schema.loads", cursor.as_ref())?;
+    let history = build_load_source_query(params, "`_statistics_`.loads_history", cursor.as_ref())?;
+    Ok(format!("{current} UNION {history} ORDER BY create_time DESC, job_id DESC LIMIT {limit}"))
+}
+
 /// 生成 information_schema.loads 查询，所有过滤值都作为 SQL 字符串字面量处理。
 pub(crate) fn build_information_schema_query(
     params: &LoadQueryParams,
     limit: u32,
 ) -> ApiResult<String> {
-    let limit = limit.clamp(1, MAX_LIMIT);
-    let mut sql = String::from(
+    let limit = limit.clamp(1, MAX_FETCH_LIMIT);
+    let cursor = decode_load_cursor(params.cursor.as_deref())?;
+    let mut sql = build_load_source_query(params, "information_schema.loads", cursor.as_ref())?;
+    sql.push_str(" ORDER BY create_time DESC, job_id DESC LIMIT ");
+    sql.push_str(&limit.to_string());
+    Ok(sql)
+}
+
+fn build_load_source_query(
+    params: &LoadQueryParams,
+    source: &str,
+    cursor: Option<&LoadCursor>,
+) -> ApiResult<String> {
+    let mut sql = format!(
         "SELECT ID AS job_id, LABEL AS label, PROFILE_ID AS profile_id, \
          DB_NAME AS db_name, TABLE_NAME AS table_name, `USER` AS user_name, \
          WAREHOUSE AS warehouse, STATE AS state, PROGRESS AS progress, TYPE AS load_type, \
@@ -70,7 +135,7 @@ pub(crate) fn build_information_schema_query(
          LOAD_COMMIT_TIME AS load_commit_time, LOAD_FINISH_TIME AS load_finish_time, \
          ERROR_MSG AS error_msg, TRACKING_SQL AS tracking_sql, \
          REJECTED_RECORD_PATH AS rejected_record_path, RUNTIME_DETAILS AS runtime_details, \
-         PROPERTIES AS properties FROM information_schema.loads WHERE 1 = 1",
+         PROPERTIES AS properties FROM {source} WHERE 1 = 1",
     );
 
     if let Some(db) = validated_filter(params.db.as_deref(), "db")? {
@@ -87,7 +152,10 @@ pub(crate) fn build_information_schema_query(
         sql.push_str(&sql_string(&state));
         sql.push(')');
     }
-    if let Some(search) = validated_filter(params.search.as_deref(), "search")? {
+    if let Some(job_id) = params.job_id.as_deref() {
+        sql.push_str(" AND ID = ");
+        sql.push_str(&validated_job_id(job_id)?);
+    } else if let Some(search) = validated_filter(params.search.as_deref(), "search")? {
         let pattern = sql_string(&format!("%{}%", search));
         sql.push_str(" AND (CAST(ID AS CHAR) LIKE ");
         sql.push_str(&pattern);
@@ -105,17 +173,95 @@ pub(crate) fn build_information_schema_query(
         sql.push_str(" AND CREATE_TIME >= ");
         sql.push_str(&sql_string(&start));
     }
+    if let Some(cursor) = cursor {
+        let create_time = sql_string(&cursor.create_time);
+        sql.push_str(" AND (CREATE_TIME < ");
+        sql.push_str(&create_time);
+        sql.push_str(" OR (CREATE_TIME = ");
+        sql.push_str(&create_time);
+        sql.push_str(" AND ID < ");
+        sql.push_str(&cursor.job_id.to_string());
+        sql.push_str("))");
+    }
 
-    sql.push_str(" ORDER BY CREATE_TIME DESC LIMIT ");
-    sql.push_str(&limit.to_string());
     Ok(sql)
 }
 
-fn build_response(mut items: Vec<LoadJob>, limit: u32, source: &str) -> LoadListResponse {
-    let has_more = items.len() >= limit as usize;
+fn build_response(
+    mut items: Vec<LoadJob>,
+    limit: u32,
+    source: &str,
+    supports_cursor: bool,
+) -> LoadListResponse {
+    sort_and_deduplicate_loads(&mut items);
+    let has_more = supports_cursor && items.len() > limit as usize;
     items.truncate(limit as usize);
     let summary = summarize(&items);
-    LoadListResponse { total: items.len(), items, has_more, source: source.to_string(), summary }
+    let next_cursor = has_more
+        .then(|| {
+            items.last().and_then(|job| {
+                encode_load_cursor(job.create_time.as_deref()?, job.job_id.as_deref()?)
+            })
+        })
+        .flatten();
+    LoadListResponse {
+        total: items.len(),
+        has_more: next_cursor.is_some(),
+        next_cursor,
+        items,
+        source: source.to_string(),
+        summary,
+    }
+}
+
+fn sort_and_deduplicate_loads(items: &mut Vec<LoadJob>) {
+    items.sort_by(|left, right| {
+        right
+            .create_time
+            .cmp(&left.create_time)
+            .then_with(|| numeric_job_id(right).cmp(&numeric_job_id(left)))
+    });
+
+    let mut job_ids = HashSet::new();
+    items.retain(|job| match &job.job_id {
+        Some(job_id) => job_ids.insert(job_id.clone()),
+        None => true,
+    });
+}
+
+fn numeric_job_id(job: &LoadJob) -> i64 {
+    job.job_id
+        .as_deref()
+        .and_then(|job_id| job_id.parse().ok())
+        .unwrap_or(i64::MIN)
+}
+
+pub(crate) fn encode_load_cursor(create_time: &str, job_id: &str) -> Option<String> {
+    let job_id = job_id.parse().ok()?;
+    let payload =
+        serde_json::to_vec(&LoadCursor { create_time: create_time.to_string(), job_id }).ok()?;
+    Some(format!("v1:{}", URL_SAFE_NO_PAD.encode(payload)))
+}
+
+fn decode_load_cursor(value: Option<&str>) -> ApiResult<Option<LoadCursor>> {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    if value.len() > MAX_FILTER_LENGTH * 3 {
+        return Err(ApiError::invalid_data("cursor 无效"));
+    }
+    let encoded = value
+        .strip_prefix("v1:")
+        .ok_or_else(|| ApiError::invalid_data("cursor 无效"))?;
+    let payload = URL_SAFE_NO_PAD
+        .decode(encoded)
+        .map_err(|_| ApiError::invalid_data("cursor 无效"))?;
+    let cursor: LoadCursor =
+        serde_json::from_slice(&payload).map_err(|_| ApiError::invalid_data("cursor 无效"))?;
+    if parse_timestamp(&cursor.create_time).is_none() {
+        return Err(ApiError::invalid_data("cursor 无效"));
+    }
+    Ok(Some(cursor))
 }
 
 async fn list_from_show_load(
@@ -165,6 +311,11 @@ async fn list_from_show_load(
 }
 
 fn matches_filters(job: &LoadJob, params: &LoadQueryParams, range_start: Option<&str>) -> bool {
+    if let Some(job_id) = params.job_id.as_deref() {
+        if job.job_id.as_deref() != Some(job_id) {
+            return false;
+        }
+    }
     if let Some(db) = params
         .db
         .as_deref()
@@ -301,7 +452,146 @@ pub(crate) fn parse_load_job(
         rejected_record_path: value(&values, &["rejected_record_path", "rejectedrecordpath"]),
         runtime_details,
         properties,
+        routine_load: None,
+        doris_failure: None,
         stage_timeline,
+    }
+}
+
+/// 仅为选中的失败 Doris 作业补充 `SHOW LOAD` 中的原始诊断字段。
+///
+/// Doris `SHOW LOAD` 只支持 `LABEL` 和 `STATE` 谓词，不能以未证实的 `ID` 谓词查询。
+/// 因此先在已知数据库内精确匹配 Label，再在结果中严格匹配已选 JobId；不会遍历数据库，
+/// 也不会暴露同 Label 的其他作业。
+pub async fn load_doris_failure_details(
+    client: &MySQLClient,
+    job: &LoadJob,
+) -> ApiResult<Option<DorisLoadFailureDetails>> {
+    if !is_failed_state(&job.state) {
+        return Ok(None);
+    }
+    let (Some(database), Some(label), Some(job_id)) =
+        (job.database.as_deref(), job.label.as_deref(), job.job_id.as_deref())
+    else {
+        return Ok(None);
+    };
+    let sql = build_doris_load_failure_query(database, label)?;
+    let (columns, rows) = client.query_raw(&sql).await?;
+    Ok(find_doris_load_failure_details(&columns, &rows, job_id))
+}
+
+pub(crate) fn build_doris_load_failure_query(database: &str, label: &str) -> ApiResult<String> {
+    let label = validated_filter(Some(label), "label")?
+        .ok_or_else(|| ApiError::invalid_data("label 无效"))?;
+    Ok(format!(
+        "SHOW LOAD FROM {} WHERE LABEL = {}",
+        quote_identifier(database)?,
+        sql_string(&label),
+    ))
+}
+
+pub(crate) fn find_doris_load_failure_details(
+    columns: &[String],
+    rows: &[Vec<String>],
+    job_id: &str,
+) -> Option<DorisLoadFailureDetails> {
+    rows.iter().find_map(|row| {
+        let values = row_map(columns, row);
+        (value(&values, &["job_id", "jobid", "id"]).as_deref() == Some(job_id))
+            .then(|| {
+                let details = DorisLoadFailureDetails {
+                    url: value(&values, &["url"]),
+                    error_msg: value(&values, &["error_msg", "errormsg", "errmsg"]),
+                    job_details: value(&values, &["job_details", "jobdetails"]),
+                };
+                (details.url.is_some()
+                    || details.error_msg.is_some()
+                    || details.job_details.is_some())
+                .then_some(details)
+            })
+            .flatten()
+    })
+}
+
+/// 按需查询 Routine Load 父作业的真实消费位点和当前子任务。
+///
+/// `information_schema.loads` 展示的是执行任务，父作业名只在其 `PROPERTIES.job_name`
+/// 中提供；没有该字段时不猜测标签格式，也不查询错误的作业。
+pub async fn load_routine_details(
+    client: &MySQLClient,
+    job: &LoadJob,
+) -> ApiResult<Option<RoutineLoadDetails>> {
+    let Some(database) = job.database.as_deref() else {
+        return Ok(None);
+    };
+    let Some(name) = routine_load_name(job) else {
+        return Ok(None);
+    };
+    let job_sql = format!(
+        "SHOW ALL ROUTINE LOAD FOR {}.{}",
+        quote_identifier(database)?,
+        quote_identifier(&name)?,
+    );
+    let (columns, rows) = client.query_raw(&job_sql).await?;
+    let Some(row) = rows.first() else {
+        return Ok(None);
+    };
+    let values = row_map(&columns, row);
+    let task_sql = format!(
+        "SHOW ROUTINE LOAD TASK FROM {} WHERE JobName = {}",
+        quote_identifier(database)?,
+        sql_string(&name),
+    );
+    let tasks = match client.query_raw(&task_sql).await {
+        Ok((columns, rows)) => rows
+            .iter()
+            .map(|row| parse_routine_load_task(&columns, row))
+            .collect(),
+        Err(error) => {
+            tracing::debug!(error = %error, "routine load tasks unavailable");
+            Vec::new()
+        },
+    };
+
+    Ok(Some(RoutineLoadDetails {
+        current_task_num: number(&values, &["current_task_num", "currenttasknum"])
+            .and_then(|value| u32::try_from(value).ok()),
+        statistics: value(&values, &["statistics", "statistic"]),
+        progress: value(&values, &["progress"]),
+        timestamp_progress: value(&values, &["timestamp_progress", "timestampprogress"]),
+        latest_source_position: value(&values, &["latest_source_position", "latestsourceposition"]),
+        offset_lag: value(&values, &["offset_lag", "offsetlag", "lag"]),
+        reason_of_state_changed: value(
+            &values,
+            &["reasons_of_state_changed", "reason_of_state_changed", "reasonofstatechanged"],
+        ),
+        error_log_urls: value(&values, &["error_log_urls", "errorlogurls"]),
+        tracking_sql: value(&values, &["tracking_sql", "trackingsql"]),
+        other_msg: value(&values, &["other_msg", "othermsg"]),
+        tasks,
+    }))
+}
+
+pub(crate) fn routine_load_name(job: &LoadJob) -> Option<String> {
+    let properties = serde_json::from_str::<serde_json::Value>(job.properties.as_deref()?).ok()?;
+    ["job_name", "jobName"]
+        .iter()
+        .find_map(|key| properties.get(key)?.as_str().map(ToOwned::to_owned))
+        .filter(|name| !name.trim().is_empty())
+}
+
+pub(crate) fn parse_routine_load_task(columns: &[String], row: &[String]) -> RoutineLoadTask {
+    let values = row_map(columns, row);
+    RoutineLoadTask {
+        task_id: value(&values, &["task_id", "taskid"]),
+        txn_id: value(&values, &["txn_id", "txnid"]),
+        txn_status: value(&values, &["txn_status", "txnstatus"]),
+        create_time: value(&values, &["create_time", "createtime"]),
+        last_scheduled_time: value(&values, &["last_scheduled_time", "lastscheduledtime"]),
+        execute_start_time: value(&values, &["execute_start_time", "executestarttime"]),
+        be_id: value(&values, &["be_id", "beid"]),
+        data_source_properties: value(&values, &["data_source_properties", "datasourceproperties"]),
+        message: value(&values, &["message"]),
     }
 }
 
@@ -392,8 +682,13 @@ fn add_stage(
     let Some(start_value) = start else { return };
     let Some(start_time) = parse_timestamp(start_value) else { return };
     let end_time = end.and_then(parse_timestamp);
-    let effective_end = end_time
-        .or_else(|| if is_terminal_state(state) { None } else { Some(Utc::now().naive_utc()) });
+    let effective_end = end_time.or_else(|| {
+        if is_terminal_state(state) {
+            None
+        } else {
+            Some(Utc::now().naive_utc())
+        }
+    });
     let Some(effective_end) = effective_end else { return };
     let duration_ms = effective_end
         .signed_duration_since(start_time)
@@ -531,6 +826,14 @@ fn validated_filter(value: Option<&str>, field: &str) -> ApiResult<Option<String
         return Err(ApiError::invalid_data(format!("{} 过滤条件过长", field)));
     }
     Ok(Some(value.to_string()))
+}
+
+fn validated_job_id(value: &str) -> ApiResult<String> {
+    let value = value.trim();
+    if value.is_empty() || value.parse::<u64>().is_err() {
+        return Err(ApiError::invalid_data("job_id 无效"));
+    }
+    Ok(value.to_string())
 }
 
 fn range_start(range: Option<&str>) -> ApiResult<Option<String>> {

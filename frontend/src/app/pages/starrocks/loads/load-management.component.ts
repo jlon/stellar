@@ -94,6 +94,7 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
   private readonly destroy$ = new Subject<void>();
   private detailDialogRef?: NbDialogRef<unknown>;
   private detailTrigger?: HTMLElement;
+  private readonly detailRequest$ = new Subject<void>();
   private sheetClosing = false;
 
   @ViewChild("detailDialog") private detailDialog?: TemplateRef<unknown>;
@@ -106,6 +107,7 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
   loading = false;
   errorMessage = "";
   lastUpdated: Date | null = null;
+  detailLoading = false;
 
   filters: {
     db: string;
@@ -208,6 +210,8 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.detailRequest$.next();
+    this.detailRequest$.complete();
     this.destroy$.next();
     this.destroy$.complete();
     this.detailDialogRef?.close();
@@ -309,7 +313,7 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
     this.captureDetailTrigger(rowIndex);
     this.selectedJob = job;
     const dialogRef = this.dialogService.open(template, {
-      autoFocus: true,
+      autoFocus: false,
       backdropClass: "side-sheet-backdrop",
       closeOnBackdropClick: false,
       closeOnEsc: false,
@@ -317,11 +321,21 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
       hasBackdrop: true,
       hasScroll: true,
     });
+    this.document.defaultView?.requestAnimationFrame(() => {
+      this.document
+        .querySelector<HTMLElement>(
+          ".cdk-overlay-pane.side-sheet .load-detail-sheet",
+        )
+        ?.focus({ preventScroll: true });
+    });
     this.detailDialogRef = dialogRef;
+    this.loadJobDetails(job);
     dialogRef.onBackdropClick.pipe(take(1)).subscribe(() => {
       this.closeDetails(dialogRef);
     });
     dialogRef.onClose.pipe(take(1)).subscribe(() => {
+      this.detailRequest$.next();
+      this.detailLoading = false;
       this.selectedJob = null;
       this.detailDialogRef = undefined;
       this.sheetClosing = false;
@@ -622,6 +636,35 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
         priority(left.state) - priority(right.state) ||
         (right.create_time || "").localeCompare(left.create_time || ""),
     );
+  }
+
+  private loadJobDetails(job: LoadJob): void {
+    if (!job.job_id) {
+      return;
+    }
+    this.detailRequest$.next();
+    this.detailLoading = true;
+    this.loadService
+      .get(job.job_id, job.database)
+      .pipe(
+        take(1),
+        takeUntil(this.detailRequest$),
+        timeout(20_000),
+        finalize(() => {
+          this.detailLoading = false;
+          this.cdr.markForCheck();
+        }),
+      )
+      .subscribe({
+        next: (details) => {
+          if (this.detailDialogRef && this.jobKey(this.selectedJob || job) === this.jobKey(job)) {
+            this.selectedJob = details;
+          }
+        },
+        error: () => {
+          // 详情查询失败时保留列表快照，避免遮挡用户已看到的失败信息。
+        },
+      });
   }
 
   private syncFiltersToUrl(): void {

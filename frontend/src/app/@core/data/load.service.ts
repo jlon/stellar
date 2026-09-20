@@ -17,6 +17,38 @@ export interface LoadFailureCause {
   suggestion: string;
 }
 
+export interface DorisLoadFailureDetails {
+  url?: string;
+  error_msg?: string;
+  job_details?: string;
+}
+
+export interface RoutineLoadTask {
+  task_id?: string;
+  txn_id?: string;
+  txn_status?: string;
+  create_time?: string;
+  last_scheduled_time?: string;
+  execute_start_time?: string;
+  be_id?: string;
+  data_source_properties?: string;
+  message?: string;
+}
+
+export interface RoutineLoadDetails {
+  current_task_num?: number;
+  statistics?: string;
+  progress?: string;
+  timestamp_progress?: string;
+  latest_source_position?: string;
+  offset_lag?: string;
+  reason_of_state_changed?: string;
+  error_log_urls?: string;
+  tracking_sql?: string;
+  other_msg?: string;
+  tasks: RoutineLoadTask[];
+}
+
 export interface LoadJob {
   job_id?: string;
   label?: string;
@@ -43,6 +75,8 @@ export interface LoadJob {
   rejected_record_path?: string;
   runtime_details?: string;
   properties?: string;
+  routine_load?: RoutineLoadDetails;
+  doris_failure?: DorisLoadFailureDetails;
   stage_timeline: LoadStage[];
   failure_cause?: LoadFailureCause;
 }
@@ -58,6 +92,7 @@ export interface LoadListResponse {
   items: LoadJob[];
   total: number;
   has_more: boolean;
+  next_cursor?: string;
   source: string;
   summary: LoadSummary;
 }
@@ -69,6 +104,7 @@ export interface LoadFilters {
   search?: string;
   range?: '24h' | '7d' | '30d' | 'all';
   limit?: number;
+  cursor?: string;
 }
 
 @Injectable({
@@ -86,6 +122,7 @@ export class LoadService {
     if (filters.type) params.type = filters.type;
     if (filters.state) params.state = filters.state;
     if (filters.search?.trim()) params.search = filters.search.trim();
+    if (filters.cursor) params.cursor = filters.cursor;
     return this.api.get<LoadListResponse>('/clusters/loads', params);
   }
 

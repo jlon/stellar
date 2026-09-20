@@ -1,7 +1,9 @@
 use crate::middleware::permission_extractor::extract_permission;
 use crate::models::LoadQueryParams;
 use crate::services::load_service::{
-    build_information_schema_query, build_stage_timeline, classify_failure, parse_load_job,
+    build_doris_load_failure_query, build_information_schema_query, build_stage_timeline,
+    build_starrocks_load_query, classify_failure, encode_load_cursor,
+    find_doris_load_failure_details, parse_load_job, parse_routine_load_task, routine_load_name,
 };
 
 #[test]
@@ -122,6 +124,38 @@ fn routine_loads_do_not_get_batch_timeline() {
 }
 
 #[test]
+fn routine_load_uses_its_confirmed_parent_name_and_task_columns() {
+    let job = parse_load_job(
+        &["Type".to_string(), "Properties".to_string()],
+        &["ROUTINE".to_string(), r#"{"job_name":"kafka_ingest"}"#.to_string()],
+        Some("sales"),
+    );
+    let task = parse_routine_load_task(
+        &[
+            "TaskId".to_string(),
+            "TxnId".to_string(),
+            "TxnStatus".to_string(),
+            "BeId".to_string(),
+            "DataSourceProperties".to_string(),
+            "Message".to_string(),
+        ],
+        &[
+            "task-1".to_string(),
+            "99".to_string(),
+            "COMMITTED".to_string(),
+            "10001".to_string(),
+            r#"Progress:{"0":42}"#.to_string(),
+            "running".to_string(),
+        ],
+    );
+
+    assert_eq!(routine_load_name(&job).as_deref(), Some("kafka_ingest"));
+    assert_eq!(task.txn_status.as_deref(), Some("COMMITTED"));
+    assert_eq!(task.be_id.as_deref(), Some("10001"));
+    assert_eq!(task.data_source_properties.as_deref(), Some(r#"Progress:{"0":42}"#));
+}
+
+#[test]
 fn load_query_escapes_literals_and_limits_rows() {
     let query = build_information_schema_query(
         &LoadQueryParams {
@@ -136,5 +170,81 @@ fn load_query_escapes_literals_and_limits_rows() {
 
     assert!(query.contains("DB_NAME = 'sales''o'"));
     assert!(query.contains("LIKE '%batch''1%'"));
-    assert!(query.ends_with("LIMIT 500"));
+    assert!(query.ends_with("LIMIT 501"));
+}
+
+#[test]
+fn starrocks_query_unions_history_and_uses_a_stable_cursor() {
+    let cursor = encode_load_cursor("2026-01-01 00:00:00", "42").unwrap();
+    let query = build_starrocks_load_query(
+        &LoadQueryParams {
+            cursor: Some(cursor),
+            range: Some("all".to_string()),
+            ..Default::default()
+        },
+        101,
+    )
+    .unwrap();
+
+    assert!(query.contains("FROM information_schema.loads"));
+    assert!(query.contains("FROM `_statistics_`.loads_history"));
+    assert!(query.contains(" UNION "));
+    assert!(query.contains("CREATE_TIME < '2026-01-01 00:00:00'"));
+    assert!(query.contains("CREATE_TIME = '2026-01-01 00:00:00' AND ID < 42"));
+    assert!(query.ends_with("ORDER BY create_time DESC, job_id DESC LIMIT 101"));
+}
+
+#[test]
+fn detail_query_uses_an_exact_numeric_job_id() {
+    let query = build_information_schema_query(
+        &LoadQueryParams { job_id: Some("42".to_string()), ..Default::default() },
+        501,
+    )
+    .unwrap();
+
+    assert!(query.contains(" AND ID = 42"));
+    assert!(!query.contains("CAST(ID AS CHAR) LIKE"));
+    assert!(build_information_schema_query(
+        &LoadQueryParams { job_id: Some("42 OR 1=1".to_string()), ..Default::default() },
+        1,
+    )
+    .is_err());
+}
+
+#[test]
+fn doris_failure_details_are_label_scoped_and_job_id_matched() {
+    let query = build_doris_load_failure_query("sales", "batch'o").unwrap();
+    let columns = vec![
+        "JobId".to_string(),
+        "URL".to_string(),
+        "ErrorMsg".to_string(),
+        "JobDetails".to_string(),
+    ];
+    let rows = vec![
+        vec![
+            "41".to_string(),
+            "https://errors/41".to_string(),
+            "other failure".to_string(),
+            "{\"id\":41}".to_string(),
+        ],
+        vec![
+            "42".to_string(),
+            "https://errors/42".to_string(),
+            "selected failure".to_string(),
+            "{\"id\":42}".to_string(),
+        ],
+    ];
+
+    let details = find_doris_load_failure_details(&columns, &rows, "42").unwrap();
+    assert_eq!(query, "SHOW LOAD FROM `sales` WHERE LABEL = 'batch''o'");
+    assert_eq!(details.url.as_deref(), Some("https://errors/42"));
+    assert_eq!(details.error_msg.as_deref(), Some("selected failure"));
+    assert_eq!(details.job_details.as_deref(), Some("{\"id\":42}"));
+    assert!(find_doris_load_failure_details(&columns, &rows, "404").is_none());
+    assert!(find_doris_load_failure_details(
+        &columns,
+        &[vec!["42".to_string(), "-".to_string(), "null".to_string(), "".to_string(),]],
+        "42",
+    )
+    .is_none());
 }
