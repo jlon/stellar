@@ -1,564 +1,110 @@
 # Stellar
 
-<div align="center">
+> 面向 StarRocks 与 Apache Doris 的 OLAP 集群运维平台。
 
-![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
-![License](https://img.shields.io/badge/license-Apache%202.0-blue)
-![Version](https://img.shields.io/badge/version-0.1.0-orange)
-![Rust](https://img.shields.io/badge/rust-1.75+-red)
-![Angular](https://img.shields.io/badge/angular-15+-red)
+Stellar 将集群、节点、查询、权限和审计集中到一个控制台，并提供 Query Profile 诊断、容量预测、告警通知和有人工确认的智能运维操作。
 
-**A modern, beautiful, and intelligent OLAP cluster management platform for StarRocks & Apache Doris**
+[快速体验](#快速体验) · [部署指南](docs/deploy/DEPLOYMENT_GUIDE.md) · [版本发布](https://github.com/jlon/stellar/releases) · [配置与运维](docs/deploy/DEPLOYMENT_GUIDE.md#配置说明) · [许可证](LICENSE)
 
-[Features](#features) • [Quick Start](#quick-start) • [Deployment](#deployment) • [API Documentation](#api-documentation) • [Contributing](#contributing)
+<p align="center">
+  <img src="docs/images/v2/集群概览.png" alt="Stellar 集群概览" width="100%">
+</p>
 
-[中文版](#中文版) | [English](#english)
+## 能做什么
 
-</div>
-
-## Introduction
-
-Stellar is a professional, enterprise-grade OLAP database cluster management platform that provides an intuitive web interface for managing and monitoring multiple **StarRocks** and **Apache Doris** clusters. Compared to native management interfaces, this platform offers richer functionality, unified management experience, and better user experience across different OLAP engines.
-
-### Core Features
-
-- **Multi-Engine Support** - Unified management for StarRocks and Apache Doris clusters
-- **One-Click Deployment** - Supports traditional deployment, Docker, and Kubernetes
-- **Real-time Monitoring** - View real-time cluster status and performance metrics
-- **Cluster Management** - Unified management of multiple StarRocks clusters
-- **Modern UI** - Modern interface based on Angular + Nebular
-- **Security Authentication** - JWT authentication and permission management
-- **Performance Analysis** - Query performance analysis and optimization suggestions
-
-## Quick Start
-
-### Method 1: One-Click Deployment (Recommended)
-
-```bash
-# 1. Clone the project
-git clone https://github.com/jlon/stellar.git
-cd stellar
-
-# 2. Build and package (production musl static single binary)
-make build
-
-# 3. Start the service
-cd build/dist
-./bin/stellar.sh start
-
-# 4. Access the application
-open http://localhost:9527
-```
-
-### Method 2: Docker Deployment (Recommended)
-
-```bash
-# Option 1: Use pre-built image from GHCR
-docker pull ghcr.io/jlon/stellar:latest
-docker run -d -p 9527:9527 --name stellar \
-  -v $(pwd)/data:/data \
-  ghcr.io/jlon/stellar:latest
-# 首次启动用 docker logs stellar 查看一次性管理员密码
-
-# Option 2: Build from source
-git clone https://github.com/jlon/stellar.git
-cd stellar
-export APP_JWT_SECRET="$(openssl rand -hex 32)"
-make docker-build  # Build Docker image
-make docker-up     # Start Docker container
-
-# Access the application
-open http://localhost:9527
-```
-
-### More Deployment Options
-
-For detailed deployment guides including Kubernetes YAML and Helm Chart deployment, see:
-📖 **[Deployment Guide](docs/deploy/DEPLOYMENT_GUIDE.md)**
-
-## Interface Preview
-
-Stellar provides an intuitive and beautiful web management interface covering all aspects of cluster management.
-
-### Cluster Management
-![Cluster Management](docs/images/1集群列表.png)
-Unified management of multiple StarRocks clusters with support for adding, editing, and deleting cluster configurations.
-
-### Cluster Overview
-![Cluster Overview](docs/images/2集群概览.png)
-Real-time display of overall cluster status, performance metrics, and resource usage for a comprehensive view of cluster health.
-
-![Cluster Overview Detail 1](docs/images/2集群概览1.png)
-Detailed cluster metrics and performance indicators.
-
-![Cluster Overview Detail 2](docs/images/2集群概览2.png)
-Resource usage and capacity planning insights.
-
-### Node Management - FE Nodes
-![FE Node Management](docs/images/3节点管理-fe.png)
-View and manage Frontend (FE) nodes, monitoring their running status and resource usage.
-
-### Node Management - BE Nodes
-![BE Node Management](docs/images/3.节点管理-be.png)
-View and manage Backend (BE) nodes with detailed performance metrics.
-
-### Query Management - Real-time Queries
-![Real-time Queries](docs/images/4查询管理-实时查询.png)
-Real-time view of executing queries with support for query termination and performance analysis.
-
-![Running Queries](docs/images/4查询管理-实时查询-运行中.png)
-Monitor actively running queries and their execution status.
-
-### Query Management - Audit Logs
-![Audit Logs](docs/images/4.查询管理-审计日志.png)
-Comprehensive audit logs for all executed queries with detailed metadata.
-
-### Query Management - Query Profiles
-![Query Profiles](docs/images/4查询管理-profiles.png)
-Detailed query execution profiles for performance analysis and optimization.
-
-![Query Profile Details](docs/images/4查询管理-profiles1.png)
-In-depth query performance metrics and execution plans.
-
-### Materialized Views
-![Materialized Views](docs/images/5.物化视图.png)
-View and manage all materialized views in the cluster, with support for enabling, disabling, and editing.
-
-![Materialized Views Detail](docs/images/5物化视图1.png)
-Detailed materialized view configuration and refresh status.
-
-### Feature Cards
-![Feature Cards](docs/images/6功能卡片.png)
-Quick access to system functions with support for custom SQL execution and common operations.
-
-### Session Management
-![Session Management](docs/images/7会话管理.png)
-Manage database connection sessions, view active sessions and historical connection information.
-
-### Variable Management
-![Variable Management](docs/images/8变量管理.png)
-Configure and manage system variables with support for viewing and modifying runtime parameters.
-
-### System Management - User Management
-![User Management](docs/images/10系统管理-用户管理.png)
-Manage system users, roles, and permissions with fine-grained access control.
-
-### System Management - Organization Management
-![Organization Management](docs/images/10系统管理-组织管理.png)
-Multi-tenant organization management for enterprise deployments.
-
-### System Management - Role Management
-![Role Management](docs/images/10系统管理-角色管理.png)
-Define and manage user roles with customizable permission sets.
-
-## Configuration
-
-### Database Backend (SQLite / MySQL / PostgreSQL)
-
-Stellar stores its own metadata in SQLite (zero-configuration), MySQL/MariaDB, or PostgreSQL. The backend is selected **at runtime** by the URL scheme — no rebuild needed.
-
-**Switch to MySQL** (3 steps):
-
-```bash
-# 1. Create the database (table schema is created automatically by migrations on startup;
-#    you do NOT need to create any tables manually)
-mysql -u root -p -e "CREATE DATABASE stellar CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
-
-# 2. Point the URL to it in conf/config.toml
-[database]
-url = "mysql://user:pass@localhost:3306/stellar?charset=utf8mb4"
-
-# 3. Start the service. The MySQL migrations embedded in the binary run on first
-#    connect and build the full schema; a friendly error is shown if the database is missing.
-```
-
-Environment variable override also works: `APP_DATABASE_URL="mysql://..."`
-
-**Switch to PostgreSQL** (3 steps):
-
-```bash
-# 1. Create the database (tables are created automatically by startup migrations)
-createdb -h localhost -U postgres stellar
-
-# 2. Point the URL to it in conf/config.toml
-[database]
-url = "postgres://user:pass@localhost:5432/stellar"
-
-# 3. Start the service. The PostgreSQL migrations embedded in the binary run on first
-#    connect and build the full schema. Database names must be created first; a missing
-#    database produces a clear error.
-```
-
-`postgresql://...` is accepted as an alias. The same environment override applies: `APP_DATABASE_URL="postgres://..."`.
-
-**Schema changes (DDL)**：
-
-- 每个后端只有**一个** DDL 文件（`backend/migrations/<backend>/00000000_initial_schema.sql`），
-  在**编译期嵌入二进制**（`sqlx::migrate!`）。启动时自动执行；已应用版本记录在 `_sqlx_migrations`。
-- 面向全新集群：该文件即完整 schema 与种子数据，一次执行即可建库（历史增量已按原顺序内联）。
-- 改 schema 直接编辑该文件（不再新增迁移文件）。历史上 ADD COLUMN 已折回建表语句；新列请直接写进对应的
-  `CREATE TABLE`。三个方言目录必须同步。
-  **改完必须重新构建二进制**（发行包不携带迁移文件）。
-- **旧库不可原地升级**：历史版本记录已随文件删除，迁移器会以
-  `... was previously applied but is missing in the resolved migrations` 明确拒绝启动（不会静默跳过、
-  也不会半执行）；请重建数据库后重新导入配置。
-- 方言差异（`AUTO_INCREMENT` / `AUTOINCREMENT` / `BIGSERIAL`+`RETURNING` 等）见
-  `docs/MYSQL_SUPPORT_DESIGN.md` 的方言清单。
-
-> 注意：合并前 MySQL / PostgreSQL 侧存在从未跑通的语句（MySQL 保留字 `read`、自更新子查询 1093、
-> TEXT 列做索引键、PostgreSQL 目录里的 MySQL 语法等），已在合并时修复并由真实数据库验证。
-
-### StarRocks User Permissions (Important)
-
-**Before adding a cluster**, you need to create a dedicated monitoring user with appropriate read-only permissions in StarRocks.
-
-```bash
-# Execute the permission setup script
-cd scripts
-mysql -h <fe_host> -P 9030 -u root -p < setup_stellar_role.sql
-
-# Verify permissions
-mysql -h <fe_host> -P 9030 -u starrocks_monitor -p < verify_permissions.sql
-```
-
-For detailed permission configuration guide, see [scripts/permissions/README_PERMISSIONS.md](scripts/permissions/README_PERMISSIONS.md)
-
-**Security Note:** Do NOT use the `root` account in production. Always create a dedicated monitoring user with minimal required permissions.
-
-### Main Configuration File (conf/config.toml)
-
-```toml
-[server]
-host = "0.0.0.0"
-port = 9527
-
-[database]
-# SQLite (default, zero-configuration)
-url = "sqlite://data/stellar.db"
-# MySQL (alternative): url = "mysql://user:pass@localhost:3306/stellar?charset=utf8mb4"
-# PostgreSQL (alternative): url = "postgres://user:pass@localhost:5432/stellar"
-# The backend is selected at runtime by the URL scheme (sqlite:// / mysql:// / postgres://).
-# Migrations are embedded into the binary at compile time and run automatically.
-
-[auth]
-jwt_secret = "your-secret-key-change-in-production"
-jwt_expires_in = "24h"
-
-[logging]
-level = "info,stellar_backend=debug"
-file = "logs/stellar.log"
-
-[static_config]
-enabled = true
-web_root = "web"
-
-# Metrics collector configuration
-[metrics]
-interval_secs = "30s"   
-retention_days = "7d"  
-enabled = true          
-
-# Audit log configuration
-[audit]
-database = "starrocks_audit_db__"
-table = "starrocks_audit_tbl__"
-```
-
-For detailed audit log configuration options, see [Audit Log Configuration Guide](docs/AUDIT_LOG_CONFIG.md).
-
-## Release Notes
-
-See [CHANGELOG.md](CHANGELOG.md) for detailed release notes and version history.
-
-## Contributing
-
-We welcome all forms of contributions! Please follow these steps:
-
-1. **Fork the project**
-2. **Create a feature branch** (`git checkout -b feature/AmazingFeature`)
-3. **Commit your changes** (`git commit -m 'Add some AmazingFeature'`)
-4. **Push to the branch** (`git push origin feature/AmazingFeature`)
-5. **Create a Pull Request**
-
-## License
-
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- [ngx-admin](https://github.com/John/ngx-admin) - Excellent Angular admin template
-- [Nebular](https://John.github.io/nebular/) - Beautiful UI component library
-- [Axum](https://github.com/tokio-rs/axum) - Powerful Rust web framework
-- [StarRocks](https://www.starrocks.io/) - High-performance analytical database
-- [Apache Doris](https://doris.apache.org/) - Modern OLAP database
-
-## Contact & Support
-
-If you have any questions or issues, please feel free to contact me:
-
-📧 Email: **itjlon@gmail.com**
-
----
-[↑ Back to Top](#stellar)
----
-
-# 中文版
-
-<div align="center">
-
-**一个现代化、美观、智能的 OLAP 集群管理平台,支持 StarRocks 和 Apache Doris**
-
-[功能特性](#功能特性) • [快速开始](#快速开始) • [部署指南](#部署指南) • [API 文档](#api-文档) • [贡献](#贡献)
-
-[English](#english) | [中文版](#中文版)
-
-</div>
-
-## 简介
-
-Stellar 是一个专业的、企业级的 OLAP 数据库集群管理平台，提供直观的 Web 界面来管理和监控多个 **StarRocks** 和 **Apache Doris** 集群。相比原生管理界面，本平台提供了更丰富的功能、统一的管理体验和更好的用户体验。
-
-### 核心特性
-
-- **多引擎支持** - 统一管理 StarRocks 和 Apache Doris 集群
-- **一键部署** - 支持传统部署、Docker 和 Kubernetes
-- **实时监控** - 查看集群的实时状态和性能指标
-- **集群管理** - 统一管理多个 StarRocks 集群
-- **现代 UI** - 基于 Angular + Nebular 的现代化界面
-- **安全认证** - JWT 认证和权限管理
-- **性能分析** - 查询性能分析和优化建议
-
-## 快速开始
-
-### 方式一：一键部署（推荐）
-
-```bash
-# 1. 克隆项目
-git clone https://github.com/jlon/stellar.git
-cd stellar
-
-# 2. 构建和打包（生产发布：musl 全静态单二进制）
-make build
-
-# 3. 启动服务
-cd build/dist
-./bin/stellar.sh start
-
-# 4. 访问应用
-open http://localhost:9527
-```
-
-### 方式二：Docker 部署（推荐）
-
-```bash
-# 方式1: 使用 GHCR 预构建镜像
-docker pull ghcr.io/jlon/stellar:latest
-docker run -d -p 9527:9527 --name stellar \
-  -v $(pwd)/data:/data \
-  ghcr.io/jlon/stellar:latest
-# 首次启动用 docker logs stellar 查看一次性管理员密码
-
-# 方式2: 从源码构建
-git clone https://github.com/jlon/stellar.git
-cd stellar
-export APP_JWT_SECRET="$(openssl rand -hex 32)"
-make docker-build  # 构建 Docker 镜像
-make docker-up     # 启动 Docker 容器
-
-# 访问应用
-open http://localhost:9527
-```
-
-### 更多部署方式
-
-完整的部署指南（包括 Kubernetes YAML 部署和 Helm Chart 部署），请参阅：
-📖 **[详细部署指南](docs/deploy/DEPLOYMENT_GUIDE.md)**
+| 能力 | 说明 |
+| --- | --- |
+| 多集群运维 | 统一管理 StarRocks 与 Doris 集群，查看 FE、BE/CN 节点状态、资源指标和容量趋势。 |
+| 查询诊断 | 提供实时查询、SQL 工作台、审计日志与 Query Profile 可视化，定位执行瓶颈并给出诊断建议。 |
+| 受控智能运维 | 基于真实集群数据完成取证、诊断和容量预测；执行动作需要人工确认，并保留审计记录。 |
+| 安全与治理 | 支持组织、用户、角色、资源组、权限申请和操作审计，适用于多团队协作。 |
 
 ## 界面预览
 
-Stellar 提供了直观、美观的 Web 管理界面，涵盖集群管理的各个方面。
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/v2/智能运维助手.png" alt="智能运维助手"><br><b>智能运维助手</b><br>基于集群证据回答问题，生成可审计的建议与受控操作。</td>
+    <td width="50%"><img src="docs/images/v2/profile可视化.png" alt="Query Profile 诊断"><br><b>Query Profile 诊断</b><br>在执行 DAG 中定位瓶颈，并展示根因链路和优化建议。</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/v2/实时查询.png" alt="SQL 工作台"><br><b>SQL 工作台</b><br>浏览 Catalog，执行 SQL，查看结果、图表与历史记录。</td>
+    <td width="50%"><img src="docs/images/v2/权限管理.png" alt="权限管理"><br><b>权限与审计</b><br>按组织和角色管理访问范围，记录关键操作。</td>
+  </tr>
+</table>
 
-### 集群管理
-![集群管理](docs/images/1集群列表.png)
-统一管理多个 StarRocks 集群，支持添加、编辑、删除集群配置。
+## 快速体验
 
-### 集群概览
-![集群概览](docs/images/2集群概览.png)
-实时展示集群整体状态、性能指标和资源使用情况，一目了然掌握集群健康状态。
-
-![集群概览详情1](docs/images/2集群概览1.png)
-详细的集群指标和性能监控数据。
-
-![集群概览详情2](docs/images/2集群概览2.png)
-资源使用情况和容量规划建议。
-
-### 节点管理 - FE 节点
-![FE节点管理](docs/images/3节点管理-fe.png)
-查看和管理前端（FE）节点，监控节点运行状态和资源使用。
-
-### 节点管理 - BE 节点
-![BE节点管理](docs/images/3.节点管理-be.png)
-查看和管理后端（BE）节点，包含详细的性能指标。
-
-### 查询管理 - 实时查询
-![实时查询](docs/images/4查询管理-实时查询.png)
-实时查看正在执行的查询，支持查询终止和性能分析。
-
-![运行中查询](docs/images/4查询管理-实时查询-运行中.png)
-监控活跃查询及其执行状态。
-
-### 查询管理 - 审计日志
-![审计日志](docs/images/4.查询管理-审计日志.png)
-完整的查询审计日志，包含详细的元数据信息。
-
-### 查询管理 - Query Profile
-![查询Profiles](docs/images/4查询管理-profiles.png)
-详细的查询执行Profile，用于性能分析和优化。
-
-![Profile详情](docs/images/4查询管理-profiles1.png)
-深入的查询性能指标和执行计划。
-
-### 物化视图
-![物化视图](docs/images/5.物化视图.png)
-查看和管理集群中的所有物化视图，支持开启、关闭、编辑等操作。
-
-![物化视图详情](docs/images/5物化视图1.png)
-详细的物化视图配置和刷新状态。
-
-### 功能卡片
-![功能卡片](docs/images/6功能卡片.png)
-快速访问系统功能，支持自定义SQL执行和常用操作。
-
-### 会话管理
-![会话管理](docs/images/7会话管理.png)
-管理数据库连接会话，查看活跃会话和历史连接信息。
-
-### 变量管理
-![变量管理](docs/images/8变量管理.png)
-配置和管理系统变量，支持查看和修改运行时参数。
-
-### 系统管理 - 用户管理
-![用户管理](docs/images/10系统管理-用户管理.png)
-管理系统用户、角色和权限，实现细粒度的访问控制。
-
-### 系统管理 - 组织管理
-![组织管理](docs/images/10系统管理-组织管理.png)
-多租户组织管理，适用于企业级部署场景。
-
-### 系统管理 - 角色管理
-![角色管理](docs/images/10系统管理-角色管理.png)
-定义和管理用户角色，配置可自定义的权限集。
-
-## 配置说明
-
-### StarRocks 用户权限配置(重要)
-
-**在添加集群之前**,需要在 StarRocks 中创建专用的监控用户并授予适当的只读权限。
+最简单的方式是启动 Docker 镜像。首次启动会为 `admin` 生成一次性密码，登录后请立即修改。
 
 ```bash
-# 执行权限配置脚本
-cd scripts
-mysql -h <fe_host> -P 9030 -u root -p < setup_stellar_role.sql
+docker run -d \
+  --name stellar \
+  --restart unless-stopped \
+  -p 9527:9527 \
+  -v "$(pwd)/stellar-data:/data" \
+  ghcr.io/jlon/stellar:latest
 
-# 验证权限配置
-mysql -h <fe_host> -P 9030 -u starrocks_monitor -p < verify_permissions.sql
+docker logs stellar 2>&1 | grep 'password:'
 ```
 
-详细的权限配置指南请参考 [scripts/permissions/README_PERMISSIONS.md](scripts/permissions/README_PERMISSIONS.md)
+打开 `http://localhost:9527`，使用 `admin` 和日志中的一次性密码登录。
 
-**安全提示:** 生产环境禁止使用 `root` 账号，务必创建专用的监控账号并遵循最小权限原则。
+生产部署、DEB 包、静态二进制、Docker Compose、Kubernetes、数据目录和升级方式见[部署指南](docs/deploy/DEPLOYMENT_GUIDE.md)。
 
-### 主配置文件 (conf/config.toml)
+## 从源码开发
 
-```toml
-[server]
-host = "0.0.0.0"
-port = 9527
+环境要求：Rust 1.75+、Node.js 与 npm、Docker（仅 Docker 开发时需要）。
 
-[database]
-# SQLite (default, zero-configuration)
-url = "sqlite://data/stellar.db"
-# MySQL (alternative): url = "mysql://user:pass@localhost:3306/stellar?charset=utf8mb4"
-# PostgreSQL (alternative): url = "postgres://user:pass@localhost:5432/stellar"
-# The backend is selected at runtime by the URL scheme (sqlite:// / mysql:// / postgres://).
-# Migrations are embedded into the binary at compile time and run automatically.
+```bash
+git clone https://github.com/jlon/stellar.git
+cd stellar
 
-[auth]
-jwt_secret = "your-secret-key-change-in-production"
-jwt_expires_in = "24h"
+# 终端一：后端开发服务
+make dev-backend
 
-[logging]
-level = "info,stellar_backend=debug"
-file = "logs/stellar.log"
-
-[static_config]
-enabled = true
-web_root = "web"
-
-# Metrics collector configuration
-# 支持人类可读格式："30s"、"5m"、"1h"；保留期支持："7d"、"2w"
-[metrics]
-interval_secs = "30s"    # 采集间隔，默认30秒
-retention_days = "7d"    # 数据保留时长，默认7天
-enabled = true            # 是否启用采集
-
-# Audit log configuration
-[audit]
-database = "starrocks_audit_db__"
-table = "starrocks_audit_tbl__"
+# 终端二：前端开发服务
+make dev-frontend
 ```
 
-- 环境变量覆盖示例：
+前端开发地址为 `http://localhost:4200`。发布静态二进制及 DEB/npm 包使用：
+
+```bash
+make build
 ```
-APP_METRICS_INTERVAL_SECS=1m \
-APP_METRICS_RETENTION_DAYS=14d \
-APP_METRICS_ENABLED=true \
+
+完整发布流程见 [发布流程](docs/RELEASE_PROCESS.md)；可用命令见 [Makefile](Makefile)。
+
+## 添加集群前的准备
+
+请为被管理的 StarRocks 或 Doris 集群创建最小权限的监控账号，不要使用 `root`。StarRocks 可直接执行仓库提供的初始化脚本：
+
+```bash
+mysql -h <fe_host> -P 9030 -u root -p \
+  < scripts/permissions/setup_stellar_role.sql
 ```
 
-## 版本发布说明
+详细权限范围和验证方式见 [权限脚本说明](scripts/permissions/README_PERMISSIONS.md)。
 
-查看 [CHANGELOG.md](CHANGELOG.md) 了解详细的版本发布说明和历史记录。
+## 技术栈
 
-## 贡献
+- 后端：Rust、Axum、SQLx；平台元数据可使用 SQLite、MySQL/MariaDB 或 PostgreSQL。
+- 前端：Angular、Nebular、ECharts。
+- 发布：musl 全静态二进制、Docker、Kubernetes 与 Debian 包。
 
-我们欢迎所有形式的贡献！请遵循以下步骤：
+## 文档与参与
 
-1. **Fork 项目**
-2. **创建特性分支** (`git checkout -b feature/AmazingFeature`)
-3. **提交更改** (`git commit -m 'Add some AmazingFeature'`)
-4. **推送分支** (`git push origin feature/AmazingFeature`)
-5. **创建 Pull Request**
+- [部署指南](docs/deploy/DEPLOYMENT_GUIDE.md)
+- [Query Profile 诊断设计](docs/profile/profile-diagnostic-system-review.md)
+- [智能运维设计](docs/agent/ops-agent-design.md)
+- [更新记录](CHANGELOG.md)
+- [提交 Pull Request](https://github.com/jlon/stellar/pulls)
 
-## 许可证
+提交问题或改进建议请使用 [GitHub Issues](https://github.com/jlon/stellar/issues)。提交代码前，请运行对应模块的测试与 lint。
 
-本项目采用 Apache License 2.0 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
+## License
 
-## 致谢
-
-- [ngx-admin](https://github.com/John/ngx-admin) - 优秀的 Angular 管理模板
-- [Nebular](https://John.github.io/nebular/) - 漂亮的 UI 组件库
-- [Axum](https://github.com/tokio-rs/axum) - 强大的 Rust Web 框架
-- [StarRocks](https://www.starrocks.io/) - 高性能分析数据库
-- [Apache Doris](https://doris.apache.org/) - 现代化 OLAP 数据库
-
-## 联系方式与支持
-
-如有任何问题或疑问，欢迎通过邮件联系我：
-
-📧 邮箱：**itjlon@gmail.com**
-
-## 捐赠支持
-
-<div align="center">
-
-![捐赠二维码](docs/images/wx.png)
-
-**您的捐赠将帮助我持续开源更新，非常感谢。**
+Stellar 使用 [Apache License 2.0](LICENSE) 发布。
 
 ---
 
-**Made with ❤️ for StarRocks Community**
-
-[↑ 回到顶部](#stellar)
-
-</div>
+<sub>English: Stellar is an operations control plane for StarRocks and Apache Doris. It unifies cluster observability, query diagnostics, governance, and human-approved AI-assisted operations.</sub>
