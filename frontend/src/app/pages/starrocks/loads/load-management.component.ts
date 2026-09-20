@@ -40,7 +40,9 @@ import { ActivatedRoute, Router } from "@angular/router";
 import { ClusterContextService } from "../../../@core/data/cluster-context.service";
 import { Cluster } from "../../../@core/data/cluster.service";
 import { LoadJob, LoadService } from "../../../@core/data/load.service";
-import { NodeService } from "../../../@core/data/node.service";
+import { NodeService, TableInfo } from "../../../@core/data/node.service";
+import { ConfirmDialogService } from "../../../@core/services/confirm-dialog.service";
+import { HasPermissionDirective } from "../../../@core/directives/has-permission.directive";
 import { ErrorHandler } from "../../../@core/utils/error-handler";
 import { assignTableRows } from "../../../@core/utils/table-rows";
 
@@ -54,6 +56,13 @@ interface LoadTableRow {
   filtered: string;
   createdAt: string;
   job: LoadJob;
+}
+
+interface InsertSelectForm {
+  sourceDatabase: string;
+  sourceTable: string;
+  targetDatabase: string;
+  targetTable: string;
 }
 
 @Component({
@@ -76,6 +85,7 @@ interface LoadTableRow {
     NbSelectModule,
     NbSpinnerModule,
     NbTooltipModule,
+    HasPermissionDirective,
     Angular2SmartTableModule,
   ],
 })
@@ -87,17 +97,21 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
   private readonly loadService = inject(LoadService);
   private readonly nodeService = inject(NodeService);
   private readonly dialogService = inject(NbDialogService);
+  private readonly confirmDialogService = inject(ConfirmDialogService);
   private readonly toastrService = inject(NbToastrService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly destroy$ = new Subject<void>();
   private detailDialogRef?: NbDialogRef<unknown>;
+  private createDialogRef?: NbDialogRef<unknown>;
+  private readonly createTableRequestIds = { source: 0, target: 0 };
   private detailTrigger?: HTMLElement;
   private readonly detailRequest$ = new Subject<void>();
   private sheetClosing = false;
 
   @ViewChild("detailDialog") private detailDialog?: TemplateRef<unknown>;
+  @ViewChild("createDialog") private createDialog?: TemplateRef<unknown>;
 
   source = new LocalDataSource();
   activeCluster: Cluster | null = null;
@@ -108,6 +122,18 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
   errorMessage = "";
   lastUpdated: Date | null = null;
   detailLoading = false;
+  createSubmitting = false;
+  createErrorMessage = "";
+  sourceTables: TableInfo[] = [];
+  targetTables: TableInfo[] = [];
+  sourceTablesLoading = false;
+  targetTablesLoading = false;
+  createForm: InsertSelectForm = {
+    sourceDatabase: "",
+    sourceTable: "",
+    targetDatabase: "",
+    targetTable: "",
+  };
 
   filters: {
     db: string;
@@ -215,6 +241,7 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
     this.destroy$.next();
     this.destroy$.complete();
     this.detailDialogRef?.close();
+    this.createDialogRef?.close();
   }
 
   loadDatabases(): void {
@@ -233,6 +260,187 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
           this.cdr.markForCheck();
         },
       });
+  }
+
+  openCreateLoad(): void {
+    const template = this.createDialog;
+    if (!template || !this.activeCluster) {
+      return;
+    }
+
+    const database = this.databases.includes(this.filters.db)
+      ? this.filters.db
+      : this.databases[0] || "";
+    this.createForm = {
+      sourceDatabase: database,
+      sourceTable: "",
+      targetDatabase: database,
+      targetTable: "",
+    };
+    this.sourceTables = [];
+    this.targetTables = [];
+    this.createErrorMessage = "";
+    this.createSubmitting = false;
+
+    const dialogRef = this.dialogService.open(template, {
+      autoFocus: false,
+      closeOnBackdropClick: true,
+      closeOnEsc: true,
+      hasBackdrop: true,
+    });
+    this.createDialogRef = dialogRef;
+    dialogRef.onClose.pipe(take(1)).subscribe(() => {
+      this.createDialogRef = undefined;
+      this.createSubmitting = false;
+      this.cdr.markForCheck();
+    });
+
+    this.loadCreateTables("source");
+    this.loadCreateTables("target");
+  }
+
+  onCreateDatabaseChange(kind: "source" | "target"): void {
+    if (kind === "source") {
+      this.createForm.sourceTable = "";
+    } else {
+      this.createForm.targetTable = "";
+    }
+    this.loadCreateTables(kind);
+  }
+
+  buildInsertSelectSql(): string {
+    if (!this.isCreateFormValid()) {
+      return "";
+    }
+
+    return [
+      `INSERT INTO ${this.quoteIdentifier(this.createForm.targetDatabase)}.${this.quoteIdentifier(this.createForm.targetTable)}`,
+      `SELECT * FROM ${this.quoteIdentifier(this.createForm.sourceDatabase)}.${this.quoteIdentifier(this.createForm.sourceTable)}`,
+    ].join("\n");
+  }
+
+  submitCreateLoad(ref: NbDialogRef<unknown>): void {
+    const sql = this.buildInsertSelectSql();
+    if (!sql || this.createSubmitting) {
+      return;
+    }
+
+    const source = `${this.createForm.sourceDatabase}.${this.createForm.sourceTable}`;
+    const target = `${this.createForm.targetDatabase}.${this.createForm.targetTable}`;
+    this.confirmDialogService
+      .confirm(
+        "确认提交导入任务",
+        `将提交从源表 ${source} 读取全部行、向目标表 ${target} 追加的 INSERT INTO ... SELECT 语句。目标表已有数据会保留，实际结果由引擎和表约束决定，是否继续？`,
+        "提交导入",
+        "取消",
+        "primary",
+      )
+      .pipe(take(1))
+      .subscribe((confirmed) => {
+        if (!confirmed) {
+          return;
+        }
+
+        this.createSubmitting = true;
+        this.createErrorMessage = "";
+        this.cdr.markForCheck();
+        this.nodeService
+          .executeSQL(sql, undefined, undefined, this.createForm.targetDatabase, true)
+          .pipe(
+            take(1),
+            timeout(650_000),
+            finalize(() => {
+              this.createSubmitting = false;
+              this.cdr.markForCheck();
+            }),
+          )
+          .subscribe({
+            next: (response) => {
+              const result = response.results?.[0];
+              if (!result?.success) {
+                this.createErrorMessage = result?.error || "导入任务提交失败";
+                this.cdr.markForCheck();
+                return;
+              }
+
+              ref.close();
+              this.filters.db = this.createForm.targetDatabase;
+              this.syncFiltersToUrl();
+              this.toastrService.success("导入任务已提交", "成功");
+              this.loadJobs();
+            },
+            error: (error) => {
+              this.createErrorMessage = ErrorHandler.extractErrorMessage(error);
+              this.cdr.markForCheck();
+            },
+          });
+      });
+  }
+
+  isCreateFormValid(): boolean {
+    const { sourceDatabase, sourceTable, targetDatabase, targetTable } = this.createForm;
+    if (![sourceDatabase, sourceTable, targetDatabase, targetTable].every((value) => value.trim())) {
+      return false;
+    }
+    return !(
+      sourceDatabase.trim().toLowerCase() === targetDatabase.trim().toLowerCase() &&
+      sourceTable.trim().toLowerCase() === targetTable.trim().toLowerCase()
+    );
+  }
+
+  private loadCreateTables(kind: "source" | "target"): void {
+    const requestId = ++this.createTableRequestIds[kind];
+    const database = kind === "source"
+      ? this.createForm.sourceDatabase
+      : this.createForm.targetDatabase;
+    if (!database) {
+      if (kind === "source") this.sourceTables = [];
+      else this.targetTables = [];
+      this.cdr.markForCheck();
+      return;
+    }
+
+    this.createErrorMessage = "";
+    if (kind === "source") this.sourceTablesLoading = true;
+    else this.targetTablesLoading = true;
+    this.nodeService
+      .getTables(undefined, database)
+      .pipe(
+        take(1),
+        timeout(20_000),
+        finalize(() => {
+          if (requestId !== this.createTableRequestIds[kind]) {
+            return;
+          }
+          if (kind === "source") this.sourceTablesLoading = false;
+          else this.targetTablesLoading = false;
+          this.cdr.markForCheck();
+        }),
+      )
+      .subscribe({
+        next: (tables) => {
+          if (requestId !== this.createTableRequestIds[kind]) {
+            return;
+          }
+          const normalTables = tables.filter((table) => table.object_type === "TABLE");
+          if (kind === "source") this.sourceTables = normalTables;
+          else this.targetTables = normalTables;
+          this.cdr.markForCheck();
+        },
+        error: (error) => {
+          if (requestId !== this.createTableRequestIds[kind]) {
+            return;
+          }
+          if (kind === "source") this.sourceTables = [];
+          else this.targetTables = [];
+          this.createErrorMessage = `无法加载${kind === "source" ? "源" : "目标"}表：${ErrorHandler.extractErrorMessage(error)}`;
+          this.cdr.markForCheck();
+        },
+      });
+  }
+
+  private quoteIdentifier(value: string): string {
+    return `\`${value.trim().replace(/`/g, "``")}\``;
   }
 
   loadJobs(): void {

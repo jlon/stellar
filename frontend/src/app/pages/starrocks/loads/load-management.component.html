@@ -6,17 +6,31 @@
       nbSpinnerMessage="加载中"
     >
       <nb-card-header>
-        <div class="d-flex justify-content-between align-items-center">
-          <div>
-            <h6 class="mb-1">导入任务</h6>
-            <small class="text-hint d-none d-sm-inline"
-              >当前筛选范围内的任务态势</small
-            >
-          </div>
-          <div class="d-flex align-items-center gap-2">
-            <small class="text-hint d-none d-sm-inline">{{
-              rangeLabel()
-            }}</small>
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <h6 class="mb-1">导入任务</h6>
+              <small class="text-hint d-none d-sm-inline"
+                >当前筛选范围内的任务态势</small
+              >
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <button
+                nbButton
+                size="small"
+                status="primary"
+                *ngxHasPermission="'api:clusters:queries:execute'"
+                (click)="openCreateLoad()"
+                [disabled]="!activeCluster"
+                nbTooltip="新增导入任务"
+                title="新增导入任务"
+                aria-label="新增导入任务"
+              >
+                <nb-icon icon="plus-outline"></nb-icon>
+                <span class="d-none d-sm-inline">新增导入任务</span>
+              </button>
+              <small class="text-hint d-none d-sm-inline">{{
+                rangeLabel()
+              }}</small>
             @if (lastUpdated) {
               <small class="text-hint"
                 >更新 {{ lastUpdated | date: "HH:mm" }}</small
@@ -690,5 +704,149 @@
         }
       }
     </nb-card-body>
+  </nb-card>
+</ng-template>
+
+<ng-template #createDialog let-ref="dialogRef">
+  <nb-card class="load-create-dialog">
+    <nb-card-header>
+      <div class="d-flex justify-content-between align-items-center gap-3">
+        <div>
+          <h6 class="mb-1">新增导入任务</h6>
+          <small class="text-hint">从源表全量写入目标表，提交后由引擎执行</small>
+        </div>
+        <button
+          nbButton
+          ghost
+          size="small"
+          status="basic"
+          (click)="ref.close()"
+          [disabled]="createSubmitting"
+          nbTooltip="关闭"
+          title="关闭"
+          aria-label="关闭新增导入任务"
+        >
+          <nb-icon icon="close-outline"></nb-icon>
+        </button>
+      </div>
+    </nb-card-header>
+
+    <nb-card-body>
+      @if (createErrorMessage) {
+        <nb-alert class="mb-3" status="danger">
+          {{ createErrorMessage }}
+        </nb-alert>
+      }
+
+      <nb-alert class="mb-3" status="info">
+        这是表间导入：不会删除目标表已有数据。文件、对象存储和 Routine Load 请在 SQL 工作台按引擎语法提交。
+      </nb-alert>
+
+      <div class="row">
+        <div class="col-12 col-md-6 mb-3">
+          <label class="label d-block mb-2" for="load-source-database">源数据库</label>
+          <nb-select
+            id="load-source-database"
+            fullWidth
+            size="small"
+            [(selected)]="createForm.sourceDatabase"
+            (selectedChange)="onCreateDatabaseChange('source')"
+            [disabled]="createSubmitting"
+            placeholder="选择源数据库"
+          >
+            @for (database of databases; track database) {
+              <nb-option [value]="database">{{ database }}</nb-option>
+            }
+          </nb-select>
+        </div>
+
+        <div class="col-12 col-md-6 mb-3">
+          <label class="label d-block mb-2" for="load-source-table">源表</label>
+          <nb-select
+            id="load-source-table"
+            fullWidth
+            size="small"
+            [(selected)]="createForm.sourceTable"
+            [disabled]="createSubmitting || sourceTablesLoading || !createForm.sourceDatabase"
+            placeholder="选择源表"
+          >
+            @for (table of sourceTables; track table.name) {
+              <nb-option [value]="table.name">{{ table.name }}</nb-option>
+            }
+          </nb-select>
+        </div>
+
+        <div class="col-12 col-md-6 mb-3">
+          <label class="label d-block mb-2" for="load-target-database">目标数据库</label>
+          <nb-select
+            id="load-target-database"
+            fullWidth
+            size="small"
+            [(selected)]="createForm.targetDatabase"
+            (selectedChange)="onCreateDatabaseChange('target')"
+            [disabled]="createSubmitting"
+            placeholder="选择目标数据库"
+          >
+            @for (database of databases; track database) {
+              <nb-option [value]="database">{{ database }}</nb-option>
+            }
+          </nb-select>
+        </div>
+
+        <div class="col-12 col-md-6 mb-3">
+          <label class="label d-block mb-2" for="load-target-table">目标表</label>
+          <nb-select
+            id="load-target-table"
+            fullWidth
+            size="small"
+            [(selected)]="createForm.targetTable"
+            [disabled]="createSubmitting || targetTablesLoading || !createForm.targetDatabase"
+            placeholder="选择目标表"
+          >
+            @for (table of targetTables; track table.name) {
+              <nb-option [value]="table.name">{{ table.name }}</nb-option>
+            }
+          </nb-select>
+        </div>
+      </div>
+
+      @if (isCreateFormValid()) {
+        <div class="mt-2">
+          <small class="text-hint d-block mb-2">将执行的语句</small>
+          <textarea
+            nbInput
+            fullWidth
+            rows="3"
+            readonly
+            [value]="buildInsertSelectSql()"
+          ></textarea>
+        </div>
+      }
+    </nb-card-body>
+
+    <nb-card-footer class="d-flex justify-content-end gap-2">
+      <button
+        nbButton
+        ghost
+        size="small"
+        status="basic"
+        (click)="ref.close()"
+        [disabled]="createSubmitting"
+      >
+        取消
+      </button>
+      <button
+        nbButton
+        size="small"
+        status="primary"
+        [nbSpinner]="createSubmitting"
+        nbSpinnerStatus="control"
+        (click)="submitCreateLoad(ref)"
+        [disabled]="createSubmitting || !isCreateFormValid()"
+      >
+        <nb-icon icon="play-circle-outline"></nb-icon>
+        提交导入
+      </button>
+    </nb-card-footer>
   </nb-card>
 </ng-template>

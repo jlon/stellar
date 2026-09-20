@@ -1,6 +1,6 @@
 # 数据导入管理（Load Management）设计文档
 
-> 状态：P1 已实施；P2 的历史视图、游标分页、Routine Load 位点/子任务面板和 Doris 已选失败作业原始诊断已实施；P3 按分期推进
+> 状态：P1 已实施；P2 的历史视图、游标分页、Routine Load 位点/子任务面板和 Doris 已选失败作业原始诊断已实施；P3a 表间导入入口已实施，外部文件导入仍按引擎能力推进
 > 目标：对齐阿里云 EMR StarRocks Manager 的导入任务管理能力，落地为 Stellar 自托管双引擎（StarRocks/Doris）场景下的新一代导入运维页面。本文件同时记录已实现边界，避免设计稿与实际行为漂移。
 > 关联：`docs/design-system/MASTER.md`（全部 UI 决策遵循本设计系统）。前端技术约束：Angular 21 + Nebular 17；参考已安装的 shadcn/ui、frontend-design、ui-ux-pro-max 的交互原则，但不引入 React/Radix/Tailwind 依赖。
 
@@ -57,6 +57,7 @@
 │   ├── 搜索（Label / JobId）
 │   └── 手动刷新
 ├── 任务列表（ngx-admin 原生 `angular2-smart-table`，容器内横向滚动）
+├── 新增导入任务（选择源表/目标表，生成并确认 `INSERT INTO ... SELECT`）
 └── 任务详情 Sheet（点击行通过 Nebular `NbDialog` 从右侧打开，显示真实阶段、错误全文和复制入口）
 ```
 
@@ -116,6 +117,7 @@ Routine Load：不做批处理阶段时间线，改为**消费位点卡片**（�
 - **错误原因归类（对齐 EMR 原因分析）**：后端按 ERROR_MSG 模式匹配归类，输出 `cause: 超时 / 超阈值 / 格式错误 / 权限 / 目标表不存在 / 资源不足 / 未知`，每类附一句处置建议（如“Scan bytes exceed threshold → 减小单次导入体量或调大 `broker_load_scan_bytes_threshold`”）；归类结果在详情 Sheet 错误框顶部渲染为结论行，无法识别时回退原文展示，不臆断
 - **空态**：无任务时提示调整时间范围或清除筛选；树节点入口仍可直接带数据库筛选跳转
 - **错误详情**：详情 Sheet 提供 `ERROR_MSG`、`TRACKING_SQL` 和 `REJECTED_RECORD_PATH` 的原生输入控件与复制按钮；Doris 失败作业额外展示同一 `SHOW LOAD` 行的原始 `URL`、`ErrorMsg`、`JobDetails`，不接入 `get_load_errors_compromise` 或全局 error hub。
+- **新增导入任务**：具备 `api:clusters:queries:execute` 的用户可从页头打开向导，选择两个真实存在的普通表，提交前展示完整 SQL 并二次确认；提交复用 SQL 工作台的执行和历史记录链路。当前只实现跨引擎共通的表间导入，不把文件上传、对象存储凭证或 Routine Load 参数伪装成统一表单。
 - **过滤行数提示（P1）**：`Filtered_Rows / Scan_Rows > 1%` 且分母有效时行内显示 warning；StarRocks 源码中 `SCAN_ROWS` 已包含正常、异常和未选中行，不能再次把 `FILTERED_ROWS` 加入分母。阈值和原因提示后续再接入集群变量
 - **Stream Load profile**：P1 只展示可用的 `PROFILE_ID`/`RUNTIME_DETAILS` 原文，不自动修改集群变量；Profile 引导卡片列入后续迭代
 - **键盘可达**：原生 Smart Table 行打开详情 Sheet；打开前让触发行获得焦点，Nebular 焦点陷阱销毁后回焦至该行；Esc 和遮罩点击均可关闭，所有图标按钮带 `aria-label`。
@@ -168,13 +170,14 @@ pages/starrocks/loads/
 ```
 
 - 路由 `path: 'loads'` 挂在 starrocks 模块，一级菜单"数据导入"使用 `menu:loads`，路由守卫和 API 使用 `api:clusters:loads`
+- 页头"新增导入任务"使用 `api:clusters:queries:execute` 控制可见性，执行通过现有 `/api/clusters/queries/execute`，不新增平行写入 API
 - 树节点 `viewLoads` 改为路由跳转携带 `?db=<db>` 预置筛选
 - 遵循 MASTER.md 的 ngx-admin 原生优先原则：`row/col + nb-card`、原生筛选控件、`angular2-smart-table`、Nebular `NbDialog` Sheet、`nb-alert` 与原生分页；二维表格在自身容器横向滚动，不重绘为自定义卡片列表或手写侧板。
 
 ## 8. 测试
 
 - 后端：`backend/src/tests/load_service_test.rs` 覆盖失败原因分类、真实时间阶段计算、终态缺时间戳不造假、SQL 字面量转义/limit、历史合并稳定游标、Routine Load 父作业/子任务字段、Doris 精确 Label 查询与 JobId 二次匹配和路由权限映射
-- 前端：`load-management.component.spec.ts` 覆盖态势摘要、Smart Table 详情入口和回焦、Sheet 初始焦点、服务端游标“加载更多”；`npm run build` 验证路由、模板、Nebular 组件和 Smart Table 可编译
+- 前端：`load-management.component.spec.ts` 覆盖态势摘要、Smart Table 详情入口和回焦、Sheet 初始焦点、服务端游标“加载更多”、表间导入 SQL 标识符转义与自写保护；`npm run build` 验证路由、模板、Nebular 组件和 Smart Table 可编译
 - E2E 手册：对接真实集群造 1 个成功 + 1 个失败 Broker Load，核对 `RUNTIME_DETAILS` 原文、`TRACKING_SQL`、`REJECTED_RECORD_PATH` 与真实时间阶段；再验证一个 Routine Load 不被错误绘制成批处理阶段
 
 ## 9. 分期
@@ -183,7 +186,8 @@ pages/starrocks/loads/
 |---|---|---|
 | P1 | 原生 Smart Table 列表 + 状态聚合 + Nebular 详情 Sheet + 失败详情/追踪 SQL/拒绝记录路径 + StarRocks/Doris 查询回退 | 覆盖主要日常排障 |
 | P2 | `_statistics_.loads_history` 历史查询、游标分页、Routine Load 位点/子任务面板、Doris 已选失败作业的 `SHOW LOAD` 原始诊断已实施 | 常驻导入场景闭环 |
-| P3 | SQL 文件树联动发起导入向导、导入→Profile 诊断跳转、多表编排 DAG（有真实需求再评估） | — |
+| P3a | 导入页表间导入向导（`INSERT INTO ... SELECT`） | 具备执行权限的用户可以从导入页创建真实导入任务 |
+| P3b | SQL 文件树联动发起导入、导入→Profile 诊断跳转、多表编排 DAG（有真实需求再评估） | — |
 
 ## 10. 明确不做（YAGNI）
 

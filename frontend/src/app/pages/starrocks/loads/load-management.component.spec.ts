@@ -8,6 +8,7 @@ import { Subject, of } from "rxjs";
 import { ClusterContextService } from "../../../@core/data/cluster-context.service";
 import { LoadJob, LoadService } from "../../../@core/data/load.service";
 import { NodeService } from "../../../@core/data/node.service";
+import { ConfirmDialogService } from "../../../@core/services/confirm-dialog.service";
 import { LoadManagementComponent } from "./load-management.component";
 
 describe("LoadManagementComponent", () => {
@@ -16,6 +17,18 @@ describe("LoadManagementComponent", () => {
   const loadService = {
     get: jasmine.createSpy("get").and.returnValue(of({})),
     list: jasmine.createSpy("list"),
+  };
+  const nodeService = {
+    getDatabases: jasmine.createSpy("getDatabases").and.returnValue(of([])),
+    getTables: jasmine.createSpy("getTables").and.returnValue(of([])),
+    executeSQL: jasmine.createSpy("executeSQL"),
+  };
+  const confirmDialogService = {
+    confirm: jasmine.createSpy("confirm"),
+  };
+  const toastrService = {
+    show: () => undefined,
+    success: jasmine.createSpy("success"),
   };
 
   beforeEach(() => {
@@ -26,9 +39,10 @@ describe("LoadManagementComponent", () => {
           useValue: { activeCluster$: of(null) },
         },
         { provide: LoadService, useValue: loadService },
-        { provide: NodeService, useValue: { getDatabases: () => of([]) } },
+        { provide: NodeService, useValue: nodeService },
         { provide: NbDialogService, useValue: dialogService },
-        { provide: NbToastrService, useValue: { show: () => undefined } },
+        { provide: ConfirmDialogService, useValue: confirmDialogService },
+        { provide: NbToastrService, useValue: toastrService },
         {
           provide: ActivatedRoute,
           useValue: { snapshot: { queryParamMap: convertToParamMap({}) } },
@@ -50,6 +64,12 @@ describe("LoadManagementComponent", () => {
     dialogService.open.calls.reset();
     loadService.get.calls.reset();
     loadService.list.calls.reset();
+    nodeService.getDatabases.calls.reset();
+    nodeService.getTables.calls.reset();
+    nodeService.getTables.and.returnValue(of([]));
+    nodeService.executeSQL.calls.reset();
+    confirmDialogService.confirm.calls.reset();
+    toastrService.success.calls.reset();
   });
 
   it("prioritizes failed tasks in the situation summary", () => {
@@ -74,6 +94,93 @@ describe("LoadManagementComponent", () => {
     expect(component.summaryMessage()).toBe(
       "当前没有待处理任务，200 个任务已完成",
     );
+  });
+
+  it("builds a quoted table-to-table import statement", () => {
+    component.createForm = {
+      sourceDatabase: "source_db",
+      sourceTable: "source`table",
+      targetDatabase: "target_db",
+      targetTable: "target_table",
+    };
+
+    expect(component.buildInsertSelectSql()).toBe(
+      "INSERT INTO `target_db`.`target_table`\nSELECT * FROM `source_db`.`source``table`",
+    );
+  });
+
+  it("rejects importing a table into itself", () => {
+    component.createForm = {
+      sourceDatabase: "Sales",
+      sourceTable: "Orders",
+      targetDatabase: "sales",
+      targetTable: "orders",
+    };
+
+    expect(component.isCreateFormValid()).toBeFalse();
+    expect(component.buildInsertSelectSql()).toBe("");
+  });
+
+  it("keeps tables from the most recently selected database", () => {
+    const firstRequest = new Subject<{ name: string; object_type: "TABLE" }[]>();
+    const secondRequest = new Subject<{ name: string; object_type: "TABLE" }[]>();
+    nodeService.getTables.and.returnValues(firstRequest, secondRequest);
+
+    component.createForm.sourceDatabase = "first_database";
+    component.onCreateDatabaseChange("source");
+    component.createForm.sourceDatabase = "second_database";
+    component.onCreateDatabaseChange("source");
+
+    secondRequest.next([{ name: "second_table", object_type: "TABLE" }]);
+    firstRequest.next([{ name: "first_table", object_type: "TABLE" }]);
+
+    expect(component.sourceTables.map((table) => table.name)).toEqual(["second_table"]);
+  });
+
+  it("uses a discovered database instead of an arbitrary URL filter", () => {
+    dialogService.open.and.returnValue({
+      close: jasmine.createSpy("close"),
+      onClose: of(undefined),
+    });
+    (
+      component as unknown as { createDialog: TemplateRef<unknown> }
+    ).createDialog = {} as TemplateRef<unknown>;
+    component.activeCluster = {} as unknown as NonNullable<typeof component.activeCluster>;
+    component.databases = ["known_database"];
+    component.filters.db = "untrusted_database";
+
+    component.openCreateLoad();
+
+    expect(nodeService.getTables).toHaveBeenCalledWith(undefined, "known_database");
+  });
+
+  it("submits a confirmed import through the existing SQL history path", () => {
+    component.createForm = {
+      sourceDatabase: "source_db",
+      sourceTable: "source_table",
+      targetDatabase: "target_db",
+      targetTable: "target_table",
+    };
+    const dialogRef = { close: jasmine.createSpy("close") };
+    confirmDialogService.confirm.and.returnValue(of(true));
+    nodeService.executeSQL.and.returnValue(of({ results: [{ success: true }] }));
+    loadService.list.and.returnValue(
+      of({
+        items: [],
+        summary: { running: 0, queued: 0, failed: 0, finished: 0 },
+      }),
+    );
+
+    component.submitCreateLoad(dialogRef as unknown as any);
+
+    expect(nodeService.executeSQL).toHaveBeenCalledWith(
+      "INSERT INTO `target_db`.`target_table`\nSELECT * FROM `source_db`.`source_table`",
+      undefined,
+      undefined,
+      "target_db",
+      true,
+    );
+    expect(dialogRef.close).toHaveBeenCalled();
   });
 
   it("passes the selected Smart Table row index to the Sheet opener", () => {
