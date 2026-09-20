@@ -219,6 +219,11 @@
     animation: sheet-enter 400ms cubic-bezier(0.2, 0, 0, 1) both;
   }
 
+  .cdk-overlay-pane.side-sheet.side-sheet--closing {
+    pointer-events: none;
+    animation: sheet-exit 180ms cubic-bezier(0.4, 0, 1, 1) both;
+  }
+
   // 卡片与 host、container 逐层铺满（组件 host 隔断了 > 选择器）
   .cdk-overlay-pane.side-sheet nb-dialog-container,
   .cdk-overlay-pane.side-sheet nb-dialog-container > * {
@@ -238,9 +243,19 @@
     animation: none; // 滑入由 pane 负责，卡片不再上浮缩放
   }
 
+  // NbBadge 默认是右上角绝对定位的角标；详情行中的状态应参与正常布局。
+  .cdk-overlay-pane.side-sheet .sheet-status-badge {
+    position: static;
+  }
+
   @keyframes sheet-enter {
     from { transform: translateX(100%); }
     to { transform: translateX(0); }
+  }
+
+  @keyframes sheet-exit {
+    from { transform: translateX(0); }
+    to { transform: translateX(100%); }
   }
 
   // sheet 打开时的遮罩：半透明 + 背景毛玻璃虚化（shadcn 同款）。
@@ -249,6 +264,14 @@
     background-color: nb-theme(overlay-backdrop-background-color);
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
+  }
+
+  .cdk-overlay-backdrop.side-sheet-backdrop {
+    transition: opacity 180ms ease;
+  }
+
+  .cdk-overlay-backdrop.side-sheet-backdrop.side-sheet-backdrop--closing {
+    opacity: 0;
   }
 
   @keyframes dialog-enter {

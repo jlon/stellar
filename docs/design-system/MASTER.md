@@ -6,7 +6,7 @@
 
 ## 0. 硬约束（不可违背）
 
-1. 组件用 Nebular 原生（nb-card/button/input/select/dialog/spinner/badge/tooltip/accordion/tabset/popover）。
+1. 前端以 `/mnt/data/ngx-admin` 为视觉和组件基线，优先复用其原生 Nebular、Bootstrap grid 和 `angular2-smart-table` 模式；仅在原生组件无法表达真实业务信息时做最小、兼容的自定义。组件用 Nebular 原生（nb-card/button/input/select/dialog/spinner/badge/tooltip/accordion/tabset/popover）。
 2. 颜色/字号/圆角/间距用 Nebular 主题变量（`nb-theme(...)` / CSS var），禁止硬编码色值。
 3. 自定义样式必须与原生风格兼容；reshaping 现有页时保持原有信息架构。
 
