@@ -1,0 +1,3 @@
+# SQLx validates these canonical migration bytes with SHA-384. Preserve their
+# intentional trailing spaces when checking the historical query-history SQL.
+backend/migrations/*/00000000_initial_schema.sql whitespace=-trailing-space

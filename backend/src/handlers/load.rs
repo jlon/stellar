@@ -27,7 +27,7 @@ use crate::utils::{ApiResult, get_active_cluster_for_org};
         (status = 404, description = "没有可用的活跃集群")
     ),
     security(("bearer_auth" = [])),
-    tag = "Queries"
+    tag = "Load Management"
 )]
 #[app_db]
 pub async fn list_loads(
@@ -55,7 +55,7 @@ pub async fn list_loads(
         (status = 404, description = "导入任务不存在")
     ),
     security(("bearer_auth" = [])),
-    tag = "Queries"
+    tag = "Load Management"
 )]
 #[app_db]
 pub async fn get_load(

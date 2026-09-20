@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Sqlite, SqlitePool};
 
@@ -17,8 +19,31 @@ async fn fresh_pool() -> SqlitePool {
     pool
 }
 
+async fn pool_before_load_permissions() -> SqlitePool {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .expect("test db");
+    let migrations = sqlx::migrate!("./migrations/sqlite");
+    let initial_schema = migrations
+        .iter()
+        .find(|migration| migration.version == 0)
+        .expect("initial schema migration")
+        .clone();
+    let initial_only = sqlx::migrate::Migrator {
+        migrations: Cow::Owned(vec![initial_schema]),
+        ..sqlx::migrate::Migrator::DEFAULT
+    };
+    initial_only
+        .run(&pool)
+        .await
+        .expect("initial schema migration");
+    pool
+}
+
 #[tokio::test]
-async fn fresh_migrations_provision_secure_permission_requests_and_log_archive_access() {
+async fn fresh_migrations_provision_secure_permission_requests_and_new_feature_access() {
     let pool = fresh_pool().await;
 
     let encrypted_password_column: i64 = sqlx::query_scalar(
@@ -41,13 +66,83 @@ async fn fresh_migrations_provision_secure_permission_requests_and_log_archive_a
     .await
     .unwrap();
     assert_eq!(permitted_roles, ["admin", "super_admin"]);
+
+    let load_api_parent: String = sqlx::query_scalar(
+        "SELECT parent.code FROM permissions child \
+         JOIN permissions parent ON parent.id = child.parent_id \
+         WHERE child.code = 'api:clusters:loads'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(load_api_parent, "menu:loads");
+
+    for permission in ["menu:loads", "api:clusters:loads"] {
+        let permitted_roles: Vec<String> = sqlx::query_scalar(
+            "SELECT r.code FROM role_permissions rp \
+             JOIN roles r ON r.id = rp.role_id \
+             JOIN permissions p ON p.id = rp.permission_id \
+             WHERE p.code = ? ORDER BY r.code",
+        )
+        .bind(permission)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(permitted_roles, ["admin", "super_admin"], "{permission}");
+    }
+}
+
+#[tokio::test]
+async fn load_permission_migration_keeps_custom_roles_consistent() {
+    let pool = pool_before_load_permissions().await;
+
+    sqlx::query(
+        "INSERT INTO roles (code, name) VALUES ('query_reader', 'Query reader'), ('menu_only', 'Menu only')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO role_permissions (role_id, permission_id) \
+         SELECT r.id, p.id FROM roles r, permissions p \
+         WHERE (r.code = 'query_reader' AND p.code = 'api:clusters:queries') \
+            OR (r.code = 'menu_only' AND p.code = 'menu:queries:execution')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::migrate!("./migrations/sqlite")
+        .run(&pool)
+        .await
+        .expect("load permission migration");
+
+    for (role, expected) in [("query_reader", 1_i64), ("menu_only", 0_i64)] {
+        for permission in ["menu:loads", "api:clusters:loads"] {
+            let granted: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM role_permissions rp \
+                 JOIN roles r ON r.id = rp.role_id \
+                 JOIN permissions p ON p.id = rp.permission_id \
+                 WHERE r.code = ? AND p.code = ?",
+            )
+            .bind(role)
+            .bind(permission)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+            assert_eq!(granted, expected, "{role}: {permission}");
+        }
+    }
 }
 
 #[tokio::test]
 async fn empty_database_gets_random_root_password() {
     let pool = fresh_pool().await;
-    // Simulate a truly empty database (migrations seed the legacy admin).
-    sqlx::query("DELETE FROM users").execute(&pool).await.unwrap();
+    // Simulate a truly empty database.
+    sqlx::query("DELETE FROM users")
+        .execute(&pool)
+        .await
+        .unwrap();
 
     let password = ensure_root_user::<Sqlite>(&pool, None)
         .await
@@ -98,12 +193,27 @@ async fn stellar_root_password_env_is_used_verbatim() {
     assert!(bcrypt::verify("s3cret-手工密码", &hash).unwrap());
 }
 
-/// Migrations still seed the historical `admin`/`admin` account on existing
-/// databases; the first startup must replace that known password instead of
-/// leaving a public default credential in place.
+/// Existing databases can retain the historical `admin`/`admin` account; the
+/// first startup must replace that known password without changing its roles.
 #[tokio::test]
 async fn legacy_seed_admin_password_is_rotated_on_first_startup() {
     let pool = fresh_pool().await;
+    const LEGACY_ADMIN_PASSWORD_HASH: &str =
+        "$2b$12$LFxvzXbmyBPO9Zp.1MFU4OX3fb8kID8AHYHklokkZvgyzmHuRTc56";
+
+    sqlx::query("INSERT INTO users (username, password_hash) VALUES ('admin', ?)")
+        .bind(LEGACY_ADMIN_PASSWORD_HASH)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO user_roles (user_id, role_id) \
+         SELECT (SELECT id FROM users WHERE username = 'admin'), id FROM roles \
+         WHERE code IN ('admin', 'super_admin')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
 
     let password = ensure_root_user::<Sqlite>(&pool, None)
         .await
@@ -129,7 +239,12 @@ async fn legacy_seed_admin_password_is_rotated_on_first_startup() {
     assert_eq!(roles, ["admin", "super_admin"]);
 
     // Already initialized databases (any other password) are left untouched.
-    assert!(ensure_root_user::<Sqlite>(&pool, None).await.unwrap().is_none());
+    assert!(
+        ensure_root_user::<Sqlite>(&pool, None)
+            .await
+            .unwrap()
+            .is_none()
+    );
     let hash_after: String =
         sqlx::query_scalar("SELECT password_hash FROM users WHERE username = 'admin'")
             .fetch_one(&pool)

@@ -1,3 +1,41 @@
+-- ============================================================================
+-- Stellar 平台元数据 DDL —— SQLite（单文件）
+--
+-- 面向全新集群：本文件即完整 schema 与种子数据，执行一次即可建库。
+-- 原先按序执行的 24 个增量迁移已合并：22 个内联到文件末尾的
+-- 「历史增量（内联）」区（顺序与原执行顺序一致），其余仅含被折叠的
+-- ADD COLUMN；7 个 ADD COLUMN 已折回对应建表语句。
+--
+-- 变更方式：直接修改本文件（不再新增迁移文件）。
+-- 旧库：历史版本记录已随文件删除，迁移器会以 "previously applied but is
+-- missing" 明确拒绝启动（既不静默跳过，也不会半执行）；本 DDL 含
+-- ALTER/裸 INSERT，不可重放，需重建库后重新导入配置。
+--
+-- 内联的历史迁移：
+--   20260113000000_add_resource_group_permissions.sql
+--   20260114000000_add_query_execution_history.sql
+--   20260911000000_add_ai_chat_sessions.sql
+--   20260911000001_add_agent_permissions.sql
+--   20260911000002_add_agent_runtime.sql
+--   20260911000003_add_agent_runtime_permissions.sql
+--   20260911000004_add_agent_llm_analyze_permission.sql
+--   20260911000005_add_agent_actions.sql
+--   20260911000006_add_agent_action_permissions.sql
+--   20260911000007_add_agent_events_retention_index.sql
+--   20260911000008_add_notifications.sql
+--   20260911000009_add_notification_permissions.sql
+--   20260911000010_notification_extends.sql
+--   20260911000011_add_chat_actions.sql
+--   20260911000012_add_chat_action_permissions.sql
+--   20260911000013_add_message_feedback.sql
+--   20260911000014_add_message_feedback_permissions.sql
+--   20260911000015_add_session_rename_permission.sql
+--   20260916000001_add_op_audit_logs.sql
+--   20260916000002_add_op_audit_permissions.sql
+--   20260917000000_secure_permission_requests.sql
+--   20260917000001_add_log_archive_permission.sql
+-- ============================================================================
+
 -- ===========================================
 -- Stellar - Unified Initial Database Schema
 -- ===========================================
@@ -198,6 +236,9 @@ CREATE TABLE IF NOT EXISTS metrics_snapshots (
 
     -- Raw Metrics (JSON format for flexibility)
     raw_metrics TEXT,
+    meta_log_count BIGINT NOT NULL DEFAULT 0,
+    unfinished_query BIGINT NOT NULL DEFAULT 0,
+    safe_mode INTEGER NOT NULL DEFAULT 0,
 
     FOREIGN KEY (cluster_id) REFERENCES clusters(id) ON DELETE CASCADE
 );
@@ -288,6 +329,7 @@ CREATE TABLE IF NOT EXISTS data_statistics (
     -- Query Statistics Cache
     slow_query_count_1h INTEGER NOT NULL DEFAULT 0,
     slow_query_count_24h INTEGER NOT NULL DEFAULT 0,
+    access_error TEXT,
 
     FOREIGN KEY (cluster_id) REFERENCES clusters(id) ON DELETE CASCADE,
     UNIQUE(cluster_id)
@@ -562,6 +604,7 @@ CREATE TABLE IF NOT EXISTS permission_requests (
     -- Audit
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    new_user_password_encrypted TEXT,
 
     FOREIGN KEY (cluster_id) REFERENCES clusters(id),
     FOREIGN KEY (applicant_id) REFERENCES users(id),
@@ -602,9 +645,6 @@ END;
 -- ==============================================
 -- 7.1 Insert Default Admin User
 -- ==============================================
--- Password: admin (bcrypt hash with DEFAULT_COST=12)
-INSERT OR IGNORE INTO users (username, password_hash, email)
-VALUES ('admin', '$2b$12$LFxvzXbmyBPO9Zp.1MFU4OX3fb8kID8AHYHklokkZvgyzmHuRTc56', 'admin@example.com');
 
 -- ==============================================
 -- 7.2 Insert Default Roles
@@ -1214,3 +1254,592 @@ WHERE p.code IN ('menu:queries:execution', 'menu:queries:profiles', 'menu:querie
 --   3. Access application at configured port
 --   4. Login with admin/admin credentials
 --   5. Configure LLM provider if needed for SQL diagnosis feature
+
+-- ============================================================================
+-- 历史增量（内联，22 项，原执行顺序）
+-- ============================================================================
+
+-- ---------- 原 20260113000000_add_resource_group_permissions.sql ----------
+-- ===========================================
+-- Add Resource Group Management Permissions
+-- ===========================================
+-- Date: 2026-01-13
+-- Purpose: Add menu and API permissions for resource group management
+
+-- ============ Menu Permissions ============
+INSERT OR IGNORE INTO permissions (code, name, type, resource, action, description) VALUES
+('menu:cluster-ops:resource-groups', '资源组管理', 'menu', 'cluster-ops:resource-groups', 'view', '查看资源组管理');
+
+-- ============ API Permissions ============
+INSERT OR IGNORE INTO permissions (code, name, type, resource, action, description) VALUES
+-- Resource Group CRUD
+('api:resource-groups:list', '查询资源组列表', 'api', 'resource-groups', 'list', 'GET /api/clusters/resource-groups'),
+('api:resource-groups:get', '查看资源组详情', 'api', 'resource-groups', 'get', 'GET /api/clusters/resource-groups/:name'),
+('api:resource-groups:create', '创建资源组', 'api', 'resource-groups', 'create', 'POST /api/clusters/resource-groups'),
+('api:resource-groups:update', '更新资源组', 'api', 'resource-groups', 'update', 'PUT /api/clusters/resource-groups/:name'),
+('api:resource-groups:delete', '删除资源组', 'api', 'resource-groups', 'delete', 'DELETE /api/clusters/resource-groups/:name'),
+
+-- Resource Group Monitoring
+('api:resource-groups:usage', '查询资源组使用情况', 'api', 'resource-groups', 'usage', 'GET /api/clusters/resource-groups/usage'),
+
+-- Resource Group Analysis
+('api:resource-groups:analysis', '资源使用分析', 'api', 'resource-groups', 'analysis', 'GET /api/clusters/resource-groups/analysis');
+
+-- ============ Set Parent Relationships ============
+-- Set menu parent
+UPDATE permissions
+SET parent_id = (SELECT id FROM permissions WHERE code = 'menu:cluster-ops')
+WHERE code = 'menu:cluster-ops:resource-groups';
+
+-- Set API parents
+UPDATE permissions
+SET parent_id = (SELECT id FROM permissions WHERE code = 'menu:cluster-ops:resource-groups')
+WHERE code IN (
+    'api:resource-groups:list',
+    'api:resource-groups:get',
+    'api:resource-groups:create',
+    'api:resource-groups:update',
+    'api:resource-groups:delete',
+    'api:resource-groups:usage',
+    'api:resource-groups:analysis'
+);
+
+-- ============ Grant to Admin Roles ============
+-- Grant to admin role
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code='admin'), id FROM permissions
+WHERE code IN (
+    'menu:cluster-ops:resource-groups',
+    'api:resource-groups:list',
+    'api:resource-groups:get',
+    'api:resource-groups:create',
+    'api:resource-groups:update',
+    'api:resource-groups:delete',
+    'api:resource-groups:usage',
+    'api:resource-groups:analysis'
+);
+
+-- Grant to super_admin role
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code='super_admin'), id FROM permissions
+WHERE code IN (
+    'menu:cluster-ops:resource-groups',
+    'api:resource-groups:list',
+    'api:resource-groups:get',
+    'api:resource-groups:create',
+    'api:resource-groups:update',
+    'api:resource-groups:delete',
+    'api:resource-groups:usage',
+    'api:resource-groups:analysis'
+);
+
+-- ============ Auto-grant Parent Menu ============
+-- Grant menu:cluster-ops to roles that have resource-groups permission
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT DISTINCT rp.role_id, (SELECT id FROM permissions WHERE code = 'menu:cluster-ops')
+FROM role_permissions rp
+JOIN permissions p ON rp.permission_id = p.id
+WHERE p.code = 'menu:cluster-ops:resource-groups';
+
+-- ---------- 原 20260114000000_add_query_execution_history.sql ----------
+-- ==============================================
+-- Query Execution History Table
+-- 用户在实时查询页面执行的 SQL 历史记录
+-- ==============================================
+CREATE TABLE IF NOT EXISTS query_execution_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    cluster_id INTEGER NOT NULL,
+    catalog VARCHAR(100),
+    database_name VARCHAR(100),
+    sql_statement TEXT NOT NULL,
+    sql_hash VARCHAR(64) NOT NULL,
+    execution_time_ms INTEGER,
+    row_count INTEGER,
+    success BOOLEAN NOT NULL DEFAULT 1,
+    error_message TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (cluster_id) REFERENCES clusters(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_query_history_user_cluster 
+    ON query_execution_history(user_id, cluster_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_query_history_sql_hash 
+    ON query_execution_history(user_id, cluster_id, sql_hash);
+
+-- ==============================================
+-- 权限配置
+-- 查询历史 API 权限绑定到实时查询菜单权限
+-- URI: /api/clusters/queries/execution-history
+-- 权限提取: resource=clusters, action=queries:execution:history
+-- ==============================================
+INSERT OR IGNORE INTO permissions (code, name, type, resource, action, description) VALUES
+('api:clusters:queries:execution:history', '查询执行历史', 'api', 'clusters', 'queries:execution:history', 'GET/DELETE /api/clusters/queries/execution-history');
+
+UPDATE permissions
+SET parent_id = (SELECT id FROM permissions WHERE code = 'menu:queries:execution')
+WHERE code = 'api:clusters:queries:execution:history';
+
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code='admin'), id FROM permissions
+WHERE code = 'api:clusters:queries:execution:history';
+
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code='super_admin'), id FROM permissions
+WHERE code = 'api:clusters:queries:execution:history';
+
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id
+FROM roles r, permissions p
+WHERE r.code = 'cluster_admin' 
+AND p.code = 'api:clusters:queries:execution:history';
+
+-- ---------- 原 20260911000000_add_ai_chat_sessions.sql ----------
+-- ==============================================
+-- AI 应用共享会话（智能问数 ask × 运维助手 agent 共用，channel 隔离）
+-- 设计见 docs/agent/ai-common-design.md
+-- ==============================================
+CREATE TABLE IF NOT EXISTS ai_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    channel VARCHAR(20) NOT NULL DEFAULT 'agent',
+    organization_id INTEGER,
+    user_id INTEGER,
+    cluster_id INTEGER NOT NULL,
+    title TEXT,
+    catalog TEXT,
+    database_name TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_active_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (cluster_id) REFERENCES clusters(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_sessions_scope
+    ON ai_sessions(channel, cluster_id, last_active_at DESC);
+
+-- ==============================================
+-- AI 消息：角色 + 内容 + 各自业务扩展列（steps_json=agent 审计链，
+-- generated_sql/guard/explain/chart 等=ask 扩展，互不写入对方列）
+-- ==============================================
+CREATE TABLE IF NOT EXISTS ai_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL,
+    role VARCHAR(10) NOT NULL,
+    content TEXT NOT NULL,
+    steps_json TEXT,
+    generated_sql TEXT,
+    guard_status VARCHAR(20),
+    guard_reason TEXT,
+    explain_text TEXT,
+    chart_json TEXT,
+    context_json TEXT,
+    llm_session_id INTEGER,
+    execution_history_id INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES ai_sessions(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_messages_session
+    ON ai_messages(session_id, id);
+
+-- ---------- 原 20260911000001_add_agent_permissions.sql ----------
+-- ===========================================
+-- Add AI Agent (智能运维助手) Permissions
+-- ===========================================
+-- Date: 2026-09-11
+-- Purpose: Menu + API permissions for the read-only ops agent chat & sessions
+
+-- ============ Menu Permissions ============
+INSERT OR IGNORE INTO permissions (code, name, type, resource, action, description) VALUES
+('menu:agent', '智能运维助手', 'menu', 'agent', 'view', 'AI 运维助手入口');
+
+-- ============ API Permissions ============
+INSERT OR IGNORE INTO permissions (code, name, type, resource, action, description) VALUES
+('api:agent:chat', '发起 Agent 对话', 'api', 'agent', 'chat', 'POST /api/agent/chat'),
+('api:agent:sessions:list', '查看会话列表', 'api', 'agent', 'sessions', 'GET /api/agent/sessions'),
+('api:agent:sessions:get', '查看会话详情', 'api', 'agent', 'sessions:get', 'GET /api/agent/sessions/:id'),
+('api:agent:sessions:delete', '删除会话', 'api', 'agent', 'sessions:delete', 'DELETE /api/agent/sessions/:id');
+
+-- ============ Set API parents ============
+UPDATE permissions
+SET parent_id = (SELECT id FROM permissions WHERE code = 'menu:agent')
+WHERE code IN ('api:agent:chat', 'api:agent:sessions:list', 'api:agent:sessions:get', 'api:agent:sessions:delete');
+
+-- ============ Grant to Admin Roles ============
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code='admin'), id FROM permissions
+WHERE code IN ('menu:agent', 'api:agent:chat', 'api:agent:sessions:list', 'api:agent:sessions:get', 'api:agent:sessions:delete');
+
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code='super_admin'), id FROM permissions
+WHERE code IN ('menu:agent', 'api:agent:chat', 'api:agent:sessions:list', 'api:agent:sessions:get', 'api:agent:sessions:delete');
+
+-- ---------- 原 20260911000002_add_agent_runtime.sql ----------
+-- ==============================================
+-- Agent Runtime: 事件闭环（事件事实 / Incident / 证据 / 决策）
+-- 设计见 docs/agent/ops-agent-design.md §5.1 / §6
+-- ==============================================
+
+-- 事件事实表（收敛：fingerprint 归并 + 拓扑抑制）
+CREATE TABLE IF NOT EXISTS agent_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organization_id INTEGER,
+    cluster_id INTEGER NOT NULL,
+    fingerprint TEXT NOT NULL,
+    kind VARCHAR(30) NOT NULL,
+    severity VARCHAR(10) NOT NULL,
+    object_type VARCHAR(20),
+    object_id VARCHAR(128),
+    title TEXT NOT NULL,
+    summary TEXT,
+    metrics_json TEXT,
+    state VARCHAR(12) NOT NULL DEFAULT 'open',
+    occurrence_count INTEGER NOT NULL DEFAULT 1,
+    suppressed_by INTEGER,
+    first_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (cluster_id) REFERENCES clusters(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_agent_events_scope ON agent_events(cluster_id, state, last_seen_at);
+CREATE INDEX IF NOT EXISTS idx_agent_events_fp ON agent_events(fingerprint, state);
+
+-- Incident 聚合根（复开：resolved 30 天内同 dedupe_key 重新 open）
+CREATE TABLE IF NOT EXISTS agent_incidents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organization_id INTEGER,
+    cluster_id INTEGER NOT NULL,
+    dedupe_key TEXT NOT NULL,
+    title TEXT NOT NULL,
+    impact_summary TEXT,
+    status VARCHAR(14) NOT NULL DEFAULT 'open',
+    input_digest TEXT,
+    output_json TEXT,
+    llm_provider TEXT,
+    llm_model TEXT,
+    llm_tokens INTEGER,
+    duration_ms INTEGER,
+    error TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMP,
+    FOREIGN KEY (cluster_id) REFERENCES clusters(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_agent_incidents_scope ON agent_incidents(cluster_id, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_agent_incidents_dedupe ON agent_incidents(dedupe_key, status);
+
+-- Incident ↔ 事件 关联
+CREATE TABLE IF NOT EXISTS agent_incident_events (
+    incident_id INTEGER NOT NULL,
+    event_id INTEGER NOT NULL,
+    FOREIGN KEY (incident_id) REFERENCES agent_incidents(id) ON DELETE CASCADE,
+    FOREIGN KEY (event_id) REFERENCES agent_events(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_aie_incident ON agent_incident_events(incident_id);
+
+-- 证据（固定取证流水线各阶段产物；quality: strong/weak）
+CREATE TABLE IF NOT EXISTS agent_evidences (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    incident_id INTEGER NOT NULL,
+    stage VARCHAR(20) NOT NULL,
+    collector VARCHAR(30) NOT NULL,
+    payload_json TEXT NOT NULL,
+    quality VARCHAR(10) NOT NULL DEFAULT 'strong',
+    error TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (incident_id) REFERENCES agent_incidents(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_agent_evidences_incident ON agent_evidences(incident_id, stage);
+
+-- 决策审计（每阶段一条：intake / evidence / rule_diagnosis / llm_hypothesis）
+CREATE TABLE IF NOT EXISTS agent_decisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    incident_id INTEGER NOT NULL,
+    stage VARCHAR(30) NOT NULL,
+    status VARCHAR(12) NOT NULL DEFAULT 'completed',
+    input_json TEXT,
+    output_json TEXT,
+    llm_provider TEXT,
+    llm_model TEXT,
+    llm_tokens INTEGER,
+    error TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (incident_id) REFERENCES agent_incidents(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_agent_decisions_incident ON agent_decisions(incident_id, stage);
+
+-- ---------- 原 20260911000003_add_agent_runtime_permissions.sql ----------
+-- ===========================================
+-- Add Agent Runtime (事件闭环) Permissions
+-- ===========================================
+-- Date: 2026-09-11
+-- Purpose: Incident/Event 只读 + 手动调查/关闭权限
+
+INSERT OR IGNORE INTO permissions (code, name, type, resource, action, description) VALUES
+('api:agent:incidents:list', '查看故障列表', 'api', 'agent', 'incidents', 'GET /api/agent/incidents'),
+('api:agent:incidents:get', '查看故障详情', 'api', 'agent', 'incidents:get', 'GET /api/agent/incidents/:id'),
+('api:agent:incidents:investigate', '手动调查故障', 'api', 'agent', 'incidents:investigate', 'POST /api/agent/incidents/:id/investigate'),
+('api:agent:incidents:close', '关闭故障', 'api', 'agent', 'incidents:close', 'POST /api/agent/incidents/:id/close'),
+('api:agent:events:list', '查看事件列表', 'api', 'agent', 'events', 'GET /api/agent/events');
+
+UPDATE permissions
+SET parent_id = (SELECT id FROM permissions WHERE code = 'menu:agent')
+WHERE code IN ('api:agent:incidents:list', 'api:agent:incidents:get', 'api:agent:incidents:investigate', 'api:agent:incidents:close', 'api:agent:events:list');
+
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code='admin'), id FROM permissions
+WHERE code IN ('api:agent:incidents:list', 'api:agent:incidents:get', 'api:agent:incidents:investigate', 'api:agent:incidents:close', 'api:agent:events:list');
+
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code='super_admin'), id FROM permissions
+WHERE code IN ('api:agent:incidents:list', 'api:agent:incidents:get', 'api:agent:incidents:investigate', 'api:agent:incidents:close', 'api:agent:events:list');
+
+-- ---------- 原 20260911000004_add_agent_llm_analyze_permission.sql ----------
+-- Add LLM root-cause analysis permission
+INSERT OR IGNORE INTO permissions (code, name, type, resource, action, description) VALUES
+('api:agent:incidents:analyze', 'LLM 根因分析', 'api', 'agent', 'incidents:analyze', 'POST /api/agent/incidents/:id/analyze');
+
+UPDATE permissions
+SET parent_id = (SELECT id FROM permissions WHERE code = 'menu:agent')
+WHERE code = 'api:agent:incidents:analyze';
+
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code='admin'), id FROM permissions WHERE code = 'api:agent:incidents:analyze';
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code='super_admin'), id FROM permissions WHERE code = 'api:agent:incidents:analyze';
+
+-- ---------- 原 20260911000005_add_agent_actions.sql ----------
+-- ==============================================
+-- Agent 动作闭环：两阶段确认写动作（对齐 Flink platform write actions：
+-- UUID 高熵不可猜测 / TTL 过期 / 单次执行 / 结果留档审计）
+-- 设计见 docs/agent/ops-agent-design.md 动作闭环
+-- ==============================================
+
+CREATE TABLE IF NOT EXISTS agent_actions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    incident_id INTEGER NOT NULL,
+    cluster_id INTEGER NOT NULL,
+    kind VARCHAR(30) NOT NULL,
+    title TEXT NOT NULL,
+    params_json TEXT NOT NULL,
+    status VARCHAR(12) NOT NULL DEFAULT 'pending',
+    action_uuid VARCHAR(36) NOT NULL UNIQUE,
+    created_by TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NOT NULL,
+    confirmed_at TIMESTAMP,
+    confirmed_by TEXT,
+    executed_at TIMESTAMP,
+    result_json TEXT,
+    FOREIGN KEY (incident_id) REFERENCES agent_incidents(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_agent_actions_incident ON agent_actions(incident_id, status);
+
+-- ---------- 原 20260911000006_add_agent_action_permissions.sql ----------
+-- Agent 动作闭环权限（挂 menu:agent 下，admin/super_admin 授予）
+INSERT OR IGNORE INTO permissions (code, name, type, resource, action, description) VALUES
+('api:agent:incidents:actions', '创建运维动作', 'api', 'agent', 'incidents:actions', 'POST /api/agent/incidents/:id/actions'),
+('api:agent:incidents:actions:get', '查看运维动作', 'api', 'agent', 'incidents:actions:get', 'GET /api/agent/incidents/:id/actions'),
+('api:agent:incidents:actions:confirm', '确认运维动作', 'api', 'agent', 'incidents:actions:confirm', 'POST /api/agent/incidents/:id/actions/:aid/confirm'),
+('api:agent:incidents:actions:cancel', '取消运维动作', 'api', 'agent', 'incidents:actions:cancel', 'POST /api/agent/incidents/:id/actions/:aid/cancel');
+
+UPDATE permissions
+SET parent_id = (SELECT id FROM permissions WHERE code = 'menu:agent')
+WHERE code IN ('api:agent:incidents:actions', 'api:agent:incidents:actions:get', 'api:agent:incidents:actions:confirm', 'api:agent:incidents:actions:cancel');
+
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code='admin'), id FROM permissions
+WHERE code IN ('api:agent:incidents:actions', 'api:agent:incidents:actions:get', 'api:agent:incidents:actions:confirm', 'api:agent:incidents:actions:cancel');
+
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code='super_admin'), id FROM permissions
+WHERE code IN ('api:agent:incidents:actions', 'api:agent:incidents:actions:get', 'api:agent:incidents:actions:confirm', 'api:agent:incidents:actions:cancel');
+
+-- ---------- 原 20260911000007_add_agent_events_retention_index.sql ----------
+-- 事件保留裁剪索引：run_once 每 tick 按 last_seen_at 裁剪，无索引时全表扫描
+CREATE INDEX IF NOT EXISTS idx_agent_events_last_seen ON agent_events(last_seen_at);
+
+-- ---------- 原 20260911000008_add_notifications.sql ----------
+-- 用户通知（铃铛）：对话完成 / Incident 升级等事件触达
+CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    kind VARCHAR(20) NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT,
+    link TEXT,
+    read INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    severity VARCHAR(10) NOT NULL DEFAULT 'info',
+    meta_json TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read, created_at);
+
+-- ---------- 原 20260911000009_add_notification_permissions.sql ----------
+-- 通知权限（铃铛对所有登录用户可见；播种 admin/super_admin）
+INSERT OR IGNORE INTO permissions (code, name, type, resource, action, description) VALUES
+('api:notifications', '查看我的通知', 'api', 'notifications', 'list', 'GET /api/notifications'),
+('api:notifications:create', '创建通知', 'api', 'notifications', 'create', 'POST /api/notifications'),
+('api:notifications:read', '标记通知已读', 'api', 'notifications', 'read', 'POST /api/notifications/:id/read');
+
+UPDATE permissions
+SET parent_id = (SELECT id FROM permissions WHERE code = 'menu:system')
+WHERE code IN ('api:notifications', 'api:notifications:create', 'api:notifications:read');
+
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code='admin'), id FROM permissions
+WHERE code IN ('api:notifications', 'api:notifications:create', 'api:notifications:read');
+
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code='super_admin'), id FROM permissions
+WHERE code IN ('api:notifications', 'api:notifications:create', 'api:notifications:read');
+
+-- ---------- 原 20260911000010_notification_extends.sql ----------
+-- 通知扩展列（severity / meta_json）已内联到 notifications 建表语句。
+CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_id, created_at);
+
+-- ---------- 原 20260911000011_add_chat_actions.sql ----------
+-- 对话内授权执行：LLM 受控申请 → 用户确认 → MySQLClient 通道执行
+-- 审计链：申请用户/LLM 理由/确认人/参数/结果/时间 全量留档
+CREATE TABLE IF NOT EXISTS agent_chat_actions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    kind VARCHAR(30) NOT NULL,
+    title TEXT NOT NULL,
+    params_json TEXT NOT NULL,
+    reason TEXT,
+    status VARCHAR(12) NOT NULL DEFAULT 'pending',
+    action_uuid VARCHAR(36) NOT NULL UNIQUE,
+    created_by TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NOT NULL,
+    confirmed_at TIMESTAMP,
+    confirmed_by TEXT,
+    executed_at TIMESTAMP,
+    result_json TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_chat_actions_session ON agent_chat_actions(session_id, status);
+
+-- ---------- 原 20260911000012_add_chat_action_permissions.sql ----------
+-- 对话内动作确认权限（挂 menu:agent，admin/super_admin）
+INSERT OR IGNORE INTO permissions (code, name, type, resource, action, description) VALUES
+('api:agent:chat-actions:list', '查看对话内动作', 'api', 'agent', 'chat-actions:list', 'GET /api/agent/chat-actions'),
+('api:agent:chat-actions:confirm', '确认对话内动作', 'api', 'agent', 'chat-actions:confirm', 'POST /api/agent/chat-actions/:id/confirm'),
+('api:agent:chat-actions:cancel', '拒绝对话内动作', 'api', 'agent', 'chat-actions:cancel', 'POST /api/agent/chat-actions/:id/cancel');
+
+UPDATE permissions
+SET parent_id = (SELECT id FROM permissions WHERE code = 'menu:agent')
+WHERE code IN ('api:agent:chat-actions:confirm', 'api:agent:chat-actions:cancel');
+
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code='admin'), id FROM permissions
+WHERE code IN ('api:agent:chat-actions:confirm', 'api:agent:chat-actions:cancel');
+
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code='super_admin'), id FROM permissions
+WHERE code IN ('api:agent:chat-actions:confirm', 'api:agent:chat-actions:cancel');
+
+-- ---------- 原 20260911000013_add_message_feedback.sql ----------
+-- 回答点赞/点踩：用户对单条 assistant 消息的反馈（GPT 同款）
+CREATE TABLE IF NOT EXISTS agent_message_feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_id INTEGER NOT NULL,
+    session_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    rating VARCHAR(8) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(message_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_msg_feedback_session ON agent_message_feedback(session_id);
+
+-- ---------- 原 20260911000014_add_message_feedback_permissions.sql ----------
+-- 回答点赞/点踩权限（挂 menu:agent，admin/super_admin）
+INSERT OR IGNORE INTO permissions (code, name, type, resource, action, description) VALUES
+('api:agent:messages:feedback', '评价助手的回答', 'api', 'agent', 'messages:feedback', 'POST /api/agent/messages/:id/feedback');
+
+UPDATE permissions
+SET parent_id = (SELECT id FROM permissions WHERE code = 'menu:agent')
+WHERE code IN ('api:agent:messages:feedback');
+
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code='admin'), id FROM permissions
+WHERE code IN ('api:agent:messages:feedback');
+
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code='super_admin'), id FROM permissions
+WHERE code IN ('api:agent:messages:feedback');
+
+-- ---------- 原 20260911000015_add_session_rename_permission.sql ----------
+-- 会话重命名权限（挂 menu:agent，admin/super_admin）
+INSERT OR IGNORE INTO permissions (code, name, type, resource, action, description) VALUES
+('api:agent:sessions:rename', '重命名会话', 'api', 'agent', 'sessions:rename', 'PATCH /api/agent/sessions/:id');
+
+UPDATE permissions
+SET parent_id = (SELECT id FROM permissions WHERE code = 'menu:agent')
+WHERE code IN ('api:agent:sessions:rename');
+
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code='admin'), id FROM permissions
+WHERE code IN ('api:agent:sessions:rename');
+
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code='super_admin'), id FROM permissions
+WHERE code IN ('api:agent:sessions:rename');
+
+-- ---------- 原 20260916000001_add_op_audit_logs.sql ----------
+CREATE TABLE IF NOT EXISTS op_audit_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id BIGINT NOT NULL,
+    username VARCHAR(100) NOT NULL DEFAULT '',
+    organization_id BIGINT,
+    action VARCHAR(20) NOT NULL,
+    target_type VARCHAR(30) NOT NULL,
+    target_id BIGINT,
+    target_name VARCHAR(200) NOT NULL DEFAULT '',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_op_audit_user ON op_audit_logs(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_op_audit_target ON op_audit_logs(target_type, target_id);
+
+-- ---------- 原 20260916000002_add_op_audit_permissions.sql ----------
+-- 操作审计权限（系统管理下操作日志页；播种 admin/super_admin）
+INSERT OR IGNORE INTO permissions (code, name, type, resource, action, description) VALUES
+('menu:system:op-audit', '操作日志', 'menu', 'system:op-audit', 'view', '查看操作日志'),
+('api:op-audit-logs:logs:list', '查询操作审计', 'api', 'op-audit-logs', 'logs:list', 'GET /api/op-audit-logs');
+
+UPDATE permissions
+SET parent_id = (SELECT id FROM permissions WHERE code = 'menu:system')
+WHERE code IN ('menu:system:op-audit', 'api:op-audit-logs:logs:list');
+
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code='admin'), id FROM permissions
+WHERE code IN ('menu:system:op-audit', 'api:op-audit-logs:logs:list');
+
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code='super_admin'), id FROM permissions
+WHERE code IN ('menu:system:op-audit', 'api:op-audit-logs:logs:list');
+
+-- ---------- 原 20260917000000_secure_permission_requests.sql ----------
+-- new_user_password_encrypted 列已内联到 permission_requests 建表语句；
+-- 下列清理只对历史库生效。
+
+-- 历史预览 SQL 可能包含初始密码；不保留不可安全脱敏的旧值。
+UPDATE permission_requests
+SET executed_sql = NULL
+WHERE executed_sql LIKE '%IDENTIFIED BY%';
+
+-- ---------- 原 20260917000001_add_log_archive_permission.sql ----------
+-- Stellar application log archive: restricted to platform administrators.
+INSERT OR IGNORE INTO permissions (code, name, type, resource, action, description) VALUES
+('api:system:logs:archive', '下载 Stellar 日志包', 'api', 'system', 'logs:archive', 'GET /api/system/logs/archive');
+
+UPDATE permissions
+SET parent_id = (SELECT id FROM permissions WHERE code = 'menu:system')
+WHERE code = 'api:system:logs:archive';
+
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code = 'admin'), id FROM permissions
+WHERE code = 'api:system:logs:archive';
+
+INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code = 'super_admin'), id FROM permissions
+WHERE code = 'api:system:logs:archive';

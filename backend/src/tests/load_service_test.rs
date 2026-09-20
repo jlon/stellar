@@ -46,14 +46,14 @@ fn terminal_jobs_without_timestamps_have_no_fake_stages() {
 }
 
 #[test]
-fn load_routes_reuse_query_permission() {
+fn load_routes_use_dedicated_load_permission() {
     assert_eq!(
         extract_permission("GET", "/api/clusters/loads"),
-        Some(("clusters".to_string(), "queries".to_string()))
+        Some(("clusters".to_string(), "loads".to_string()))
     );
     assert_eq!(
         extract_permission("GET", "/api/clusters/loads/42"),
-        Some(("clusters".to_string(), "queries".to_string()))
+        Some(("clusters".to_string(), "loads".to_string()))
     );
 }
 

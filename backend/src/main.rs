@@ -262,6 +262,7 @@ use stellar::{AppState, handlers, middleware, services};
         (name = "Frontends", description = "Frontend node management"),
         (name = "Materialized Views", description = "Materialized view management"),
         (name = "Queries", description = "Query management"),
+        (name = "Load Management", description = "Load task management"),
         (name = "Profiles", description = "Query profile management"),
         (name = "System", description = "System information"),
         (name = "Roles", description = "Role management"),

@@ -45,12 +45,6 @@ export const MENU_ITEMS: NbMenuItem[] = [
         data: { permission: 'menu:queries:execution' },
       } as NbMenuItem & { data?: { permission: string } },
       {
-        title: '导入任务',
-        icon: { icon: 'upload-outline', status: 'primary' },
-        link: '/pages/starrocks/loads',
-        data: { permission: 'menu:queries:execution' },
-      } as NbMenuItem & { data?: { permission: string } },
-      {
         title: 'Profiles',
         icon: { icon: 'file-text-outline', status: 'primary' },
         link: '/pages/starrocks/queries/profiles',
@@ -69,6 +63,12 @@ export const MENU_ITEMS: NbMenuItem[] = [
         data: { permission: 'menu:queries:blacklist' },
       } as NbMenuItem & { data?: { permission: string } },
     ],
+  } as NbMenuItem & { data?: { permission: string } },
+  {
+    title: '导入管理',
+    icon: { icon: 'upload-outline', status: 'primary' },
+    link: '/pages/starrocks/loads',
+    data: { permission: 'menu:loads' },
   } as NbMenuItem & { data?: { permission: string } },
   {
     title: '物化视图',

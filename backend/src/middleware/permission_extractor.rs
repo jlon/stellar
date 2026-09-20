@@ -271,10 +271,10 @@ fn extract_clusters_special_paths(segments: &[&str], method: &str) -> Option<Str
     let _len = segments.len();
 
     let handlers: Vec<RouteHandler> = vec![
-        // 导入任务属于查询运维能力，复用已有 api:clusters:queries 权限，避免旧角色因新增页面失去访问。
+        // 导入任务使用独立权限，与菜单和路由守卫保持一致。
         Box::new(|seg, m| {
             if m == "GET" && seg.get(1) == Some(&"loads") {
-                Some("queries".to_string())
+                Some("loads".to_string())
             } else {
                 None
             }

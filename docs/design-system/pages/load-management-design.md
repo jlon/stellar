@@ -160,7 +160,7 @@ pub enum LoadFailureCause { Timeout, ThresholdExceeded, FormatError, PermissionD
 - 首选 `information_schema.loads`；查询失败时按数据库回退到 `SHOW LOAD`，缺失字段保持 `null`
 - 阶段条只由 `CREATE_TIME`、`LOAD_START_TIME`、`LOAD_COMMIT_TIME`、`LOAD_FINISH_TIME` 计算；`RUNTIME_DETAILS` 当前作为原文保留，不把内部字段猜测成阶段
 - 失败原因按 `ERROR_MSG` 关键词归类为 `Timeout`、`ThresholdExceeded`、`FormatError`、`PermissionDenied`、`TargetMissing`、`ResourceExhausted`、`Unknown`
-- 当前复用已有 `api:clusters:queries` 权限；权限提取器将 `GET /api/clusters/loads*` 映射到该权限，不新增迁移，也不让旧角色突然失去访问
+- 使用独立 `api:clusters:loads` 权限；权限提取器将 `GET /api/clusters/loads*` 映射到该权限。迁移仅为已有 `api:clusters:queries` 查询读取权限的角色同时补发 `menu:loads` 与 `api:clusters:loads`；旧迁移对仅有 `menu:queries:execution` 的角色误补的 Load 菜单会在紧随其后的修正迁移中移除，保持菜单与路由守卫一致
 - 后续接入 `_statistics_.loads_history`、Routine Load 位点/error hub 和游标分页时，再拆分专用 adapter 方法；不为当前一条查询链预先增加抽象层
 
 ## 7. 前端组件划分
@@ -170,7 +170,7 @@ pages/starrocks/loads/
 └── load-management.component.{ts,html,scss}  # 页面、工具栏、列表和响应式详情面板
 ```
 
-- 路由 `path: 'loads'` 挂在 starrocks 模块，菜单项"导入任务"复用 `menu:queries:execution` 可见性
+- 路由 `path: 'loads'` 挂在 starrocks 模块，一级菜单"数据导入"使用 `menu:loads`，路由守卫和 API 使用 `api:clusters:loads`
 - 树节点 `viewLoads` 改为路由跳转携带 `?db=<db>` 预置筛选
 - 遵循 MASTER.md 与 shadcn 的可组合组件原则：单主卡、图标化工具栏、Nebular badge/ghost 按钮、`nb-alert/nb-progress-bar`、语义化 table、桌面表格/窄屏卡片式行布局、行展开与详情侧板、侧板焦点与 Esc 关闭、`prefers-reduced-motion` 兜底
 

@@ -73,7 +73,7 @@ const routes: Routes = [
     path: 'loads',
     component: LoadManagementComponent,
     canActivate: [PermissionGuard],
-    data: { permission: 'api:clusters:queries', reuse: true },
+    data: { permission: 'api:clusters:loads', reuse: true },
   },
   {
     path: 'queries',
