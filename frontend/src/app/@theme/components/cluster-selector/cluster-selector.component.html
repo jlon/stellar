@@ -1,4 +1,4 @@
-@if (!loading && clusters.length > 0) {
+@if (!loading && !unavailable && clusters.length > 0) {
   <nb-select
     class="header-select"
     [(selected)]="activeCluster"
@@ -6,25 +6,39 @@
     (selectedChange)="onClusterChange($event)"
     [placeholder]="'选择集群' | translate"
     size="small"
-    status="basic">
+    status="basic"
+  >
     <nb-select-label>
       <span class="header-select-label">
         <nb-icon icon="cube-outline"></nb-icon>
-        <span>{{  activeCluster?.name || ('选择集群' | translate)  }}</span>
+        <span>{{ activeCluster?.name || ("选择集群" | translate) }}</span>
       </span>
     </nb-select-label>
     @for (cluster of clusters; track cluster) {
-      <nb-option [value]="cluster" [title]="cluster.name">{{ cluster.name }}</nb-option>
+      <nb-option [value]="cluster" [title]="cluster.name">{{
+        cluster.name
+      }}</nb-option>
     }
   </nb-select>
 }
-@if (!loading && clusters.length === 0) {
+@if (!loading && !unavailable && clusters.length === 0) {
   <button
     nbButton
+    ghost
     size="small"
     status="basic"
-    (click)="goToClusterManagement()">
+    (click)="openCreateCluster()"
+  >
     <nb-icon icon="plus-outline"></nb-icon>
-    {{ '添加集群' | translate }}
+    {{ "添加集群" | translate }}
   </button>
+}
+@if (!loading && unavailable) {
+  <span
+    class="cluster-unavailable"
+    [nbTooltip]="'服务暂时不可用' | translate"
+    [attr.aria-label]="'服务暂时不可用' | translate"
+  >
+    <nb-icon icon="cloud-off-outline" status="warning"></nb-icon>
+  </span>
 }

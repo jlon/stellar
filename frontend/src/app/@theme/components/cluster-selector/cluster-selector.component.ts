@@ -1,44 +1,59 @@
-import { I18nService } from '../../../@core/i18n/i18n.service';
-import { TranslatePipe } from '@ngx-translate/core';
-import { Component, ChangeDetectorRef, OnInit, OnDestroy, inject } from '@angular/core';
-import { Router } from '@angular/router';
-import { Subject } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
-import { NbToastrService, NbSelectModule, NbOptionModule, NbButtonModule, NbIconModule } from '@nebular/theme';
-import { ClusterService, Cluster } from '../../../@core/data/cluster.service';
-import { ClusterContextService } from '../../../@core/data/cluster-context.service';
-
+import { I18nService } from "../../../@core/i18n/i18n.service";
+import { TranslatePipe } from "@ngx-translate/core";
+import {
+  Component,
+  ChangeDetectorRef,
+  OnInit,
+  OnDestroy,
+  inject,
+} from "@angular/core";
+import { Subject } from "rxjs";
+import { takeUntil } from "rxjs/operators";
+import {
+  NbDialogService,
+  NbToastrService,
+  NbSelectModule,
+  NbOptionModule,
+  NbButtonModule,
+  NbIconModule,
+  NbTooltipModule,
+} from "@nebular/theme";
+import { ClusterService, Cluster } from "../../../@core/data/cluster.service";
+import { ClusterContextService } from "../../../@core/data/cluster-context.service";
+import { ClusterFormComponent } from "../../../pages/starrocks/clusters/cluster-form/cluster-form.component";
 
 @Component({
-    selector: 'ngx-cluster-selector',
-    templateUrl: './cluster-selector.component.html',
-    styleUrls: ['./cluster-selector.component.scss'],
-    imports: [
+  selector: "ngx-cluster-selector",
+  templateUrl: "./cluster-selector.component.html",
+  styleUrls: ["./cluster-selector.component.scss"],
+  imports: [
     TranslatePipe,
     NbSelectModule,
     NbOptionModule,
     NbButtonModule,
     NbIconModule,
-],
+    NbTooltipModule,
+  ],
 })
 export class ClusterSelectorComponent implements OnInit, OnDestroy {
-  private clusterService = inject(ClusterService)
+  private clusterService = inject(ClusterService);
   private i18n = inject(I18nService);
   private cdRef = inject(ChangeDetectorRef);
   private clusterContext = inject(ClusterContextService);
-  private router = inject(Router);
+  private dialogService = inject(NbDialogService);
   private toastr = inject(NbToastrService);
 
   clusters: Cluster[] = [];
   activeCluster: Cluster | null = null;
   loading = false;
+  unavailable = false;
   private destroy$ = new Subject<void>();
 
   ngOnInit(): void {
     // Subscribe to active cluster changes
     this.clusterContext.activeCluster$
       .pipe(takeUntil(this.destroy$))
-      .subscribe(cluster => {
+      .subscribe((cluster) => {
         this.activeCluster = cluster;
         this.cdRef.detectChanges();
       });
@@ -65,6 +80,7 @@ export class ClusterSelectorComponent implements OnInit, OnDestroy {
       next: (clusters) => {
         this.clusters = clusters;
         this.loading = false;
+        this.unavailable = false;
         this.cdRef.detectChanges(); // NG0100：异步赋值后手动检测（nb-select selectedIndex 同步）
 
         // The active cluster status comes from backend via the is_active field
@@ -75,15 +91,23 @@ export class ClusterSelectorComponent implements OnInit, OnDestroy {
         }
       },
       error: (error) => {
-        this.toastr.danger(this.i18n.instant('加载集群列表失败'), this.i18n.instant('错误'));
+        this.toastr.danger(
+          this.i18n.instant("加载集群列表失败"),
+          this.i18n.instant("错误"),
+        );
         this.loading = false;
+        this.unavailable = true;
+        this.cdRef.detectChanges();
       },
     });
   }
 
   selectCluster(cluster: Cluster): void {
     this.clusterContext.setActiveCluster(cluster);
-    this.toastr.success(this.i18n.instant('已切换到集群') + ': ' + cluster.name, this.i18n.instant('成功'));
+    this.toastr.success(
+      this.i18n.instant("已切换到集群") + ": " + cluster.name,
+      this.i18n.instant("成功"),
+    );
   }
 
   onClusterChange(cluster: Cluster): void {
@@ -96,8 +120,19 @@ export class ClusterSelectorComponent implements OnInit, OnDestroy {
     return c1 && c2 ? c1.id === c2.id : c1 === c2;
   }
 
-  goToClusterManagement(): void {
-    this.router.navigate(['/pages/starrocks/clusters']);
+  /// 空态下直接打开创建表单：与集群列表右上角同一入口，
+  /// 不再让用户在"跳过去再点一次"上多走一步。
+  openCreateCluster(): void {
+    this.dialogService
+      .open(ClusterFormComponent, {
+        context: { clusterId: null },
+        dialogClass: "side-sheet",
+      })
+      .onClose.subscribe((saved) => {
+        if (saved) {
+          this.loadClusters();
+        }
+      });
   }
 
   refreshClusters(): void {

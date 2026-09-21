@@ -40,3 +40,14 @@
     max-width: 9rem;
   }
 }
+
+.cluster-unavailable {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.375rem 0.625rem;
+  color: var(--text-hint-color);
+
+  nb-icon {
+    font-size: 1rem;
+  }
+}
