@@ -296,6 +296,56 @@ describe("LoadManagementComponent", () => {
     expect(component.isImportFormValid()).toBeFalse();
   });
 
+  it("keeps real stage durations and only bars what the engine reports", () => {
+    const timed = {
+      job_id: "j1",
+      state: "FINISHED",
+      load_type: "BROKER_LOAD",
+      scan_rows: 1000,
+      filtered_rows: 30,
+      create_time: "2026-09-21 11:30:03",
+      stage_timeline: [
+        {
+          key: "pending",
+          label: "排队",
+          duration_ms: 1000,
+          status: "completed",
+        },
+        {
+          key: "loading",
+          label: "导入",
+          duration_ms: 9000,
+          status: "completed",
+        },
+      ],
+    } as LoadJob;
+    const untimed = {
+      job_id: "j2",
+      state: "FINISHED",
+      load_type: "STREAM_LOAD",
+      stage_timeline: [],
+    } as LoadJob;
+    (component as unknown as { maxDurationMs: number }).maxDurationMs = 10_000;
+    const rows = [timed, untimed].map((job) =>
+      (
+        component as unknown as {
+          toTableRow: (job: LoadJob) => any;
+        }
+      ).toTableRow(job),
+    );
+
+    expect(rows[0].stage).toContain("导入");
+    expect(rows[0].stage).toContain("10s");
+    expect(rows[0].stage).toContain("width:100%");
+    expect(rows[0].createdAt).toContain("11:30:03");
+    expect(rows[0].createdAt).toContain("09-21");
+    expect(rows[0].filtered).toContain("cell-warn");
+    expect(rows[1].stage).toBe('<span class="cell-clip">-</span>');
+    expect(rows[1].stage).not.toContain("cell-bar");
+    expect(rows[1].filtered).toBe('<span class="cell-clip">-</span>');
+    expect(rows[1].filtered).not.toContain("cell-warn");
+  });
+
   it("passes the selected Smart Table row index to the Sheet opener", () => {
     const job = { job_id: "job-1", state: "FINISHED" } as LoadJob;
     const openDetails = spyOn(component, "openDetails");

@@ -167,6 +167,52 @@
   }
 }
 
+/* 表格单元格内容由 bypassHtml 动态注入，不带组件作用域属性，因此需要 ::ng-deep。
+   两行紧凑结构 + 仅基于真实阶段耗时的条。 */
+:host ::ng-deep {
+  .cell-clip {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cell-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    line-height: 1.25;
+  }
+
+  .cell-strong {
+    font-size: 0.8125rem;
+  }
+
+  .cell-hint {
+    color: var(--text-hint-color);
+    font-size: 0.6875rem;
+  }
+
+  .cell-warn {
+    color: var(--color-warning-default);
+  }
+
+  .cell-bar {
+    display: block;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--border-basic-color-3);
+  }
+
+  .cell-bar__fill {
+    display: block;
+    height: 100%;
+    border-radius: 2px;
+    background: var(--color-primary-default);
+  }
+}
+
 .stream-file-meta {
   min-height: 1.25rem;
   margin-top: 0.375rem;

@@ -50,6 +50,8 @@ import { ErrorHandler } from "../../../@core/utils/error-handler";
 import { assignTableRows } from "../../../@core/utils/table-rows";
 
 interface LoadTableRow {
+  /// 以下列均为已转义的单元格 HTML：smart-table 的 valuePrepareFunction 只传
+  /// (value, cell) 而非数据行，故在行映射阶段完成渲染。
   task: string;
   target: string;
   loadType: string;
@@ -138,6 +140,8 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
   targetTables: TableInfo[] = [];
   targetTablesLoading = false;
   importSubmitting = false;
+  /// 当前列表中最长耗时，用于估算单元格条宽（仅影响视觉比例，不改变数值）。
+  private maxDurationMs = 0;
   loadFormErrorMessage = "";
   importForm: ImportForm = {
     type: "file",
@@ -195,45 +199,51 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
     columns: {
       task: {
         title: "任务",
-        type: "string",
-        width: "20%",
+        type: "html",
+        width: "18%",
+        sanitizer: { bypassHtml: true },
       },
       target: {
         title: "数据库 / 目标表",
-        type: "string",
-        width: "18%",
+        type: "html",
+        width: "17%",
+        sanitizer: { bypassHtml: true },
       },
       loadType: {
         title: "类型",
-        type: "string",
-        width: "10%",
+        type: "html",
+        width: "9%",
+        sanitizer: { bypassHtml: true },
       },
       state: {
         title: "状态",
         type: "html",
         width: "10%",
         sanitizer: { bypassHtml: true },
-        valuePrepareFunction: (value: string) => this.renderStateBadge(value),
       },
       stage: {
-        title: "阶段",
-        type: "string",
-        width: "13%",
+        title: "阶段 / 耗时",
+        type: "html",
+        width: "15%",
+        sanitizer: { bypassHtml: true },
       },
       dataVolume: {
         title: "数据量",
-        type: "string",
-        width: "10%",
+        type: "html",
+        width: "11%",
+        sanitizer: { bypassHtml: true },
       },
       filtered: {
         title: "过滤",
-        type: "string",
-        width: "8%",
+        type: "html",
+        width: "9%",
+        sanitizer: { bypassHtml: true },
       },
       createdAt: {
         title: "创建时间",
-        type: "string",
+        type: "html",
         width: "11%",
+        sanitizer: { bypassHtml: true },
       },
     },
   };
@@ -687,6 +697,10 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
           this.jobs = this.sortJobs(response.items);
           this.summary = response.summary;
           this.lastUpdated = new Date();
+          this.maxDurationMs = this.jobs.reduce(
+            (max, job) => Math.max(max, this.jobDurationMs(job) ?? 0),
+            0,
+          );
           if (this.selectedJob) {
             const selectedKey = this.jobKey(this.selectedJob);
             this.selectedJob =
@@ -891,8 +905,60 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
     );
   }
 
-  private renderStateBadge(state: string): string {
-    return `<span class="badge badge-${this.badgeStatus(state)}">${this.escapeHtml(this.statusLabel(state))}</span>`;
+  private renderStateBadge(state: string, causeLabel?: string): string {
+    const title = causeLabel ? ` title="${this.escapeHtml(causeLabel)}"` : "";
+    return `<span class="badge badge-${this.badgeStatus(state)}"${title}>${this.escapeHtml(this.statusLabel(state))}</span>`;
+  }
+
+  private renderClip(value: string, tooltip: string): string {
+    return `<span class="cell-clip" title="${this.escapeHtml(tooltip)}">${this.escapeHtml(value)}</span>`;
+  }
+
+  /// 阶段名 + 真实耗时条；无真实时间戳时保留阶段名，不逐行重复提示（由详情 Sheet 说明）。
+  private renderStageCell(
+    stage: string,
+    duration: string,
+    barPercent?: number,
+  ): string {
+    if (!duration) {
+      return `<span class="cell-clip">${this.escapeHtml(stage)}</span>`;
+    }
+    const label = `<span class="cell-clip">${this.escapeHtml(stage)}</span>`;
+    const bar =
+      barPercent === undefined
+        ? ""
+        : `<span class="cell-bar"><span class="cell-bar__fill" style="width:${barPercent}%"></span></span>`;
+    return `<span class="cell-stack">${label}${bar}<small class="cell-hint">${this.escapeHtml(duration)}</small></span>`;
+  }
+
+  private renderVolumeCell(rows: string, bytes: string): string {
+    if (rows === "-" && bytes === "-") {
+      return `<span class="cell-clip">-</span>`;
+    }
+    return `<span class="cell-stack"><span class="cell-strong">${this.escapeHtml(rows)} 行</span><small class="cell-hint">${this.escapeHtml(bytes)}</small></span>`;
+  }
+
+  private renderFilteredCell(
+    rate: string,
+    rows: string,
+    warn: boolean,
+  ): string {
+    if (rate === "-") {
+      return `<span class="cell-clip">-</span>`;
+    }
+    const rateClass = warn ? "cell-strong cell-warn" : "cell-strong";
+    return `<span class="cell-stack"><span class="${rateClass}">${this.escapeHtml(rate)}</span><small class="cell-hint">${this.escapeHtml(rows)} 行</small></span>`;
+  }
+
+  private renderCreatedCell(
+    time: string,
+    date: string,
+    tooltip: string,
+  ): string {
+    const hint = date
+      ? `<small class="cell-hint">${this.escapeHtml(date)}</small>`
+      : "";
+    return `<span class="cell-stack" title="${this.escapeHtml(tooltip)}"><span class="cell-strong">${this.escapeHtml(time)}</span>${hint}</span>`;
   }
 
   typeLabel(type: string): string {
@@ -926,12 +992,16 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
     return `${amount.toFixed(amount >= 10 ? 0 : 1)} ${unit}`;
   }
 
-  formatDuration(job: LoadJob): string {
+  /// 阶段耗时合计，仅由引擎返回的真实阶段时间戳累加得来。
+  private jobDurationMs(job: LoadJob): number | undefined {
     const duration = job.stage_timeline.reduce(
-      (total, stage) => total + stage.duration_ms,
+      (total, stage) => total + (stage.duration_ms || 0),
       0,
     );
-    if (!duration) return "-";
+    return duration > 0 ? duration : undefined;
+  }
+
+  private formatDurationMs(duration: number): string {
     if (duration < 1000) return `${duration} ms`;
     const seconds = Math.round(duration / 1000);
     if (seconds < 60) return `${seconds}s`;
@@ -957,9 +1027,18 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
   qualityRate(job: LoadJob): string {
     if (job.filtered_rows === undefined || job.scan_rows === undefined)
       return "-";
-    if (job.scan_rows <= 0) return "0%";
-    const rate = (job.filtered_rows / job.scan_rows) * 100;
+    const rate = this.filteredRateValue(job);
+    if (rate === undefined) return "0%";
     return `${rate.toFixed(rate >= 10 ? 0 : 1)}%`;
+  }
+
+  /// 过滤率（百分比）；分母无效时返回 undefined，不估算。
+  private filteredRateValue(job: LoadJob): number | undefined {
+    if (job.filtered_rows === undefined || job.scan_rows === undefined) {
+      return undefined;
+    }
+    if (job.scan_rows <= 0) return 0;
+    return (job.filtered_rows / job.scan_rows) * 100;
   }
 
   prettyJson(value?: string): string {
@@ -973,19 +1052,55 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
 
   private toTableRow(job: LoadJob): LoadTableRow {
     const lastStage = job.stage_timeline[job.stage_timeline.length - 1];
+    const duration = this.jobDurationMs(job);
+    const createdAt = this.splitTimestamp(job.create_time);
+    const filteredRate = this.filteredRateValue(job);
+    const task = job.label || job.job_id || "未命名任务";
+    const target = `${job.database || "-"} / ${job.table_name || "-"}`;
+    const loadType = this.typeLabel(job.load_type);
     return {
-      task: job.label || job.job_id || "未命名任务",
-      target: `${job.database || "-"} / ${job.table_name || "-"}`,
-      loadType: this.typeLabel(job.load_type),
-      state: job.state,
-      stage: lastStage
-        ? `${lastStage.label} · ${this.formatDuration(job)}`
-        : "引擎未提供阶段时间",
-      dataVolume: `${this.formatNumber(job.sink_rows ?? job.scan_rows)} 行 / ${this.formatBytes(job.scan_bytes)}`,
-      filtered: `${this.qualityRate(job)} / ${this.formatNumber(job.filtered_rows)} 行`,
-      createdAt: job.create_time || "-",
+      task: this.renderClip(
+        task,
+        [job.label, job.job_id].filter(Boolean).join(" · ") || task,
+      ),
+      target: this.renderClip(target, target),
+      loadType: this.renderClip(loadType, loadType),
+      state: this.renderStateBadge(job.state, job.failure_cause?.label),
+      stage: this.renderStageCell(
+        lastStage?.label || "-",
+        duration === undefined ? "" : this.formatDurationMs(duration),
+        duration === undefined || this.maxDurationMs <= 0
+          ? undefined
+          : Math.max(4, Math.round((duration / this.maxDurationMs) * 100)),
+      ),
+      dataVolume: this.renderVolumeCell(
+        this.formatNumber(job.sink_rows ?? job.scan_rows),
+        this.formatBytes(job.scan_bytes),
+      ),
+      filtered: this.renderFilteredCell(
+        this.qualityRate(job),
+        this.formatNumber(job.filtered_rows),
+        filteredRate !== undefined && filteredRate > 1,
+      ),
+      createdAt: this.renderCreatedCell(
+        createdAt?.time ?? job.create_time ?? "-",
+        createdAt?.date ?? "",
+        job.create_time ?? "",
+      ),
       job,
     };
+  }
+
+  /// 引擎时间戳可解析时拆出 `HH:mm:ss` 与 `MM-DD`；格式不符时按原文展示。
+  private splitTimestamp(
+    value?: string,
+  ): { time: string; date: string } | undefined {
+    if (!value) return undefined;
+    const match = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}:\d{2}:\d{2})/.exec(
+      value.trim(),
+    );
+    if (!match) return undefined;
+    return { date: `${match[2]}-${match[3]}`, time: match[4] };
   }
 
   private escapeHtml(value: string): string {

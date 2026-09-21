@@ -115,7 +115,7 @@ Routine Load：不做批处理阶段时间线，改为**消费位点卡片**（�
 
 ### 4.2 阶段详情（原生列表）
 
-- 列表只显示最后一个真实阶段及总耗时，避免在 ngx-admin Smart Table 内重绘图形。
+- 列表只显示最后一个真实阶段及总耗时，避免在 ngx-admin Smart Table 内重绘图形。单元格采用两行紧凑结构：主值（阶段名、行数、过滤率、时间）+ 次值（耗时、字节、过滤行数、日期）；耗时条按当前列表内最长真实耗时等比归一，**仅当引擎返回真实阶段时间戳时绘制**，缺失时保留阶段名并以 `-` 表达，不在每行重复提示语（由详情 Sheet 说明）。过滤率 `Filtered_Rows / Scan_Rows > 1%` 且分母有效时主值用 warning 色。
 - 详情 Sheet 使用原生 `nb-list` 展示阶段名和时长；行数速率、起止时间等引擎未确认字段不臆造。
 - 失败任务在详情 Sheet 展示 `ERROR_MSG` 全文；有 `TRACKING_SQL` 时提供复制 SQL，有 `REJECTED_RECORD_PATH` 时提供复制路径；Doris `SHOW LOAD` 的 `URL`、`ErrorMsg`、`JobDetails` 保持原文并提供复制，不将原始 URL 自动当作外链访问。
 - 不引入图库、手写阶段条或阶段独立动画。
