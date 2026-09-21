@@ -1788,3 +1788,46 @@ Beta 版本（v3.0-beta）：完成 P0 + P1
 | 建议采纳率 | 40% | 70%+ | **75% 提升** |
 | 规则覆盖场景数 | 45 | 55+ | **22% 增加** |
 | 用户满意度 | 6/10 | 8.5/10 | **42% 提升** |
+
+---
+
+## 闭环与智能分层边界（2026-09 追加）
+
+诊断只有走到「处置 → 验证」才产生运维价值。本节固定三层的职责与可执行性边界，
+避免"让模型决定改什么参数"这类不可审计的做法。
+
+| 层 | 职责 | 可执行性 |
+|---|---|---|
+| 规则引擎（`analyzer/rules/`） | 确定性诊断：阈值、模式、节点级归因 | **唯一可执行来源**：`parameter_suggestions` 带 `command`，参数名/推荐值来自规则 |
+| LLM 增强（`enhance` 端点） | 解释、假设、非结构化场景补充 | **不可直接执行**：自由文本只能作为参考，需人工判断 |
+| 智能运维（ops agent + `agent_runtime::actions`） | 跨来源编排（profile / audit / variables / capacity） | 只经 `propose_action → 用户确认 → execute_action`，白名单 `kill_query`/`update_variable` |
+
+闭环链路（Profiles）：
+
+```
+规则诊断 → parameter_suggestions
+        → 应用（PUT /api/clusters/variables/:name，GLOBAL 需确认）
+        → 执行统一走 agent_runtime::actions::execute_action（与 Agent 同一份 SQL 构造）
+        → 留痕 op_audit_logs(action=update_variable, target_type=cluster_variable)
+        → 复测 GET /api/clusters/profiles/:query_id/retest（同 SQL 指纹的执行序列）
+```
+
+设计要点：
+
+- **执行路径唯一**：变量页与 Profile 页面共用 `execute_action("update_variable")`，不再各写一份 `SET` 语句。
+- **指纹复用**：`handlers/query.rs::sql_fingerprint`（压空白、截断 300 字符）同时用于查询历史与复测分组，前后端同算法。
+- **复测只陈述事实**：按指纹聚合引擎返回的执行记录与耗时，`scanned` 明示比对的窗口大小，**不做因果断言**（改了参数之后变快不等于由该参数导致）。
+- **无法解析的耗时丢弃**：`parse_profile_time` 对 `9ms`/`1s234ms`/`2m3s` 解析，未知格式返回 `None` 并排除该条，不用 0 或估算值参与对比。
+
+已知局限与数据边界：
+
+1. **复测数据源按可靠性分三级**（`GET /profiles/:query_id/retest`）：
+   - **主来源：StarRocks 审计日志**（`AuditLogService::get_query_runs`）。24 小时窗口、`LIMIT 1000`，用 `like_hint`（SQL 中最长标识符，含 SQL 关键字黑名单）做 LIKE 预筛，再按精确指纹比对。实测同一指纹覆盖 1000 次执行，而 profile 窗口内只有数十次。
+   - **补充来源：profile 滚动窗口**（最近 500 条）。审计未启用或尚未落盘时仍可用，按 `query_id` 去重（审计优先）。
+   - **兜底：profile 原文解析**（`extract_query_sql` 取 `Query:` 段）。高频集群存在窗口期——profile 列表已滚动且审计尚未写入，此时按 ID 直取 `GET /profiles/:query_id` 的原文解析 SQL。
+2. **结果可能被截断**：达到审计查询上限时响应 `truncated: true`，前端标注"仅最近一批"，不把截断结果说成全量。
+3. **审计不提供查询状态**：`state` 为 `null` 而不是猜测的 "Finished"；只有 profile 来源才带引擎状态。
+4. **审计可用性随集群而异**：响应中的 `audit_available` 说明本次是否用上审计日志；未开启审计（`starrocks_audit_db__` / `starrocks_audit_tbl__`）时自动降级到后两级。
+5. **审计表的 `stmt` 保留换行**：预筛片段必须是单个 token，多词片段在 `LIKE` 下永远命中不了——这是早期实现失败的原因，已由测试固定。
+
+结论：复测现在以**审计日志为主数据源**，在真实高频集群上覆盖 24 小时内的上千次执行，且明确指出截断与状态缺失，不做因果断言。

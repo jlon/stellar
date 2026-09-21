@@ -1,71 +1,71 @@
-import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
-import { ApiService } from './api.service';
+import { Injectable, inject } from "@angular/core";
+import { Observable } from "rxjs";
+import { ApiService } from "./api.service";
 
 export interface Backend {
   // Common fields for both BE and CN
-  BackendId: string;           // Node ID (BackendId for BE, ComputeNodeId for CN)
-  IP: string;                  // IP address
-  HeartbeatPort: string;       // Heartbeat port
-  BePort: string;              // BE service port
-  HttpPort: string;            // HTTP port
-  BrpcPort: string;            // BRPC port
-  LastStartTime: string;       // Last start time
-  LastHeartbeat: string;       // Last heartbeat time
-  Alive: string;               // Alive status
+  BackendId: string; // Node ID (BackendId for BE, ComputeNodeId for CN)
+  IP: string; // IP address
+  HeartbeatPort: string; // Heartbeat port
+  BePort: string; // BE service port
+  HttpPort: string; // HTTP port
+  BrpcPort: string; // BRPC port
+  LastStartTime: string; // Last start time
+  LastHeartbeat: string; // Last heartbeat time
+  Alive: string; // Alive status
   SystemDecommissioned: string; // System decommissioned status
   ClusterDecommissioned: string; // Cluster decommissioned status
-  
+
   // Storage fields (BE only, CN may have empty values)
-  TabletNum: string;           // Tablet count
-  DataUsedCapacity: string;    // Data used capacity
-  AvailCapacity: string;       // Available capacity
-  TotalCapacity: string;       // Total capacity
-  UsedPct: string;             // Used percentage
-  MaxDiskUsedPct: string;      // Max disk used percentage
-  DataTotalCapacity: string;   // Data total capacity
-  DataUsedPct: string;         // Data used percentage
-  
+  TabletNum: string; // Tablet count
+  DataUsedCapacity: string; // Data used capacity
+  AvailCapacity: string; // Available capacity
+  TotalCapacity: string; // Total capacity
+  UsedPct: string; // Used percentage
+  MaxDiskUsedPct: string; // Max disk used percentage
+  DataTotalCapacity: string; // Data total capacity
+  DataUsedPct: string; // Data used percentage
+
   // Resource fields
-  CpuCores: string;            // CPU cores
-  MemLimit: string;            // Memory limit
-  NumRunningQueries: string;   // Number of running queries
-  MemUsedPct: string;          // Memory used percentage
-  CpuUsedPct: string;          // CPU used percentage
-  
+  CpuCores: string; // CPU cores
+  MemLimit: string; // Memory limit
+  NumRunningQueries: string; // Number of running queries
+  MemUsedPct: string; // Memory used percentage
+  CpuUsedPct: string; // CPU used percentage
+
   // Status fields
-  ErrMsg: string;              // Error message
-  Version: string;             // Version
-  Status: string;              // Status (JSON format)
-  DataCacheMetrics: string;    // Data cache metrics
-  Location: string;            // Location (BE only)
-  StatusCode: string;          // Status code
-  HasStoragePath: string;      // Has storage path (CN only)
-  
+  ErrMsg: string; // Error message
+  Version: string; // Version
+  Status: string; // Status (JSON format)
+  DataCacheMetrics: string; // Data cache metrics
+  Location: string; // Location (BE only)
+  StatusCode: string; // Status code
+  HasStoragePath: string; // Has storage path (CN only)
+
   // Shared-Data mode fields
-  StarletPort: string;         // Starlet port
-  WorkerId: string;            // Worker ID
-  WarehouseName: string;       // Warehouse name
+  StarletPort: string; // Starlet port
+  WorkerId: string; // Worker ID
+  WarehouseName: string; // Warehouse name
 }
 
 export interface Frontend {
-  Id?: string;  // Optional field added in StarRocks 3.5.2
+  Id?: string; // Optional field added in StarRocks 3.5.2
   Name: string;
-  IP: string;  // Changed from Host to IP to match StarRocks API
+  IP: string; // Changed from Host to IP to match StarRocks API
   EditLogPort: string;
   HttpPort: string;
   QueryPort: string;
   RpcPort: string;
   Role: string;
-  IsMaster?: string;  // Made optional as it might not always be present
+  IsMaster?: string; // Made optional as it might not always be present
   ClusterId: string;
   Join: string;
   Alive: string;
   ReplayedJournalId: string;
   LastHeartbeat: string;
-  IsHelper?: string;  // Optional field added in StarRocks 3.5.2
+  IsHelper?: string; // Optional field added in StarRocks 3.5.2
   ErrMsg: string;
-  StartTime?: string;  // Optional field added in StarRocks 3.5.2
+  StartTime?: string; // Optional field added in StarRocks 3.5.2
   Version: string;
 }
 
@@ -194,7 +194,7 @@ export interface StreamLoadResponse {
   load_bytes?: number;
 }
 
-export type TableObjectType = 'TABLE' | 'VIEW' | 'MATERIALIZED_VIEW';
+export type TableObjectType = "TABLE" | "VIEW" | "MATERIALIZED_VIEW";
 
 export interface TableInfo {
   name: string;
@@ -207,6 +207,27 @@ export interface ProfileListItem {
   Time: string;
   State: string;
   Statement: string;
+}
+
+export interface ProfileRetestRun {
+  QueryId: string;
+  StartTime: string;
+  TimeMs: number;
+  /** 审计日志不提供查询状态，此时为 null。 */
+  State: string | null;
+  IsBaseline: boolean;
+}
+
+/** 同一 SQL 指纹的执行序列（引擎 profile 列表），用于处置前后耗时对比。 */
+export interface ProfileRetestResponse {
+  fingerprint: string;
+  scanned: number;
+  /** 是否以审计日志为主数据源（不受 profile 滚动窗口限制）。 */
+  audit_available: boolean;
+  window_minutes: number;
+  /** 结果是否被审计查询条数上限截断（仅保留最近 N 次）。 */
+  truncated: boolean;
+  Runs: ProfileRetestRun[];
 }
 
 export interface ProfileDetail {
@@ -266,8 +287,8 @@ export interface ParameterSuggestion {
   current?: string;
   recommended: string;
   command: string;
-  description: string;  // Human-readable description of what this parameter does
-  impact: string;       // Expected impact of changing this parameter
+  description: string; // Human-readable description of what this parameter does
+  impact: string; // Expected impact of changing this parameter
 }
 
 // Aggregated diagnostic for overview display
@@ -291,14 +312,14 @@ export interface AggregatedDiagnostic {
 // LLM enhanced analysis result
 export interface LLMEnhancedAnalysis {
   available: boolean;
-  status: string;  // 'pending' | 'completed' | 'failed'
+  status: string; // 'pending' | 'completed' | 'failed'
   root_causes?: any[];
   causal_chains?: any[];
   recommendations?: any[];
   hidden_issues?: any[];
   summary?: string;
-  from_cache?: boolean;  // Whether this result was from cache
-  elapsed_time_ms?: number;  // LLM analysis elapsed time in milliseconds
+  from_cache?: boolean; // Whether this result was from cache
+  elapsed_time_ms?: number; // LLM analysis elapsed time in milliseconds
 }
 
 export interface ProfileAnalysisResult {
@@ -330,15 +351,14 @@ export interface ProfileAnalysisResult {
 }
 
 @Injectable({
-  providedIn: 'root',
+  providedIn: "root",
 })
 export class NodeService {
   private api = inject(ApiService);
 
-
   // All API methods now use backend routes without cluster ID
   // The active cluster is determined by the backend
-  
+
   listBackends(): Observable<Backend[]> {
     return this.api.get<Backend[]>(`/clusters/backends`);
   }
@@ -356,8 +376,14 @@ export class NodeService {
   }
 
   /** 取消执行（按指纹 KILL 在跑查询，影响面限于相同 SQL 文本）。 */
-  cancelQuery(fingerprint: string, started_after_ms: number): Observable<{ killed: string[] }> {
-    return this.api.post<{ killed: string[] }>(`/clusters/queries/cancel`, { fingerprint, started_after_ms });
+  cancelQuery(
+    fingerprint: string,
+    started_after_ms: number,
+  ): Observable<{ killed: string[] }> {
+    return this.api.post<{ killed: string[] }>(`/clusters/queries/cancel`, {
+      fingerprint,
+      started_after_ms,
+    });
   }
 
   killQuery(queryId: string): Observable<any> {
@@ -381,8 +407,11 @@ export class NodeService {
     return this.api.get<SystemFunction[]>(`/clusters/system`);
   }
 
-  getSystemFunctionDetail(functionName: string, nestedPath?: string): Observable<SystemFunctionDetail> {
-    const url = nestedPath 
+  getSystemFunctionDetail(
+    functionName: string,
+    nestedPath?: string,
+  ): Observable<SystemFunctionDetail> {
+    const url = nestedPath
       ? `/clusters/system/${functionName}?path=${encodeURIComponent(nestedPath)}`
       : `/clusters/system/${functionName}`;
     return this.api.get<SystemFunctionDetail>(url);
@@ -398,7 +427,10 @@ export class NodeService {
   }
 
   // Variables API
-  getVariables(type: string = 'global', filter?: string): Observable<Variable[]> {
+  getVariables(
+    type: string = "global",
+    filter?: string,
+  ): Observable<Variable[]> {
     let params: any = { type };
     if (filter) {
       params.filter = filter;
@@ -410,18 +442,25 @@ export class NodeService {
     return this.api.get<Variable[]>(`/clusters/configs`);
   }
 
-  updateVariable(variableName: string, request: VariableUpdateRequest): Observable<any> {
+  updateVariable(
+    variableName: string,
+    request: VariableUpdateRequest,
+  ): Observable<any> {
     return this.api.put(`/clusters/variables/${variableName}`, request);
   }
 
   // Query History API with pagination and search
-  listQueryHistory(limit: number = 10, offset: number = 0, filters?: {
-    keyword?: string;
-    startTime?: string;
-    endTime?: string;
-  }): Observable<QueryHistoryResponse> {
+  listQueryHistory(
+    limit: number = 10,
+    offset: number = 0,
+    filters?: {
+      keyword?: string;
+      startTime?: string;
+      endTime?: string;
+    },
+  ): Observable<QueryHistoryResponse> {
     const params: any = { limit, offset };
-    
+
     if (filters) {
       if (filters.keyword?.trim()) {
         params.keyword = filters.keyword.trim();
@@ -433,8 +472,11 @@ export class NodeService {
         params.end_time = filters.endTime;
       }
     }
-    
-    return this.api.get<QueryHistoryResponse>(`/clusters/queries/history`, params);
+
+    return this.api.get<QueryHistoryResponse>(
+      `/clusters/queries/history`,
+      params,
+    );
   }
 
   // Query Profile API
@@ -455,7 +497,10 @@ export class NodeService {
   }
 
   // Get tables list for a database within an optional catalog
-  getTables(catalog: string | undefined, database: string): Observable<TableInfo[]> {
+  getTables(
+    catalog: string | undefined,
+    database: string,
+  ): Observable<TableInfo[]> {
     const params: any = { database };
     if (catalog) {
       params.catalog = catalog;
@@ -473,8 +518,18 @@ export class NodeService {
     database?: string,
     recordHistory = false,
   ): Observable<QueryExecuteResult> {
-    const request: QueryExecuteRequest = { sql, limit, catalog, database, record_history: recordHistory };
-    return this.api.post<QueryExecuteResult>(`/clusters/queries/execute`, request, 650000);
+    const request: QueryExecuteRequest = {
+      sql,
+      limit,
+      catalog,
+      database,
+      record_history: recordHistory,
+    };
+    return this.api.post<QueryExecuteResult>(
+      `/clusters/queries/execute`,
+      request,
+      650000,
+    );
   }
 
   streamLoad(formData: FormData): Observable<StreamLoadResponse> {
@@ -490,14 +545,23 @@ export class NodeService {
     return this.api.get<ProfileListItem[]>(`/clusters/profiles`);
   }
 
+  getProfileRetest(queryId: string): Observable<ProfileRetestResponse> {
+    return this.api.get<ProfileRetestResponse>(
+      `/clusters/profiles/${encodeURIComponent(queryId)}/retest`,
+    );
+  }
+
   getProfile(queryId: string): Observable<ProfileDetail> {
     return this.api.get<ProfileDetail>(`/clusters/profiles/${queryId}`);
   }
 
-  analyzeProfile(queryId: string, refresh = false): Observable<ProfileAnalysisResult> {
+  analyzeProfile(
+    queryId: string,
+    refresh = false,
+  ): Observable<ProfileAnalysisResult> {
     return this.api.get<ProfileAnalysisResult>(
       `/clusters/profiles/${queryId}/analyze`,
-      refresh ? { refresh: 'true' } : undefined,
+      refresh ? { refresh: "true" } : undefined,
     );
   }
 
@@ -507,8 +571,15 @@ export class NodeService {
    * @param queryId Query ID
    * @param payload Request payload containing analysis_data and force_refresh flag
    */
-  enhanceProfileWithLLM(clusterId: number, queryId: string, payload: { analysis_data: any, force_refresh?: boolean }): Observable<any> {
-    return this.api.post<any>(`/clusters/${clusterId}/profiles/${queryId}/enhance`, payload);
+  enhanceProfileWithLLM(
+    clusterId: number,
+    queryId: string,
+    payload: { analysis_data: any; force_refresh?: boolean },
+  ): Observable<any> {
+    return this.api.post<any>(
+      `/clusters/${clusterId}/profiles/${queryId}/enhance`,
+      payload,
+    );
   }
 
   /**
@@ -518,12 +589,26 @@ export class NodeService {
    * @param database Optional database name
    * @param catalog Optional catalog name
    */
-  diagnoseSQL(clusterId: number, sql: string, database?: string, catalog?: string): Observable<SqlDiagResponse> {
-    return this.api.post<SqlDiagResponse>(`/clusters/${clusterId}/sql/diagnose`, { sql, database, catalog });
+  diagnoseSQL(
+    clusterId: number,
+    sql: string,
+    database?: string,
+    catalog?: string,
+  ): Observable<SqlDiagResponse> {
+    return this.api.post<SqlDiagResponse>(
+      `/clusters/${clusterId}/sql/diagnose`,
+      { sql, database, catalog },
+    );
   }
 
-  listExecutionHistory(limit: number = 50, offset: number = 0): Observable<QueryExecutionHistoryResponse> {
-    return this.api.get<QueryExecutionHistoryResponse>(`/clusters/queries/execution-history`, { limit, offset });
+  listExecutionHistory(
+    limit: number = 50,
+    offset: number = 0,
+  ): Observable<QueryExecutionHistoryResponse> {
+    return this.api.get<QueryExecutionHistoryResponse>(
+      `/clusters/queries/execution-history`,
+      { limit, offset },
+    );
   }
 
   deleteExecutionHistory(id: number): Observable<any> {

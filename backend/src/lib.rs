@@ -42,6 +42,10 @@ mod bootstrap_test;
 mod config_test;
 
 #[cfg(test)]
+#[path = "tests/resource_group_service_test.rs"]
+mod resource_group_service_test;
+
+#[cfg(test)]
 #[path = "tests/load_service_test.rs"]
 mod load_service_test;
 
@@ -50,8 +54,20 @@ mod load_service_test;
 mod stream_load_test;
 
 #[cfg(test)]
+#[path = "tests/backend_capacity_test.rs"]
+mod backend_capacity_test;
+
+#[cfg(test)]
 #[path = "tests/query_parser_test.rs"]
 mod query_parser_test;
+
+#[cfg(test)]
+#[path = "tests/profile_retest_test.rs"]
+mod profile_retest_test;
+
+#[cfg(test)]
+#[path = "tests/overview_disk_pressure_test.rs"]
+mod overview_disk_pressure_test;
 
 use crate::services::NotificationService;
 use crate::services::profile_analyzer::ProfileAnalysisCache;

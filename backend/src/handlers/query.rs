@@ -434,7 +434,7 @@ pub async fn kill_query(
 }
 
 /// SQL 指纹归一化（前后端同算法）：压空白，前 300 字。
-fn sql_fingerprint(sql: &str) -> String {
+pub(crate) fn sql_fingerprint(sql: &str) -> String {
     const LIMIT: usize = 300;
     let mut out = String::with_capacity(LIMIT);
     let mut last_space = true;

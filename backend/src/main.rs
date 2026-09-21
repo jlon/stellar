@@ -89,6 +89,7 @@ use stellar::{AppState, handlers, middleware, services};
 
         handlers::profile::list_profiles,
         handlers::profile::get_profile,
+        handlers::profile::get_profile_retest,
         handlers::profile::analyze_profile_handler,
 
         handlers::system_management::get_system_functions,
@@ -195,6 +196,8 @@ use stellar::{AppState, handlers, middleware, services};
             models::StreamLoadResponse,
             models::ProfileListItem,
             models::ProfileDetail,
+            models::ProfileRetestRun,
+            models::ProfileRetestResponse,
             models::RuntimeInfo,
             models::MetricsSummary,
             models::SystemFunction,
@@ -422,13 +425,17 @@ where
     let pool = db::create_pool::<DB>(&config.database.url).await?;
     tracing::info!("Database pool created successfully");
 
-    // First run on an empty database: create the initial admin user (MinIO
-    // style one-time password) before anything else can log in.
-    if db::bootstrap::ensure_root_user::<DB>(&pool, std::env::var("STELLAR_ROOT_PASSWORD").ok())
-        .await?
-        .is_some()
+    // Bootstrap behavior is explicitly selected by STELLAR_ENV. Existing
+    // initialized accounts are never changed automatically.
+    if db::bootstrap::ensure_root_user::<DB>(
+        &pool,
+        config.runtime_mode,
+        std::env::var("STELLAR_ROOT_PASSWORD").ok(),
+    )
+    .await?
+    .is_some()
     {
-        tracing::info!("Initial admin user created (see console output for the one-time password)");
+        tracing::info!(runtime_mode = ?config.runtime_mode, "Initial admin credential initialized");
     }
 
     let jwt_util = Arc::new(JwtUtil::new(&config.auth.jwt_secret, &config.auth.jwt_expires_in));
@@ -451,6 +458,7 @@ where
         pool.clone(),
         Arc::clone(&cluster_service),
         Arc::clone(&mysql_pool_manager),
+        config.audit.clone(),
         config.metrics.retention_days,
     ));
 
@@ -587,6 +595,7 @@ where
     let _baseline_refresh_handle = services::start_baseline_refresh_task(
         Arc::clone(&mysql_pool_manager),
         Arc::clone(&cluster_service),
+        config.audit.clone(),
         3600,
     );
     tracing::info!("Baseline refresh task started (interval: 1 hour)");
@@ -709,6 +718,10 @@ where
         )
         .route("/api/clusters/profiles", get(handlers::profile::list_profiles))
         .route("/api/clusters/profiles/:query_id", get(handlers::profile::get_profile))
+        .route(
+            "/api/clusters/profiles/:query_id/retest",
+            get(handlers::profile::get_profile_retest),
+        )
         .route(
             "/api/clusters/profiles/:query_id/analyze",
             get(handlers::profile::analyze_profile_handler),

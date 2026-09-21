@@ -210,18 +210,36 @@ pub async fn update_variable(
             .await?
     };
 
-    let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
-    let mysql_client = MySQLClient::from_pool(pool).with_timeout(cluster_timeout(&cluster));
-
     let scope = match request.scope.to_uppercase().as_str() {
         "GLOBAL" => "GLOBAL",
         "SESSION" => "SESSION",
         _ => return Err(ApiError::invalid_data("Invalid scope. Must be GLOBAL or SESSION")),
     };
 
-    let sql = format!("SET {} {} = {}", scope, variable_name, request.value);
+    // 复用统一的动作执行器：变量页与智能运维的动作通道共用同一份 SQL 构造与校验。
+    crate::services::agent_runtime::actions::execute_action(
+        &cluster,
+        &state.mysql_pool_manager,
+        "update_variable",
+        &json!({ "key": variable_name, "value": request.value, "scope": scope }),
+    )
+    .await
+    .map_err(ApiError::internal_error)?;
 
-    mysql_client.execute(&sql).await?;
+    // 变量变更属于写操作，写入操作审计（保留变量名，便于与诊断证据关联）。
+    crate::services::op_audit::log_op_best_effort(
+        &state.db,
+        crate::services::op_audit::OpAuditEntry {
+            user_id: org_ctx.user_id,
+            username: &org_ctx.username,
+            organization_id: org_ctx.organization_id,
+            action: "update_variable",
+            target_type: "cluster_variable",
+            target_id: None,
+            target_name: &variable_name,
+        },
+    )
+    .await;
 
     Ok((StatusCode::OK, Json(json!({ "message": "Variable updated successfully" }))))
 }

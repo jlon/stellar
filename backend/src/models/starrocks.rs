@@ -419,6 +419,40 @@ pub struct ProfileDetail {
     pub profile_content: String,
 }
 
+/// 同一 SQL 指纹的一次执行记录（来自引擎 profile 列表，不做因果推断）。
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ProfileRetestRun {
+    #[serde(rename = "QueryId")]
+    pub query_id: String,
+    #[serde(rename = "StartTime")]
+    pub start_time: String,
+    #[serde(rename = "TimeMs")]
+    pub time_ms: u64,
+    /// 引擎返回的状态；审计日志不提供状态时为 None（不臆造）。
+    #[serde(rename = "State")]
+    pub state: Option<String>,
+    /// 是否为当前被诊断的那次执行。
+    #[serde(rename = "IsBaseline")]
+    pub is_baseline: bool,
+}
+
+/// 复测视图：同一指纹的执行序列与耗时，供处置前后对比。
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ProfileRetestResponse {
+    /// 归一化后的 SQL 指纹（压空白、截断），仅用于分组，不用于展示全文。
+    pub fingerprint: String,
+    /// 引擎 profile 列表中的扫描条数，说明本次比对的数据边界。
+    pub scanned: usize,
+    /// 是否使用了审计日志作为主数据源（不受 profile 滚动窗口影响）。
+    pub audit_available: bool,
+    /// 审计日志的查询时间窗口（分钟）。
+    pub window_minutes: i64,
+    /// 结果是否被审计查询条数上限截断（仅保留最近 N 次）。
+    pub truncated: bool,
+    #[serde(rename = "Runs")]
+    pub runs: Vec<ProfileRetestRun>,
+}
+
 // Catalog with its databases
 #[derive(Debug, Serialize, ToSchema)]
 pub struct CatalogWithDatabases {

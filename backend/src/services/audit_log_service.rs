@@ -127,14 +127,58 @@ fn extract_table_refs(stmt: &str, fallback_db: &str, catalog: &str) -> Vec<(Stri
     tables
 }
 
+/// 审计日志中的一次查询执行；`stmt` 仅用于本地指纹比对，不对外输出。
+#[derive(Debug, Clone)]
+pub struct AuditQueryRun {
+    pub query_id: String,
+    pub timestamp: String,
+    pub time_ms: u64,
+    pub stmt: String,
+}
+
 /// Top table by access count (from audit logs)
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
+
 pub struct TopTableByAccess {
     pub database: String,
     pub table: String,
     pub access_count: i64,
     pub last_access: Option<String>,
     pub unique_users: i32,
+}
+
+/// 取 SQL 中最长的标识符作为审计表的 LIKE 预筛片段。
+///
+/// 审计表的 `stmt` 保留换行与原始空白，多词片段无法命中，因此只取单个 token；
+/// 预筛仅用于缩小候选集，最终判定仍由调用方按精确指纹完成。
+pub(crate) fn like_hint(sql: &str) -> Option<String> {
+    // SQL 关键字几乎命中所有语句，作为预筛片段没有价值。
+    const SQL_KEYWORDS: [&str; 14] = [
+        "select", "insert", "update", "delete", "from", "where", "join", "group", "order", "limit",
+        "values", "table", "into", "with",
+    ];
+
+    let longest = sql
+        .split(|c: char| {
+            c.is_whitespace()
+                || matches!(
+                    c,
+                    '(' | ')' | ',' | '=' | '\'' | '"' | '`' | ';' | '[' | ']' | '<' | '>'
+                )
+        })
+        .filter(|token| {
+            token.len() >= 4
+                && token.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                && !SQL_KEYWORDS.iter().any(|kw| token.eq_ignore_ascii_case(kw))
+        })
+        .max_by_key(|token| token.len())?;
+    Some(
+        longest
+            .replace('\\', "\\\\")
+            .replace('\'', "''")
+            .replace('%', "\\%")
+            .replace('_', "\\_"),
+    )
 }
 
 /// Slow query information
@@ -339,6 +383,58 @@ impl AuditLogService {
             )));
         }
         Ok((stmt, db))
+    }
+
+    /// 按 SQL 片段预筛并取时间窗口内的查询执行（用于同一 SQL 的耗时对比）。
+    ///
+    /// `sql_hint` 由 [`like_hint`] 生成；审计表不可用时由调用方回退到其它数据源。
+    pub async fn get_query_runs(
+        &self,
+        cluster: &Cluster,
+        sql_hint: &str,
+        window_minutes: i64,
+        limit: usize,
+    ) -> ApiResult<Vec<AuditQueryRun>> {
+        use crate::models::cluster::ClusterType;
+
+        let (audit_table, time_field, query_time_field, _is_query_field, _stmt_type_field) =
+            self.get_audit_config(cluster);
+        let id_col = match cluster.cluster_type {
+            ClusterType::StarRocks => "queryId",
+            ClusterType::Doris => "query_id",
+        };
+        let window = window_minutes.clamp(1, 24 * 60);
+        let limit = limit.clamp(1, 2_000);
+        let sql = format!(
+            "SELECT `{id_col}` AS query_id, `{time_field}` AS ts, `{query_time_field}` AS time_ms, \
+             `stmt` AS stmt, `user` AS user_name \
+             FROM {audit_table} \
+             WHERE `{time_field}` >= DATE_SUB(NOW(), INTERVAL {window} MINUTE) \
+               AND `stmt` LIKE '%{sql_hint}%' \
+             ORDER BY `{time_field}` DESC LIMIT {limit}",
+        );
+
+        let pool = self.mysql_pool_manager.get_pool(cluster).await?;
+        let mysql_client = MySQLClient::from_pool(pool).with_timeout(cluster_timeout(cluster));
+        let (columns, rows) = mysql_client.query_raw(&sql).await?;
+        let pos = |name: &str| columns.iter().position(|c| c == name);
+
+        Ok(rows
+            .iter()
+            .filter_map(|row| {
+                let query_id = pos("query_id").and_then(|i| row.get(i))?.trim().to_string();
+                let timestamp = pos("ts").and_then(|i| row.get(i))?.trim().to_string();
+                let time_ms = pos("time_ms")
+                    .and_then(|i| row.get(i))
+                    .and_then(|value| value.trim().parse::<f64>().ok())
+                    .map(|value| value.max(0.0).round() as u64)?;
+                let stmt = pos("stmt").and_then(|i| row.get(i))?.to_string();
+                if query_id.is_empty() || stmt.trim().is_empty() {
+                    return None;
+                }
+                Some(AuditQueryRun { query_id, timestamp, time_ms, stmt })
+            })
+            .collect())
     }
 
     pub async fn get_slow_queries(

@@ -3,10 +3,11 @@ use axum::{
     Json,
     extract::{Path, Query, State},
 };
+use std::collections::HashSet;
 use std::sync::Arc;
 use stellar_macros::app_db;
 
-use crate::models::{ProfileDetail, ProfileListItem};
+use crate::models::{ProfileDetail, ProfileListItem, ProfileRetestResponse, ProfileRetestRun};
 use crate::services::MySQLClient;
 use crate::services::cluster_adapter::create_adapter;
 use crate::services::llm::{
@@ -77,6 +78,252 @@ pub async fn list_profiles(
 
     tracing::info!("Successfully fetched {} profiles", profiles.len());
     Ok(Json(profiles))
+}
+
+/// 同一 SQL 指纹的执行序列，用于对比处置前后的耗时。
+///
+/// 仅呈现引擎事实：按归一化指纹分组，不做因果推断；`scanned` 说明本次比对的
+/// 数据边界（引擎 profile 列表条数），列表超出部分不参与比对。
+#[utoipa::path(
+    get,
+    path = "/api/clusters/profiles/{query_id}/retest",
+    params(
+        ("query_id" = String, Path, description = "Query ID")
+    ),
+    responses(
+        (status = 200, description = "同一指纹的执行记录", body = ProfileRetestResponse),
+        (status = 404, description = "Profile 不存在")
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    tag = "Profiles"
+)]
+#[app_db]
+pub async fn get_profile_retest(
+    State(state): State<Arc<AppState<DB>>>,
+    axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
+    Path(query_id): Path<String>,
+) -> ApiResult<Json<ProfileRetestResponse>> {
+    let cluster = if org_ctx.is_super_admin {
+        state.cluster_service.get_active_cluster().await?
+    } else {
+        state
+            .cluster_service
+            .get_active_cluster_by_org(org_ctx.organization_id)
+            .await?
+    };
+
+    let safe_query_id = sanitize_query_id(&query_id)?;
+    let adapter = create_adapter(cluster.clone(), state.mysql_pool_manager.clone());
+    let profiles = adapter.list_profiles().await?;
+
+    // profile 列表是"最近 N 条"的滚动窗口，被诊断的查询可能已滑出；
+    // 此时回退到 StarRocks 审计日志按 queryId 取原始 SQL，保持比对可用。
+    let audit = crate::services::audit_log_service::AuditLogService::new(
+        Arc::clone(&state.mysql_pool_manager),
+        state.audit_config.clone(),
+    );
+    let baseline_sql = match profiles.iter().find(|item| item.query_id == safe_query_id) {
+        Some(item) => item.statement.clone(),
+        None => match audit.get_query_sql(&cluster, &safe_query_id).await {
+            Ok((statement, _)) => statement,
+            // 高频集群存在窗口期：profile 列表已滚动、审计尚未落盘。
+            // 最后一次回退是按 ID 直取 profile 原文并解析 Query 段。
+            Err(_) => {
+                let content = adapter.get_profile(&safe_query_id).await.map_err(|error| {
+                    ApiError::not_found(format!("无法比对：查不到该查询的 Profile（{error}）"))
+                })?;
+                extract_query_sql(&content).ok_or_else(|| {
+                    ApiError::not_found("无法比对：Profile 原文中没有可解析的查询语句")
+                })?
+            },
+        },
+    };
+
+    let fingerprint = crate::handlers::query::sql_fingerprint(&baseline_sql);
+    let window_minutes: i64 = 24 * 60;
+
+    // 主数据源：审计日志（全量、不受 profile 滚动窗口限制）。
+    let mut audit_runs: Vec<ProfileRetestRun> = Vec::new();
+    let mut audit_available = false;
+    const AUDIT_LIMIT: usize = 1_000;
+    if let Some(hint) = crate::services::audit_log_service::like_hint(&baseline_sql) {
+        match audit
+            .get_query_runs(&cluster, &hint, window_minutes, AUDIT_LIMIT)
+            .await
+        {
+            Ok(rows) => {
+                audit_available = true;
+                audit_runs = rows
+                    .into_iter()
+                    .filter(|row| crate::handlers::query::sql_fingerprint(&row.stmt) == fingerprint)
+                    .map(|row| ProfileRetestRun {
+                        is_baseline: row.query_id == safe_query_id,
+                        query_id: row.query_id,
+                        start_time: normalize_time(&row.timestamp),
+                        time_ms: row.time_ms,
+                        // 审计日志不提供查询状态，保持为空而不是猜测
+                        state: None,
+                    })
+                    .collect();
+            },
+            Err(error) => {
+                tracing::debug!(
+                    error = %error,
+                    "audit query runs unavailable, falling back to profile window"
+                );
+            },
+        }
+    }
+
+    // 补充数据源：profile 滚动窗口（审计未启用或尚未写入时仍可用）。
+    let (_, profile_runs) = build_retest_runs(&profiles, &safe_query_id, &baseline_sql);
+    let runs = merge_runs(audit_runs, profile_runs);
+    let truncated = runs.len() >= AUDIT_LIMIT && audit_available;
+
+    Ok(Json(ProfileRetestResponse {
+        fingerprint,
+        scanned: profiles.len(),
+        audit_available,
+        window_minutes,
+        truncated,
+        runs,
+    }))
+}
+
+/// 合并两个来源的执行记录：审计优先，按 query_id 去重，按时间升序排列。
+pub(crate) fn merge_runs(
+    primary: Vec<ProfileRetestRun>,
+    fallback: Vec<ProfileRetestRun>,
+) -> Vec<ProfileRetestRun> {
+    let mut seen: HashSet<String> = primary.iter().map(|run| run.query_id.clone()).collect();
+    let mut merged = primary;
+    for run in fallback {
+        if seen.insert(run.query_id.clone()) {
+            merged.push(run);
+        }
+    }
+    merged.sort_by(|a, b| a.start_time.cmp(&b.start_time));
+    merged
+}
+
+/// 从 profile 原文解析查询语句：`Query:` 段之后、下一个顶层字段之前。
+///
+/// 只用于获取指纹与展示（不执行），因此对格式差异容忍度高于执行路径。
+pub(crate) fn extract_query_sql(profile_content: &str) -> Option<String> {
+    let mut started = false;
+    let mut sql = String::new();
+    for line in profile_content.lines() {
+        let trimmed = line.trim();
+        if !started {
+            if trimmed.eq_ignore_ascii_case("query:") {
+                started = true;
+            }
+            continue;
+        }
+        if is_profile_section(trimmed) {
+            break;
+        }
+        sql.push_str(line);
+        sql.push('\n');
+    }
+    let sql = sql.trim();
+    (!sql.is_empty()).then(|| sql.to_string())
+}
+
+/// 判断是否为 profile 的顶层字段行（如 `Summary:`、`Query ID: abc`）。
+///
+/// StarRocks 的字段行既可能是 `Key:` 也可能是 `Key: value`，因此以冒号前的
+/// 键名判定；键名只含字母/空格/下划线且首字母大写，SQL 里的 `-- note: x`
+/// 这类注释不会命中。
+fn is_profile_section(line: &str) -> bool {
+    let Some((key, _value)) = line.split_once(':') else {
+        return false;
+    };
+    !key.is_empty()
+        && key.len() <= 40
+        && key.chars().next().is_some_and(|c| c.is_ascii_uppercase())
+        && key
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == ' ' || c == '_')
+}
+
+/// 归一化时间戳为 `YYYY-MM-DD HH:MM:SS`，使审计与 profile 两种来源可比较排序。
+pub(crate) fn normalize_time(value: &str) -> String {
+    value.trim().chars().take(19).collect()
+}
+
+/// 按归一化指纹收集同一查询的执行序列（时间升序）。
+///
+/// 耗时段解析失败的记录会被丢弃，避免用 0 或估算值参与对比。
+pub(crate) fn build_retest_runs(
+    profiles: &[ProfileListItem],
+    baseline_id: &str,
+    baseline_sql: &str,
+) -> (String, Vec<ProfileRetestRun>) {
+    let fingerprint = crate::handlers::query::sql_fingerprint(baseline_sql);
+
+    let mut runs: Vec<ProfileRetestRun> = profiles
+        .iter()
+        .filter(|item| crate::handlers::query::sql_fingerprint(&item.statement) == fingerprint)
+        .filter_map(|item| {
+            Some(ProfileRetestRun {
+                query_id: item.query_id.clone(),
+                start_time: normalize_time(&item.start_time),
+                time_ms: parse_profile_time(&item.time)?,
+                state: Some(item.state.clone()),
+                is_baseline: item.query_id == baseline_id,
+            })
+        })
+        .collect();
+    runs.sort_by(|a, b| a.start_time.cmp(&b.start_time));
+    (fingerprint, runs)
+}
+
+/// 解析引擎 profile 列表的耗时段：`9ms`、`1s234ms`、`2m3s`、`1m`。
+///
+/// 解析失败返回 None（例如缺少单位或含未知字符），由调用方决定丢弃，
+/// 不猜测数值。
+pub(crate) fn parse_profile_time(value: &str) -> Option<u64> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let mut total: u64 = 0;
+    let mut number = String::new();
+    let mut unit = String::new();
+    for ch in trimmed.chars() {
+        if ch.is_ascii_digit() {
+            if !unit.is_empty() {
+                total = total.saturating_add(unit_to_millis(&number, &unit)?);
+                number.clear();
+                unit.clear();
+            }
+            number.push(ch);
+        } else if ch.is_ascii_alphabetic() {
+            unit.push(ch);
+        } else {
+            return None;
+        }
+    }
+    if number.is_empty() || unit.is_empty() {
+        return None;
+    }
+    total = total.saturating_add(unit_to_millis(&number, &unit)?);
+    Some(total)
+}
+
+fn unit_to_millis(number: &str, unit: &str) -> Option<u64> {
+    let value: u64 = number.parse().ok()?;
+    match unit.to_ascii_lowercase().as_str() {
+        "ms" => Some(value),
+        "s" => Some(value.saturating_mul(1_000)),
+        "m" => Some(value.saturating_mul(60_000)),
+        "h" => Some(value.saturating_mul(3_600_000)),
+        _ => None,
+    }
 }
 
 // Get detailed profile for a specific query
