@@ -20,6 +20,8 @@ CONFIG_DIR="$PROJECT_ROOT/backend/conf"
 DB_DIR="${DB_DIR:-$PROJECT_ROOT/backend/data}"
 LOG_DIR="${LOG_DIR:-$PROJECT_ROOT/backend/logs}"
 PID_FILE="$PROJECT_ROOT/backend/stellar.pid"
+MODE="release"
+ACTION="start"
 
 # 颜色输出
 GREEN='\033[0;32m'
@@ -32,15 +34,24 @@ NC='\033[0m' # No Color
 show_help() {
     echo -e "${GREEN}Stellar Backend 开发环境管理脚本${NC}"
     echo ""
-    echo "用法: $0 {start|stop|restart|status|logs|help}"
+    echo "用法: $0 {start|stop|restart|status|logs|help} [--dev|--release]"
     echo ""
     echo "命令:"
-    echo "  start   - 启动后端服务"
+    echo "  start   - 启动后端服务（默认 --release）"
     echo "  stop    - 停止后端服务"
     echo "  restart - 重启后端服务"
     echo "  status  - 查看服务状态"
     echo "  logs    - 查看实时日志"
     echo "  help    - 显示此帮助信息"
+    echo ""
+    echo "模式:"
+    echo "  --release - release 构建；运行时采用 production 引导语义（默认）"
+    echo "  --dev     - debug 增量构建；运行时采用 development 引导语义"
+    echo ""
+    echo "示例:"
+    echo "  $0 start             # release 构建与 production 引导语义"
+    echo "  $0 start --dev       # 开发模式启动"
+    echo "  $0 --dev restart     # 参数顺序不限"
     echo ""
 }
 
@@ -85,10 +96,10 @@ start_service() {
     mkdir -p "$LOG_DIR"
     mkdir -p "$CONFIG_DIR"
 
-    # 创建开发环境配置文件
-    echo -e "${YELLOW}[INFO]${NC} 重新创建开发环境配置文件..."
-    rm -f "$CONFIG_DIR/config.toml"
-    cat > "$CONFIG_DIR/config.toml" <<EOF
+    if [ "$MODE" = "release" ]; then
+        if [ ! -f "$CONFIG_DIR/config.toml" ]; then
+            echo -e "${YELLOW}[INFO]${NC} 创建开发环境配置文件..."
+            cat > "$CONFIG_DIR/config.toml" <<EOF
 [server]
 host = "0.0.0.0"
 port = 8081
@@ -106,37 +117,84 @@ allow_origin = "http://0.0.0.0:4200"
 [logging]
 level = "debug"
 file = "logs/stellar.log"
+
+[audit]
+database = "starrocks_audit_db__"
+table = "starrocks_audit_tbl__"
 EOF
-    echo -e "${GREEN}[INFO]${NC} 配置文件已创建: $CONFIG_DIR/config.toml"
+        else
+            echo -e "${GREEN}[INFO]${NC} 保留现有配置文件: $CONFIG_DIR/config.toml"
+        fi
+        echo -e "${GREEN}[INFO]${NC} 配置文件已就绪: $CONFIG_DIR/config.toml"
+    fi
     echo -e "${GREEN}[INFO]${NC} 数据库路径: $DB_DIR/stellar.db"
 
-    # 强制重新编译以确保使用最新代码
+    # --dev 走 debug 增量编译；未传参数时保留既有 release 编译和二进制路径。
     echo -e "${YELLOW}[BUILD]${NC} 编译最新代码..."
     cd "$BACKEND_DIR"
-    cargo build --release
+    if [ "$MODE" = "dev" ]; then
+        cargo build
+        TARGET_DIR=$(cargo metadata --no-deps --format-version 1 | sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p')
+        BINARY="$TARGET_DIR/debug/stellar"
+    else
+        cargo build --release
+        BINARY="$BACKEND_DIR/target/release/stellar"
+    fi
+    if [ ! -x "$BINARY" ]; then
+        echo -e "${RED}[ERROR]${NC} 找不到后端二进制: $BINARY"
+        exit 1
+    fi
     echo -e "${GREEN}[BUILD]${NC} 编译完成"
     echo ""
 
     # 显示配置信息
     echo -e "${GREEN}[CONFIG]${NC} 配置信息:"
-    echo "  - 配置文件: $CONFIG_DIR/config.toml"
+    echo "  - 模式: $MODE"
+    if [ "$MODE" = "release" ]; then
+        echo "  - 配置文件: $CONFIG_DIR/config.toml"
+    else
+        echo "  - 数据目录: $DB_DIR"
+    fi
     echo "  - 数据库目录: $DB_DIR"
     echo "  - 日志目录: $LOG_DIR"
     echo "  - 工作目录: $BACKEND_DIR"
     echo ""
 
-    # 检查端口是否被占用
-    PORT=8081
-    if lsof -i :$PORT > /dev/null 2>&1; then
+    # 检查端口是否被占用。只看 LISTEN：`lsof -i :port` 会把仅发起连接的进程
+    # （例如前端 dev server 到后端的连接）也算作占用，并会在 kill 分支误杀它们。
+    if [ "$MODE" = "dev" ]; then
+        PORT="${PORT:-8081}"
+    else
+        PORT=8081
+    fi
+    if ss -ltn 2>/dev/null | grep -q ":${PORT} "; then
+        if [ "$MODE" = "dev" ]; then
+            echo -e "${RED}[ERROR]${NC} 开发端口 $PORT 已被占用；请先停止已有服务"
+            exit 1
+        fi
         echo -e "${YELLOW}[WARNING]${NC} 端口 $PORT 已被占用，尝试停止占用进程..."
-        lsof -ti :$PORT | xargs kill -9 2>/dev/null || true
+        # 只结束监听该端口的 stellar 进程
+        ss -tlnp 2>/dev/null | grep ":${PORT} " | grep -oP 'pid=\K[0-9]+' | sort -u | while read -r pid; do
+            ps -p "$pid" -o comm= 2>/dev/null | grep -q stellar && kill "$pid" 2>/dev/null
+        done
         sleep 2
     fi
 
     # 启动后端
     echo -e "${GREEN}[START]${NC} 启动后端服务..."
     cd "$BACKEND_DIR"
-    nohup ./target/release/stellar > "$LOG_DIR/stellar.log" 2>&1 &
+    if [ "$MODE" = "dev" ]; then
+        # 后端根据 STELLAR_ENV 统一处理初始凭据；脚本不自行注入密码。
+        STELLAR_DATA_DIR="$DB_DIR" \
+        STELLAR_ENV="development" \
+        APP_SERVER_HOST="${APP_SERVER_HOST:-127.0.0.1}" \
+        APP_SERVER_PORT="$PORT" \
+        APP_LOG_LEVEL="debug" \
+        nohup "$BINARY" server "$DB_DIR" > "$LOG_DIR/stellar.log" 2>&1 &
+    else
+        STELLAR_ENV="production" \
+        nohup "$BINARY" server "$DB_DIR" --config "$CONFIG_DIR/config.toml" > "$LOG_DIR/stellar.log" 2>&1 &
+    fi
     BACKEND_PID=$!
     echo $BACKEND_PID > "$PID_FILE"
 
@@ -147,12 +205,12 @@ EOF
     if ps -p $BACKEND_PID > /dev/null; then
         echo -e "${GREEN}[SUCCESS]${NC} 后端启动成功!"
         echo "  - PID: $BACKEND_PID"
-        echo "  - 健康检查: http://localhost:8081/health"
-        echo "  - Web UI: http://localhost:8081"
+        echo "  - 健康检查: http://localhost:$PORT/health"
+        echo "  - Web UI: http://localhost:$PORT"
         echo ""
         
         # 测试健康检查
-        if curl -s "http://localhost:8081/health" > /dev/null 2>&1; then
+        if curl -s "http://localhost:$PORT/health" > /dev/null 2>&1; then
             echo -e "${GREEN}[健康检查]${NC} ✅ Backend运行正常"
         else
             echo -e "${YELLOW}[警告]${NC} Backend已启动但健康检查失败，请查看日志"
@@ -213,17 +271,27 @@ restart_service() {
 
 # 查看服务状态
 show_status() {
+    local port=8081
+    if [ "$MODE" = "dev" ]; then
+        port="${PORT:-8081}"
+    fi
+
     if is_running; then
         local pid=$(get_pid)
         echo -e "${GREEN}[STATUS]${NC} 后端服务正在运行"
         echo "  - PID: $pid"
-        echo "  - 配置文件: $CONFIG_DIR/config.toml"
+        echo "  - 模式: $MODE"
+        if [ "$MODE" = "release" ]; then
+            echo "  - 配置文件: $CONFIG_DIR/config.toml"
+        else
+            echo "  - 数据目录: $DB_DIR"
+        fi
         echo "  - 日志文件: $LOG_DIR/stellar.log"
-        echo "  - 健康检查: http://localhost:8081/health"
-        echo "  - Web UI: http://localhost:8081"
+        echo "  - 健康检查: http://localhost:$port/health"
+        echo "  - Web UI: http://localhost:$port"
         
         # 测试健康检查
-        if curl -s "http://localhost:8081/health" > /dev/null 2>&1; then
+        if curl -s "http://localhost:$port/health" > /dev/null 2>&1; then
             echo -e "  - 健康状态: ${GREEN}✅ 正常${NC}"
         else
             echo -e "  - 健康状态: ${RED}❌ 异常${NC}"
@@ -245,8 +313,42 @@ show_logs() {
 }
 
 # 主函数
+parse_args() {
+    local action_seen=0
+
+    for arg in "$@"; do
+        case "$arg" in
+            --dev)
+                MODE="dev"
+                ;;
+            --release|--prod)
+                MODE="release"
+                ;;
+            start|stop|restart|status|logs|help)
+                if [ "$action_seen" -eq 1 ]; then
+                    echo -e "${RED}[ERROR]${NC} 只能指定一个命令"
+                    exit 1
+                fi
+                ACTION="$arg"
+                action_seen=1
+                ;;
+            --help|-h)
+                ACTION="help"
+                ;;
+            *)
+                echo -e "${RED}[ERROR]${NC} 未知参数: $arg"
+                echo ""
+                show_help
+                exit 1
+                ;;
+        esac
+    done
+}
+
 main() {
-    case "${1:-start}" in
+    parse_args "$@"
+
+    case "$ACTION" in
         start)
             start_service
             ;;
@@ -266,7 +368,7 @@ main() {
             show_help
             ;;
         *)
-            echo -e "${RED}[ERROR]${NC} 未知命令: $1"
+            echo -e "${RED}[ERROR]${NC} 未知命令: $ACTION"
             echo ""
             show_help
             exit 1
