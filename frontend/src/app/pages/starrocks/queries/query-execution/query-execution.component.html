@@ -662,7 +662,12 @@
       </div>
       <div class="schema-content" *ngIf="!tableSchemaLoading">
         <div class="schema-scroll">
-          <pre class="schema-text" *ngIf="currentTableSchema; else emptySchema">{{ currentTableSchema }}</pre>
+          <ng-container *ngIf="currentTableSchema; else emptySchema">
+            <div class="schema-editor" [attr.data-schema-dialog-id]="schemaDialogId" *ngIf="schemaContentType === 'sql'; else plainSchema"></div>
+            <ng-template #plainSchema>
+              <pre class="schema-text">{{ currentTableSchema }}</pre>
+            </ng-template>
+          </ng-container>
           <ng-template #emptySchema>
             <div class="empty-schema">
               <nb-icon icon="alert-circle-outline" status="warning"></nb-icon>

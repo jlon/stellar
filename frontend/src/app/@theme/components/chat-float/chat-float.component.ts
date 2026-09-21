@@ -127,6 +127,16 @@ export class ChatFloatComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** 高风险动作只在完整助手中确认，浮窗只负责提醒和跳转。 */
+  openAgentReview(): void {
+    const session = this.activeSessionId;
+    this.open = false;
+    this.chatService.setUiFront(false);
+    this.router.navigate(['/pages/cluster-ops/agent'], {
+      queryParams: session ? { session } : undefined,
+    });
+  }
+
   onSessionChange(id: number | null): void {
     if (id === null) {
       this.newSession();
@@ -194,7 +204,14 @@ export class ChatFloatComponent implements OnInit, OnDestroy {
 
   send(): void {
     const text = this.input.trim();
-    if (!text || this.sending || !this.currentCluster || this.chatService.isRunning()) {
+    if (!text || this.sending || !this.currentCluster) {
+      return;
+    }
+    if (this.chatService.isRunning()) {
+      this.toastr.warning(
+        this.i18n.instant('正在处理上一条消息，请等待完成或停止当前诊断'),
+        this.i18n.instant('智能运维助手'),
+      );
       return;
     }
     const clusterId = this.currentCluster.id;
@@ -248,13 +265,15 @@ export class ChatFloatComponent implements OnInit, OnDestroy {
         // 刷新转录拿到持久化消息 id（点赞状态回显用）。
         this.loadTranscript();
       } else if (ev.type === 'error') {
-        reply.content = `⚠️ ${ev.message ?? '诊断失败'}`;
+        const message = ev.message ?? '诊断失败';
+        reply.content = `⚠️ ${message}`;
         reply.liveText = undefined;
         reply.streaming = false;
         this.sending = false;
         this.liveReply = null;
         sub.unsubscribe();
         this.liveSub = null;
+        this.toastr.danger(message, this.i18n.instant('智能运维助手'));
       }
       this.scheduleStreamRender();
     });
@@ -277,30 +296,6 @@ export class ChatFloatComponent implements OnInit, OnDestroy {
     this.liveSub?.unsubscribe();
     this.liveSub = null;
     this.scrollToBottom();
-  }
-
-  confirmFloatAction(action: ChatActionRequest): void {
-    this.agentService.confirmChatAction(action.id).subscribe({
-      next: (r) => {
-        this.toastr.success(
-          r.action.status === 'executed' ? r.action.result_json ?? '执行成功' : r.action.result_json ?? '执行失败',
-          '动作执行',
-        );
-        this.pendingActions = this.pendingActions.filter((x) => x.id !== action.id);
-        this.loadTranscript();
-      },
-      error: (e) => this.toastr.danger(e?.error?.message ?? '确认失败', '动作执行'),
-    });
-  }
-
-  rejectFloatAction(action: ChatActionRequest): void {
-    this.agentService.cancelChatAction(action.id).subscribe({
-      next: () => {
-        this.toastr.success(this.i18n.instant('已拒绝该动作'), this.i18n.instant('动作执行'));
-        this.pendingActions = this.pendingActions.filter((x) => x.id !== action.id);
-      },
-      error: (e) => this.toastr.danger(e?.error?.message ?? '取消失败', '动作执行'),
-    });
   }
 
   /** 回答点赞/点踩（再点一次取消）。 */

@@ -131,13 +131,11 @@ export class ClusterContextService {
       }),
       catchError((error) => {
         this.isRefreshing = false;
-        // If backend returns 401 (unauthorized) or 403 (forbidden), clear active cluster
-        // This is expected when user logs out or doesn't have permission
-        if (error.status === 401 || error.status === 403) {
+        // Clear only when the backend authoritatively rejects or no longer finds
+        // the context. A transport/server failure must retain the last known
+        // cluster instead of presenting it as an intentionally inactive one.
+        if (error.status === 401 || error.status === 403 || error.status === 404) {
           this.clearActiveCluster();
-        } else {
-          // For other errors, keep current state
-          this.activeClusterSubject.next(null);
         }
         return of(null);
       })
@@ -174,4 +172,3 @@ export class ClusterContextService {
     return this.activeClusterSubject.value !== null;
   }
 }
-

@@ -2,7 +2,7 @@ import { TranslatePipe } from '@ngx-translate/core';
 import { I18nService } from '../../../../@core/i18n/i18n.service';
 import { Component, OnInit, OnDestroy, TemplateRef, ViewChild, inject, ChangeDetectorRef } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { NbToastrService, NbDialogService, NbCardModule, NbButtonModule, NbIconModule, NbSelectModule, NbOptionModule, NbFormFieldModule, NbInputModule, NbBadgeModule, NbSpinnerModule, NbTooltipModule } from '@nebular/theme';
+import { NbToastrService, NbDialogService, NbCardModule, NbButtonModule, NbIconModule, NbSelectModule, NbOptionModule, NbFormFieldModule, NbInputModule, NbDatepickerModule, NbBadgeModule, NbSpinnerModule, NbTooltipModule } from '@nebular/theme';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { Subject } from 'rxjs';
 import { takeUntil, timeout } from 'rxjs/operators';
@@ -30,6 +30,7 @@ import { FormsModule } from '@angular/forms';
     NbOptionModule,
     NbFormFieldModule,
     NbInputModule,
+    NbDatepickerModule,
     FormsModule,
     NbBadgeModule,
     NbSpinnerModule,
@@ -64,8 +65,8 @@ export class AuditLogsComponent implements OnInit, OnDestroy {
 
   // History search filters
   searchKeyword: string = '';
-  searchStartTime: string = '';
-  searchEndTime: string = '';
+  searchStartTime: Date | null = null;
+  searchEndTime: Date | null = null;
 
   // Pagination state for history
   historyPageSize: number = 10;
@@ -144,10 +145,10 @@ export class AuditLogsComponent implements OnInit, OnDestroy {
       this.searchKeyword = qp.get('q')!;
     }
     if (qp.get('from')) {
-      this.searchStartTime = qp.get('from')!;
+      this.searchStartTime = this.parseDateTime(qp.get('from')!);
     }
     if (qp.get('to')) {
-      this.searchEndTime = qp.get('to')!;
+      this.searchEndTime = this.parseDateTime(qp.get('to')!);
     }
 
     // Load data - backend will get active cluster automatically
@@ -160,8 +161,8 @@ export class AuditLogsComponent implements OnInit, OnDestroy {
       relativeTo: this.route,
       queryParams: {
         ...(this.searchKeyword?.trim() ? { q: this.searchKeyword.trim() } : {}),
-        ...(this.searchStartTime ? { from: this.searchStartTime } : {}),
-        ...(this.searchEndTime ? { to: this.searchEndTime } : {}),
+        ...(this.searchStartTime ? { from: this.dateTimeValue(this.searchStartTime) } : {}),
+        ...(this.searchEndTime ? { to: this.dateTimeValue(this.searchEndTime) } : {}),
       },
       replaceUrl: true,
     });
@@ -179,8 +180,8 @@ export class AuditLogsComponent implements OnInit, OnDestroy {
     // Prepare filters
     const filters = {
       keyword: this.searchKeyword?.trim() || undefined,
-      startTime: this.searchStartTime || undefined,
-      endTime: this.searchEndTime || undefined,
+      startTime: this.dateTimeValue(this.searchStartTime) || undefined,
+      endTime: this.dateTimeValue(this.searchEndTime) || undefined,
     };
     
     this.nodeService
@@ -268,8 +269,8 @@ export class AuditLogsComponent implements OnInit, OnDestroy {
   // Clear all filters
   clearFilters(): void {
     this.searchKeyword = '';
-    this.searchStartTime = '';
-    this.searchEndTime = '';
+    this.searchStartTime = null;
+    this.searchEndTime = null;
     this.searchHistory();
   }
 
@@ -278,5 +279,19 @@ export class AuditLogsComponent implements OnInit, OnDestroy {
   applyHistoryFilters(queries: QueryHistoryItem[]): QueryHistoryItem[] {
     // Backend handles filtering now, so this method is not used
     return queries;
+  }
+
+  /** Keep the API and URL contract used by the previous native datetime-local inputs. */
+  dateTimeValue(value: Date | null): string {
+    if (!value || Number.isNaN(value.getTime())) {
+      return '';
+    }
+    const pad = (part: number) => String(part).padStart(2, '0');
+    return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}T${pad(value.getHours())}:${pad(value.getMinutes())}`;
+  }
+
+  private parseDateTime(value: string): Date | null {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
 }

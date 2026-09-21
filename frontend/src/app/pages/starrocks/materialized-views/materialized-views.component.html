@@ -129,10 +129,11 @@
                       nbInput
                       fullWidth
                       fieldSize="tiny"
-                      type="datetime-local"
+                      [nbDatepicker]="refreshStartPicker"
                       [(ngModel)]="refreshTimeStart"
                       (ngModelChange)="applyFilters()"
                       />
+                    <nb-date-timepicker #refreshStartPicker adjustment="vertical"></nb-date-timepicker>
                   </nb-form-field>
                 </div>
                 <div class="adv-field">
@@ -142,10 +143,11 @@
                       nbInput
                       fullWidth
                       fieldSize="tiny"
-                      type="datetime-local"
+                      [nbDatepicker]="refreshEndPicker"
                       [(ngModel)]="refreshTimeEnd"
                       (ngModelChange)="applyFilters()"
                       />
+                    <nb-date-timepicker #refreshEndPicker adjustment="vertical"></nb-date-timepicker>
                   </nb-form-field>
                 </div>
                 <div class="adv-field">
@@ -252,8 +254,8 @@
         <angular2-smart-table
           [settings]="settings"
           [source]="source"
-          (edit)="onEdit($event)"
           (delete)="onDelete($event)"
+          (userRowSelect)="onRowSelect($event)"
           >
         </angular2-smart-table>
       </nb-card-body>
@@ -341,13 +343,26 @@
 </ng-template>
 
 <!-- Detail Dialog -->
-<ng-template #detailDialog let-data let-ref="dialogRef">
+<ng-template #detailDialog let-ref="dialogRef">
   @if (selectedMV) {
-    <nb-card>
+    <nb-card
+      class="materialized-view-detail-sheet"
+      tabindex="-1"
+      (keydown.escape)="closeDetailDialog(ref)"
+      >
       <nb-card-header>
         <div class="d-flex justify-content-between align-items-center">
           <h6>{{ '物化视图详情:' | translate }} {{ selectedMV.name }}</h6>
-          <button nbButton ghost (click)="closeDetailDialog()">
+          <button
+            nbButton
+            ghost
+            size="small"
+            status="basic"
+            (click)="closeDetailDialog(ref)"
+            [nbTooltip]="'关闭' | translate"
+            [title]="'关闭' | translate"
+            [aria-label]="'关闭' | translate"
+            >
             <nb-icon icon="close-outline"></nb-icon>
           </button>
         </div>
@@ -505,7 +520,7 @@
       <nb-card-footer>
         <div class="d-flex justify-content-between">
           <div class="d-flex gap-2">
-            <button nbButton ghost status="info" size="small" (click)="closeDetailDialog(); openEditDialog(selectedMV)">
+            <button nbButton ghost status="info" size="small" (click)="editSelectedMV()">
               <nb-icon icon="edit-outline"></nb-icon>
               {{ '编辑' | translate }}
             </button>
@@ -515,7 +530,7 @@
                 ghost
                 status="success"
                 size="small"
-                (click)="closeDetailDialog(); openRefreshDialog(selectedMV)"
+                (click)="refreshSelectedMV()"
                 >
                 <nb-icon icon="refresh-outline"></nb-icon>
                 {{ '刷新' | translate }}
@@ -527,7 +542,7 @@
                 ghost
                 [status]="selectedMV.is_active ? 'warning' : 'success'"
                 size="small"
-                (click)="closeDetailDialog(); toggleActiveState(selectedMV)"
+                (click)="toggleSelectedMV()"
                 >
                 <nb-icon icon="power-outline"></nb-icon>
                 {{  selectedMV.is_active ? ('停用' | translate) : ('激活' | translate)  }}

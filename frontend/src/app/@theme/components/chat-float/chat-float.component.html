@@ -87,13 +87,14 @@
 
       <div *ngFor="let a of pendingActions" class="float-action-card">
         <div class="float-action-head">
-          <nb-icon icon="flash-outline"></nb-icon>
-          <b>{{ a.title }}</b>
+          <nb-icon icon="shield-outline"></nb-icon>
+          <b>{{ '需要在完整助手中审阅动作' | translate }}</b>
         </div>
-        <div class="float-action-reason" *ngIf="a.reason">{{ a.reason }}</div>
+        <div class="float-action-reason">{{ a.title }}</div>
         <div class="float-action-ops">
-          <button nbButton size="tiny" status="success" (click)="confirmFloatAction(a)">{{  '确认并执行' | translate }}</button>
-          <button nbButton size="tiny" status="danger" outline (click)="rejectFloatAction(a)">{{  '拒绝' | translate }}</button>
+          <button nbButton size="tiny" status="primary" (click)="openAgentReview()">
+            <nb-icon icon="external-link-outline"></nb-icon>{{ '打开审阅' | translate }}
+          </button>
         </div>
       </div>
 

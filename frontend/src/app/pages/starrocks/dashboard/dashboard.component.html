@@ -142,10 +142,9 @@
           <span>{{ '内存' | translate }} {{ formatPct(card.resources.memory_usage_pct) }}</span>
           <span class="meter__track"><span class="meter__fill" [style.width.%]="clampPct(card.resources.memory_usage_pct)"></span></span>
         </div>
-        <div class="meter" [attr.data-tone]="usageTone(card.resources.disk_usage_pct)"
-          [attr.title]="card.resources.disk_usage_pct == null ? ('暂无磁盘指标（采集中，或存算分离集群无本地存储）' | translate) : null">
+        <div class="meter" [attr.data-tone]="storageTone(card)" [attr.title]="storageUnavailableTitle(card)">
           <nb-icon icon="hard-drive-outline"></nb-icon>
-          <span>{{ '磁盘' | translate }} {{ formatPct(card.resources.disk_usage_pct) }}</span>
+          <span>{{ (isSharedData(card) ? '数据缓存' : '磁盘') | translate }} {{ formatPct(card.resources.disk_usage_pct) }}</span>
           <span class="meter__track"><span class="meter__fill" [style.width.%]="clampPct(card.resources.disk_usage_pct)"></span></span>
         </div>
       </div>

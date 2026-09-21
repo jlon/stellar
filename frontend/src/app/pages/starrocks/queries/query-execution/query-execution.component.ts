@@ -129,7 +129,7 @@ interface NavTreeNode {
     changeDetection: ChangeDetectionStrategy.OnPush,
     animations: [
         trigger('editorCollapse', [
-            state('expanded', style({ height: '*', opacity: 1, overflow: 'visible' })),
+            state('expanded', style({ height: '*', opacity: 1, overflow: 'hidden' })),
             state('collapsed', style({
                 height: '0px',
                 opacity: 0,
@@ -181,6 +181,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   private confirmDialogService = inject(ConfirmDialogService);
   private authService = inject(AuthService);
   private cdr = inject(ChangeDetectorRef);
+  private host = inject(ElementRef<HTMLElement>);
   private sidebarStateBeforeWorkspace: NbSidebarState | null = null;
   private sidebarCompactedByWorkspace = false;
   private workspaceRouteActive = true;
@@ -243,8 +244,6 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   // Cache database ID mapping: catalog|database -> dbId
   private databaseIdCache: Record<string, string> = {};
   private currentSqlSchema: SQLNamespace = {};
-  treePanelHeight: number = 420;
-  private readonly treeExtraHeight: number = 140;
   treeCollapsed: boolean = false;
   private previousTreeWidth: number = this.treePanelWidth;
   readonly collapsedTreeWidth: number = 28;
@@ -263,8 +262,11 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   currentSchemaDatabase: string | null = null;
   currentSchemaTable: string | null = null;
   currentTableSchema: string = '';
+  schemaContentType: 'sql' | 'plain' = 'sql';
+  schemaDialogId = 0;
   tableSchemaLoading: boolean = false;
   private schemaDialogRef: NbDialogRef<any> | null = null;
+  private schemaEditorView: EditorView | null = null;
 
   // Info dialog state (for transactions, compactions, loads, stats, etc.)
   private infoDialogRef: NbDialogRef<any> | null = null;
@@ -765,22 +767,6 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   
   // Calculate dynamic editor height based on viewport
   calculateEditorHeight(): void {
-    const windowHeight = window.innerHeight;
-    const navbarHeight = 64; // Approximate navbar height
-    const tabBarHeight = 48; // Tab bar height
-    const cardHeaderHeight = 56; // nb-card header
-    const cardPadding = 32; // nb-card-body padding
-    const treeHeaderHeight = 48; // Tree panel header height
-    const bottomMargin = 16; // Small margin at bottom
-    
-    // Calculate tree panel height to stretch to bottom
-    const availableTreeHeight = windowHeight - navbarHeight - tabBarHeight - cardHeaderHeight - cardPadding - bottomMargin;
-    this.treePanelHeight = Math.max(300, availableTreeHeight);
-    
-    // Calculate editor height based on tree height
-    const editorToolbarHeight = 80; // Selection breadcrumbs + buttons
-    const editorFooterHeight = 28; // Footer with limit selector
-    
     if (this.sqlEditorCollapsed) {
       this.editorHeight = 0;
       if (this.editorView) {
@@ -798,15 +784,10 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       return;
     }
 
-    // If there are results, reserve space for them
-    if (this.queryResult) {
-      const editorAvailableHeight = this.treePanelHeight - treeHeaderHeight - editorToolbarHeight - editorFooterHeight;
-      this.editorHeight = Math.max(200, editorAvailableHeight * 0.4); // Editor takes 40% when results shown
-    } else {
-      // No results, editor takes more space
-      const editorAvailableHeight = this.treePanelHeight - treeHeaderHeight - editorToolbarHeight - editorFooterHeight;
-      this.editorHeight = Math.max(200, editorAvailableHeight);
-    }
+    const panelHeight = this.editorContainer?.nativeElement
+      ?.closest('.editor-panel')?.clientHeight ?? 560;
+    const preferredHeight = panelHeight * 0.4;
+    this.editorHeight = this.clampEditorHeight(preferredHeight);
     
     if (this.editorView) {
       this.applyEditorTheme();
@@ -986,11 +967,41 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   private clampEditorHeight(h: number): number {
-    // Keep the toolbar + footer visible; the results section scrolls within
-    // whatever space remains, so the editor may take up to the full panel.
-    const reserved = 108;
-    const container = document.querySelector('.editor-panel');
-    const available = container instanceof HTMLElement ? container.clientHeight : 560;
+    const panel = this.editorContainer?.nativeElement
+      ?.closest('.editor-panel') as HTMLElement | null;
+    const outerHeight = (element: Element | null): number => {
+      if (!(element instanceof HTMLElement)) {
+        return 0;
+      }
+      const style = getComputedStyle(element);
+      return element.getBoundingClientRect().height
+        + parseFloat(style.marginTop)
+        + parseFloat(style.marginBottom);
+    };
+    const marginHeight = (element: Element | null): number => {
+      if (!(element instanceof HTMLElement)) {
+        return 0;
+      }
+      const style = getComputedStyle(element);
+      return parseFloat(style.marginTop) + parseFloat(style.marginBottom);
+    };
+    const results = panel?.querySelector('.results-section') ?? null;
+    const resultsMinHeight = results instanceof HTMLElement
+      ? parseFloat(getComputedStyle(results).minHeight) + marginHeight(results)
+      : 0;
+    const section = panel?.querySelector('.sql-editor-section') ?? null;
+    const codeMirror = panel?.querySelector('.codemirror-container');
+    const editor = panel?.querySelector('.cm-editor');
+    const codeMirrorFrameHeight = codeMirror instanceof HTMLElement && editor instanceof HTMLElement
+      ? Math.max(0, codeMirror.getBoundingClientRect().height - editor.getBoundingClientRect().height)
+      : 0;
+    const reserved = outerHeight(panel?.querySelector('.selection-toolbar') ?? null)
+      + outerHeight(panel?.querySelector('.editor-resizer') ?? null)
+      + outerHeight(panel?.querySelector('.editor-footer') ?? null)
+      + marginHeight(section)
+      + resultsMinHeight
+      + codeMirrorFrameHeight;
+    const available = panel?.clientHeight ?? 560;
     const maxH = Math.max(this.editorMinHeight, available - reserved);
     return Math.min(maxH, Math.max(this.editorMinHeight, h));
   }
@@ -1106,18 +1117,24 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   private calculateContextMenuPosition(event: MouseEvent, itemCount: number): { x: number; y: number } {
     const menuWidth = 200;
     const menuHeight = itemCount * 40 + 16;
-    let x = event.clientX;
-    let y = event.clientY;
+    let viewportX = event.clientX;
+    let viewportY = event.clientY;
 
-    if (x + menuWidth > window.innerWidth - 8) {
-      x = Math.max(8, window.innerWidth - menuWidth - 8);
+    if (viewportX + menuWidth > window.innerWidth - 8) {
+      viewportX = Math.max(8, window.innerWidth - menuWidth - 8);
     }
 
-    if (y + menuHeight > window.innerHeight - 8) {
-      y = Math.max(8, window.innerHeight - menuHeight - 8);
+    if (viewportY + menuHeight > window.innerHeight - 8) {
+      viewportY = Math.max(8, window.innerHeight - menuHeight - 8);
     }
 
-    return { x, y };
+    // ngx-query-execution has a transform (even when the matrix is identity),
+    // which makes fixed descendants position against this host rather than the viewport.
+    const hostRect = this.host.nativeElement.getBoundingClientRect();
+    return {
+      x: viewportX - hostRect.left,
+      y: viewportY - hostRect.top,
+    };
   }
 
   private isExternalNode(node: NavTreeNode): boolean {
@@ -1472,12 +1489,15 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
     const { catalogName, databaseName, tableName } = info!;
 
+    this.destroySchemaEditor();
     this.schemaDialogTitle = '表结构';
     this.schemaDialogSubtitle = tableName;
+    this.schemaContentType = 'sql';
     this.currentSchemaCatalog = catalogName || null;
     this.currentSchemaDatabase = databaseName;
     this.currentSchemaTable = tableName;
     this.currentTableSchema = '';
+    this.schemaDialogId += 1;
     this.tableSchemaLoading = true;
 
     const qualifiedTableName = this.buildQualifiedTableName(catalogName, databaseName, tableName);
@@ -1486,15 +1506,19 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       this.schemaDialogRef.close();
     }
 
-    this.schemaDialogRef = this.dialogService.open(this.tableSchemaDialogTemplate, {
+    const dialogRef = this.dialogService.open(this.tableSchemaDialogTemplate, {
       hasBackdrop: true,
       closeOnBackdropClick: true,
       closeOnEsc: true,
     });
+    this.schemaDialogRef = dialogRef;
 
-    if (this.schemaDialogRef) {
-      this.schemaDialogRef.onClose.subscribe(() => {
-        this.schemaDialogRef = null;
+    if (dialogRef) {
+      dialogRef.onClose.subscribe(() => {
+        if (this.schemaDialogRef === dialogRef) {
+          this.destroySchemaEditor();
+          this.schemaDialogRef = null;
+        }
       });
     }
 
@@ -1566,6 +1590,12 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     }
 
     this.currentTableSchema = createStatement || '';
+    if (this.currentTableSchema) {
+      // The dialog content is under an OnPush embedded view. Create the
+      // ViewChild before mounting the read-only CodeMirror instance.
+      this.cdr.detectChanges();
+      this.renderSchemaSql();
+    }
   }
 
   private buildQualifiedTableName(catalog: string, database: string, table: string): string {
@@ -2083,14 +2113,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         TABLE_NAME,
         COUNT(DISTINCT PARTITION_NAME) as PARTITION_COUNT,
         SUM(ROW_COUNT) as TOTAL_ROWS,
-        ROUND(SUM(CASE 
-                 WHEN DATA_SIZE LIKE '%KB' THEN CAST(REPLACE(DATA_SIZE, 'KB', '') AS DECIMAL) / 1024
-                 WHEN DATA_SIZE LIKE '%MB' THEN CAST(REPLACE(DATA_SIZE, 'MB', '') AS DECIMAL)
-                 WHEN DATA_SIZE LIKE '%GB' THEN CAST(REPLACE(DATA_SIZE, 'GB', '') AS DECIMAL) * 1024
-                 WHEN DATA_SIZE LIKE '%TB' THEN CAST(REPLACE(DATA_SIZE, 'TB', '') AS DECIMAL) * 1024 * 1024
-                 WHEN DATA_SIZE LIKE '%B' AND DATA_SIZE != '0B' THEN CAST(REPLACE(REPLACE(DATA_SIZE, 'B', ''), ' ', '') AS DECIMAL) / 1024 / 1024
-                 ELSE 0 
-             END), 2) as TOTAL_SIZE_MB,
+        ROUND(SUM(COALESCE(DATA_SIZE, 0)) / 1024 / 1024, 2) as TOTAL_SIZE_MB,
         ROUND(AVG(MAX_CS), 2) as AVG_MAX_CS,
         MAX(MAX_CS) as MAX_CS_OVERALL
       FROM information_schema.partitions_meta 
@@ -2548,16 +2571,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
           UNION ALL
           SELECT 
             '总数据大小(MB)',
-            CAST(ROUND(SUM(
-              CASE 
-                WHEN DATA_SIZE LIKE '%KB' THEN CAST(REPLACE(REPLACE(DATA_SIZE, 'KB', ''), ' ', '') AS DECIMAL) / 1024
-                WHEN DATA_SIZE LIKE '%MB' THEN CAST(REPLACE(REPLACE(DATA_SIZE, 'MB', ''), ' ', '') AS DECIMAL)
-                WHEN DATA_SIZE LIKE '%GB' THEN CAST(REPLACE(REPLACE(DATA_SIZE, 'GB', ''), ' ', '') AS DECIMAL) * 1024
-                WHEN DATA_SIZE LIKE '%TB' THEN CAST(REPLACE(REPLACE(DATA_SIZE, 'TB', ''), ' ', '') AS DECIMAL) * 1024 * 1024
-                WHEN DATA_SIZE LIKE '%B' AND DATA_SIZE != '0B' THEN CAST(REPLACE(REPLACE(DATA_SIZE, 'B', ''), ' ', '') AS DECIMAL) / 1024 / 1024
-                ELSE 0 
-              END
-            ), 2) AS CHAR)
+            CAST(ROUND(SUM(COALESCE(DATA_SIZE, 0)) / 1024 / 1024, 2) AS CHAR)
           FROM information_schema.partitions_meta 
           WHERE DB_NAME = '${databaseName}' AND TABLE_NAME = '${tableName}'
           UNION ALL
@@ -2869,12 +2883,15 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     const { catalogName, databaseName, tableName } = info!;
 
     // Show query plan in a dialog
+    this.destroySchemaEditor();
     this.schemaDialogTitle = '查询计划';
     this.schemaDialogSubtitle = tableName;
+    this.schemaContentType = 'plain';
     this.currentSchemaCatalog = catalogName || null;
     this.currentSchemaDatabase = databaseName;
     this.currentSchemaTable = tableName;
     this.currentTableSchema = '';
+    this.schemaDialogId += 1;
     this.tableSchemaLoading = true;
 
     const qualifiedTableName = this.buildQualifiedTableName(catalogName, databaseName, tableName);
@@ -2884,11 +2901,20 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       this.schemaDialogRef.close();
     }
 
-    this.schemaDialogRef = this.dialogService.open(this.tableSchemaDialogTemplate, {
+    const dialogRef = this.dialogService.open(this.tableSchemaDialogTemplate, {
       hasBackdrop: true,
       closeOnBackdropClick: true,
       closeOnEsc: true,
     });
+    this.schemaDialogRef = dialogRef;
+
+    if (dialogRef) {
+      dialogRef.onClose.subscribe(() => {
+        if (this.schemaDialogRef === dialogRef) {
+          this.schemaDialogRef = null;
+        }
+      });
+    }
 
     this.nodeService.executeSQL(explainSql, 1000, catalogName || undefined, databaseName)
       .pipe(takeUntil(this.destroy$))
@@ -4683,12 +4709,74 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
   private updateEditorTheme(): void {
     this.applyEditorTheme();
+    this.renderSchemaSql();
+  }
+
+  private renderSchemaSql(): void {
+    if (this.schemaContentType !== 'sql' || !this.currentTableSchema) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      // Nebular renders TemplateRef dialogs outside this component's view, so
+      // @ViewChild cannot reach the dialog body.
+      const container = document.querySelector<HTMLElement>(
+        `nb-dialog-container .table-schema-dialog .schema-editor[data-schema-dialog-id="${this.schemaDialogId}"]`,
+      );
+      if (!container || this.schemaContentType !== 'sql' || !this.currentTableSchema) {
+        return;
+      }
+
+      this.destroySchemaEditor();
+      this.schemaEditorView = new EditorView({
+        state: EditorState.create({
+          doc: this.currentTableSchema,
+          extensions: [
+            EditorState.readOnly.of(true),
+            EditorView.editable.of(false),
+            this.buildHighlightStyle(),
+            this.buildSchemaEditorTheme(),
+            this.buildSqlExtension(),
+          ],
+        }),
+        parent: container,
+      });
+    });
+  }
+
+  private buildSchemaEditorTheme(): Extension {
+    const text = themeColor('--text-basic-color', '#222b45');
+    return EditorView.theme(
+      {
+        '&': {
+          backgroundColor: 'transparent',
+          color: text,
+        },
+        '.cm-content': {
+          padding: '0',
+          fontFamily: `'JetBrains Mono', Menlo, Consolas, monospace`,
+          fontSize: '0.87rem',
+          lineHeight: '1.52',
+        },
+        '.cm-line': {
+          padding: '0',
+        },
+      },
+      { dark: this.isDarkEditorTheme() },
+    );
   }
 
   private destroyEditor(): void {
     if (this.editorView) {
       this.editorView.destroy();
       this.editorView = null;
+    }
+  }
+
+  private destroySchemaEditor(): void {
+    if (this.schemaEditorView) {
+      this.schemaEditorView.destroy();
+      this.schemaEditorView = null;
     }
   }
 
@@ -4775,6 +4863,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     this.restoreSidebar();
     this.stopAutoRefresh();
     this.destroyEditor();
+    this.destroySchemaEditor();
     this.destroy$.next();
     this.destroy$.complete();
     document.body.classList.remove('resizing-tree');

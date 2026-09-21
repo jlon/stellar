@@ -198,10 +198,6 @@
   overflow-y: auto;
   border: 1px solid var(--divider-color);
   border-radius: 0.25rem;
-
-  &::-webkit-scrollbar { width: 4px; }
-  &::-webkit-scrollbar-track { background: transparent; }
-  &::-webkit-scrollbar-thumb { background: var(--scrollbar-color); border-radius: 2px; }
 }
 
 .config-table {

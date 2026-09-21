@@ -48,7 +48,7 @@ export class ResourceGroupUsageComponent implements OnInit, OnDestroy {
         type: 'number',
       },
       backend: {
-        title: this.i18n.instant('BE 节点'),
+        title: this.i18n.instant('计算节点'),
         type: 'string',
       },
       be_in_use_cpu_cores: {

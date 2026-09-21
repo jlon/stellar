@@ -18,7 +18,7 @@ import { NbButtonModule, NbIconModule } from '@nebular/theme';
           ghost
           size="tiny"
           [status]="isActive ? 'warning' : 'success'"
-          (click)="onToggle()"
+          (click)="onToggle($event)"
           [title]="isActive ? '停用' : '激活'">
           <nb-icon icon="power-outline"></nb-icon>
         </button>
@@ -41,7 +41,8 @@ export class ActiveToggleRenderComponent implements OnInit {
     this.isRollup = this.rowData?.refresh_type === 'ROLLUP';
   }
 
-  onToggle() {
+  onToggle(event: MouseEvent) {
+    event.stopPropagation();
     this.toggleActive.emit(this.rowData);
   }
 }

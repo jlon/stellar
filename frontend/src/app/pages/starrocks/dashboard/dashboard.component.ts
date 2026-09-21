@@ -334,6 +334,23 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return this.isSharedData(clusterCard) ? 'CN' : 'BE';
   }
 
+  storageTone(clusterCard: ClusterCard): '' | 'warning' | 'danger' {
+    return this.isSharedData(clusterCard)
+      ? ''
+      : this.usageTone(clusterCard.resources?.disk_usage_pct);
+  }
+
+  storageUnavailableTitle(clusterCard: ClusterCard): string | null {
+    if (clusterCard.resources?.disk_usage_pct != null) {
+      return null;
+    }
+    return this.i18n.instant(
+      this.isSharedData(clusterCard)
+        ? '暂无数据缓存指标（采集中）'
+        : '暂无磁盘指标（采集中，或存算分离集群无本地存储）',
+    );
+  }
+
   get alertCount(): number {
     return this.countByStatus('warning') + this.countByStatus('critical');
   }

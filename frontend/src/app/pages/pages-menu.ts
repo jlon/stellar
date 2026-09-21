@@ -77,28 +77,27 @@ export const MENU_ITEMS: NbMenuItem[] = [
     data: { permission: 'menu:materialized-views' },
   } as NbMenuItem & { data?: { permission: string } },
   {
-    title: '功能卡片',
-    icon: { icon: 'grid-outline', status: 'warning' },
-    link: '/pages/starrocks/system',
-    data: { permission: 'menu:system-functions' },
-  } as NbMenuItem & { data?: { permission: string } },
-  {
-    title: '会话管理',
-    icon: { icon: 'person-outline', status: 'success' },
-    link: '/pages/starrocks/sessions',
-    data: { permission: 'menu:sessions' },
-  } as NbMenuItem & { data?: { permission: string } },
-  {
-    title: '变量管理',
-    icon: { icon: 'options-2-outline', status: 'primary' },
-    link: '/pages/starrocks/variables',
-    data: { permission: 'menu:variables' },
-  } as NbMenuItem & { data?: { permission: string } },
-  {
     title: '集群运维',
     icon: { icon: 'shield-outline', status: 'danger' },
-    data: { permission: 'menu:cluster-ops' },
     children: [
+      {
+        title: '运维工具',
+        icon: { icon: 'grid-outline', status: 'basic' },
+        link: '/pages/starrocks/system',
+        data: { permission: 'menu:system-functions' },
+      } as NbMenuItem & { data?: { permission: string } },
+      {
+        title: '会话管理',
+        icon: { icon: 'person-outline', status: 'basic' },
+        link: '/pages/starrocks/sessions',
+        data: { permission: 'menu:sessions' },
+      } as NbMenuItem & { data?: { permission: string } },
+      {
+        title: '参数配置',
+        icon: { icon: 'options-2-outline', status: 'basic' },
+        link: '/pages/starrocks/variables',
+        data: { permission: 'menu:variables' },
+      } as NbMenuItem & { data?: { permission: string } },
       {
         title: '权限管理',
         icon: { icon: 'lock-outline', status: 'danger' },

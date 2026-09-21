@@ -2,9 +2,6 @@
 
 @mixin ngx-smart-table-theme() {
   angular2-smart-table {
-    scrollbar-color: var(--scrollbar-color) var(--scrollbar-background-color);
-    scrollbar-width: thin;
-
     table tr th,
     table tr th a {
       font-family: nb-theme(smart-table-header-font-family);

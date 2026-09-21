@@ -4,10 +4,11 @@
   .search-filters {
     margin-bottom: 1.5rem;
 
-    // 紧凑单行：关键词收窄，两时间固定宽，搜索按钮右对齐
+    // 紧凑筛选行：搜索动作收在关键词输入框中，避免外置主按钮。
     .filter-row {
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 0.5rem;
     }
 
@@ -21,11 +22,6 @@
       min-width: 10rem;
     }
 
-    .filter-submit {
-      margin-left: auto;
-      flex-shrink: 0;
-    }
-    
     .active-filters {
       display: flex;
       align-items: center;

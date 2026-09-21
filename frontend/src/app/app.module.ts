@@ -20,6 +20,7 @@ import {
   NbDialogModule,
   NbMenuModule,
   NbSidebarModule,
+  NbTimepickerModule,
   NbToastrModule,
   NbWindowModule,
 } from '@nebular/theme';
@@ -38,6 +39,7 @@ import { TabRouteReuseStrategy } from './@core/routing/tab-route-reuse.strategy'
     NbSidebarModule.forRoot(),
     NbMenuModule.forRoot(),
     NbDatepickerModule.forRoot(),
+    NbTimepickerModule.forRoot(),
     NbDialogModule.forRoot(),
     NbWindowModule.forRoot(),
     NbToastrModule.forRoot(),

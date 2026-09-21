@@ -173,32 +173,36 @@ nb-dialog-container.modal-lg,
   width: 1200px !important;
 }
 
-// Global scrollbar theming: every scrolled surface follows the active theme.
-// Nebular only defines scrollbar-color on the light default theme, leaving
-// dark/cosmic with a light thumb; themes.scss overrides the variables there.
-// Component-level rules (e.g. .schema-scroll) keep their finer sizes via
-// specificity while sharing these same colors.
+// Single scrollbar treatment for every visible scrolling surface. Components
+// may define overflow and dimensions, but never a competing scrollbar skin.
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-color) var(--scrollbar-background-color);
+  scrollbar-color: color-mix(in srgb, var(--scrollbar-color) 20%, transparent) transparent !important;
 }
 
 *::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 5px !important;
+  height: 5px !important;
 }
 
 *::-webkit-scrollbar-track {
-  background: var(--scrollbar-background-color);
+  background: transparent !important;
 }
 
 *::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-color);
-  border-radius: 4px;
+  background: color-mix(in srgb, var(--scrollbar-color) 20%, transparent) !important;
+  border-radius: 999px !important;
+  cursor: default !important;
 }
 
-*::-webkit-scrollbar-thumb:hover {
-  background: var(--color-basic-600);
+// Lock interaction states too; Chromium otherwise may brighten a native thumb
+// while the pointer is over it or while it is being dragged.
+*::-webkit-scrollbar-thumb:hover,
+*::-webkit-scrollbar-thumb:active,
+*::-webkit-scrollbar-thumb:window-inactive {
+  background: color-mix(in srgb, var(--scrollbar-color) 20%, transparent) !important;
+  border-radius: 999px !important;
+  cursor: default !important;
 }
 
 nb-dialog-container.modal-xl,

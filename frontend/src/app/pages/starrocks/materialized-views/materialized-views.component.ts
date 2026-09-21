@@ -1,11 +1,12 @@
 import { I18nService } from '../../../@core/i18n/i18n.service';
+import { DOCUMENT } from '@angular/common';
 import { TranslatePipe } from '@ngx-translate/core';
 import { Component, OnInit, OnDestroy, TemplateRef, ViewChild, ChangeDetectorRef, inject } from '@angular/core';
 import { Subject } from 'rxjs';
-import { skip, takeUntil, timeout } from 'rxjs/operators';
-import { NbToastrService, NbDialogService, NbCardModule, NbButtonModule, NbIconModule, NbInputModule, NbSelectModule, NbOptionModule, NbBadgeModule, NbSpinnerModule, NbAccordionModule, NbTabsetModule, NbAlertModule, NbCheckboxModule, NbFormFieldModule, NbTooltipModule } from '@nebular/theme';
+import { skip, take, takeUntil, timeout } from 'rxjs/operators';
+import { NbToastrService, NbDialogRef, NbDialogService, NbCardModule, NbButtonModule, NbIconModule, NbInputModule, NbDatepickerModule, NbSelectModule, NbOptionModule, NbBadgeModule, NbSpinnerModule, NbAccordionModule, NbTabsetModule, NbAlertModule, NbCheckboxModule, NbFormFieldModule, NbTooltipModule } from '@nebular/theme';
 import { MarkdownModule } from 'ngx-markdown';
-import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
+import { LocalDataSource, Angular2SmartTableModule, RowSelectionEvent } from 'angular2-smart-table';
 import {
   MaterializedViewService,
   MaterializedView,
@@ -32,6 +33,7 @@ import { FormsModule } from '@angular/forms';
     NbButtonModule,
     NbIconModule,
     NbInputModule,
+    NbDatepickerModule,
     FormsModule,
     NbSelectModule,
     NbOptionModule,
@@ -50,6 +52,9 @@ import { FormsModule } from '@angular/forms';
 ],
 })
 export class MaterializedViewsComponent implements OnInit, OnDestroy {
+  private static readonly sheetExitDurationMs = 180;
+
+  private document = inject(DOCUMENT);
   private mvService = inject(MaterializedViewService)
   private i18n = inject(I18nService);
   private clusterService = inject(ClusterService);
@@ -72,6 +77,9 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
   activeCluster: Cluster | null = null;
   loading = true;
   private destroy$ = new Subject<void>();
+  private detailRequest$ = new Subject<void>();
+  private detailTrigger?: HTMLElement;
+  private sheetClosing = false;
 
   // Filter states
   searchText = '';
@@ -82,8 +90,8 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
   showAdvancedFilters = false;
 
   // Advanced filters
-  refreshTimeStart: string = '';
-  refreshTimeEnd: string = '';
+  refreshTimeStart: Date | null = null;
+  refreshTimeEnd: Date | null = null;
   rowCountMin: number | null = null;
   rowCountMax: number | null = null;
   selectedPartitionType = 'all';
@@ -118,7 +126,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
 
   // Dialog states
   createDialogRef: any;
-  detailDialogRef: any;
+  detailDialogRef?: NbDialogRef<unknown>;
   refreshDialogRef: any;
   editDialogRef: any;
   selectedMV: MaterializedView | null = null;
@@ -158,14 +166,11 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
     actions: {
       columnTitle: this.i18n.instant('操作'),
       add: false,
-      edit: true,
+      edit: false,
       delete: true,
       position: 'right',
     },
-    edit: {
-      editButtonContent: '<i class="nb-search" title="查看"></i>',
-      confirmEdit: false,
-    },
+    selectMode: 'single',
     delete: {
       deleteButtonContent: '<i class="nb-trash" title="删除"></i>',
       confirmDelete: false,
@@ -305,6 +310,9 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy() {
+    this.detailRequest$.next();
+    this.detailRequest$.complete();
+    this.detailDialogRef?.close();
     this.destroy$.next();
     this.destroy$.complete();
   }
@@ -458,10 +466,20 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Normalize back-end timestamps ('2026-09-11 09:25:50' or '2026-09-11T09:25:50')
-   * to 'YYYY-MM-DDTHH:mm' so they compare consistently with datetime-local input.
+   * Normalize back-end timestamps and picker values to a local, minute-precision
+   * representation before lexical comparison.
    */
-  private normalizeTime(value: string): string {
+  private normalizeTime(value: string | Date | null): string {
+    if (value instanceof Date) {
+      if (Number.isNaN(value.getTime())) {
+        return '';
+      }
+      const pad = (part: number) => String(part).padStart(2, '0');
+      return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}T${pad(value.getHours())}:${pad(value.getMinutes())}`;
+    }
+    if (!value) {
+      return '';
+    }
     const match = value.replace(' ', 'T').match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})/);
     return match ? match[1] : '';
   }
@@ -476,8 +494,8 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
     this.selectedRefreshType = 'all';
     this.selectedActiveState = 'all';
     this.selectedRefreshState = 'all';
-    this.refreshTimeStart = '';
-    this.refreshTimeEnd = '';
+    this.refreshTimeStart = null;
+    this.refreshTimeEnd = null;
     this.rowCountMin = null;
     this.rowCountMax = null;
     this.selectedPartitionType = 'all';
@@ -503,9 +521,11 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
     return count;
   }
 
-  onEdit(event: any) {
-    const mv = event.data as MaterializedView;
-    this.viewDetail(mv);
+  onRowSelect(event: RowSelectionEvent): void {
+    const mv = event.data as MaterializedView | null;
+    if (mv) {
+      this.viewDetail(mv, event.row?.index);
+    }
   }
 
   onDelete(event: any) {
@@ -565,17 +585,49 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
       });
   }
 
-  viewDetail(mv: MaterializedView) {
+  viewDetail(mv: MaterializedView, rowIndex?: number): void {
+    const template = this.detailDialogTemplate;
+    if (!template || this.sheetClosing) {
+      return;
+    }
+
+    this.captureDetailTrigger(rowIndex);
     this.selectedMV = mv;
     this.mvDDL = '';
-    
-    // Load DDL
+    const dialogRef = this.dialogService.open(template, {
+      autoFocus: false,
+      backdropClass: 'side-sheet-backdrop',
+      closeOnBackdropClick: false,
+      closeOnEsc: false,
+      dialogClass: 'side-sheet',
+      hasBackdrop: true,
+      hasScroll: true,
+    });
+    this.detailDialogRef = dialogRef;
+    this.document.defaultView?.requestAnimationFrame(() => {
+      this.document
+        .querySelector<HTMLElement>('.cdk-overlay-pane.side-sheet .materialized-view-detail-sheet')
+        ?.focus({ preventScroll: true });
+    });
+    dialogRef.onBackdropClick.pipe(take(1)).subscribe(() => this.closeDetailDialog(dialogRef));
+    dialogRef.onClose.pipe(take(1)).subscribe(() => {
+      this.detailRequest$.next();
+      this.selectedMV = null;
+      this.mvDDL = '';
+      this.detailDialogRef = undefined;
+      this.sheetClosing = false;
+      this.restoreDetailFocus();
+    });
+
+    this.detailRequest$.next();
     this.mvService
       .getMaterializedViewDDL( mv.name)
-      .pipe(takeUntil(this.destroy$), timeout(20000))
+      .pipe(takeUntil(this.destroy$), takeUntil(this.detailRequest$), timeout(20000))
       .subscribe({
         next: (result) => {
-          this.mvDDL = result.ddl;
+          if (this.detailDialogRef === dialogRef && this.selectedMV?.name === mv.name) {
+            this.mvDDL = result.ddl;
+          }
         },
         error: (error) => {
           if (!this.authService.isAuthenticated()) {
@@ -587,16 +639,41 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
           );
         },
       });
-
-    this.detailDialogRef = this.dialogService.open(this.detailDialogTemplate, {
-      context: {},
-    });
   }
 
-  closeDetailDialog() {
-    if (this.detailDialogRef) {
-      this.detailDialogRef.close();
+  closeDetailDialog(ref?: NbDialogRef<unknown>): void {
+    const dialogRef = ref || this.detailDialogRef;
+    if (!dialogRef || this.sheetClosing) {
+      return;
     }
+
+    const sheet = this.document.querySelector<HTMLElement>('.cdk-overlay-pane.side-sheet');
+    if (!sheet || this.prefersReducedMotion()) {
+      dialogRef.close();
+      return;
+    }
+
+    this.sheetClosing = true;
+    sheet.classList.add('side-sheet--closing');
+    this.document
+      .querySelector<HTMLElement>('.cdk-overlay-backdrop.side-sheet-backdrop')
+      ?.classList.add('side-sheet-backdrop--closing');
+    this.document.defaultView?.setTimeout(
+      () => dialogRef.close(),
+      MaterializedViewsComponent.sheetExitDurationMs,
+    );
+  }
+
+  editSelectedMV(): void {
+    this.closeDetailThen((mv) => this.openEditDialog(mv));
+  }
+
+  refreshSelectedMV(): void {
+    this.closeDetailThen((mv) => this.openRefreshDialog(mv));
+  }
+
+  toggleSelectedMV(): void {
+    this.closeDetailThen((mv) => this.toggleActiveState(mv));
   }
 
   copyDDL(): void {
@@ -855,5 +932,39 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
       return (num / 1000).toFixed(1) + 'K';
     }
     return num.toString();
+  }
+
+  private closeDetailThen(action: (mv: MaterializedView) => void): void {
+    const mv = this.selectedMV;
+    const dialogRef = this.detailDialogRef;
+    if (!mv || !dialogRef) {
+      return;
+    }
+    dialogRef.onClose.pipe(take(1)).subscribe(() => action(mv));
+    this.closeDetailDialog(dialogRef);
+  }
+
+  private captureDetailTrigger(rowIndex?: number): void {
+    const rows = this.document.querySelectorAll<HTMLElement>('angular2-smart-table tbody tr');
+    const visibleRowIndex = rowIndex === undefined ? undefined : rowIndex % this.settings.pager.perPage;
+    const row = visibleRowIndex === undefined ? undefined : rows.item(visibleRowIndex);
+    if (row) {
+      row.tabIndex = -1;
+      row.focus();
+    }
+    const activeElement = this.document.activeElement;
+    this.detailTrigger = activeElement instanceof HTMLElement ? activeElement : undefined;
+  }
+
+  private restoreDetailFocus(): void {
+    const trigger = this.detailTrigger;
+    this.detailTrigger = undefined;
+    if (trigger?.isConnected) {
+      this.document.defaultView?.setTimeout(() => trigger.focus());
+    }
+  }
+
+  private prefersReducedMotion(): boolean {
+    return this.document.defaultView?.matchMedia('(prefers-reduced-motion: reduce)').matches || false;
   }
 }

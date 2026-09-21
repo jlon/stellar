@@ -21,6 +21,21 @@
                 [placeholder]="'搜索 Query ID / SQL / 用户' | translate"
                 [(ngModel)]="searchKeyword"
                 (keyup.enter)="searchHistory()">
+              <button
+                nbSuffix
+                nbButton
+                ghost
+                status="basic"
+                size="small"
+                type="button"
+                (click)="searchHistory()"
+                [disabled]="loading"
+                [nbTooltip]="'搜索' | translate"
+                nbTooltipPlacement="top"
+                [title]="'搜索' | translate"
+                [attr.aria-label]="'搜索' | translate">
+                <nb-icon icon="search-outline"></nb-icon>
+              </button>
             </nb-form-field>
             <nb-form-field class="filter-time">
               <nb-icon nbPrefix icon="calendar-outline"></nb-icon>
@@ -29,8 +44,9 @@
                 fullWidth
                 fieldSize="small"
                 [placeholder]="'开始时间' | translate"
-                type="datetime-local"
+                [nbDatepicker]="startTimePicker"
                 [(ngModel)]="searchStartTime">
+              <nb-date-timepicker #startTimePicker adjustment="vertical"></nb-date-timepicker>
             </nb-form-field>
             <nb-form-field class="filter-time">
               <nb-icon nbPrefix icon="calendar-outline"></nb-icon>
@@ -39,18 +55,10 @@
                 fullWidth
                 fieldSize="small"
                 [placeholder]="'结束时间' | translate"
-                type="datetime-local"
+                [nbDatepicker]="endTimePicker"
                 [(ngModel)]="searchEndTime">
+              <nb-date-timepicker #endTimePicker adjustment="vertical"></nb-date-timepicker>
             </nb-form-field>
-            <button
-              nbButton
-              size="small"
-              status="primary"
-              class="filter-submit"
-              (click)="searchHistory()">
-              <nb-icon icon="search-outline"></nb-icon>
-              {{ '搜索' | translate }}
-            </button>
           </div>
               @if (hasActiveFilters()) {
                 <div class="row mt-2">
@@ -65,16 +73,16 @@
                         </nb-badge>
                       }
                       @if (searchStartTime) {
-                        <nb-badge
+                          <nb-badge
                           status="warning"
-                          text="{{ ('开始时间: ' | translate) + searchStartTime  }}"
+                          text="{{ ('开始时间: ' | translate) + dateTimeValue(searchStartTime)  }}"
                           class="filter-badge">
                         </nb-badge>
                       }
                       @if (searchEndTime) {
-                        <nb-badge
+                          <nb-badge
                           status="warning"
-                          text="{{ ('结束时间: ' | translate) + searchEndTime  }}"
+                          text="{{ ('结束时间: ' | translate) + dateTimeValue(searchEndTime)  }}"
                           class="filter-badge">
                         </nb-badge>
                       }

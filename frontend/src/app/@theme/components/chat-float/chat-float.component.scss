@@ -377,9 +377,15 @@
   margin: 0.4rem 0;
   padding: 0.55rem 0.65rem;
   border: 1px solid var(--border-basic-color-3);
-  border-left: 3px solid var(--color-warning-500);
+  border-color: var(--color-warning-500);
   border-radius: 0.6rem;
   background: var(--card-background-color);
+  animation: float-approval-in 0.2s ease-out;
+}
+
+@keyframes float-approval-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .float-action-head {
@@ -400,4 +406,13 @@
 .float-action-ops {
   display: flex;
   gap: 0.4rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-fab,
+  .chat-float-panel,
+  .float-row,
+  .float-action-card {
+    animation: none;
+  }
 }
