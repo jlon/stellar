@@ -168,24 +168,6 @@
     padding: 0.5rem;
     width: 100%;
     flex: 1 1 auto;
-
-    &::-webkit-scrollbar {
-      width: 6px;
-    }
-
-    &::-webkit-scrollbar-track {
-      background: nb-theme(background-basic-color-2);
-      border-radius: 3px;
-    }
-
-    &::-webkit-scrollbar-thumb {
-      background: var(--scrollbar-color);
-      border-radius: 3px;
-      
-      &:hover {
-        background: nb-theme(border-basic-color-5);
-      }
-    }
   }
 
   // Simple tree structure

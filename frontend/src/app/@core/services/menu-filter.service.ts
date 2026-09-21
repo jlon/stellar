@@ -11,11 +11,12 @@ export class MenuFilterService {
 
   /**
    * Filter menu items based on user permissions
-   * Recursively filters menu items and their children
+   * Recursively filters menu items and their children without mutating the
+   * source menu tree, which is reused when permissions or language changes.
    */
   filterMenuItems(items: NbMenuItem[]): NbMenuItem[] {
     return items
-      .map((item) => {
+      .map((item): NbMenuItem | null => {
         // Check if item has permission in data attribute
         const permission = (item as any).data?.permission;
         if (permission) {
@@ -33,15 +34,15 @@ export class MenuFilterService {
         }
 
         // Recursively filter children
-        if (item.children && item.children.length > 0) {
-          item.children = this.filterMenuItems(item.children);
-          // If all children are filtered out, filter out parent too
-          if (item.children.length === 0 && item.link) {
-            return null;
-          }
+        const children = item.children?.length
+          ? this.filterMenuItems(item.children)
+          : undefined;
+        // A grouping item with no authorized child is not actionable.
+        if (item.children?.length && children?.length === 0) {
+          return null;
         }
 
-        return item;
+        return { ...item, children };
       })
       .filter((item) => item !== null) as NbMenuItem[];
   }
@@ -113,4 +114,3 @@ export class MenuFilterService {
     return null;
   }
 }
-

@@ -243,6 +243,8 @@ pub async fn analyze_resource_usage(
     };
 
     let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
-    let analysis = ResourceGroupService::analyze_resource_usage(&pool, query.days).await?;
+    let analysis =
+        ResourceGroupService::analyze_resource_usage(&pool, query.days, &state.audit_config)
+            .await?;
     Ok(Json(analysis))
 }

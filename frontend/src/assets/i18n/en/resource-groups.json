@@ -113,7 +113,8 @@
  "更新资源组失败": "Failed to update resource group",
  "资源组 ID": "Resource Group ID",
  "BE 节点": "BE Node",
- "CPU 使用核数": "Maximum concurrency (per second)",
+ "计算节点": "Compute Node",
+ "CPU 使用核数": "CPU cores in use",
  "内存使用量": "Memory Usage",
  "运行中查询数": "Running queries",
  "加载资源组使用情况失败": "Failed to load resource usage analysis"

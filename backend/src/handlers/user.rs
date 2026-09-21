@@ -106,7 +106,7 @@ pub async fn create_user(
         user.user.id,
         org_ctx.user_id
     );
-        crate::services::op_audit::log_op_best_effort(
+    crate::services::op_audit::log_op_best_effort(
         &state.db,
         crate::services::op_audit::OpAuditEntry {
             user_id: org_ctx.user_id,
@@ -119,8 +119,8 @@ pub async fn create_user(
         },
     )
     .await;
-        
-Ok(Json(user))
+
+    Ok(Json(user))
 }
 
 /// Update user and role assignments
@@ -172,7 +172,7 @@ pub async fn update_user(
         user.user.id,
         org_ctx.user_id
     );
-        crate::services::op_audit::log_op_best_effort(
+    crate::services::op_audit::log_op_best_effort(
         &state.db,
         crate::services::op_audit::OpAuditEntry {
             user_id: org_ctx.user_id,
@@ -185,8 +185,8 @@ pub async fn update_user(
         },
     )
     .await;
-        
-Ok(Json(user))
+
+    Ok(Json(user))
 }
 
 /// Delete user and detach roles
@@ -218,7 +218,7 @@ pub async fn delete_user(
         .delete_user(user_id, org_ctx.organization_id, org_ctx.is_super_admin)
         .await?;
     tracing::info!("Deleted user_id={} by user {}", user_id, org_ctx.user_id);
-        crate::services::op_audit::log_op_best_effort(
+    crate::services::op_audit::log_op_best_effort(
         &state.db,
         crate::services::op_audit::OpAuditEntry {
             user_id: org_ctx.user_id,
@@ -231,6 +231,6 @@ pub async fn delete_user(
         },
     )
     .await;
-        
-Ok(Json(()))
+
+    Ok(Json(()))
 }

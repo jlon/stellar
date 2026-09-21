@@ -48,10 +48,13 @@ export class PermissionService {
       }),
       catchError((error) => {
         console.error('Failed to load permissions:', error);
-        // Return empty array on error
-        const emptyPermissions: Permission[] = [];
-        this.permissionsSubject.next(emptyPermissions);
-        return of(emptyPermissions);
+        if (error.status === 401 || error.status === 403) {
+          this.clearPermissions();
+          return of([]);
+        }
+        // Transport/server failures must not erase the last verified set.
+        // The backend remains the authority for every protected request.
+        return of(this.permissionsSubject.value);
       }),
     );
   }
@@ -145,4 +148,3 @@ export class PermissionService {
     }
   }
 }
-

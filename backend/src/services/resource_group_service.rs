@@ -1,6 +1,7 @@
 use anyhow::Result;
 use mysql_async::Pool;
 
+use crate::config::AuditLogConfig;
 use crate::models::{
     Classifier, ClassifierRequest, CreateResourceGroupRequest, ResourceGroup, ResourceGroupUsage,
     ResourceUsageAnalysis, UpdateResourceGroupRequest, UserConcurrency, UserCpuUsage,
@@ -151,15 +152,23 @@ impl ResourceGroupService {
         Ok(usages)
     }
 
-    pub async fn analyze_resource_usage(pool: &Pool, days: u32) -> Result<ResourceUsageAnalysis> {
-        let cpu_analysis = Self::analyze_cpu_usage(pool, days).await?;
-        let memory_analysis = Self::analyze_memory_usage(pool, days).await?;
-        let concurrency_analysis = Self::analyze_concurrency(pool, days).await?;
+    pub async fn analyze_resource_usage(
+        pool: &Pool,
+        days: u32,
+        audit_config: &AuditLogConfig,
+    ) -> Result<ResourceUsageAnalysis> {
+        let cpu_analysis = Self::analyze_cpu_usage(pool, days, audit_config).await?;
+        let memory_analysis = Self::analyze_memory_usage(pool, days, audit_config).await?;
+        let concurrency_analysis = Self::analyze_concurrency(pool, days, audit_config).await?;
 
         Ok(ResourceUsageAnalysis { cpu_analysis, memory_analysis, concurrency_analysis })
     }
 
-    async fn analyze_cpu_usage(pool: &Pool, days: u32) -> Result<Vec<UserCpuUsage>> {
+    async fn analyze_cpu_usage(
+        pool: &Pool,
+        days: u32,
+        audit_config: &AuditLogConfig,
+    ) -> Result<Vec<UserCpuUsage>> {
         let mysql_client = MySQLClient::from_pool(pool.clone());
         let mut session = mysql_client.create_session().await?;
         let sql = format!(
@@ -169,17 +178,18 @@ impl ResourceGroupService {
                 SUM(cpuCostNs) / 1e9 AS total_cpu_seconds,
                 (SUM(cpuCostNs) / (
                     SELECT SUM(cpuCostNs) 
-                    FROM starrocks_audit_db__.starrocks_audit_tbl__ 
-                    WHERE timestamp >= DATE_SUB(NOW(), INTERVAL {} DAY)
+                    FROM {audit_table}
+                    WHERE timestamp >= DATE_SUB(NOW(), INTERVAL {days} DAY)
                 )) * 100 AS cpu_usage_percentage
-            FROM starrocks_audit_db__.starrocks_audit_tbl__
-            WHERE timestamp >= DATE_SUB(NOW(), INTERVAL {} DAY)
+            FROM {audit_table}
+            WHERE timestamp >= DATE_SUB(NOW(), INTERVAL {days} DAY)
               AND state IN ('EOF', 'OK')
             GROUP BY user
             ORDER BY total_cpu_seconds DESC
             LIMIT 50
             "#,
-            days, days
+            audit_table = Self::audit_table(audit_config),
+            days = days
         );
 
         let (_, rows, _) = session.execute(&sql).await?;
@@ -205,7 +215,11 @@ impl ResourceGroupService {
         Ok(results)
     }
 
-    async fn analyze_memory_usage(pool: &Pool, days: u32) -> Result<Vec<UserMemoryUsage>> {
+    async fn analyze_memory_usage(
+        pool: &Pool,
+        days: u32,
+        audit_config: &AuditLogConfig,
+    ) -> Result<Vec<UserMemoryUsage>> {
         let mysql_client = MySQLClient::from_pool(pool.clone());
         let mut session = mysql_client.create_session().await?;
 
@@ -214,14 +228,15 @@ impl ResourceGroupService {
             SELECT 
                 user,
                 MAX(memCostBytes) / 1024 / 1024 AS max_mem_mb
-            FROM starrocks_audit_db__.starrocks_audit_tbl__
-            WHERE timestamp >= DATE_SUB(NOW(), INTERVAL {} DAY)
+            FROM {audit_table}
+            WHERE timestamp >= DATE_SUB(NOW(), INTERVAL {days} DAY)
               AND state IN ('EOF', 'OK')
             GROUP BY user
             ORDER BY max_mem_mb DESC
             LIMIT 50
             "#,
-            days
+            audit_table = Self::audit_table(audit_config),
+            days = days
         );
 
         let (_, rows, _) = session.execute(&sql).await?;
@@ -246,7 +261,11 @@ impl ResourceGroupService {
         Ok(results)
     }
 
-    async fn analyze_concurrency(pool: &Pool, days: u32) -> Result<Vec<UserConcurrency>> {
+    async fn analyze_concurrency(
+        pool: &Pool,
+        days: u32,
+        audit_config: &AuditLogConfig,
+    ) -> Result<Vec<UserConcurrency>> {
         let mysql_client = MySQLClient::from_pool(pool.clone());
         let mut session = mysql_client.create_session().await?;
 
@@ -257,9 +276,9 @@ impl ResourceGroupService {
                     user,
                     DATE_FORMAT(timestamp, '%Y-%m-%d %H:%i') AS minute_bucket,
                     COUNT(*) AS query_concurrency
-                FROM starrocks_audit_db__.starrocks_audit_tbl__
+                FROM {audit_table}
                 WHERE state IN ('EOF', 'OK')
-                  AND timestamp >= DATE_SUB(NOW(), INTERVAL {} DAY)
+                  AND timestamp >= DATE_SUB(NOW(), INTERVAL {days} DAY)
                   AND LOWER(stmt) LIKE '%select%'
                 GROUP BY user, minute_bucket
                 HAVING query_concurrency > 1
@@ -283,7 +302,8 @@ impl ResourceGroupService {
             ORDER BY query_concurrency_per_second DESC
             LIMIT 50
             "#,
-            days
+            audit_table = Self::audit_table(audit_config),
+            days = days
         );
 
         let (_, rows, _) = session.execute(&sql).await?;
@@ -460,5 +480,9 @@ impl ResourceGroupService {
 
     fn quote_identifier(name: &str) -> String {
         format!("`{}`", name.replace('`', "``"))
+    }
+
+    pub(crate) fn audit_table(audit_config: &AuditLogConfig) -> String {
+        audit_config.full_table_name()
     }
 }

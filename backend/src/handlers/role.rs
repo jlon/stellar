@@ -166,7 +166,7 @@ pub async fn create_role(
         role.id,
         org_ctx.user_id
     );
-        crate::services::op_audit::log_op_best_effort(
+    crate::services::op_audit::log_op_best_effort(
         &state.db,
         crate::services::op_audit::OpAuditEntry {
             user_id: org_ctx.user_id,
@@ -179,8 +179,8 @@ pub async fn create_role(
         },
     )
     .await;
-        
-Ok(Json(role))
+
+    Ok(Json(role))
 }
 
 // Update role
@@ -232,7 +232,7 @@ pub async fn update_role(
         role.id,
         org_ctx.user_id
     );
-        crate::services::op_audit::log_op_best_effort(
+    crate::services::op_audit::log_op_best_effort(
         &state.db,
         crate::services::op_audit::OpAuditEntry {
             user_id: org_ctx.user_id,
@@ -245,8 +245,8 @@ pub async fn update_role(
         },
     )
     .await;
-        
-Ok(Json(role))
+
+    Ok(Json(role))
 }
 
 // Delete role
@@ -283,7 +283,7 @@ pub async fn delete_role(
         .await?;
 
     tracing::info!("Role deleted successfully: ID={} by user {}", id, org_ctx.user_id);
-        crate::services::op_audit::log_op_best_effort(
+    crate::services::op_audit::log_op_best_effort(
         &state.db,
         crate::services::op_audit::OpAuditEntry {
             user_id: org_ctx.user_id,
@@ -296,8 +296,8 @@ pub async fn delete_role(
         },
     )
     .await;
-        
-Ok(Json(()))
+
+    Ok(Json(()))
 }
 
 // Update role permissions

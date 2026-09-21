@@ -9,12 +9,12 @@ use stellar_macros::app_db;
 use crate::AppState;
 use crate::models::Backend;
 use crate::services::create_adapter;
-use crate::services::metrics_collector_service::fill_backend_cache_capacity;
+use crate::services::metrics_collector_service::fill_backend_capacity;
 use crate::utils::ApiResult;
 
-fn fill_storage(backends: &mut [Backend]) {
+fn fill_storage(backends: &mut [Backend], shared_data: bool) {
     for backend in backends {
-        fill_backend_cache_capacity(backend);
+        fill_backend_capacity(backend, shared_data);
     }
 }
 
@@ -45,12 +45,13 @@ pub async fn list_backends(
             .await?
     };
     let cluster_id = cluster.id;
+    let shared_data = cluster.is_shared_data();
     if let Some(mut backends) = state
         .metrics_collector_service
         .cached_backends(cluster_id, Duration::from_secs(90))
         .or_else(|| state.metrics_collector_service.stale_backends(cluster_id))
     {
-        fill_storage(&mut backends);
+        fill_storage(&mut backends, shared_data);
         return Ok(Json(backends));
     }
     let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
@@ -58,7 +59,7 @@ pub async fn list_backends(
     state
         .metrics_collector_service
         .store_backends(cluster_id, backends.clone());
-    fill_storage(&mut backends);
+    fill_storage(&mut backends, shared_data);
     Ok(Json(backends))
 }
 

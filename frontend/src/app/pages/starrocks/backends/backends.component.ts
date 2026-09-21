@@ -1,6 +1,6 @@
 import { I18nService } from '../../../@core/i18n/i18n.service';
 import { TranslatePipe } from '@ngx-translate/core';
-import { Component, OnInit, OnDestroy, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { Subject } from 'rxjs';
 import { takeUntil, timeout } from 'rxjs/operators';
 import { NbToastrService, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule, NbTooltipModule } from '@nebular/theme';
@@ -35,6 +35,7 @@ export class BackendsComponent implements OnInit, OnDestroy {
   private clusterContext = inject(ClusterContextService);
   private toastrService = inject(NbToastrService);
   private confirmDialogService = inject(ConfirmDialogService);
+  private cdr = inject(ChangeDetectorRef);
 
   source: LocalDataSource = new LocalDataSource();
   clusterId = 0;
@@ -127,7 +128,7 @@ export class BackendsComponent implements OnInit, OnDestroy {
           return;
         }
         this.applyCluster(cluster);
-        const switched = this.clusterId !== 0 && this.clusterId !== cluster.id;
+        const switched = this.clusterId !== cluster.id;
         this.clusterId = cluster.id;
         if (switched) {
           this.loadBackends();
@@ -151,6 +152,25 @@ export class BackendsComponent implements OnInit, OnDestroy {
     this.pageTitle = this.deploymentMode === 'shared_data'
       ? 'Compute Nodes (CN)'
       : 'Backend Nodes (BE)';
+    const cache = this.deploymentMode === 'shared_data';
+    this.settings = {
+      ...this.settings,
+      columns: {
+        ...this.settings.columns,
+        DataUsedCapacity: {
+          ...this.settings.columns.DataUsedCapacity,
+          title: this.i18n.instant(cache ? '缓存已用' : '已用容量'),
+        },
+        TotalCapacity: {
+          ...this.settings.columns.TotalCapacity,
+          title: this.i18n.instant(cache ? '缓存配额' : '总容量'),
+        },
+        UsedPct: {
+          ...this.settings.columns.UsedPct,
+          title: this.i18n.instant(cache ? '缓存使用率' : '使用率'),
+        },
+      },
+    };
   }
 
   loadBackends(): void {
@@ -163,8 +183,7 @@ export class BackendsComponent implements OnInit, OnDestroy {
           if (seq !== this.loadSeq) {
             return;
           }
-          void assignTableRows(this.source, backends);
-          this.loading = false;
+          this.renderRows(backends);
         },
         error: (error) => {
           if (seq !== this.loadSeq) {
@@ -174,10 +193,18 @@ export class BackendsComponent implements OnInit, OnDestroy {
             ErrorHandler.handleClusterError(error),
             '错误',
           );
-          void assignTableRows(this.source, []);
-          this.loading = false;
+          this.renderRows([]);
         },
       });
+  }
+
+  private renderRows(backends: Backend[]): void {
+    assignTableRows(this.source, backends).then(() => {
+      this.loading = false;
+      this.cdr.detectChanges();
+      // Smart Table 在设置更新后异步重建数据集，需要下一微任务再次刷新视图。
+      queueMicrotask(() => this.cdr.detectChanges());
+    });
   }
 
   onDeleteConfirm(event: { data: Backend; confirm: { resolve: () => void; reject: () => void } }): void {

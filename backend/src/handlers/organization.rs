@@ -106,7 +106,7 @@ pub async fn create_organization(
         .await?;
     tracing::info!("Reloaded Casbin policies after organization creation");
 
-        crate::services::op_audit::log_op_best_effort(
+    crate::services::op_audit::log_op_best_effort(
         &state.db,
         crate::services::op_audit::OpAuditEntry {
             user_id: org_ctx.user_id,
@@ -119,8 +119,8 @@ pub async fn create_organization(
         },
     )
     .await;
-        
-Ok(Json(org))
+
+    Ok(Json(org))
 }
 
 // Update organization
@@ -152,7 +152,7 @@ pub async fn update_organization(
         .update_organization(id, req, org_ctx.organization_id, org_ctx.is_super_admin)
         .await?;
     tracing::info!("Organization updated: ID {} by user {}", org.id, org_ctx.user_id);
-        crate::services::op_audit::log_op_best_effort(
+    crate::services::op_audit::log_op_best_effort(
         &state.db,
         crate::services::op_audit::OpAuditEntry {
             user_id: org_ctx.user_id,
@@ -165,8 +165,8 @@ pub async fn update_organization(
         },
     )
     .await;
-        
-Ok(Json(org))
+
+    Ok(Json(org))
 }
 
 // Delete organization (super admin only, cannot delete system orgs)
@@ -205,7 +205,7 @@ pub async fn delete_organization(
         .await?;
 
     tracing::warn!("Organization deleted successfully: ID {} by user {}", id, org_ctx.user_id);
-        crate::services::op_audit::log_op_best_effort(
+    crate::services::op_audit::log_op_best_effort(
         &state.db,
         crate::services::op_audit::OpAuditEntry {
             user_id: org_ctx.user_id,
@@ -218,6 +218,6 @@ pub async fn delete_organization(
         },
     )
     .await;
-        
-Ok(Json(serde_json::json!({"message": "Organization deleted successfully"})))
+
+    Ok(Json(serde_json::json!({"message": "Organization deleted successfully"})))
 }
