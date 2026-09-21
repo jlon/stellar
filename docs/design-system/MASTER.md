@@ -13,6 +13,7 @@
 ## 1. 布局（Operate：扫描性优先）
 
 - 筛选区：一行紧凑排列，搜索框收窄（14~20rem），下拉固定宽（8~11rem），主动作按钮右对齐（`margin-left: auto`）。Nebular 的 `input[nbInput]` 用 `fieldSize="small"` / `fieldSize="tiny"` 控制尺寸；原生 `size` 属性无效。
+- 集群运行时工具、会话、参数配置与权限、资源组同属“集群运维”分组；父项无直达路由，子项保持独立路由和权限。父分组不新增授权门槛，且无任一可见子项时必须隐藏，避免菜单出现空壳。
 - 高级筛选默认收起，展开为扁平面板（无嵌套卡片），字段内联标签同行；其开关是次级工具动作，使用 `nbButton ghost size="small"` + `funnel-outline`，带 `title`、`aria-label`、`aria-expanded`，禁止使用高饱和 filled 状态按钮。
 - 表格：列宽收敛，操作列图标化（hover 出现），空态给下一步指引（去诊断/重试/新建）。
 - 回答/正文列宽 ≤46rem；代码块压高 24rem + 块内滚动。
