@@ -1,10 +1,11 @@
 #!/bin/sh
 set -eu
 
-# MinIO-style default: one data directory holds the database, the generated
-# .jwt-secret and logs. `docker run IMAGE --help` and `--version` still work.
+# Default startup reads the shipped configuration while /data persists SQLite,
+# the generated JWT secret and logs. `docker run IMAGE --help` and `--version`
+# still work.
 case "${1:-}" in
-    "") set -- server /data ;;
+    "") set -- server /data --config /app/conf/config.toml ;;
 esac
 
 # Bind mounts may arrive with foreign ownership (uid mismatch between host and

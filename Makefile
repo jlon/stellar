@@ -15,7 +15,7 @@ help:
 	@echo "Stellar - Build Commands:"
 	@echo ""
 	@echo "Development (fast feedback, glibc, no packaging):"
-	@echo "  make dev-backend      - Start backend via scripts/dev/start_backend.sh"
+	@echo "  make dev-backend      - Start backend via scripts/dev/start_backend.sh start --dev"
 	@echo "  make dev-frontend     - Start Angular dev server via scripts/dev/start_frontend.sh"
 	@echo ""
 	@echo "Production build (output: build/dist/):"
@@ -35,7 +35,7 @@ help:
 
 # ---- Development environment (no binary packaging) ----
 dev-backend:
-	@bash scripts/dev/start_backend.sh
+	@bash scripts/dev/start_backend.sh start --dev
 
 dev-frontend:
 	@bash scripts/dev/start_frontend.sh

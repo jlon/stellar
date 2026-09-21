@@ -124,14 +124,14 @@ port = 9527
 url = "sqlite://data/stellar.db"
 
 [auth]
-# With `stellar server --config`, set this through APP_JWT_SECRET or replace it here.
-# Data-directory mode (`stellar server /var/lib/stellar`) generates .jwt-secret automatically.
+# APP_JWT_SECRET takes precedence. The release script supplies a data directory,
+# so an empty value is generated once and persisted as data/.jwt-secret.
 jwt_secret = ""
 jwt_expires_in = "24h"
 
 [logging]
 level = "info,stellar_backend=debug"
-file = "logs/stellar.log"
+file = "data/logs/stellar.log"
 
 
 # Metrics collector configuration
@@ -246,9 +246,12 @@ start_service() {
     echo "  - 监听地址: $HOST:$PORT"
     echo ""
 
-    # 启动后端。显式传入数据目录和端口，避免随包参考配置或旧环境变量影响行为。
+    # 配置文件提供业务配置；数据目录仅保存 SQLite、日志和生成的 JWT 密钥。
     echo -e "${GREEN}[START]${NC} 启动后端服务..."
-    nohup "$BINARY_PATH" server "$DATA_DIR" --server-host "$HOST" --server-port "$PORT" > "$LOG_FILE" 2>&1 &
+    (
+        cd "$DIST_ROOT"
+        exec nohup "$BINARY_PATH" server "$DATA_DIR" --config "$DIST_ROOT/conf/config.toml" --server-host "$HOST" --server-port "$PORT"
+    ) > "$LOG_FILE" 2>&1 &
     BACKEND_PID=$!
     echo $BACKEND_PID > "$PID_FILE"
 

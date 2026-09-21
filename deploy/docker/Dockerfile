@@ -82,16 +82,16 @@ RUN printf '%s\n' \
     'port = 9527' \
     '' \
     '[database]' \
-    'url = "sqlite://data/stellar.db"' \
+    'url = "sqlite:///data/stellar.db"' \
     '' \
     '[auth]' \
-    '# Required with --config; the default `server /data` mode generates .jwt-secret.' \
+    '# APP_JWT_SECRET takes precedence; `server /data --config ...` generates .jwt-secret.' \
     'jwt_secret = ""' \
     'jwt_expires_in = "24h"' \
     '' \
     '[logging]' \
     'level = "info,stellar_backend=debug"' \
-    'file = "logs/stellar.log"' \
+    'file = "/data/logs/stellar.log"' \
     '' \
     '[metrics]' \
     'interval_secs = "30s"' \
@@ -107,7 +107,7 @@ RUN printf '%s\n' \
 # Entrypoint normalizes /data ownership then drops to this user via setpriv.
 EXPOSE 9527
 # Everything (SQLite, .jwt-secret, logs) lives in one volume; the entrypoint
-# defaults to `stellar server /data` when no command is given.
+# defaults to `stellar server /data --config /app/conf/config.toml`.
 VOLUME "/data"
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:9527/health || exit 1

@@ -77,6 +77,10 @@ Stellar 采用 **MinIO 风格的一次性密码**机制，所有安装方式通�
 
 不想找密码？也可以在首次启动前设置环境变量 `STELLAR_ROOT_PASSWORD=你的密码`。
 
+> 默认运行语义为 `production`。仅源码开发使用 `STELLAR_ENV=development`，它会让空的
+> 本地数据目录初始化为 `admin/admin`；已初始化账户不会因该变量或
+> `STELLAR_ROOT_PASSWORD` 在重启时自动改密。部署环境不要设置 `STELLAR_ENV=development`。
+
 ---
 
 ## 方式一：Debian / Ubuntu（DEB 包，推荐）
@@ -122,12 +126,11 @@ wget https://github.com/jlon/stellar/releases/download/v1.0.0/stellar-1.0.0-linu
 tar xzf stellar-1.0.0-linux-amd64-musl.tar.gz
 cd stellar
 
-# 2. 启动（数据目录用 /var/lib/stellar，目录不存在会自动创建）
-sudo mkdir -p /var/lib/stellar && sudo chown $(whoami) /var/lib/stellar
-nohup ./bin/stellar server /var/lib/stellar > /var/lib/stellar/console.log 2>&1 &
+# 2. 启动（使用随包 conf/config.toml；数据和日志保存在 ./data）
+./bin/stellar.sh start
 
 # 3. 查看一次性管理员密码
-grep 'password:' /var/lib/stellar/console.log
+grep 'password:' data/logs/console.log
 ```
 
 访问 http://<服务器IP>:9527。
@@ -228,7 +231,7 @@ stellar server /var/lib/stellar
 | 方式 | 适用 | 说明 |
 |-----|------|------|
 | 零配置（推荐起步） | 快速上手 | 什么都不配即可跑；数据目录默认 `./data` |
-| 配置文件 | 生产定制 | `stellar server --config /etc/stellar/config.toml` |
+| 配置文件 | 生产定制 | `stellar server /var/lib/stellar --config /etc/stellar/config.toml` |
 
 优先级：命令行参数 > 环境变量（`APP_` 前缀）> 配置文件 > 默认值。
 
@@ -258,22 +261,30 @@ file = "/var/lib/stellar/logs/stellar.log"  # 日志文件；删除此行则只�
 interval_secs = "30s"     # 指标采集间隔
 retention_days = "7d"     # 指标保留时长
 enabled = true            # 是否启用采集
+
+[audit]
+# StarRocks 审计日志库表；Doris 固定使用 __internal_schema.audit_log
+database = "starrocks_audit_db__"
+table = "starrocks_audit_tbl__"
 ```
 
 > 数据目录模式（`stellar server /var/lib/stellar`）会自动生成并保存 `.jwt-secret`，重启不失效。
-> 显式 `--config` 模式必须设置 `jwt_secret` 或 `APP_JWT_SECRET`，避免配置文件泄漏为弱默认密钥。
+> 将数据目录与 `--config` 一起传入时，配置文件控制服务、数据库、日志和审计表，数据目录仅保存自动生成的 `.jwt-secret`；未传数据目录时，显式 `--config` 模式必须设置 `jwt_secret` 或 `APP_JWT_SECRET`。
 
 ### 常用环境变量
 
 | 用途 | 变量 |
 |-----|------|
 | 数据目录 | `STELLAR_DATA_DIR`（等价于 `server` 后的位置参数） |
+| 运行环境 | `STELLAR_ENV`（默认 `production`；源码开发可设为 `development`） |
 | 初始管理员密码 | `STELLAR_ROOT_PASSWORD` |
 | 监听端口 | `APP_SERVER_PORT` |
 | 数据库 | `APP_DATABASE_URL` |
 | JWT 密钥 | `APP_JWT_SECRET` |
 | 日志级别 | `APP_LOG_LEVEL` |
 | 采集开关 | `APP_METRICS_ENABLED=true/false` |
+| StarRocks 审计库 | `APP_AUDIT_DATABASE` |
+| StarRocks 审计表 | `APP_AUDIT_TABLE` |
 
 ---
 

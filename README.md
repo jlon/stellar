@@ -66,7 +66,10 @@ make dev-backend
 make dev-frontend
 ```
 
-前端开发地址为 `http://localhost:4200`。发布静态二进制及 DEB/npm 包使用：
+`make dev-backend` 会显式设置 `STELLAR_ENV=development`：新建本地数据目录使用
+`admin/admin`，历史 `admin/admin` 种子保持可用；已初始化账户不会在重启时自动改密。
+开发后端默认只监听 `127.0.0.1:8081`。前端开发地址为 `http://localhost:4200`。
+发布静态二进制及 DEB/npm 包使用：
 
 ```bash
 make build
