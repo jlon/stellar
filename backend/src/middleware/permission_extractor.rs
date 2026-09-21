@@ -279,6 +279,14 @@ fn extract_clusters_special_paths(segments: &[&str], method: &str) -> Option<Str
                 None
             }
         }),
+        // 处置动作会向引擎下发语句，沿用 SQL 执行权限。
+        Box::new(|seg, m| {
+            if m == "POST" && seg.get(1) == Some(&"loads") {
+                Some("queries:execute".to_string())
+            } else {
+                None
+            }
+        }),
         Box::new(|seg, m| {
             if m == "POST" && seg == ["clusters", "queries", "stream-load"] {
                 Some("queries:execute".to_string())

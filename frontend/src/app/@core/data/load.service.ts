@@ -1,6 +1,6 @@
-import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
-import { ApiService } from './api.service';
+import { Injectable, inject } from "@angular/core";
+import { Observable } from "rxjs";
+import { ApiService } from "./api.service";
 
 export interface LoadStage {
   key: string;
@@ -8,13 +8,30 @@ export interface LoadStage {
   duration_ms: number;
   start_time?: string;
   end_time?: string;
-  status: 'completed' | 'running' | 'failed' | string;
+  status: "completed" | "running" | "failed" | string;
 }
 
 export interface LoadFailureCause {
   code: string;
   label: string;
   suggestion: string;
+  /** 该原因下可执行的修复步骤（引擎参数与核对项）。 */
+  steps?: string[];
+}
+
+/** 当前状态下可执行的引擎侧处置动作。 */
+export interface LoadAction {
+  action: string;
+  label: string;
+  description: string;
+  statement: string;
+}
+
+export interface LoadActionResponse {
+  success: boolean;
+  message?: string;
+  /** 执行后重新读取的 Routine Load 父作业状态。 */
+  state?: string;
 }
 
 export interface DorisLoadFailureDetails {
@@ -36,6 +53,8 @@ export interface RoutineLoadTask {
 }
 
 export interface RoutineLoadDetails {
+  /** 父作业状态（引擎 SHOW ALL ROUTINE LOAD 的 State）。 */
+  state?: string;
   current_task_num?: number;
   statistics?: string;
   progress?: string;
@@ -79,6 +98,8 @@ export interface LoadJob {
   doris_failure?: DorisLoadFailureDetails;
   stage_timeline: LoadStage[];
   failure_cause?: LoadFailureCause;
+  /** 仅在详情接口按当前状态返回，列表接口为空。 */
+  actions?: LoadAction[];
 }
 
 export interface LoadSummary {
@@ -102,20 +123,20 @@ export interface LoadFilters {
   type?: string;
   state?: string;
   search?: string;
-  range?: '24h' | '7d' | '30d' | 'all';
+  range?: "24h" | "7d" | "30d" | "all";
   limit?: number;
   cursor?: string;
 }
 
 @Injectable({
-  providedIn: 'root',
+  providedIn: "root",
 })
 export class LoadService {
   private readonly api = inject(ApiService);
 
   list(filters: LoadFilters = {}): Observable<LoadListResponse> {
     const params: Record<string, string | number> = {
-      range: filters.range || '24h',
+      range: filters.range || "24h",
       limit: filters.limit || 100,
     };
     if (filters.db) params.db = filters.db;
@@ -123,10 +144,22 @@ export class LoadService {
     if (filters.state) params.state = filters.state;
     if (filters.search?.trim()) params.search = filters.search.trim();
     if (filters.cursor) params.cursor = filters.cursor;
-    return this.api.get<LoadListResponse>('/clusters/loads', params);
+    return this.api.get<LoadListResponse>("/clusters/loads", params);
   }
 
   get(jobId: string, db?: string): Observable<LoadJob> {
-    return this.api.get<LoadJob>(`/clusters/loads/${encodeURIComponent(jobId)}`, db ? { db } : undefined);
+    return this.api.get<LoadJob>(
+      `/clusters/loads/${encodeURIComponent(jobId)}`,
+      db ? { db } : undefined,
+    );
+  }
+
+  /** 对导入作业执行引擎侧处置动作；作业名与数据库由服务端解析。 */
+  executeAction(jobId: string, action: string): Observable<LoadActionResponse> {
+    return this.api.post<LoadActionResponse>(
+      `/clusters/loads/${encodeURIComponent(jobId)}/actions`,
+      { action },
+      120000,
+    );
   }
 }

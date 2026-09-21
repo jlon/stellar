@@ -1,14 +1,17 @@
 use crate::middleware::permission_extractor::extract_permission;
-use crate::models::LoadQueryParams;
+use crate::models::{LoadFailureCause, LoadJob, LoadQueryParams, RoutineLoadDetails};
 use crate::services::load_service::{
-    build_doris_load_failure_query, build_information_schema_query, build_stage_timeline,
-    build_starrocks_load_query, classify_failure, encode_load_cursor,
+    available_actions, build_doris_load_failure_query, build_information_schema_query,
+    build_stage_timeline, build_starrocks_load_query, classify_failure, encode_load_cursor,
     find_doris_load_failure_details, parse_load_job, parse_routine_load_task, routine_load_name,
 };
 
 #[test]
 fn classifies_common_failure_causes() {
-    assert_eq!(classify_failure("load timeout").unwrap().code, "Timeout");
+    let timeout = classify_failure("load timeout").unwrap();
+    assert_eq!(timeout.code, "Timeout");
+    assert!(timeout.suggestion.contains("计算节点"));
+    assert!(!timeout.suggestion.contains("FE/BE"));
     assert_eq!(
         classify_failure("filtered ratio exceeds max_filter_ratio")
             .unwrap()
@@ -22,6 +25,95 @@ fn classifies_common_failure_causes() {
         "ThresholdExceeded"
     );
     assert_eq!(classify_failure("unknown table t").unwrap().code, "TargetMissing");
+}
+
+#[test]
+fn load_actions_reuse_the_sql_execute_permission() {
+    assert_eq!(
+        extract_permission("POST", "/api/clusters/loads/42/actions"),
+        Some(("clusters".to_string(), "queries:execute".to_string()))
+    );
+    // 读取仍走独立的 loads 权限
+    assert_eq!(
+        extract_permission("GET", "/api/clusters/loads"),
+        Some(("clusters".to_string(), "loads".to_string()))
+    );
+}
+
+#[test]
+fn every_failure_cause_carries_executable_steps() {
+    let samples = [
+        ("load timeout", "Timeout"),
+        ("filtered ratio exceeds max_filter_ratio", "ThresholdExceeded"),
+        ("Access denied for user", "PermissionDenied"),
+        ("unknown table t", "TargetMissing"),
+        ("parse error while reading csv", "FormatError"),
+        ("out of memory in resource group", "ResourceExhausted"),
+        ("something nobody classified", "Unknown"),
+    ];
+
+    for (message, expected_code) in samples {
+        let cause = classify_failure(message).expect("cause");
+        assert_eq!(cause.code, expected_code);
+        assert!(!cause.steps.is_empty(), "{expected_code} 缺少修复步骤");
+        assert!(
+            cause.steps.iter().all(|step| step.trim().len() > 8),
+            "{expected_code} 的步骤过于笼统"
+        );
+    }
+}
+
+/// 处置动作只按引擎返回的父作业状态给出：PAUSED 可恢复、运行中可暂停、终态不给。
+#[test]
+fn offers_routine_actions_only_for_known_parent_states() {
+    let build = |state: Option<&str>| LoadJob {
+        job_id: Some("42".to_string()),
+        label: Some("events_topic".to_string()),
+        database: Some("analytics".to_string()),
+        state: "RUNNING".to_string(),
+        load_type: "ROUTINE_LOAD".to_string(),
+        properties: Some(r#"{"job_name":"events_topic_load"}"#.to_string()),
+        routine_load: Some(RoutineLoadDetails {
+            state: state.map(ToOwned::to_owned),
+            current_task_num: None,
+            statistics: None,
+            progress: None,
+            timestamp_progress: None,
+            latest_source_position: None,
+            offset_lag: None,
+            reason_of_state_changed: None,
+            error_log_urls: None,
+            tracking_sql: None,
+            other_msg: None,
+            tasks: Vec::new(),
+        }),
+        ..Default::default()
+    };
+
+    let paused = available_actions(&build(Some("PAUSED"))).unwrap();
+    assert_eq!(paused.len(), 1);
+    assert_eq!(paused[0].action, "resume_routine");
+    assert_eq!(paused[0].statement, "RESUME ROUTINE LOAD FOR `analytics`.`events_topic_load`");
+
+    let running = available_actions(&build(Some("RUNNING"))).unwrap();
+    assert_eq!(running[0].action, "pause_routine");
+    assert_eq!(running[0].statement, "PAUSE ROUTINE LOAD FOR `analytics`.`events_topic_load`");
+
+    // 终态与未知状态不猜测动作
+    assert!(
+        available_actions(&build(Some("STOPPED")))
+            .unwrap()
+            .is_empty()
+    );
+    assert!(available_actions(&build(None)).unwrap().is_empty());
+
+    // 非 Routine Load 没有父作业名，不给动作
+    let stream = LoadJob {
+        job_id: Some("7".to_string()),
+        load_type: "STREAM_LOAD".to_string(),
+        ..Default::default()
+    };
+    assert!(available_actions(&stream).unwrap().is_empty());
 }
 
 #[test]
@@ -204,11 +296,13 @@ fn detail_query_uses_an_exact_numeric_job_id() {
 
     assert!(query.contains(" AND ID = 42"));
     assert!(!query.contains("CAST(ID AS CHAR) LIKE"));
-    assert!(build_information_schema_query(
-        &LoadQueryParams { job_id: Some("42 OR 1=1".to_string()), ..Default::default() },
-        1,
-    )
-    .is_err());
+    assert!(
+        build_information_schema_query(
+            &LoadQueryParams { job_id: Some("42 OR 1=1".to_string()), ..Default::default() },
+            1,
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -241,10 +335,12 @@ fn doris_failure_details_are_label_scoped_and_job_id_matched() {
     assert_eq!(details.error_msg.as_deref(), Some("selected failure"));
     assert_eq!(details.job_details.as_deref(), Some("{\"id\":42}"));
     assert!(find_doris_load_failure_details(&columns, &rows, "404").is_none());
-    assert!(find_doris_load_failure_details(
-        &columns,
-        &[vec!["42".to_string(), "-".to_string(), "null".to_string(), "".to_string(),]],
-        "42",
-    )
-    .is_none());
+    assert!(
+        find_doris_load_failure_details(
+            &columns,
+            &[vec!["42".to_string(), "-".to_string(), "null".to_string(), "".to_string(),]],
+            "42",
+        )
+        .is_none()
+    );
 }

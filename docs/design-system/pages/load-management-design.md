@@ -135,6 +135,8 @@ Routine Load：不做批处理阶段时间线，改为**消费位点卡片**（�
 - **错误原因归类（对齐 EMR 原因分析）**：后端按 ERROR_MSG 模式匹配归类，输出 `cause: 超时 / 超阈值 / 格式错误 / 权限 / 目标表不存在 / 资源不足 / 未知`，每类附一句处置建议（如“Scan bytes exceed threshold → 减小单次导入体量或调大 `broker_load_scan_bytes_threshold`”）；归类结果在详情 Sheet 错误框顶部渲染为结论行，无法识别时回退原文展示，不臆断
 - **空态**：无任务时提示调整时间范围或清除筛选；树节点入口仍可直接带数据库筛选跳转
 - **错误详情**：详情 Sheet 提供 `ERROR_MSG`、`TRACKING_SQL` 和 `REJECTED_RECORD_PATH` 的原生输入控件与复制按钮；Doris 失败作业额外展示同一 `SHOW LOAD` 行的原始 `URL`、`ErrorMsg`、`JobDetails`，不接入 `get_load_errors_compromise` 或全局 error hub。
+- **处置闭环**：失败任务的详情 Sheet 除了原因归类，还展示按原因给出的**可执行修复步骤**（如 `PROPERTIES("max_filter_ratio" = "0.1")`、需核对的页面路径），并在引擎返回可判定的父作业状态时提供处置动作（Routine Load 的 `PAUSE` / `RESUME ROUTINE LOAD FOR db.job`）。动作区在按钮旁直接展示**将要下发的语句原文**，不弹二次确认框；执行后重新读取作业详情，用引擎返回的新状态呈现处置结果，并写入 `op_audit_logs`（`action=load:pause|load:resume`，不新建表）。动作列表由服务端按作业 ID 重新解析作业名与数据库，不信任客户端传入。
+- **不提供“一键重跑”**：Broker/Routine Load 的源路径、Broker/Kafka 地址从不落库（提交时 `record_history=false`，引擎侧 `PROPERTIES` 也不含 DATA INFILE 路径），因此控制面无法重建原始语句；强行“重跑”只能靠猜测参数，与不臆造数据的原则冲突。需要重跑时应由用户重新填写来源（或后续引入显式的导入定义存储）。
 - **新建外部导入**：页头保持**单一创建入口**（`api:clusters:queries:execute` 可见的图标按钮），点击一次即打开唯一的**右侧抽屉**（`dialogClass: 'side-sheet'`，与集群表单、任务详情、物化视图详情同一形态），不使用居中弹窗；来源类型（本地文件 / HDFS·NAS / Kafka）是**该抽屉内的第一步选择**，切换类型不叠加第二层弹层，也无二次确认弹层。业界同类产品的创建流程均为“单一入口 + 类型作为创建流程的第一步”（Airbyte `New Source` → 连接器列表、Fivetran `Add connection` → 源 tile、DataWorks 新建节点 → 选择来源/去向类型、CloudCanal 创建任务 → 向导步骤），嵌套模态会阻断上下文并放大误操作。提交动作按类型分别使用：StarRocks 本地 CSV/JSON 使用专用 Stream Load 上传代理，文件内容不进入 SQL 历史；无用户信息的 `hdfs://`、已挂载到 BE/CN 的 `file:///` 使用 `WITH BROKER;` 提交异步 Broker Load；仅 `host:port` 的 plaintext Kafka 创建 Routine Load。Broker/Routine SQL 也不进入 Stellar SQL 历史。需要凭据的对象存储、认证 HDFS/Kafka、数据湖、外部数据库、Pipe、Catalog 和外部运行时不提供表单入口；`INSERT INTO ... SELECT` 只在已受管的外部 Catalog 或外部表上作为执行方式出现，不提供 StarRocks 内表互拷入口。
 - **按钮统一图标化**：工具栏用 `nbButton ghost status="basic" size="small"` + `nb-icon` + `nbTooltip`/`title`/`aria-label`；抽屉 footer 用全局 `.icon-btn`（取消 `close-outline`、提交 `checkmark-outline` + `is-primary`），与物化视图、用户/角色表单一致；文字只出现在表单标签与提示中。
 - **过滤行数提示（P1）**：`Filtered_Rows / Scan_Rows > 1%` 且分母有效时行内显示 warning；StarRocks 源码中 `SCAN_ROWS` 已包含正常、异常和未选中行，不能再次把 `FILTERED_ROWS` 加入分母。阈值和原因提示后续再接入集群变量
@@ -215,5 +217,6 @@ pages/starrocks/loads/
 - 告警通知（归入平台级告警设计，不挂在导入页）
 - 在通用 SQL 历史里保存本地文件内容或对象存储/Kafka 明文凭据
 - 在外部导入入口中提供 StarRocks 内表之间的 `INSERT INTO ... SELECT` 搬运
+- “一键重跑”已有作业：原始导入参数从不落库（保护源路径、Broker 与 Kafka 地址），控制面无法在不猜测的前提下重建语句
 - 在 Browser 表单中收集对象存储访问密钥、HDFS 用户口令 / Kerberos keytab、Kafka SASL 密码或 TLS 私钥
 - 短信/电话通知渠道（自托管场景 webhook 已覆盖）

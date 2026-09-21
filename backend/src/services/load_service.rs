@@ -1,10 +1,10 @@
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{Duration as ChronoDuration, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
 use crate::models::{
-    ClusterType, DorisLoadFailureDetails, LoadFailureCause, LoadJob, LoadListResponse,
+    ClusterType, DorisLoadFailureDetails, LoadAction, LoadFailureCause, LoadJob, LoadListResponse,
     LoadQueryParams, LoadStage, LoadSummary, RoutineLoadDetails, RoutineLoadTask,
 };
 use crate::services::mysql_client::MySQLClient;
@@ -453,6 +453,7 @@ pub(crate) fn parse_load_job(
         runtime_details,
         properties,
         routine_load: None,
+        actions: Vec::new(),
         doris_failure: None,
         stage_timeline,
     }
@@ -554,6 +555,7 @@ pub async fn load_routine_details(
     };
 
     Ok(Some(RoutineLoadDetails {
+        state: value(&values, &["state"]),
         current_task_num: number(&values, &["current_task_num", "currenttasknum"])
             .and_then(|value| u32::try_from(value).ok()),
         statistics: value(&values, &["statistics", "statistic"]),
@@ -682,13 +684,8 @@ fn add_stage(
     let Some(start_value) = start else { return };
     let Some(start_time) = parse_timestamp(start_value) else { return };
     let end_time = end.and_then(parse_timestamp);
-    let effective_end = end_time.or_else(|| {
-        if is_terminal_state(state) {
-            None
-        } else {
-            Some(Utc::now().naive_utc())
-        }
-    });
+    let effective_end = end_time
+        .or_else(|| if is_terminal_state(state) { None } else { Some(Utc::now().naive_utc()) });
     let Some(effective_end) = effective_end else { return };
     let duration_ms = effective_end
         .signed_duration_since(start_time)
@@ -728,59 +725,158 @@ pub(crate) fn classify_failure(message: &str) -> Option<LoadFailureCause> {
         return None;
     }
 
-    let (code, label, suggestion) =
-        if contains_any(&normalized, &["timeout", "timed out", "deadline", "超时"]) {
-            ("Timeout", "超时", "检查 FE/BE 负载、网络延迟和导入批次大小")
-        } else if contains_any(
-            &normalized,
-            &[
-                "threshold",
-                "max_filter_ratio",
-                "max-filter-ratio",
-                "etl_quality_unsatisfied",
-                "quality_unsatisfied",
-                "filter ratio",
-                "filtered ratio",
-                "过滤比例",
+    let (code, label, suggestion, steps) = if contains_any(
+        &normalized,
+        &["timeout", "timed out", "deadline", "超时"],
+    ) {
+        (
+            "Timeout",
+            "超时",
+            "检查 FE/计算节点负载、网络延迟和导入批次大小",
+            vec![
+                "在集群概览与节点管理核对 FE/BE 当时的负载、心跳与重启记录",
+                "减小单次提交的文件体积，或拆分为多个 Label 分批导入",
+                "确认不是瞬时抖动后，再提高导入超时：PROPERTIES(\"timeout\" = \"3600\")",
             ],
-        ) {
-            ("ThresholdExceeded", "过滤阈值", "检查数据质量和 max_filter_ratio 配置")
-        } else if contains_any(
-            &normalized,
-            &["permission", "privilege", "access denied", "unauthorized", "权限", "禁止"],
-        ) {
-            ("PermissionDenied", "权限不足", "检查导入用户对目标库表和对象存储的权限")
-        } else if contains_any(
-            &normalized,
-            &[
-                "not found",
-                "does not exist",
-                "unknown table",
-                "unknown database",
-                "不存在",
-                "找不到",
+        )
+    } else if contains_any(
+        &normalized,
+        &[
+            "threshold",
+            "max_filter_ratio",
+            "max-filter-ratio",
+            "etl_quality_unsatisfied",
+            "quality_unsatisfied",
+            "filter ratio",
+            "filtered ratio",
+            "过滤比例",
+        ],
+    ) {
+        (
+            "ThresholdExceeded",
+            "过滤阈值",
+            "检查数据质量和 max_filter_ratio 配置",
+            vec![
+                "先用 rejected_record_path 抽样被拒记录，区分脏数据与格式不匹配",
+                "确认数据质量可接受后，再放宽容忍度：PROPERTIES(\"max_filter_ratio\" = \"0.1\")（默认 0）",
+                "若整行被拒源于分隔符或列顺序，先修正文件格式，不要用阈值掩盖",
             ],
-        ) {
-            ("TargetMissing", "目标不存在", "确认目标 Catalog、数据库、表和分区仍然存在")
-        } else if contains_any(
-            &normalized,
-            &["parse", "format", "delimiter", "json", "csv", "type mismatch", "格式", "解析"],
-        ) {
-            ("FormatError", "格式错误", "检查文件格式、列顺序、分隔符和字段类型")
-        } else if contains_any(
-            &normalized,
-            &["out of memory", "oom", "resource", "no available", "memory limit", "资源", "内存"],
-        ) {
-            ("ResourceExhausted", "资源不足", "检查资源组、内存上限和并发导入任务数量")
-        } else {
-            ("Unknown", "未知原因", "查看完整错误信息和 Profile，必要时重试并联系管理员")
-        };
+        )
+    } else if contains_any(
+        &normalized,
+        &["permission", "privilege", "access denied", "unauthorized", "权限", "禁止"],
+    ) {
+        (
+            "PermissionDenied",
+            "权限不足",
+            "检查导入用户对目标库表和对象存储的权限",
+            vec![
+                "确认导入账号对目标库表具备 INSERT 权限",
+                "Broker/Routine 还需要目标存储或 Kafka 侧的认证已配置在集群节点上",
+                "确认没有使用已被回收或改密的账号重新提交",
+            ],
+        )
+    } else if contains_any(
+        &normalized,
+        &["not found", "does not exist", "unknown table", "unknown database", "不存在", "找不到"],
+    ) {
+        (
+            "TargetMissing",
+            "目标不存在",
+            "确认目标 Catalog、数据库、表和分区仍然存在",
+            vec![
+                "在查询管理的对象树确认目标数据库、表与分区仍然存在",
+                "核对语句中的 Catalog、库名与表名大小写是否一致",
+                "目标表被重命名或删除后需要重新指定目标表再提交",
+            ],
+        )
+    } else if contains_any(
+        &normalized,
+        &["parse", "format", "delimiter", "json", "csv", "type mismatch", "格式", "解析"],
+    ) {
+        (
+            "FormatError",
+            "格式错误",
+            "检查文件格式、列顺序、分隔符和字段类型",
+            vec![
+                "核对列顺序、列数与分隔符，建议先用单行样本文件验证",
+                "JSON 需要每行一个对象（NDJSON），不接受数组包裹",
+                "检查字段类型能否转换：严格模式下类型不符会导致整行被拒",
+            ],
+        )
+    } else if contains_any(
+        &normalized,
+        &["out of memory", "oom", "resource", "no available", "memory limit", "资源", "内存"],
+    ) {
+        (
+            "ResourceExhausted",
+            "资源不足",
+            "检查资源组、内存上限和并发导入任务数量",
+            vec![
+                "在资源组管理查看该用户或资源组的内存上限与当前占用",
+                "降低同一时间的并发导入数量，或与查询高峰错峰执行",
+                "单批次过大的导入应拆分；确认资源确实不足时再调整资源组配额",
+            ],
+        )
+    } else {
+        (
+            "Unknown",
+            "未知原因",
+            "查看完整错误信息和 Profile，必要时重试并联系管理员",
+            vec![
+                "展开完整错误信息与 PROFILE_ID，按时间点核对 FE/BE 日志",
+                "间隔后重试一次，排除瞬时故障",
+                "反复出现时记录 Label、时间与 PROFILE_ID 以便继续排查",
+            ],
+        )
+    };
 
     Some(LoadFailureCause {
         code: code.to_string(),
         label: label.to_string(),
         suggestion: suggestion.to_string(),
+        steps: steps.into_iter().map(ToOwned::to_owned).collect(),
     })
+}
+
+/// 按引擎返回的父作业状态给出可执行处置动作。
+///
+/// 只有 Routine Load 的父作业状态可判定时才给动作：终态（已停止/已取消）与
+/// 未知状态一律不给，避免按猜测下发语句。
+pub(crate) fn available_actions(job: &LoadJob) -> ApiResult<Vec<LoadAction>> {
+    let Some(name) = routine_load_name(job) else {
+        return Ok(Vec::new());
+    };
+    let Some(database) = job.database.as_deref() else {
+        return Ok(Vec::new());
+    };
+    let Some(state) = job
+        .routine_load
+        .as_ref()
+        .and_then(|details| details.state.as_deref())
+    else {
+        return Ok(Vec::new());
+    };
+
+    let database = quote_identifier(database)?;
+    let name = quote_identifier(&name)?;
+    let upper = state.to_ascii_uppercase();
+    let actions = match upper.as_str() {
+        "PAUSED" => vec![LoadAction {
+            action: "resume_routine".to_string(),
+            label: "恢复作业".to_string(),
+            description: "父作业当前为 PAUSED，恢复后继续消费上游消息".to_string(),
+            statement: format!("RESUME ROUTINE LOAD FOR {database}.{name}"),
+        }],
+        "RUNNING" | "NEED_SCHEDULE" => vec![LoadAction {
+            action: "pause_routine".to_string(),
+            label: "暂停作业".to_string(),
+            description: "先暂停作业，修复上游或参数后再恢复".to_string(),
+            statement: format!("PAUSE ROUTINE LOAD FOR {database}.{name}"),
+        }],
+        _ => Vec::new(),
+    };
+    Ok(actions)
 }
 
 fn contains_any(value: &str, needles: &[&str]) -> bool {

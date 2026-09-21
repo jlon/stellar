@@ -276,6 +276,49 @@
     overflow-wrap: anywhere;
   }
 
+  // 导入失败原因的可执行修复步骤与处置动作：抽屉内容挂在 overlay 下，
+  // 脱离组件 host，样式必须放在全局（与详情抽屉其它规则一致）。
+  .load-fix-steps {
+    margin: 0;
+    padding-left: 1.125rem;
+
+    // Nebular 对 li 直接设置了 font-size/line-height，继承不够，需落到 li 上。
+    li {
+      font-size: 0.8125rem;
+      line-height: 1.5;
+    }
+
+    li + li {
+      margin-top: 0.125rem;
+    }
+  }
+
+  .load-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .load-action {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 0.5rem;
+
+    strong {
+      display: block;
+      font-size: 0.8125rem;
+    }
+  }
+
+  .load-action-statement {
+    display: block;
+    margin-top: 0.125rem;
+    color: nb-theme(text-hint-color);
+    font-size: 0.6875rem;
+    overflow-wrap: anywhere;
+  }
+
   @media (max-width: 48rem) {
     .cdk-overlay-pane.side-sheet:has(.load-detail-sheet, .materialized-view-detail-sheet) {
       width: 100vw;

@@ -43,6 +43,37 @@ pub struct LoadFailureCause {
     pub code: String,
     pub label: String,
     pub suggestion: String,
+    /// 按该原因给出的可执行修复步骤；内容为引擎参数与核对项，不包含臆造结论。
+    pub steps: Vec<String>,
+}
+
+/// 可对导入作业执行的真实引擎动作；仅在详情接口按当前状态返回。
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct LoadAction {
+    /// 动作标识：pause_routine 或 resume_routine。
+    pub action: String,
+    /// 动作名称。
+    pub label: String,
+    /// 适用场景说明。
+    pub description: String,
+    /// 将要执行的引擎语句原文。
+    pub statement: String,
+}
+
+/// 处置动作请求体；作业与数据库由服务端根据作业 ID 重新解析，不接受客户端指定。
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct LoadActionRequest {
+    /// 动作标识：pause_routine 或 resume_routine。
+    pub action: String,
+}
+
+/// 处置动作执行结果。
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct LoadActionResponse {
+    pub success: bool,
+    pub message: Option<String>,
+    /// 执行后重新从引擎读取的 Routine Load 父作业状态。
+    pub state: Option<String>,
 }
 
 /// Doris `SHOW LOAD` 为已选失败作业返回的原始诊断字段。
@@ -56,6 +87,8 @@ pub struct DorisLoadFailureDetails {
 /// Routine Load 父作业的实时消费状态。
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct RoutineLoadDetails {
+    /// 父作业状态（SHOW ALL ROUTINE LOAD 的 State），用于判断可执行的处置动作。
+    pub state: Option<String>,
     pub current_task_num: Option<u32>,
     pub statistics: Option<String>,
     pub progress: Option<String>,
@@ -84,7 +117,7 @@ pub struct RoutineLoadTask {
 }
 
 /// 统一导入任务 DTO。
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Clone, Default, Serialize, ToSchema)]
 pub struct LoadJob {
     pub job_id: Option<String>,
     pub label: Option<String>,
@@ -114,6 +147,8 @@ pub struct LoadJob {
     pub properties: Option<String>,
     /// Routine Load 父作业的实时位点和子任务；仅在详情接口按需查询。
     pub routine_load: Option<RoutineLoadDetails>,
+    /// 当前状态下可执行的处置动作；仅在详情接口填充。
+    pub actions: Vec<LoadAction>,
     /// Doris 失败作业的原始 `SHOW LOAD` 诊断字段；仅在详情接口按需查询。
     pub doris_failure: Option<DorisLoadFailureDetails>,
     pub stage_timeline: Vec<LoadStage>,

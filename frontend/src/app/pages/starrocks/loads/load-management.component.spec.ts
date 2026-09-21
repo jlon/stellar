@@ -16,6 +16,7 @@ describe("LoadManagementComponent", () => {
   const loadService = {
     get: jasmine.createSpy("get").and.returnValue(of({})),
     list: jasmine.createSpy("list"),
+    executeAction: jasmine.createSpy("executeAction"),
   };
 
   const nodeService = {
@@ -61,6 +62,7 @@ describe("LoadManagementComponent", () => {
     dialogService.open.calls.reset();
     loadService.get.calls.reset();
     loadService.list.calls.reset();
+    loadService.executeAction.calls.reset();
     nodeService.getDatabases.calls.reset();
     nodeService.getTables.calls.reset();
     nodeService.getTables.and.returnValue(of([]));
@@ -344,6 +346,36 @@ describe("LoadManagementComponent", () => {
     expect(rows[1].stage).not.toContain("cell-bar");
     expect(rows[1].filtered).toBe('<span class="cell-clip">-</span>');
     expect(rows[1].filtered).not.toContain("cell-warn");
+  });
+
+  it("executes an engine action and reloads the job detail", () => {
+    const job = {
+      job_id: "42",
+      database: "analytics",
+      state: "PAUSED",
+      load_type: "ROUTINE_LOAD",
+    } as LoadJob;
+    component.selectedJob = job;
+    (component as unknown as { detailDialogRef?: unknown }).detailDialogRef =
+      {} as never;
+    loadService.executeAction.and.returnValue(
+      of({ success: true, message: "恢复作业已下发", state: "RUNNING" }),
+    );
+    loadService.get.and.returnValue(of({ ...job, state: "RUNNING" }));
+
+    component.executeLoadAction({
+      action: "resume_routine",
+      label: "恢复作业",
+      description: "父作业当前为 PAUSED",
+      statement: "RESUME ROUTINE LOAD FOR `analytics`.`events_topic_load`",
+    });
+
+    expect(loadService.executeAction).toHaveBeenCalledWith(
+      "42",
+      "resume_routine",
+    );
+    expect(loadService.get).toHaveBeenCalledWith("42", "analytics");
+    expect(component.selectedJob?.state).toBe("RUNNING");
   });
 
   it("passes the selected Smart Table row index to the Sheet opener", () => {

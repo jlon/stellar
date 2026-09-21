@@ -503,6 +503,13 @@
               <div>
                 <strong>{{ cause.label }}</strong>
                 <div class="mt-1">{{ cause.suggestion }}</div>
+                @if (cause.steps?.length) {
+                  <ol class="load-fix-steps mt-2">
+                    @for (step of cause.steps; track step) {
+                      <li>{{ step }}</li>
+                    }
+                  </ol>
+                }
               </div>
             }
             @if (job.error_msg) {
@@ -533,6 +540,43 @@
               ></textarea>
             }
           </nb-alert>
+        }
+
+        @if (job.actions?.length) {
+          <section class="mb-4">
+            <small class="text-hint d-block mb-2">可执行处置</small>
+            <div class="load-actions">
+              @for (action of job.actions; track action.action) {
+                <div class="load-action">
+                  <button
+                    nbButton
+                    ghost
+                    size="small"
+                    status="basic"
+                    ngxHasPermission="api:clusters:queries:execute"
+                    (click)="executeLoadAction(action)"
+                    [disabled]="actionRunning"
+                    [nbTooltip]="action.description"
+                    [attr.aria-label]="action.label"
+                  >
+                    <nb-icon
+                      [icon]="
+                        action.action === 'pause_routine'
+                          ? 'pause-circle-outline'
+                          : 'play-circle-outline'
+                      "
+                    ></nb-icon>
+                  </button>
+                  <div>
+                    <strong>{{ action.label }}</strong>
+                    <code class="load-action-statement">{{
+                      action.statement
+                    }}</code>
+                  </div>
+                </div>
+              }
+            </div>
+          </section>
         }
 
         @if (job.doris_failure; as dorisFailure) {

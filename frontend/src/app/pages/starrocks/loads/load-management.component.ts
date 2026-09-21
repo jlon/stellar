@@ -39,7 +39,11 @@ import { ActivatedRoute, Router } from "@angular/router";
 
 import { ClusterContextService } from "../../../@core/data/cluster-context.service";
 import { Cluster } from "../../../@core/data/cluster.service";
-import { LoadJob, LoadService } from "../../../@core/data/load.service";
+import {
+  LoadAction,
+  LoadJob,
+  LoadService,
+} from "../../../@core/data/load.service";
 import {
   NodeService,
   StreamLoadResponse,
@@ -140,6 +144,7 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
   targetTables: TableInfo[] = [];
   targetTablesLoading = false;
   importSubmitting = false;
+  actionRunning = false;
   /// 当前列表中最长耗时，用于估算单元格条宽（仅影响视觉比例，不改变数值）。
   private maxDurationMs = 0;
   loadFormErrorMessage = "";
@@ -1163,6 +1168,42 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
         priority(left.state) - priority(right.state) ||
         (right.create_time || "").localeCompare(left.create_time || ""),
     );
+  }
+
+  /// 执行引擎侧处置动作；成功后重新读取详情，用引擎返回的新状态呈现处置结果。
+  executeLoadAction(action: LoadAction): void {
+    const job = this.selectedJob;
+    if (!job?.job_id || this.actionRunning) {
+      return;
+    }
+    this.actionRunning = true;
+    this.cdr.markForCheck();
+    this.loadService
+      .executeAction(job.job_id, action.action)
+      .pipe(
+        take(1),
+        timeout(30_000),
+        finalize(() => {
+          this.actionRunning = false;
+          this.cdr.markForCheck();
+        }),
+      )
+      .subscribe({
+        next: (response) => {
+          const state = response.state ? `，当前状态 ${response.state}` : "";
+          this.toastrService.success(
+            `${response.message || action.label}${state}`,
+            "处置完成",
+          );
+          this.loadJobDetails(job);
+        },
+        error: (error) => {
+          this.toastrService.danger(
+            ErrorHandler.extractErrorMessage(error),
+            "处置失败",
+          );
+        },
+      });
   }
 
   private loadJobDetails(job: LoadJob): void {

@@ -79,6 +79,7 @@ use stellar::{AppState, handlers, middleware, services};
         handlers::query_execution_history::clear_execution_history,
         handlers::load::list_loads,
         handlers::load::get_load,
+        handlers::load::execute_load_action,
         handlers::load::stream_load,
 
         handlers::sessions::get_sessions,
@@ -185,6 +186,9 @@ use stellar::{AppState, handlers, middleware, services};
             models::LoadQueryParams,
             models::LoadStage,
             models::LoadFailureCause,
+            models::LoadAction,
+            models::LoadActionRequest,
+            models::LoadActionResponse,
             models::LoadJob,
             models::LoadSummary,
             models::LoadListResponse,
@@ -635,6 +639,7 @@ where
         .route("/api/clusters/queries", get(handlers::query::list_queries))
         .route("/api/clusters/loads", get(handlers::load::list_loads))
         .route("/api/clusters/loads/:job_id", get(handlers::load::get_load))
+        .route("/api/clusters/loads/:job_id/actions", post(handlers::load::execute_load_action))
         .route("/api/clusters/queries/execute", post(handlers::query::execute_sql))
         .route(
             "/api/clusters/queries/stream-load",

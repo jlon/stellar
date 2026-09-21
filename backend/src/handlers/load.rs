@@ -10,7 +10,10 @@ use stellar_macros::app_db;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::AppState;
-use crate::models::{ClusterType, LoadJob, LoadListResponse, LoadQueryParams, StreamLoadResponse};
+use crate::models::{
+    ClusterType, LoadActionRequest, LoadActionResponse, LoadJob, LoadListResponse, LoadQueryParams,
+    StreamLoadResponse,
+};
 use crate::services::{
     MySQLClient, QueryExecutionHistoryService, cluster_timeout, create_adapter, load_service,
     query_execution_history_service::ExecutionRecord, stream_load,
@@ -70,23 +73,12 @@ pub async fn get_load(
     State(state): State<Arc<AppState<DB>>>,
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Path(job_id): Path<String>,
-    Query(mut params): Query<LoadQueryParams>,
+    Query(_params): Query<LoadQueryParams>,
 ) -> ApiResult<Json<LoadJob>> {
     let cluster = get_active_cluster_for_org(&state.cluster_service, &org_ctx).await?;
     let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
     let client = MySQLClient::from_pool(pool).with_timeout(cluster_timeout(&cluster));
-
-    params.job_id = Some(job_id.clone());
-    params.search = None;
-    params.range = Some("all".to_string());
-    params.limit = Some(500);
-    params.cursor = None;
-    let response = load_service::list_loads(&client, cluster.cluster_type, &params).await?;
-    let mut job = response
-        .items
-        .into_iter()
-        .find(|item| item.job_id.as_deref() == Some(job_id.as_str()))
-        .ok_or_else(|| crate::utils::ApiError::not_found(format!("导入任务 {} 不存在", job_id)))?;
+    let mut job = load_route_job(&client, &cluster, &job_id).await?;
     if cluster.cluster_type == crate::models::ClusterType::StarRocks
         && job.load_type == "ROUTINE_LOAD"
     {
@@ -100,6 +92,12 @@ pub async fn get_load(
             Ok(None) => {},
             Err(error) => {
                 tracing::debug!(error = %error, job_id = %job_id, "routine load details unavailable");
+            },
+        }
+        match load_service::available_actions(&job) {
+            Ok(actions) => job.actions = actions,
+            Err(error) => {
+                tracing::debug!(error = %error, job_id = %job_id, "load actions unavailable");
             },
         }
     }
@@ -232,6 +230,106 @@ pub async fn stream_load(
         .await;
 
     Ok(Json(result))
+}
+
+/// 对导入作业执行一个引擎侧处置动作（当前为 Routine Load 的暂停/恢复）。
+///
+/// 作业名与数据库由服务端按作业 ID 重新解析，不接受客户端指定；动作按引擎返回的
+/// 父作业状态校验后执行，执行后重新读取状态并写入操作审计。
+#[utoipa::path(
+    post,
+    path = "/api/clusters/loads/{job_id}/actions",
+    params(
+        ("job_id" = String, Path, description = "导入任务 ID")
+    ),
+    request_body = LoadActionRequest,
+    responses(
+        (status = 200, description = "处置动作执行结果", body = LoadActionResponse),
+        (status = 400, description = "动作不被当前状态支持"),
+        (status = 404, description = "导入任务不存在")
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Load Management"
+)]
+#[app_db]
+pub async fn execute_load_action(
+    State(state): State<Arc<AppState<DB>>>,
+    axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
+    Path(job_id): Path<String>,
+    Json(request): Json<LoadActionRequest>,
+) -> ApiResult<Json<LoadActionResponse>> {
+    let cluster = get_active_cluster_for_org(&state.cluster_service, &org_ctx).await?;
+    if cluster.cluster_type != ClusterType::StarRocks {
+        return Err(crate::utils::ApiError::validation_error(
+            "当前仅支持对 StarRocks 导入作业执行处置动作",
+        ));
+    }
+
+    let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
+    let client = MySQLClient::from_pool(pool).with_timeout(cluster_timeout(&cluster));
+    let mut job = load_route_job(&client, &cluster, &job_id).await?;
+    job.routine_load = load_service::load_routine_details(&client, &job).await?;
+
+    let actions = load_service::available_actions(&job)?;
+    let Some(action) = actions.iter().find(|item| item.action == request.action) else {
+        return Err(crate::utils::ApiError::validation_error(format!(
+            "当前状态不支持动作：{}",
+            request.action
+        )));
+    };
+
+    client.execute(&action.statement).await?;
+
+    // 执行后重新读取父作业状态作为处置结果；读取失败时不猜测。
+    let state_after = match load_service::load_routine_details(&client, &job).await {
+        Ok(Some(details)) => details.state,
+        Ok(None) => None,
+        Err(error) => {
+            tracing::debug!(error = %error, job_id = %job_id, "routine state after action unavailable");
+            None
+        },
+    };
+
+    let label = job.label.clone().unwrap_or_else(|| job_id.clone());
+    crate::services::op_audit::log_op_best_effort(
+        &state.db,
+        crate::services::op_audit::OpAuditEntry {
+            user_id: org_ctx.user_id,
+            username: &org_ctx.username,
+            organization_id: org_ctx.organization_id,
+            action: if action.action == "pause_routine" { "load:pause" } else { "load:resume" },
+            target_type: "load",
+            target_id: None,
+            target_name: &label,
+        },
+    )
+    .await;
+
+    Ok(Json(LoadActionResponse {
+        success: true,
+        message: Some(format!("{}已下发", action.label)),
+        state: state_after,
+    }))
+}
+
+/// 按作业 ID 读取单个导入作业；详情与处置动作共用同一取数路径。
+async fn load_route_job(
+    client: &MySQLClient,
+    cluster: &crate::models::Cluster,
+    job_id: &str,
+) -> ApiResult<LoadJob> {
+    let params = LoadQueryParams {
+        job_id: Some(job_id.to_string()),
+        range: Some("all".to_string()),
+        limit: Some(500),
+        ..Default::default()
+    };
+    let response = load_service::list_loads(client, cluster.cluster_type, &params).await?;
+    response
+        .items
+        .into_iter()
+        .find(|item| item.job_id.as_deref() == Some(job_id))
+        .ok_or_else(|| crate::utils::ApiError::not_found(format!("导入任务 {job_id} 不存在")))
 }
 
 async fn send_stream_load<DB: crate::db::AppDb>(
