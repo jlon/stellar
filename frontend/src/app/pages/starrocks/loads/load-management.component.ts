@@ -314,8 +314,8 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
 
     const dialogRef = this.dialogService.open(template, {
       autoFocus: false,
-      closeOnBackdropClick: true,
-      closeOnEsc: true,
+      backdropClass: "side-sheet-backdrop",
+      dialogClass: "side-sheet",
       hasBackdrop: true,
     });
     this.importDialogRef = dialogRef;

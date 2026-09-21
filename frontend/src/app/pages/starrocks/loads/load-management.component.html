@@ -51,12 +51,11 @@
               size="small"
               ngxHasPermission="api:clusters:queries:execute"
               (click)="openImportDialog()"
-              nbTooltip="从本地文件、HDFS / NAS 或 Kafka 导入数据"
+              nbTooltip="新建外部导入"
               title="新建外部导入"
               aria-label="新建外部导入"
             >
               <nb-icon icon="plus-outline"></nb-icon>
-              新建导入
             </button>
           }
         </div>
@@ -65,13 +64,14 @@
           <nb-alert status="danger" closable (close)="errorMessage = ''">
             {{ errorMessage }}
             <button
-              nbButton
-              ghost
-              size="tiny"
-              status="danger"
+              type="button"
+              class="icon-btn is-danger"
               (click)="loadJobs()"
+              nbTooltip="重试"
+              nbTooltipPlacement="top"
+              aria-label="重试"
             >
-              重试
+              <nb-icon icon="refresh-outline"></nb-icon>
             </button>
           </nb-alert>
         }
@@ -720,29 +720,23 @@
 
 <ng-template #importDialog let-ref="dialogRef">
   <nb-card class="load-import-dialog">
-    <nb-card-header>
-      <div class="d-flex justify-content-between align-items-center gap-3">
-        <div>
-          <h6 class="mb-1">新建外部导入</h6>
-          <small class="text-hint">选择数据来源，再选定目标表</small>
-        </div>
-        <button
-          nbButton
-          ghost
-          size="small"
-          status="basic"
-          (click)="ref.close()"
-          [disabled]="importSubmitting"
-          nbTooltip="关闭"
-          title="关闭"
-          aria-label="关闭新建导入"
-        >
-          <nb-icon icon="close-outline"></nb-icon>
-        </button>
-      </div>
+    <nb-card-header class="dialog-header">
+      <span>新建外部导入</span>
+      <button
+        nbButton
+        ghost
+        size="small"
+        (click)="ref.close()"
+        [disabled]="importSubmitting"
+        nbTooltip="关闭"
+        title="关闭"
+        aria-label="关闭新建导入"
+      >
+        <nb-icon icon="close-outline"></nb-icon>
+      </button>
     </nb-card-header>
 
-    <nb-card-body>
+    <nb-card-body class="dialog-body">
       @if (loadFormErrorMessage) {
         <nb-alert class="mb-3" status="danger">{{
           loadFormErrorMessage
@@ -1003,9 +997,7 @@
           </div>
         }
       </div>
-    </nb-card-body>
 
-    <nb-card-footer>
       <small class="load-form-help">
         @if (importForm.type === "file") {
           文件内容不会写入 SQL 历史。
@@ -1013,27 +1005,33 @@
           提交语句不写入 SQL 历史；外部数据源认证由 StarRocks 集群侧配置负责。
         }
       </small>
+    </nb-card-body>
+
+    <nb-card-footer class="dialog-footer">
       <button
-        nbButton
-        ghost
-        size="small"
-        status="basic"
+        type="button"
+        class="icon-btn"
         (click)="ref.close()"
         [disabled]="importSubmitting"
+        nbTooltip="取消"
+        nbTooltipPlacement="top"
+        aria-label="取消"
       >
-        取消
+        <nb-icon icon="close-outline"></nb-icon>
       </button>
       <button
-        nbButton
-        ghost
-        size="small"
-        status="primary"
-        [nbSpinner]="importSubmitting"
-        nbSpinnerStatus="primary"
+        type="button"
+        class="icon-btn is-primary"
         (click)="submitImport(ref)"
         [disabled]="importSubmitting || !isImportFormValid()"
+        [nbSpinner]="importSubmitting"
+        nbSpinnerStatus="basic"
+        nbSpinnerSize="tiny"
+        [nbTooltip]="importSubmitLabel()"
+        nbTooltipPlacement="top"
+        [aria-label]="importSubmitLabel()"
       >
-        {{ importSubmitLabel() }}
+        <nb-icon icon="checkmark-outline"></nb-icon>
       </button>
     </nb-card-footer>
   </nb-card>

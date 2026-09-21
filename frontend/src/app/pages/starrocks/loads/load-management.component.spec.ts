@@ -101,14 +101,15 @@ describe("LoadManagementComponent", () => {
     );
   });
 
-  it("opens the single import dialog once from the toolbar action", () => {
+  it("opens the single import dialog once as a side sheet", () => {
     dialogService.open.and.returnValue({
       close: jasmine.createSpy("close"),
       onClose: of(undefined),
     });
+    const template = {} as TemplateRef<unknown>;
     (
       component as unknown as { importDialog: TemplateRef<unknown> }
-    ).importDialog = {} as TemplateRef<unknown>;
+    ).importDialog = template;
     component.activeCluster = { cluster_type: "starrocks" } as NonNullable<
       typeof component.activeCluster
     >;
@@ -116,6 +117,10 @@ describe("LoadManagementComponent", () => {
     component.openImportDialog();
 
     expect(dialogService.open).toHaveBeenCalledTimes(1);
+    expect(dialogService.open).toHaveBeenCalledWith(
+      template,
+      jasmine.objectContaining({ dialogClass: "side-sheet" }),
+    );
   });
 
   it("does not open the import dialog for Doris", () => {

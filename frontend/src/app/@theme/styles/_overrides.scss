@@ -219,6 +219,69 @@
     animation: sheet-enter 400ms cubic-bezier(0.2, 0, 0, 1) both;
   }
 
+  // 详情抽屉需要同时容纳概览与诊断内容；宽屏按视口扩展，窄屏改为全屏。
+  // 保留通用 side-sheet 的宽度，避免影响集群编辑等表单型抽屉。
+  .cdk-overlay-pane.side-sheet:has(.load-detail-sheet, .materialized-view-detail-sheet) {
+    width: clamp(32rem, 60vw, 48rem);
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100vh !important;
+    max-height: 100dvh !important;
+    overflow: hidden;
+  }
+
+  .load-detail-sheet,
+  .materialized-view-detail-sheet,
+  .load-import-dialog {
+    display: flex !important;
+    flex-direction: column;
+    overflow: hidden;
+
+    &:focus {
+      outline: none;
+    }
+  }
+
+  .load-detail-sheet > nb-card-header,
+  .load-detail-sheet > nb-card-footer,
+  .materialized-view-detail-sheet > nb-card-header,
+  .materialized-view-detail-sheet > nb-card-footer {
+    display: block;
+    flex: 0 0 auto;
+    padding: 1rem clamp(1rem, 2vw, 1.5rem);
+  }
+
+  .load-detail-sheet > nb-card-body,
+  .materialized-view-detail-sheet > nb-card-body {
+    display: block;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 1rem clamp(1rem, 2vw, 1.5rem);
+  }
+
+  // 避免长 Label、用户或 Warehouse 值把关闭按钮及详情行顶出窄屏视口。
+  .load-detail-sheet nb-card-header > div > :first-child,
+  .load-detail-sheet nb-list-item .d-flex > *,
+  .materialized-view-detail-sheet nb-card-header > div > :first-child,
+  .materialized-view-detail-sheet nb-list-item .d-flex > * {
+    min-width: 0;
+  }
+
+  .load-detail-sheet nb-card-header small,
+  .load-detail-sheet nb-list-item .d-flex > :last-child,
+  .materialized-view-detail-sheet nb-card-header small,
+  .materialized-view-detail-sheet nb-list-item .d-flex > :last-child {
+    overflow-wrap: anywhere;
+  }
+
+  @media (max-width: 48rem) {
+    .cdk-overlay-pane.side-sheet:has(.load-detail-sheet, .materialized-view-detail-sheet) {
+      width: 100vw;
+    }
+  }
+
   .cdk-overlay-pane.side-sheet.side-sheet--closing {
     pointer-events: none;
     animation: sheet-exit 180ms cubic-bezier(0.4, 0, 1, 1) both;
