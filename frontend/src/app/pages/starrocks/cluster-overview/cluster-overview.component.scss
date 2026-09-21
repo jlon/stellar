@@ -15,6 +15,11 @@
     }
   }
 
+  .overview-loading {
+    position: relative;
+    min-height: calc(100vh - 9rem);
+  }
+
   .alert-strip {
     margin: 0 0 0.5rem;
     padding: 0;

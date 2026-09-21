@@ -193,6 +193,41 @@ impl DiskMetricKind {
     }
 }
 
+/// 单节点磁盘压力判定：返回 (级别, 文案)。
+///
+/// 与"容量"判定分离——加权平均反映整体容量，最大值反映单点风险。
+/// 平均正常但某节点将写满，是数据分布问题而不是容量问题，处置方式不同。
+/// shared-data 的本地盘是 Data Cache 配额（写满为 LRU 稳态），不做该判定。
+/// 文案同时给出最高节点与全集群平均，判断依据不隐藏。
+pub(crate) fn node_disk_pressure(
+    tracks_capacity: bool,
+    max_pct: f64,
+    avg_pct: f64,
+) -> Option<(HealthStatus, String)> {
+    if !tracks_capacity || max_pct <= 0.0 {
+        return None;
+    }
+    // 均匀高水位属于整体容量问题，由"容量"判定负责，不重复报成单点风险。
+    // 15 个百分点是启发式阈值（无权威依据），可按实际集群调优。
+    const SKEW_GAP_PCT: f64 = 15.0;
+    if max_pct - avg_pct < SKEW_GAP_PCT {
+        return None;
+    }
+    if max_pct > DISK_CRITICAL_PCT {
+        Some((
+            HealthStatus::Critical,
+            format!("有节点磁盘使用率 {max_pct:.1}%（全集群平均 {avg_pct:.1}%）"),
+        ))
+    } else if max_pct > DISK_WARNING_PCT {
+        Some((
+            HealthStatus::Warning,
+            format!("有节点磁盘使用率偏高 {max_pct:.1}%（全集群平均 {avg_pct:.1}%）"),
+        ))
+    } else {
+        None
+    }
+}
+
 /// 健康维度累加器：每个维度只声明一次严重级与扣分，status 与 score 由同一份声明推导。
 struct HealthAccumulator {
     score: f64,
@@ -877,6 +912,7 @@ impl<DB: AppDb> OverviewService<DB> {
             disk_total_bytes: i64,
             disk_used_bytes: i64,
             disk_usage_pct: f64,
+            max_disk_usage_pct: f64,
             tablet_count: i64,
             max_compaction_score: f64,
             txn_running: i64,
@@ -937,6 +973,7 @@ impl<DB: AppDb> OverviewService<DB> {
                 disk_total_bytes: r.disk_total_bytes,
                 disk_used_bytes: r.disk_used_bytes,
                 disk_usage_pct: r.disk_usage_pct,
+                max_disk_usage_pct: r.max_disk_usage_pct,
                 tablet_count: r.tablet_count,
                 max_compaction_score: r.max_compaction_score,
                 txn_running: r.txn_running as i32,
@@ -995,6 +1032,7 @@ impl<DB: AppDb> OverviewService<DB> {
             disk_total_bytes: i64,
             disk_used_bytes: i64,
             disk_usage_pct: f64,
+            max_disk_usage_pct: f64,
             tablet_count: i64,
             max_compaction_score: f64,
             txn_running: i64,
@@ -1061,6 +1099,7 @@ impl<DB: AppDb> OverviewService<DB> {
                 disk_total_bytes: r.disk_total_bytes,
                 disk_used_bytes: r.disk_used_bytes,
                 disk_usage_pct: r.disk_usage_pct,
+                max_disk_usage_pct: r.max_disk_usage_pct,
                 tablet_count: r.tablet_count,
                 max_compaction_score: r.max_compaction_score,
                 txn_running: r.txn_running as i32,
@@ -1363,6 +1402,18 @@ impl<DB: AppDb> OverviewService<DB> {
                     PENALTY_DISK_WARNING,
                     format!("磁盘使用率偏高: {:.1}%", snapshot.disk_usage_pct),
                 );
+            }
+
+            // 单节点压力：与整体容量分离，避免"平均正常但某节点将写满"被漏报
+            if let Some((level, message)) =
+                node_disk_pressure(true, snapshot.max_disk_usage_pct, snapshot.disk_usage_pct)
+            {
+                let penalty = if level == HealthStatus::Critical {
+                    PENALTY_DISK_CRITICAL
+                } else {
+                    PENALTY_DISK_WARNING
+                };
+                health.record(level, penalty, message);
             }
         }
         if snapshot.avg_cpu_usage > CPU_HIGH_PCT {
@@ -1799,6 +1850,26 @@ impl<DB: AppDb> OverviewService<DB> {
                 timestamp: Utc::now(),
                 action: Some("清理过期数据或扩容磁盘".to_string()),
             });
+        }
+
+        // 单节点磁盘压力单独成条：category 与容量区分开，处置方式不同
+        if let Some(snapshot) = snapshot.as_ref() {
+            if let Some((level, message)) = node_disk_pressure(
+                disk.tracks_capacity(),
+                snapshot.max_disk_usage_pct,
+                resources.disk_usage_pct,
+            ) {
+                alerts.push(Alert {
+                    level: match level {
+                        HealthStatus::Critical => AlertLevel::Critical,
+                        _ => AlertLevel::Warning,
+                    },
+                    category: "节点分布".to_string(),
+                    message,
+                    timestamp: Utc::now(),
+                    action: Some("定位使用率最高的节点，检查数据分布与分区分桶".to_string()),
+                });
+            }
         }
 
         if resources.cpu_usage_pct > CPU_HIGH_PCT {

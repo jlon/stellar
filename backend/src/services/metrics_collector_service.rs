@@ -8,6 +8,7 @@ pub const DISK_CRITICAL_PCT: f64 = 90.0;
 // Purpose: Periodically collect metrics from StarRocks clusters and store them in SQLite
 // Design Ref: ARCHITECTURE_ANALYSIS_AND_INTEGRATION.md
 
+use crate::config::AuditLogConfig;
 use crate::db::AppDb;
 use crate::db::SqlDialect;
 use crate::db::dialect::RowsAffected;
@@ -81,7 +82,10 @@ pub struct MetricsSnapshot {
     pub avg_memory_usage: f64,
     pub disk_total_bytes: i64,
     pub disk_used_bytes: i64,
+    /// 全集群加权平均使用率（整体容量口径）。
     pub disk_usage_pct: f64,
+    /// 使用率最高的单个节点（单点风险口径，见 overview_service::node_disk_pressure）。
+    pub max_disk_usage_pct: f64,
 
     pub tablet_count: i64,
     pub max_compaction_score: f64,
@@ -126,6 +130,7 @@ pub struct MetricsCollectorService<DB: AppDb> {
     db: Pool<DB>,
     cluster_service: Arc<ClusterService<DB>>,
     mysql_pool_manager: Arc<MySQLPoolManager>,
+    audit_config: AuditLogConfig,
     retention_days: i64,
     backend_list_cache: Arc<DashMap<i64, CachedNodeList<Backend>>>,
     frontend_list_cache: Arc<DashMap<i64, CachedNodeList<Frontend>>>,
@@ -140,12 +145,14 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
         db: Pool<DB>,
         cluster_service: Arc<ClusterService<DB>>,
         mysql_pool_manager: Arc<MySQLPoolManager>,
+        audit_config: AuditLogConfig,
         retention_days: i64,
     ) -> Self {
         Self {
             db,
             cluster_service,
             mysql_pool_manager,
+            audit_config,
             retention_days,
             backend_list_cache: Arc::new(DashMap::new()),
             frontend_list_cache: Arc::new(DashMap::new()),
@@ -368,15 +375,8 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
             0.0
         };
 
-        let capacity_samples: Vec<(f64, i64, i64)> = backends
-            .iter()
-            .filter_map(|b| {
-                let total = parse_storage_size(&b.total_capacity)?;
-                let pct = parse_pct(&b.max_disk_used_pct)?;
-                let used = (total as f64 * pct / 100.0) as i64;
-                Some((pct, total, used))
-            })
-            .collect();
+        let capacity_samples: Vec<(f64, i64, i64)> =
+            backends.iter().filter_map(disk_capacity_sample).collect();
         let cache_samples: Vec<(f64, i64, i64)> = backends
             .iter()
             .filter_map(|b| {
@@ -387,6 +387,11 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
         let disk_samples =
             select_disk_samples(capacity_samples, cache_samples, cluster.is_shared_data());
         let (disk_usage_pct, disk_used_bytes, disk_total_bytes) = cluster_disk_usage(&disk_samples);
+        // 单节点最高使用率：与加权平均并列存储，供单点风险判定使用（见 overview_service）
+        let max_disk_usage_pct = disk_samples
+            .iter()
+            .map(|sample| sample.0)
+            .fold(0.0_f64, f64::max);
 
         tracing::debug!(
             "Disk usage (cluster): {}% ({} / {} bytes, cluster mode: {})",
@@ -501,6 +506,7 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
             disk_total_bytes,
             disk_used_bytes,
             disk_usage_pct,
+            max_disk_usage_pct,
 
             tablet_count,
             max_compaction_score: metrics_map
@@ -586,7 +592,7 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
                 query_total, query_success, query_error, query_timeout,
                 backend_total, backend_alive, frontend_total, frontend_alive,
                 total_cpu_usage, avg_cpu_usage, total_memory_usage, avg_memory_usage,
-                disk_total_bytes, disk_used_bytes, disk_usage_pct,
+                disk_total_bytes, disk_used_bytes, disk_usage_pct, max_disk_usage_pct,
                 tablet_count, max_compaction_score,
                 txn_running, txn_success_total, txn_failed_total,
                 load_running, load_finished_total,
@@ -601,7 +607,7 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
                 ?, ?, ?, ?,
                 ?, ?, ?, ?,
                 ?, ?, ?, ?,
-                ?, ?, ?,
+                ?, ?, ?, ?,
                 ?, ?,
                 ?, ?, ?,
                 ?, ?,
@@ -635,6 +641,7 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
         .bind(snapshot.disk_total_bytes)
         .bind(snapshot.disk_used_bytes)
         .bind(snapshot.disk_usage_pct)
+        .bind(snapshot.max_disk_usage_pct)
         .bind(snapshot.tablet_count)
         .bind(snapshot.max_compaction_score)
         .bind(snapshot.txn_running)
@@ -710,6 +717,7 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
             disk_total_bytes: i64,
             disk_used_bytes: i64,
             disk_usage_pct: f64,
+            max_disk_usage_pct: f64,
             tablet_count: i64,
             max_compaction_score: f64,
             txn_running: i64,
@@ -770,6 +778,7 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
                 disk_total_bytes: r.disk_total_bytes,
                 disk_used_bytes: r.disk_used_bytes,
                 disk_usage_pct: r.disk_usage_pct,
+                max_disk_usage_pct: r.max_disk_usage_pct,
                 tablet_count: r.tablet_count,
                 max_compaction_score: r.max_compaction_score,
                 txn_running: r.txn_running as i32,
@@ -798,7 +807,7 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
         }
     }
 
-    /// 最小告警规则（硬编码三条）：节点宕机 / 磁盘>85% / P99>30s。
+    /// 最小告警规则（硬编码三条）：节点宕机 / 磁盘>80% / P99>30s。
     /// 通知发给同组织所有用户；同集群同规则 1 小时内只发一次，防刷屏。
     async fn check_alert_rules(&self, cluster: &Cluster, snapshot: &MetricsSnapshot) {
         let mut alerts: Vec<(&str, &str, String)> = vec![];
@@ -812,13 +821,17 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
                 ),
             ));
         }
-        if snapshot.disk_total_bytes > 0 && snapshot.disk_usage_pct > 85.0 {
+        if should_alert_disk_usage(
+            cluster.is_shared_data(),
+            snapshot.disk_total_bytes,
+            snapshot.disk_usage_pct,
+        ) {
             alerts.push((
                 "alert_disk_high",
                 "warning",
                 format!(
-                    "【{}】磁盘使用率 {:.1}%，超过 85% 警戒线",
-                    cluster.name, snapshot.disk_usage_pct
+                    "【{}】磁盘使用率 {:.1}%，超过 {}% 警戒线",
+                    cluster.name, snapshot.disk_usage_pct, DISK_WARNING_PCT as i32
                 ),
             ));
         }
@@ -962,6 +975,22 @@ fn parse_data_cache_disk(metrics: &str) -> Option<(i64, i64, f64)> {
     Some((used_sum, total_sum, used_sum as f64 / total_sum as f64 * 100.0))
 }
 
+/// Build a capacity sample for a storage node. `UsedPct` is the node-wide
+/// utilization ratio; `MaxDiskUsedPct` is only a fallback for older responses
+/// that omit it.
+pub(crate) fn disk_capacity_sample(backend: &Backend) -> Option<(f64, i64, i64)> {
+    let total = parse_storage_size(&backend.total_capacity)?;
+    let pct = parse_pct(&backend.used_pct)
+        .or_else(|| parse_pct(&backend.max_disk_used_pct))
+        .filter(|pct| (0.0..=100.0).contains(pct))?;
+    let used = (total as f64 * pct / 100.0) as i64;
+    Some((pct, total, used))
+}
+
+pub(crate) fn should_alert_disk_usage(shared_data: bool, total_bytes: i64, usage_pct: f64) -> bool {
+    !shared_data && total_bytes > 0 && usage_pct > DISK_WARNING_PCT
+}
+
 /// 选择用于集群磁盘水位的数据源：数据盘列优先；只有 shared-data 集群的本地盘本身就是数据缓存，
 /// 缺数据盘列时才退回缓存配额。
 ///
@@ -1006,16 +1035,39 @@ fn format_storage_size(bytes: i64) -> String {
     }
 }
 
-pub(crate) fn fill_backend_cache_capacity(backend: &mut crate::models::Backend) {
-    if !backend.data_used_capacity.trim().is_empty() || !backend.total_capacity.trim().is_empty() {
+pub(crate) fn fill_backend_capacity(backend: &mut Backend, shared_data: bool) {
+    // Some StarRocks versions return a zero DataUsedCapacity while TotalCapacity
+    // and UsedPct are valid. Reconstruct the missing value from the same row.
+    if let (Some(total), Some(pct)) =
+        (parse_storage_size(&backend.total_capacity), parse_pct(&backend.used_pct))
+    {
+        if total > 0 {
+            if pct > 0.0 && parse_storage_size(&backend.data_used_capacity).unwrap_or(0) == 0 {
+                let used = (total as f64 * pct / 100.0) as i64;
+                backend.data_used_capacity = format_storage_size(used);
+            }
+            return;
+        }
+    }
+
+    // Only shared-data compute nodes may omit the regular capacity columns. In
+    // that case their local DataCache quota is the only node-local capacity
+    // source. A shared-nothing BE cache is not durable data storage.
+    if !shared_data {
         return;
     }
     let Some((used, total, pct)) = parse_data_cache_disk(&backend.data_cache_metrics) else {
         return;
     };
-    backend.data_used_capacity = format_storage_size(used);
-    backend.total_capacity = format_storage_size(total);
-    backend.used_pct = format!("{:.1}%", pct);
+    if parse_storage_size(&backend.data_used_capacity).unwrap_or(0) == 0 {
+        backend.data_used_capacity = format_storage_size(used);
+    }
+    if parse_storage_size(&backend.total_capacity).unwrap_or(0) == 0 {
+        backend.total_capacity = format_storage_size(total);
+    }
+    if parse_pct(&backend.used_pct).unwrap_or(0.0) == 0.0 {
+        backend.used_pct = format!("{:.1}%", pct);
+    }
 }
 
 #[app_impl]
@@ -1183,8 +1235,8 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
         use crate::models::cluster::ClusterType;
 
         let audit_table = match cluster.cluster_type {
-            ClusterType::StarRocks => "starrocks_audit_db__.starrocks_audit_tbl__",
-            ClusterType::Doris => "__internal_schema.audit_log",
+            ClusterType::StarRocks => self.audit_config.full_table_name(),
+            ClusterType::Doris => "__internal_schema.audit_log".to_string(),
         };
 
         let show_columns_query = format!("SHOW COLUMNS FROM {}", audit_table);
@@ -1263,10 +1315,8 @@ impl<DB: AppDb> MetricsCollectorService<DB> {
         use crate::models::cluster::ClusterType;
 
         let (audit_table, time_field, is_query_field) = match cluster.cluster_type {
-            ClusterType::StarRocks => {
-                ("starrocks_audit_db__.starrocks_audit_tbl__", "timestamp", "isQuery")
-            },
-            ClusterType::Doris => ("__internal_schema.audit_log", "time", "is_query"),
+            ClusterType::StarRocks => (self.audit_config.full_table_name(), "timestamp", "isQuery"),
+            ClusterType::Doris => ("__internal_schema.audit_log".to_string(), "time", "is_query"),
         };
 
         let query = format!(
@@ -1454,27 +1504,6 @@ mod tests {
     }
 
     #[test]
-    fn fill_backend_cache_capacity_only_when_storage_empty() {
-        let mut cn: Backend = serde_json::from_value(serde_json::json!({
-            "ComputeNodeId": "1",
-            "IP": "cn-0",
-            "DataCacheMetrics": "Status: Normal, DiskUsage: 7.5TB/12.6TB, MemUsage: 0B/0B"
-        }))
-        .expect("cn");
-        super::fill_backend_cache_capacity(&mut cn);
-        assert_eq!(cn.data_used_capacity, "7.5 TB");
-        assert_eq!(cn.total_capacity, "12.6 TB");
-        assert_eq!(cn.used_pct, "59.5%");
-
-        cn.data_used_capacity = "1.0 TB".to_string();
-        cn.total_capacity = "2.0 TB".to_string();
-        cn.used_pct = "50.0%".to_string();
-        super::fill_backend_cache_capacity(&mut cn);
-        assert_eq!(cn.data_used_capacity, "1.0 TB");
-        assert_eq!(cn.used_pct, "50.0%");
-    }
-
-    #[test]
     fn backend_deserializes_compute_node_row() {
         let row = serde_json::json!({
             "ComputeNodeId": "322320",
@@ -1501,7 +1530,13 @@ mod tests {
         let mysql = std::sync::Arc::new(crate::services::MySQLPoolManager::new());
         let clusters =
             std::sync::Arc::new(crate::services::ClusterService::new(pool.clone(), mysql.clone()));
-        let service = super::MetricsCollectorService::new(pool, clusters, mysql, 7);
+        let service = super::MetricsCollectorService::new(
+            pool,
+            clusters,
+            mysql,
+            crate::config::AuditLogConfig::default(),
+            7,
+        );
         let node: Backend = serde_json::from_value(serde_json::json!({
             "ComputeNodeId": "1",
             "IP": "cn-0"
@@ -1533,7 +1568,13 @@ mod tests {
         let mysql = std::sync::Arc::new(crate::services::MySQLPoolManager::new());
         let clusters =
             std::sync::Arc::new(crate::services::ClusterService::new(pool.clone(), mysql.clone()));
-        let service = super::MetricsCollectorService::new(pool, clusters, mysql, 7);
+        let service = super::MetricsCollectorService::new(
+            pool,
+            clusters,
+            mysql,
+            crate::config::AuditLogConfig::default(),
+            7,
+        );
         let node: Backend = serde_json::from_value(serde_json::json!({
             "ComputeNodeId": "1",
             "IP": "cn-0"
@@ -1558,7 +1599,13 @@ mod tests {
         let mysql = std::sync::Arc::new(crate::services::MySQLPoolManager::new());
         let clusters =
             std::sync::Arc::new(crate::services::ClusterService::new(pool.clone(), mysql.clone()));
-        let service = super::MetricsCollectorService::new(pool, clusters, mysql, 7);
+        let service = super::MetricsCollectorService::new(
+            pool,
+            clusters,
+            mysql,
+            crate::config::AuditLogConfig::default(),
+            7,
+        );
         let node: Frontend = serde_json::from_value(serde_json::json!({
             "Name": "fe-0",
             "IP": "10.0.0.1",

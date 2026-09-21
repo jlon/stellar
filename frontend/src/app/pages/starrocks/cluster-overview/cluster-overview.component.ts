@@ -1405,12 +1405,13 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
     const cpuColor = this.chartColors.primary || '#3366ff';
     const memoryColor = this.chartColors.danger || '#ff3d71';
     const diskColor = this.chartColors.success || '#00d68f';
+    const storageLabel = this.i18n.instant(this.isSharedData ? '数据缓存' : '磁盘');
 
     return {
       ...this.getBaseChartOptions(cpuColor),
       legend: {
         ...this.getBaseChartOptions(cpuColor).legend,
-        data: ['CPU', '内存', '磁盘'],
+        data: ['CPU', this.i18n.instant('内存'), storageLabel],
       },
       tooltip: {
         ...this.getBaseChartOptions(cpuColor).tooltip,
@@ -1436,8 +1437,8 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
       },
       series: [
         this.getLineSeries('CPU', this.resourceTrends.cpu_usage.map(d => d.value), cpuColor),
-        this.getLineSeries('内存', this.resourceTrends.memory_usage.map(d => d.value), memoryColor),
-        this.getLineSeries('磁盘', this.resourceTrends.disk_usage.map(d => d.value), diskColor),
+        this.getLineSeries(this.i18n.instant('内存'), this.resourceTrends.memory_usage.map(d => d.value), memoryColor),
+        this.getLineSeries(storageLabel, this.resourceTrends.disk_usage.map(d => d.value), diskColor),
       ],
     };
   }
