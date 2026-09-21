@@ -5,60 +5,60 @@
       nbSpinnerStatus="primary"
       nbSpinnerMessage="加载中"
     >
-      <nb-card-header>
-          <div class="d-flex justify-content-between align-items-center">
-            <div>
-              <h6 class="mb-1">导入任务</h6>
-              <small class="text-hint d-none d-sm-inline"
-                >当前筛选范围内的任务态势</small
-              >
-            </div>
-            <div class="d-flex align-items-center gap-2">
-              <button
-                nbButton
-                size="small"
-                status="primary"
-                *ngxHasPermission="'api:clusters:queries:execute'"
-                (click)="openCreateLoad()"
-                [disabled]="!activeCluster"
-                nbTooltip="新增导入任务"
-                title="新增导入任务"
-                aria-label="新增导入任务"
-              >
-                <nb-icon icon="plus-outline"></nb-icon>
-                <span class="d-none d-sm-inline">新增导入任务</span>
-              </button>
-              <small class="text-hint d-none d-sm-inline">{{
-                rangeLabel()
-              }}</small>
-            @if (lastUpdated) {
-              <small class="text-hint"
-                >更新 {{ lastUpdated | date: "HH:mm" }}</small
-              >
-            }
+      <nb-card-body>
+        <div class="card-toolbar">
+          @if (!activeCluster) {
+            <span class="load-inactive-indicator" role="status">
+              <nb-icon icon="alert-circle-outline" status="warning"></nb-icon>
+              <strong>未激活集群</strong>
+              <span class="d-none d-lg-inline">请先在顶部选择</span>
+            </span>
+          }
+          @if (activeCluster && !errorMessage && summary.failed > 0) {
+            <span
+              class="load-failure-indicator"
+              role="status"
+              aria-live="polite"
+            >
+              <nb-icon icon="alert-triangle-outline" status="danger"></nb-icon>
+              <strong>{{ summary.failed }} 个失败</strong>
+              <span class="d-none d-lg-inline">优先排查</span>
+            </span>
+          }
+          @if (lastUpdated) {
+            <small class="text-hint d-none d-md-inline"
+              >更新 {{ lastUpdated | date: "HH:mm" }}</small
+            >
+          }
+          <button
+            nbButton
+            ghost
+            status="basic"
+            size="small"
+            (click)="loadJobs()"
+            [disabled]="loading || !activeCluster"
+            nbTooltip="刷新导入任务"
+            title="刷新导入任务"
+            aria-label="刷新导入任务"
+          >
+            <nb-icon icon="refresh-outline"></nb-icon>
+          </button>
+          @if (isStarRocksCluster) {
             <button
               nbButton
               ghost
               status="basic"
               size="small"
-              (click)="loadJobs()"
-              [disabled]="loading || !activeCluster"
-              nbTooltip="刷新导入任务"
-              title="刷新导入任务"
-              aria-label="刷新导入任务"
+              ngxHasPermission="api:clusters:queries:execute"
+              (click)="openImportChooser()"
+              nbTooltip="新建外部导入"
+              title="新建外部导入"
+              aria-label="新建外部导入"
             >
-              <nb-icon icon="refresh-outline"></nb-icon>
+              <nb-icon icon="plus-outline"></nb-icon>
             </button>
-          </div>
+          }
         </div>
-      </nb-card-header>
-
-      <nb-card-body>
-        @if (!activeCluster) {
-          <nb-alert status="warning"
-            >请先激活一个集群，再查看导入任务。</nb-alert
-          >
-        }
 
         @if (errorMessage) {
           <nb-alert status="danger" closable (close)="errorMessage = ''">
@@ -76,22 +76,9 @@
         }
 
         @if (activeCluster && !errorMessage) {
-          @if (summary.failed > 0) {
-            <nb-alert class="mb-3" status="danger" aria-live="polite">
-              {{ summaryMessage() }}
-            </nb-alert>
-          } @else {
+          @if (summary.failed === 0 && (summary.running || summary.queued)) {
             <div class="d-flex align-items-center gap-2 text-hint mb-3">
-              <nb-icon
-                [icon]="
-                  summary.running || summary.queued
-                    ? 'activity-outline'
-                    : 'checkmark-circle-2-outline'
-                "
-                [status]="
-                  summary.running || summary.queued ? 'info' : 'success'
-                "
-              ></nb-icon>
+              <nb-icon icon="activity-outline" status="info"></nb-icon>
               <small>{{ summaryMessage() }}</small>
             </div>
           }
@@ -186,9 +173,7 @@
           </div>
         </div>
 
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <small>任务列表 · 已加载 {{ jobs.length }} 个任务</small>
-        </div>
+        <small class="text-hint d-block mb-2">导入运行</small>
 
         <angular2-smart-table
           [settings]="settings"
@@ -432,10 +417,13 @@
                         class="d-flex justify-content-between align-items-center gap-2"
                       >
                         <span>{{ task.task_id || "未命名任务" }}</span>
-                        <small class="text-hint">BE {{ task.be_id || "-" }}</small>
+                        <small class="text-hint"
+                          >{{ computeNodeLabel }} {{ task.be_id || "-" }}</small
+                        >
                       </div>
                       <small class="text-hint d-block mt-1">
-                        事务 {{ task.txn_id || "-" }} / {{ task.txn_status || "-" }}
+                        事务 {{ task.txn_id || "-" }} /
+                        {{ task.txn_status || "-" }}
                       </small>
                       @if (task.data_source_properties) {
                         <textarea
@@ -449,7 +437,9 @@
                         ></textarea>
                       }
                       @if (task.message) {
-                        <small class="text-hint d-block mt-2">{{ task.message }}</small>
+                        <small class="text-hint d-block mt-2">{{
+                          task.message
+                        }}</small>
                       }
                     </div>
                   </nb-list-item>
@@ -479,14 +469,21 @@
                 ></textarea>
               }
               @if (routine.error_log_urls) {
-                <div class="d-flex justify-content-between align-items-center mt-2">
+                <div
+                  class="d-flex justify-content-between align-items-center mt-2"
+                >
                   <span>错误日志地址</span>
                   <button
                     nbButton
                     ghost
                     size="tiny"
                     status="basic"
-                    (click)="copyToClipboard(routine.error_log_urls || '', '错误日志地址')"
+                    (click)="
+                      copyToClipboard(
+                        routine.error_log_urls || '',
+                        '错误日志地址'
+                      )
+                    "
                     nbTooltip="复制错误日志地址"
                     title="复制错误日志地址"
                     aria-label="复制错误日志地址"
@@ -542,7 +539,9 @@
             <small class="text-hint d-block mb-2">Doris 原始失败信息</small>
 
             @if (dorisFailure.url) {
-              <div class="d-flex justify-content-between align-items-center mb-2">
+              <div
+                class="d-flex justify-content-between align-items-center mb-2"
+              >
                 <span>URL</span>
                 <button
                   nbButton
@@ -568,14 +567,18 @@
             }
 
             @if (dorisFailure.error_msg) {
-              <div class="d-flex justify-content-between align-items-center mt-3 mb-2">
+              <div
+                class="d-flex justify-content-between align-items-center mt-3 mb-2"
+              >
                 <span>ErrorMsg</span>
                 <button
                   nbButton
                   ghost
                   size="tiny"
                   status="basic"
-                  (click)="copyToClipboard(dorisFailure.error_msg || '', 'ErrorMsg')"
+                  (click)="
+                    copyToClipboard(dorisFailure.error_msg || '', 'ErrorMsg')
+                  "
                   nbTooltip="复制 ErrorMsg"
                   title="复制 ErrorMsg"
                   aria-label="复制 ErrorMsg"
@@ -594,14 +597,21 @@
             }
 
             @if (dorisFailure.job_details) {
-              <div class="d-flex justify-content-between align-items-center mt-3 mb-2">
+              <div
+                class="d-flex justify-content-between align-items-center mt-3 mb-2"
+              >
                 <span>JobDetails</span>
                 <button
                   nbButton
                   ghost
                   size="tiny"
                   status="basic"
-                  (click)="copyToClipboard(dorisFailure.job_details || '', 'JobDetails')"
+                  (click)="
+                    copyToClipboard(
+                      dorisFailure.job_details || '',
+                      'JobDetails'
+                    )
+                  "
                   nbTooltip="复制 JobDetails"
                   title="复制 JobDetails"
                   aria-label="复制 JobDetails"
@@ -707,13 +717,15 @@
   </nb-card>
 </ng-template>
 
-<ng-template #createDialog let-ref="dialogRef">
-  <nb-card class="load-create-dialog">
+<ng-template #brokerLoadDialog let-ref="dialogRef">
+  <nb-card class="broker-load-dialog">
     <nb-card-header>
       <div class="d-flex justify-content-between align-items-center gap-3">
         <div>
-          <h6 class="mb-1">新增导入任务</h6>
-          <small class="text-hint">从源表全量写入目标表，提交后由引擎执行</small>
+          <h6 class="mb-1">HDFS / 挂载 NAS 到目标表</h6>
+          <small class="text-hint"
+            >HDFS 或挂载到 BE/CN 的目录 → StarRocks 表 → Broker Load</small
+          >
         </div>
         <button
           nbButton
@@ -721,10 +733,10 @@
           size="small"
           status="basic"
           (click)="ref.close()"
-          [disabled]="createSubmitting"
+          [disabled]="sqlLoadSubmitting"
           nbTooltip="关闭"
           title="关闭"
-          aria-label="关闭新增导入任务"
+          aria-label="关闭 Broker Load"
         >
           <nb-icon icon="close-outline"></nb-icon>
         </button>
@@ -732,59 +744,24 @@
     </nb-card-header>
 
     <nb-card-body>
-      @if (createErrorMessage) {
-        <nb-alert class="mb-3" status="danger">
-          {{ createErrorMessage }}
-        </nb-alert>
+      @if (loadFormErrorMessage) {
+        <nb-alert class="mb-3" status="danger">{{
+          loadFormErrorMessage
+        }}</nb-alert>
       }
-
-      <nb-alert class="mb-3" status="info">
-        这是表间导入：不会删除目标表已有数据。文件、对象存储和 Routine Load 请在 SQL 工作台按引擎语法提交。
-      </nb-alert>
 
       <div class="row">
         <div class="col-12 col-md-6 mb-3">
-          <label class="label d-block mb-2" for="load-source-database">源数据库</label>
-          <nb-select
-            id="load-source-database"
-            fullWidth
-            size="small"
-            [(selected)]="createForm.sourceDatabase"
-            (selectedChange)="onCreateDatabaseChange('source')"
-            [disabled]="createSubmitting"
-            placeholder="选择源数据库"
+          <label class="label d-block mb-2" for="broker-load-database"
+            >目标数据库</label
           >
-            @for (database of databases; track database) {
-              <nb-option [value]="database">{{ database }}</nb-option>
-            }
-          </nb-select>
-        </div>
-
-        <div class="col-12 col-md-6 mb-3">
-          <label class="label d-block mb-2" for="load-source-table">源表</label>
           <nb-select
-            id="load-source-table"
+            id="broker-load-database"
             fullWidth
             size="small"
-            [(selected)]="createForm.sourceTable"
-            [disabled]="createSubmitting || sourceTablesLoading || !createForm.sourceDatabase"
-            placeholder="选择源表"
-          >
-            @for (table of sourceTables; track table.name) {
-              <nb-option [value]="table.name">{{ table.name }}</nb-option>
-            }
-          </nb-select>
-        </div>
-
-        <div class="col-12 col-md-6 mb-3">
-          <label class="label d-block mb-2" for="load-target-database">目标数据库</label>
-          <nb-select
-            id="load-target-database"
-            fullWidth
-            size="small"
-            [(selected)]="createForm.targetDatabase"
-            (selectedChange)="onCreateDatabaseChange('target')"
-            [disabled]="createSubmitting"
+            [(selected)]="brokerLoadForm.database"
+            (selectedChange)="onBrokerDatabaseChange()"
+            [disabled]="sqlLoadSubmitting"
             placeholder="选择目标数据库"
           >
             @for (database of databases; track database) {
@@ -794,13 +771,19 @@
         </div>
 
         <div class="col-12 col-md-6 mb-3">
-          <label class="label d-block mb-2" for="load-target-table">目标表</label>
+          <label class="label d-block mb-2" for="broker-load-table"
+            >目标表</label
+          >
           <nb-select
-            id="load-target-table"
+            id="broker-load-table"
             fullWidth
             size="small"
-            [(selected)]="createForm.targetTable"
-            [disabled]="createSubmitting || targetTablesLoading || !createForm.targetDatabase"
+            [(selected)]="brokerLoadForm.table"
+            [disabled]="
+              sqlLoadSubmitting ||
+              targetTablesLoading ||
+              !brokerLoadForm.database
+            "
             placeholder="选择目标表"
           >
             @for (table of targetTables; track table.name) {
@@ -808,44 +791,615 @@
             }
           </nb-select>
         </div>
-      </div>
 
-      @if (isCreateFormValid()) {
-        <div class="mt-2">
-          <small class="text-hint d-block mb-2">将执行的语句</small>
-          <textarea
+        <div class="col-12 mb-3">
+          <label class="label d-block mb-2" for="broker-load-path"
+            >文件路径</label
+          >
+          <input
+            id="broker-load-path"
             nbInput
             fullWidth
-            rows="3"
-            readonly
-            [value]="buildInsertSelectSql()"
-          ></textarea>
+            fieldSize="small"
+            maxlength="2048"
+            [(ngModel)]="brokerLoadForm.path"
+            [disabled]="sqlLoadSubmitting"
+            placeholder="hdfs://host:8020/path/*.parquet"
+          />
+          <small class="load-form-help"
+            >仅接受无用户名和密码的 hdfs:// 路径，或已挂载到 BE/CN 的 file:///
+            路径。</small
+          >
         </div>
-      }
+
+        <div class="col-12 col-md-6 mb-3">
+          <label class="label d-block mb-2" for="broker-load-format"
+            >文件格式</label
+          >
+          <nb-select
+            id="broker-load-format"
+            fullWidth
+            size="small"
+            [(selected)]="brokerLoadForm.format"
+            [disabled]="sqlLoadSubmitting"
+          >
+            <nb-option value="csv">CSV</nb-option>
+            <nb-option value="json">JSON</nb-option>
+            <nb-option value="parquet">Parquet</nb-option>
+            <nb-option value="orc">ORC</nb-option>
+          </nb-select>
+        </div>
+
+        @if (brokerLoadForm.format === "csv") {
+          <div class="col-12 col-md-6 mb-3">
+            <label class="label d-block mb-2" for="broker-load-separator"
+              >列分隔符</label
+            >
+            <nb-select
+              id="broker-load-separator"
+              fullWidth
+              size="small"
+              [(selected)]="brokerLoadForm.columnSeparator"
+              [disabled]="sqlLoadSubmitting"
+            >
+              <nb-option value=",">逗号 (,)</nb-option>
+              <nb-option value="\t">制表符 (Tab)</nb-option>
+              <nb-option value="|">竖线 (|)</nb-option>
+            </nb-select>
+          </div>
+        }
+
+        <div class="col-12 mb-1">
+          <label class="label d-block mb-2" for="broker-load-label"
+            >Label</label
+          >
+          <input
+            id="broker-load-label"
+            nbInput
+            fullWidth
+            fieldSize="small"
+            maxlength="128"
+            [(ngModel)]="brokerLoadForm.label"
+            [disabled]="sqlLoadSubmitting"
+            placeholder="用于在 StarRocks 中识别本次异步导入"
+          />
+        </div>
+      </div>
     </nb-card-body>
 
-    <nb-card-footer class="d-flex justify-content-end gap-2">
+    <nb-card-footer>
       <button
         nbButton
         ghost
         size="small"
         status="basic"
         (click)="ref.close()"
-        [disabled]="createSubmitting"
+        [disabled]="sqlLoadSubmitting"
       >
         取消
       </button>
       <button
         nbButton
+        ghost
         size="small"
         status="primary"
-        [nbSpinner]="createSubmitting"
-        nbSpinnerStatus="control"
-        (click)="submitCreateLoad(ref)"
-        [disabled]="createSubmitting || !isCreateFormValid()"
+        [nbSpinner]="sqlLoadSubmitting"
+        nbSpinnerStatus="primary"
+        (click)="submitBrokerLoad(ref)"
+        [disabled]="sqlLoadSubmitting || !isBrokerLoadFormValid()"
       >
-        <nb-icon icon="play-circle-outline"></nb-icon>
-        提交导入
+        <nb-icon icon="cloud-download-outline"></nb-icon>
+        提交 Broker Load
+      </button>
+    </nb-card-footer>
+  </nb-card>
+</ng-template>
+
+<ng-template #routineLoadDialog let-ref="dialogRef">
+  <nb-card class="routine-load-dialog">
+    <nb-card-header>
+      <div class="d-flex justify-content-between align-items-center gap-3">
+        <div>
+          <h6 class="mb-1">Kafka Topic 到目标表</h6>
+          <small class="text-hint"
+            >Kafka Topic → StarRocks 表 → Routine Load</small
+          >
+        </div>
+        <button
+          nbButton
+          ghost
+          size="small"
+          status="basic"
+          (click)="ref.close()"
+          [disabled]="sqlLoadSubmitting"
+          nbTooltip="关闭"
+          title="关闭"
+          aria-label="关闭 Routine Load"
+        >
+          <nb-icon icon="close-outline"></nb-icon>
+        </button>
+      </div>
+    </nb-card-header>
+
+    <nb-card-body>
+      @if (loadFormErrorMessage) {
+        <nb-alert class="mb-3" status="danger">{{
+          loadFormErrorMessage
+        }}</nb-alert>
+      }
+
+      <div class="row">
+        <div class="col-12 col-md-6 mb-3">
+          <label class="label d-block mb-2" for="routine-load-database"
+            >目标数据库</label
+          >
+          <nb-select
+            id="routine-load-database"
+            fullWidth
+            size="small"
+            [(selected)]="routineLoadForm.database"
+            (selectedChange)="onRoutineDatabaseChange()"
+            [disabled]="sqlLoadSubmitting"
+            placeholder="选择目标数据库"
+          >
+            @for (database of databases; track database) {
+              <nb-option [value]="database">{{ database }}</nb-option>
+            }
+          </nb-select>
+        </div>
+
+        <div class="col-12 col-md-6 mb-3">
+          <label class="label d-block mb-2" for="routine-load-table"
+            >目标表</label
+          >
+          <nb-select
+            id="routine-load-table"
+            fullWidth
+            size="small"
+            [(selected)]="routineLoadForm.table"
+            [disabled]="
+              sqlLoadSubmitting ||
+              targetTablesLoading ||
+              !routineLoadForm.database
+            "
+            placeholder="选择目标表"
+          >
+            @for (table of targetTables; track table.name) {
+              <nb-option [value]="table.name">{{ table.name }}</nb-option>
+            }
+          </nb-select>
+        </div>
+
+        <div class="col-12 col-md-6 mb-3">
+          <label class="label d-block mb-2" for="routine-load-name"
+            >作业名称</label
+          >
+          <input
+            id="routine-load-name"
+            nbInput
+            fullWidth
+            fieldSize="small"
+            maxlength="128"
+            [(ngModel)]="routineLoadForm.jobName"
+            [disabled]="sqlLoadSubmitting"
+            placeholder="例如 orders_topic_load"
+          />
+        </div>
+
+        <div class="col-12 col-md-6 mb-3">
+          <label class="label d-block mb-2" for="routine-load-topic"
+            >Topic</label
+          >
+          <input
+            id="routine-load-topic"
+            nbInput
+            fullWidth
+            fieldSize="small"
+            maxlength="249"
+            [(ngModel)]="routineLoadForm.topic"
+            [disabled]="sqlLoadSubmitting"
+            placeholder="例如 orders"
+          />
+        </div>
+
+        <div class="col-12 mb-3">
+          <label class="label d-block mb-2" for="routine-load-brokers"
+            >Kafka Broker 地址</label
+          >
+          <input
+            id="routine-load-brokers"
+            nbInput
+            fullWidth
+            fieldSize="small"
+            maxlength="1024"
+            [(ngModel)]="routineLoadForm.brokers"
+            [disabled]="sqlLoadSubmitting"
+            placeholder="host-1:9092,host-2:9092"
+          />
+          <small class="load-form-help"
+            >仅接受集群可直连的 plaintext Broker 地址；SSL、SASL 和 Kerberos
+            需要受管连接。</small
+          >
+        </div>
+
+        <div class="col-12 col-md-6 mb-3">
+          <label class="label d-block mb-2" for="routine-load-format"
+            >消息格式</label
+          >
+          <nb-select
+            id="routine-load-format"
+            fullWidth
+            size="small"
+            [(selected)]="routineLoadForm.format"
+            [disabled]="sqlLoadSubmitting"
+          >
+            <nb-option value="csv">CSV</nb-option>
+            <nb-option value="json">JSON</nb-option>
+          </nb-select>
+        </div>
+
+        <div class="col-12 col-md-6 mb-3">
+          <label class="label d-block mb-2" for="routine-load-offset"
+            >初始消费位点</label
+          >
+          <nb-select
+            id="routine-load-offset"
+            fullWidth
+            size="small"
+            [(selected)]="routineLoadForm.offset"
+            [disabled]="sqlLoadSubmitting"
+          >
+            <nb-option value="OFFSET_END">最新消息</nb-option>
+            <nb-option value="OFFSET_BEGINNING">最早消息</nb-option>
+          </nb-select>
+        </div>
+
+        @if (routineLoadForm.format === "csv") {
+          <div class="col-12 col-md-6 mb-1">
+            <label class="label d-block mb-2" for="routine-load-separator"
+              >列分隔符</label
+            >
+            <nb-select
+              id="routine-load-separator"
+              fullWidth
+              size="small"
+              [(selected)]="routineLoadForm.columnSeparator"
+              [disabled]="sqlLoadSubmitting"
+            >
+              <nb-option value=",">逗号 (,)</nb-option>
+              <nb-option value="\t">制表符 (Tab)</nb-option>
+              <nb-option value="|">竖线 (|)</nb-option>
+            </nb-select>
+          </div>
+        }
+      </div>
+    </nb-card-body>
+
+    <nb-card-footer>
+      <button
+        nbButton
+        ghost
+        size="small"
+        status="basic"
+        (click)="ref.close()"
+        [disabled]="sqlLoadSubmitting"
+      >
+        取消
+      </button>
+      <button
+        nbButton
+        ghost
+        size="small"
+        status="primary"
+        [nbSpinner]="sqlLoadSubmitting"
+        nbSpinnerStatus="primary"
+        (click)="submitRoutineLoad(ref)"
+        [disabled]="sqlLoadSubmitting || !isRoutineLoadFormValid()"
+      >
+        <nb-icon icon="radio-outline"></nb-icon>
+        创建 Routine Load
+      </button>
+    </nb-card-footer>
+  </nb-card>
+</ng-template>
+
+<ng-template #importChooserDialog let-ref="dialogRef">
+  <nb-card class="load-import-chooser">
+    <nb-card-header>
+      <div class="d-flex justify-content-between align-items-center gap-3">
+        <div>
+          <h6 class="mb-1">选择外部数据源</h6>
+          <small class="text-hint"
+            >执行方式由数据源、文件格式和受管连接能力决定</small
+          >
+        </div>
+        <button
+          nbButton
+          ghost
+          size="small"
+          status="basic"
+          (click)="ref.close()"
+          nbTooltip="关闭"
+          title="关闭"
+          aria-label="关闭数据源选择"
+        >
+          <nb-icon icon="close-outline"></nb-icon>
+        </button>
+      </div>
+    </nb-card-header>
+
+    <nb-card-body>
+      <div class="load-import-options">
+        @if (isStarRocksCluster) {
+          <button
+            type="button"
+            class="load-import-option"
+            (click)="openStreamLoad(ref)"
+          >
+            <nb-icon icon="cloud-upload-outline"></nb-icon>
+            <span>
+              <strong>本地文件</strong>
+              <small
+                >从浏览器上传 CSV 或 JSON。系统使用 Stream
+                Load，同步返回引擎结果。</small
+              >
+            </span>
+            <nb-icon
+              class="option-arrow"
+              icon="arrow-forward-outline"
+            ></nb-icon>
+          </button>
+          <button
+            type="button"
+            class="load-import-option"
+            (click)="openBrokerLoad(ref)"
+          >
+            <nb-icon icon="cloud-download-outline"></nb-icon>
+            <span>
+              <strong>HDFS / NAS 文件（无凭据）</strong>
+              <small
+                >从无需认证的 HDFS，或挂载到 BE/CN 的 NAS 路径批量导入。系统提交
+                Broker Load。</small
+              >
+            </span>
+            <nb-icon
+              class="option-arrow"
+              icon="arrow-forward-outline"
+            ></nb-icon>
+          </button>
+          <button
+            type="button"
+            class="load-import-option"
+            (click)="openRoutineLoad(ref)"
+          >
+            <nb-icon icon="radio-outline"></nb-icon>
+            <span>
+              <strong>Kafka Topic（plaintext）</strong>
+              <small
+                >从集群可直连的 plaintext Kafka Topic 持续消费。系统创建 Routine
+                Load。</small
+              >
+            </span>
+            <nb-icon
+              class="option-arrow"
+              icon="arrow-forward-outline"
+            ></nb-icon>
+          </button>
+        }
+      </div>
+
+      @if (isStarRocksCluster) {
+        <section class="load-native-routes">
+          <h6>仍需接入受管连接的外部数据源</h6>
+          <small
+            >以下能力由 StarRocks 支持，但 Stellar
+            当前只接入了不需要提交外部密钥的基础路径。</small
+          >
+
+          <div class="load-native-route">
+            <nb-icon icon="cloud-outline"></nb-icon>
+            <strong>对象存储</strong>
+            <small
+              >Broker
+              Load、FILES()、Pipe；需要受管的对象存储连接和凭据生命周期。</small
+            >
+          </div>
+          <div class="load-native-route">
+            <nb-icon icon="layers-outline"></nb-icon>
+            <strong>数据湖 / 外部数据库</strong>
+            <small
+              >建立 Hive、Iceberg、Hudi、Delta、Paimon、Elasticsearch 或 JDBC
+              Catalog 后，以 INSERT INTO ... SELECT 写入 StarRocks
+              目标表。</small
+            >
+          </div>
+          <div class="load-native-route">
+            <nb-icon icon="cube-outline"></nb-icon>
+            <strong>外部计算 / CDC</strong>
+            <small
+              >Flink、Spark、Kafka Connector、SMT、DataX、CloudCanal
+              等由外部运行时提交；Spark Load 可从 HDFS 上的 Hive
+              表批量导入。</small
+            >
+          </div>
+        </section>
+      }
+    </nb-card-body>
+  </nb-card>
+</ng-template>
+
+<ng-template #streamLoadDialog let-ref="dialogRef">
+  <nb-card class="stream-load-dialog">
+    <nb-card-header>
+      <div class="d-flex justify-content-between align-items-center gap-3">
+        <div>
+          <h6 class="mb-1">本地文件到目标表</h6>
+          <small class="text-hint"
+            >本地 CSV / JSON → StarRocks 表 → Stream Load</small
+          >
+        </div>
+        <button
+          nbButton
+          ghost
+          size="small"
+          status="basic"
+          (click)="ref.close()"
+          [disabled]="streamLoadSubmitting"
+          nbTooltip="关闭"
+          title="关闭"
+          aria-label="关闭本地文件导入"
+        >
+          <nb-icon icon="close-outline"></nb-icon>
+        </button>
+      </div>
+    </nb-card-header>
+
+    <nb-card-body>
+      @if (loadFormErrorMessage) {
+        <nb-alert class="mb-3" status="danger">{{
+          loadFormErrorMessage
+        }}</nb-alert>
+      }
+
+      <div class="row">
+        <div class="col-12 col-md-6 mb-3">
+          <label class="label d-block mb-2" for="stream-load-database"
+            >目标数据库</label
+          >
+          <nb-select
+            id="stream-load-database"
+            fullWidth
+            size="small"
+            [(selected)]="streamLoadForm.database"
+            (selectedChange)="onStreamDatabaseChange()"
+            [disabled]="streamLoadSubmitting"
+            placeholder="选择目标数据库"
+          >
+            @for (database of databases; track database) {
+              <nb-option [value]="database">{{ database }}</nb-option>
+            }
+          </nb-select>
+        </div>
+
+        <div class="col-12 col-md-6 mb-3">
+          <label class="label d-block mb-2" for="stream-load-table"
+            >目标表</label
+          >
+          <nb-select
+            id="stream-load-table"
+            fullWidth
+            size="small"
+            [(selected)]="streamLoadForm.table"
+            [disabled]="
+              streamLoadSubmitting ||
+              targetTablesLoading ||
+              !streamLoadForm.database
+            "
+            placeholder="选择目标表"
+          >
+            @for (table of targetTables; track table.name) {
+              <nb-option [value]="table.name">{{ table.name }}</nb-option>
+            }
+          </nb-select>
+        </div>
+
+        <div class="col-12 mb-3">
+          <label class="label d-block mb-2" for="stream-load-file">文件</label>
+          <input
+            id="stream-load-file"
+            nbInput
+            fullWidth
+            fieldSize="small"
+            type="file"
+            accept=".csv,.json,text/csv,application/json,application/x-ndjson"
+            (change)="onStreamFileChange($event)"
+            [disabled]="streamLoadSubmitting"
+          />
+          <small class="stream-file-meta">
+            @if (streamLoadForm.file; as file) {
+              {{ file.name }} · {{ formatBytes(file.size) }}
+            } @else {
+              CSV 或 JSON，当前单文件上限 512 MiB
+            }
+          </small>
+        </div>
+
+        <div class="col-12 col-md-6 mb-3">
+          <label class="label d-block mb-2" for="stream-load-format"
+            >文件格式</label
+          >
+          <nb-select
+            id="stream-load-format"
+            fullWidth
+            size="small"
+            [(selected)]="streamLoadForm.format"
+            [disabled]="streamLoadSubmitting"
+          >
+            <nb-option value="csv">CSV</nb-option>
+            <nb-option value="json">JSON</nb-option>
+          </nb-select>
+        </div>
+
+        @if (streamLoadForm.format === "csv") {
+          <div class="col-12 col-md-6 mb-3">
+            <label class="label d-block mb-2" for="stream-load-separator"
+              >列分隔符</label
+            >
+            <nb-select
+              id="stream-load-separator"
+              fullWidth
+              size="small"
+              [(selected)]="streamLoadForm.columnSeparator"
+              [disabled]="streamLoadSubmitting"
+            >
+              <nb-option value=",">逗号 (,)</nb-option>
+              <nb-option value="\t">制表符 (Tab)</nb-option>
+              <nb-option value="|">竖线 (|)</nb-option>
+            </nb-select>
+          </div>
+        }
+
+        <div class="col-12 mb-1">
+          <label class="label d-block mb-2" for="stream-load-label"
+            >Label（可选）</label
+          >
+          <input
+            id="stream-load-label"
+            nbInput
+            fullWidth
+            fieldSize="small"
+            maxlength="128"
+            [(ngModel)]="streamLoadForm.label"
+            [disabled]="streamLoadSubmitting"
+            placeholder="用于在 StarRocks 中识别本次导入"
+          />
+        </div>
+      </div>
+    </nb-card-body>
+
+    <nb-card-footer>
+      <button
+        nbButton
+        ghost
+        size="small"
+        status="basic"
+        (click)="ref.close()"
+        [disabled]="streamLoadSubmitting"
+      >
+        取消
+      </button>
+      <button
+        nbButton
+        ghost
+        size="small"
+        status="primary"
+        [nbSpinner]="streamLoadSubmitting"
+        nbSpinnerStatus="primary"
+        (click)="submitStreamLoad(ref)"
+        [disabled]="streamLoadSubmitting || !isStreamLoadFormValid()"
+      >
+        <nb-icon icon="cloud-upload-outline"></nb-icon>
+        开始导入
       </button>
     </nb-card-footer>
   </nb-card>

@@ -27,6 +27,7 @@ pub mod query_execution_history_service;
 pub mod resource_group_service;
 pub mod role_service;
 pub mod starrocks_client;
+pub mod stream_load;
 pub mod system_function_service;
 pub mod user_role_service;
 pub mod user_service;

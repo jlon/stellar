@@ -734,25 +734,36 @@ pub async fn execute_sql(
     Ok(Json(QueryExecuteResponse { results, total_execution_time_ms }))
 }
 
-// Simple SQL statement parser - splits by semicolon, ignoring those in single/double quotes
-fn parse_sql_statements(sql: &str) -> Vec<String> {
+// Splits only on semicolons outside SQL string literals and quoted identifiers.
+pub(crate) fn parse_sql_statements(sql: &str) -> Vec<String> {
     let mut statements = Vec::new();
     let mut current = String::new();
-    let mut in_single_quote = false;
-    let mut in_double_quote = false;
-    let chars = sql.chars().peekable();
+    let mut quote = None;
+    let mut chars = sql.chars().peekable();
 
-    for ch in chars {
+    while let Some(ch) = chars.next() {
+        if let Some(delimiter) = quote {
+            current.push(ch);
+            if ch == '\\' && delimiter != '`' {
+                if let Some(escaped) = chars.next() {
+                    current.push(escaped);
+                }
+            } else if ch == delimiter {
+                if chars.peek() == Some(&delimiter) {
+                    current.push(chars.next().expect("peeked delimiter must exist"));
+                } else {
+                    quote = None;
+                }
+            }
+            continue;
+        }
+
         match ch {
-            '\'' if !in_double_quote => {
-                in_single_quote = !in_single_quote;
+            '\'' | '"' | '`' => {
+                quote = Some(ch);
                 current.push(ch);
             },
-            '"' if !in_single_quote => {
-                in_double_quote = !in_double_quote;
-                current.push(ch);
-            },
-            ';' if !in_single_quote && !in_double_quote => {
+            ';' => {
                 let trimmed = current.trim();
                 if !trimmed.is_empty() {
                     statements.push(trimmed.to_string());

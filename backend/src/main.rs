@@ -1,6 +1,7 @@
 use axum::{
     Router,
     body::Body,
+    extract::DefaultBodyLimit,
     http::{HeaderValue, StatusCode, Uri, header},
     middleware as axum_middleware,
     response::{IntoResponse, Response},
@@ -78,6 +79,7 @@ use stellar::{AppState, handlers, middleware, services};
         handlers::query_execution_history::clear_execution_history,
         handlers::load::list_loads,
         handlers::load::get_load,
+        handlers::load::stream_load,
 
         handlers::sessions::get_sessions,
         handlers::sessions::kill_session,
@@ -186,6 +188,7 @@ use stellar::{AppState, handlers, middleware, services};
             models::LoadJob,
             models::LoadSummary,
             models::LoadListResponse,
+            models::StreamLoadResponse,
             models::ProfileListItem,
             models::ProfileDetail,
             models::RuntimeInfo,
@@ -633,6 +636,12 @@ where
         .route("/api/clusters/loads", get(handlers::load::list_loads))
         .route("/api/clusters/loads/:job_id", get(handlers::load::get_load))
         .route("/api/clusters/queries/execute", post(handlers::query::execute_sql))
+        .route(
+            "/api/clusters/queries/stream-load",
+            post(handlers::load::stream_load).layer(DefaultBodyLimit::max(
+                (services::stream_load::MAX_STREAM_LOAD_BYTES + 64 * 1024) as usize,
+            )),
+        )
         .route("/api/clusters/queries/cancel", post(handlers::query::cancel_running_query))
         .route("/api/clusters/queries/:query_id", delete(handlers::query::kill_query))
         .route("/api/clusters/queries/history", get(handlers::query_history::list_query_history))

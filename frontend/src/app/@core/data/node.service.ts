@@ -183,6 +183,17 @@ export interface QueryExecuteResult {
   total_execution_time_ms: number;
 }
 
+export interface StreamLoadResponse {
+  success: boolean;
+  status?: string;
+  label?: string;
+  message?: string;
+  number_total_rows?: number;
+  number_loaded_rows?: number;
+  number_filtered_rows?: number;
+  load_bytes?: number;
+}
+
 export type TableObjectType = 'TABLE' | 'VIEW' | 'MATERIALIZED_VIEW';
 
 export interface TableInfo {
@@ -464,6 +475,14 @@ export class NodeService {
   ): Observable<QueryExecuteResult> {
     const request: QueryExecuteRequest = { sql, limit, catalog, database, record_history: recordHistory };
     return this.api.post<QueryExecuteResult>(`/clusters/queries/execute`, request, 650000);
+  }
+
+  streamLoad(formData: FormData): Observable<StreamLoadResponse> {
+    return this.api.post<StreamLoadResponse>(
+      `/clusters/queries/stream-load`,
+      formData,
+      910000,
+    );
   }
 
   // Profile APIs

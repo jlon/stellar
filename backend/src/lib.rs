@@ -45,6 +45,14 @@ mod config_test;
 #[path = "tests/load_service_test.rs"]
 mod load_service_test;
 
+#[cfg(test)]
+#[path = "tests/stream_load_test.rs"]
+mod stream_load_test;
+
+#[cfg(test)]
+#[path = "tests/query_parser_test.rs"]
+mod query_parser_test;
+
 use crate::services::NotificationService;
 use crate::services::profile_analyzer::ProfileAnalysisCache;
 

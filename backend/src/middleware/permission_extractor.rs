@@ -279,6 +279,13 @@ fn extract_clusters_special_paths(segments: &[&str], method: &str) -> Option<Str
                 None
             }
         }),
+        Box::new(|seg, m| {
+            if m == "POST" && seg == ["clusters", "queries", "stream-load"] {
+                Some("queries:execute".to_string())
+            } else {
+                None
+            }
+        }),
         // Handle /api/clusters/db-auth/accounts and /api/clusters/db-auth/roles
         // Note: db-auth is a separate resource in permissions, not a clusters sub-action
         // So we need to handle it specially to extract it as a separate resource

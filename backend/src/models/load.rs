@@ -139,3 +139,16 @@ pub struct LoadListResponse {
     pub source: String,
     pub summary: LoadSummary,
 }
+
+/// Stream Load 透传后的引擎结果。只保留稳定、可展示的字段。
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct StreamLoadResponse {
+    pub success: bool,
+    pub status: Option<String>,
+    pub label: Option<String>,
+    pub message: Option<String>,
+    pub number_total_rows: Option<u64>,
+    pub number_loaded_rows: Option<u64>,
+    pub number_filtered_rows: Option<u64>,
+    pub load_bytes: Option<u64>,
+}
