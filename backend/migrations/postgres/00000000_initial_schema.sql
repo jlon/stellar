@@ -1845,3 +1845,23 @@ WHERE code = 'api:system:logs:archive';
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT (SELECT id FROM roles WHERE code = 'super_admin'), id FROM permissions
 WHERE code = 'api:system:logs:archive';
+
+-- ---------- 数据导入管理权限 ----------
+INSERT INTO permissions (code, name, type, resource, action, description) VALUES
+('menu:loads', '数据导入', 'menu', 'loads', 'view', '查看数据导入管理'),
+('api:clusters:loads', '查询导入任务', 'api', 'clusters', 'loads', 'GET /api/clusters/loads and /api/clusters/loads/:job_id')
+ON CONFLICT DO NOTHING;
+
+UPDATE permissions
+SET parent_id = (SELECT id FROM permissions WHERE code = 'menu:loads')
+WHERE code = 'api:clusters:loads';
+
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code = 'admin'), id FROM permissions
+WHERE code IN ('menu:loads', 'api:clusters:loads')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code = 'super_admin'), id FROM permissions
+WHERE code IN ('menu:loads', 'api:clusters:loads')
+ON CONFLICT DO NOTHING;
