@@ -558,7 +558,14 @@ impl<DB: AppDb> ClusterService<DB> {
                 let alive_count = backends.iter().filter(|b| b.alive == "true").count();
                 let total_count = backends.len();
 
-                if alive_count == total_count {
+                if total_count == 0 {
+                    checks.push(HealthCheck {
+                        name: "Compute Nodes".to_string(),
+                        status: "critical".to_string(),
+                        message: format!("No {} nodes found", node_type),
+                    });
+                    overall_status = HealthStatus::Critical;
+                } else if alive_count == total_count {
                     checks.push(HealthCheck {
                         name: "Compute Nodes".to_string(),
                         status: "ok".to_string(),

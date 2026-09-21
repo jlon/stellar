@@ -6,6 +6,7 @@
 //! 3. **Caching**: In-memory cache with configurable TTL
 //! 4. **Error resilience**: Never fails, always returns valid data
 
+use crate::config::AuditLogConfig;
 use crate::services::mysql_client::MySQLClient;
 use crate::services::profile_analyzer::analyzer::{
     AuditLogRecord, BaselineCacheManager, BaselineCalculator, BaselineProvider,
@@ -29,15 +30,32 @@ use tracing::{error, info, warn};
 pub struct BaselineService {
     calculator: BaselineCalculator,
     config: BaselineRefreshConfig,
+    audit_config: AuditLogConfig,
 }
 
 impl BaselineService {
     pub fn new() -> Self {
-        Self { calculator: BaselineCalculator::new(), config: BaselineRefreshConfig::default() }
+        Self {
+            calculator: BaselineCalculator::new(),
+            config: BaselineRefreshConfig::default(),
+            audit_config: AuditLogConfig::default(),
+        }
     }
 
     pub fn with_config(config: BaselineRefreshConfig) -> Self {
-        Self { calculator: BaselineCalculator::new(), config }
+        Self {
+            calculator: BaselineCalculator::new(),
+            config,
+            audit_config: AuditLogConfig::default(),
+        }
+    }
+
+    pub fn with_audit_config(audit_config: AuditLogConfig) -> Self {
+        Self {
+            calculator: BaselineCalculator::new(),
+            config: BaselineRefreshConfig::default(),
+            audit_config,
+        }
     }
 
     /// Get baseline for specific cluster and complexity - FAST, NEVER BLOCKS
@@ -207,8 +225,8 @@ impl BaselineService {
         use crate::models::cluster::ClusterType;
 
         let audit_table = match cluster_type {
-            ClusterType::StarRocks => "starrocks_audit_db__.starrocks_audit_tbl__",
-            ClusterType::Doris => "__internal_schema.audit_log",
+            ClusterType::StarRocks => self.audit_config.full_table_name(),
+            ClusterType::Doris => "__internal_schema.audit_log".to_string(),
         };
 
         let sql = format!("SELECT 1 FROM {} LIMIT 1", audit_table);
@@ -236,7 +254,7 @@ impl BaselineService {
             is_query_field,
         ) = match cluster_type {
             ClusterType::StarRocks => (
-                "starrocks_audit_db__.starrocks_audit_tbl__",
+                self.audit_config.full_table_name(),
                 "queryId",
                 "user",
                 "db",
@@ -248,7 +266,7 @@ impl BaselineService {
                 "isQuery",
             ),
             ClusterType::Doris => (
-                "__internal_schema.audit_log",
+                "__internal_schema.audit_log".to_string(),
                 "query_id",
                 "user",
                 "database",

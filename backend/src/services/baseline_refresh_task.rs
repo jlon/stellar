@@ -4,6 +4,7 @@
 //! Supports multi-cluster baselines with per-cluster isolation.
 //! Uses the ScheduledExecutor framework for periodic execution.
 
+use crate::config::AuditLogConfig;
 use crate::db::AppDb;
 use crate::services::baseline_service::BaselineService;
 use crate::services::cluster_service::ClusterService;
@@ -37,7 +38,7 @@ pub struct BaselineRefreshTask<DB: AppDb> {
     pool_manager: Arc<MySQLPoolManager>,
     /// Cluster service for getting clusters
     cluster_service: Arc<ClusterService<DB>>,
-    /// Baseline service for calculations
+    /// Baseline service for calculations and configured audit table access
     baseline_service: BaselineService,
     /// Shutdown flag
     shutdown: Arc<AtomicBool>,
@@ -49,13 +50,14 @@ impl<DB: AppDb> BaselineRefreshTask<DB> {
     pub fn new(
         pool_manager: Arc<MySQLPoolManager>,
         cluster_service: Arc<ClusterService<DB>>,
+        audit_config: AuditLogConfig,
     ) -> Self {
         BaselineProvider::init();
 
         Self {
             pool_manager,
             cluster_service,
-            baseline_service: BaselineService::new(),
+            baseline_service: BaselineService::with_audit_config(audit_config),
             shutdown: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -173,6 +175,7 @@ impl<DB: AppDb> ScheduledTask for BaselineRefreshTask<DB> {
 /// let shutdown_handle = start_baseline_refresh_task(
 ///     pool_manager.clone(),
 ///     cluster_service.clone(),
+///     audit_config.clone(),
 ///     3600, // 1 hour
 /// );
 ///
@@ -183,12 +186,13 @@ impl<DB: AppDb> ScheduledTask for BaselineRefreshTask<DB> {
 pub fn start_baseline_refresh_task(
     pool_manager: Arc<MySQLPoolManager>,
     cluster_service: Arc<ClusterService<DB>>,
+    audit_config: AuditLogConfig,
     interval_secs: u64,
 ) -> Arc<AtomicBool> {
     use crate::utils::scheduled_executor::ScheduledExecutor;
     use std::time::Duration;
 
-    let task = BaselineRefreshTask::new(pool_manager, cluster_service);
+    let task = BaselineRefreshTask::new(pool_manager, cluster_service, audit_config);
     let shutdown_handle = task.shutdown_handle();
 
     let executor = ScheduledExecutor::new("baseline-refresh", Duration::from_secs(interval_secs));

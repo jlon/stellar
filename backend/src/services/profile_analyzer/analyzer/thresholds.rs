@@ -243,7 +243,7 @@ impl DynamicThresholds {
 
         let base = match parallelism {
             p if p > 32 => 3.5,
-            p if p >= 16 => 3.0,  // Changed from > 16 to >= 16
+            p if p >= 16 => 3.0, // Changed from > 16 to >= 16
             p if p > 8 => 2.5,
             _ => 2.0,
         };
