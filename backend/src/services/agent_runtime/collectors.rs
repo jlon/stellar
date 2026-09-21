@@ -126,7 +126,7 @@ pub async fn collect_cluster_events<DB: AppDb>(
             object_type: "cluster",
             object_id: &cluster.id.to_string(),
             title: format!("运行中导入任务 {} 个，超过积压阈值", load_running),
-            summary: format!("{} 个导入任务积压，检查 BE 磁盘/compaction 状态", load_running),
+            summary: load_backlog_summary(cluster.is_shared_data(), load_running),
             metrics: json!({ "load_running": load_running }),
         },
     );
@@ -173,6 +173,7 @@ pub async fn collect_cluster_events<DB: AppDb>(
     // 2) 节点掉线：快照显示存活下降 → 调 adapter 找具体节点
     if be_alive < be_total {
         let mut found = false;
+        let (node_object_type, node_label) = compute_node_context(cluster.is_shared_data());
         if let Some(adapter) = adapter {
             if let Ok(backends) = adapter.get_backends().await {
                 for be in backends.iter().filter(|b| !is_alive(&b.alive)) {
@@ -180,10 +181,10 @@ pub async fn collect_cluster_events<DB: AppDb>(
                     outcome.candidates.push(make_candidate(
                         EventKind::NodeDown,
                         EventSeverity::Critical,
-                        "be",
+                        node_object_type,
                         &be.host,
                         format!("计算节点 {} 离线", be.host),
-                        format!("BE {} 离线（存活 {}/{}）", be.host, be_alive, be_total),
+                        format!("{} {} 离线（存活 {}/{})", node_label, be.host, be_alive, be_total),
                         json!({ "backend_alive": be_alive, "backend_total": be_total }),
                     ));
                 }
@@ -279,6 +280,18 @@ fn make_candidate(
 fn is_alive(s: &str) -> bool {
     let s = s.trim();
     s.eq_ignore_ascii_case("true") || s == "1"
+}
+
+pub(crate) fn compute_node_context(shared_data: bool) -> (&'static str, &'static str) {
+    if shared_data { ("cn", "CN") } else { ("be", "BE") }
+}
+
+pub(crate) fn load_backlog_summary(shared_data: bool, load_running: i32) -> String {
+    if shared_data {
+        format!("{} 个导入任务积压，检查 CN 负载、对象存储与 compaction 状态", load_running)
+    } else {
+        format!("{} 个导入任务积压，检查 BE 磁盘/compaction 状态", load_running)
+    }
 }
 
 /// 归并键：{kind}:{object_type}:{object_id}（cluster 维度在 SQL 中限定）

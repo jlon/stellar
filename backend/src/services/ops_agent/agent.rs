@@ -147,18 +147,8 @@ impl OltpDiagnosisAgent {
                 let _ = tx.send(ProgressEvent::Phase(phase));
             }
 
-            // 模型在工具调用回合穿插的思考文本（非空白）记录为推理步骤，
-            // 对齐 Flink AgentStepKind.REASONING（DefaultJobDiagnosisAgent 的 thinking 段）。
-            if !completion.tool_calls.is_empty() {
-                if let Some(thinking) = completion
-                    .content
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|t| !t.is_empty())
-                {
-                    record(&mut steps, &progress, AgentStep::reasoning(thinking.to_string()));
-                }
-            }
+            // 工具回合的模型草稿不是可审计证据，也不应作为用户可见的 Chain-of-Thought
+            // 持久化。会话记录只保留随后产生的结构化工具调用、结果与错误。
 
             if completion.tool_calls.is_empty() {
                 let answer = completion.content.unwrap_or_default().trim().to_string();

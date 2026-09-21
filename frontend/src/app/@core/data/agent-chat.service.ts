@@ -43,7 +43,6 @@ export class AgentChatService {
   }
 
   /** 停止当前回合（GPT 同款）：断开 SSE，后端在轮次边界取消，不再烧 token。 */
-  /** 停止当前回合（GPT 同款）：断开 SSE，后端在轮次边界取消，不再烧 token。 */
   stop(): void {
     this.turnSub?.unsubscribe();
     this.turnSub = null;
@@ -61,6 +60,10 @@ export class AgentChatService {
 
     this.turnSub = this.agentService.chatStream(req).subscribe({
       next: (ev: ChatStreamEvent) => {
+        if (ev.type === 'error') {
+          this.finishWithError(ev.message ?? '诊断失败');
+          return;
+        }
         if (ev.type === 'answer' && ev.final_answer) {
           this.lastAnswer = ev.final_answer;
         }
@@ -81,24 +84,34 @@ export class AgentChatService {
           }
         }
       },
-      error: (err) => {
-        this.running = false;
-        this.turnSub = null;
-        const message = err?.message ?? '请求失败';
-        this.turn$.next({ type: 'error', message } as ChatStreamEvent);
-        // 失败也要通知（产品语义：完成或出错都需要触达）
-        if (!this.uiFront) {
-          this.notificationService
-            .create(
-              'agent_chat_error',
-              '智能运维诊断失败',
-              message.length > 120 ? message.slice(0, 120) + '…' : message,
-              '/pages/cluster-ops/agent',
-              'critical',
-            )
-            .subscribe({ error: () => {} });
+      error: (err) => this.finishWithError(err?.error?.message ?? err?.message ?? '请求失败'),
+      complete: () => {
+        if (this.running) {
+          this.finishWithError('诊断流意外中断，请重试');
         }
       },
     });
+  }
+
+  /** 所有非成功终止路径都必须释放全局回合锁，避免后续发送被静默拦截。 */
+  private finishWithError(message: string): void {
+    if (!this.running) {
+      return;
+    }
+    this.running = false;
+    this.turnSub = null;
+    this.turn$.next({ type: 'error', message });
+    // 失败也要通知（产品语义：完成或出错都需要触达）
+    if (!this.uiFront) {
+      this.notificationService
+        .create(
+          'agent_chat_error',
+          '智能运维诊断失败',
+          message.length > 120 ? message.slice(0, 120) + '…' : message,
+          '/pages/cluster-ops/agent',
+          'critical',
+        )
+        .subscribe({ error: () => {} });
+    }
   }
 }

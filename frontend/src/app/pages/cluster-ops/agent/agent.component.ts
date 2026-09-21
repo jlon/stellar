@@ -13,6 +13,7 @@ import {
   AgentMessage,
   ChatStreamEvent,
   ChatActionRequest,
+  ChatActionView,
 } from '../../../@core/data/agent.service';
 import { AgentChatService } from '../../../@core/data/agent-chat.service';
 import { ConfirmDialogService } from '../../../@core/services/confirm-dialog.service';
@@ -21,11 +22,18 @@ import { ClusterContextService } from '../../../@core/data/cluster-context.servi
 import { Cluster } from '../../../@core/data/cluster.service';
 import { Subscription } from 'rxjs';
 
-/** 空态引导的预设问题（OLAP 使用者的高频心智：查得慢 / 跑批卡 / 磁盘紧 / 导入堵）。 */
+/** 空态引导的预设问题（OLAP 使用者的高频心智：查得慢 / 跑批卡 / 存储问题 / 导入堵）。 */
 const PRESET_QUESTIONS = [
   '为什么最近查询变慢了？',
   '这条慢查询到底慢在哪？',
   '磁盘快满了吗，还能撑多久？',
+  '现在有导入积压或大查询抢资源吗？',
+];
+
+const SHARED_DATA_PRESET_QUESTIONS = [
+  '为什么最近查询变慢了？',
+  '这条慢查询到底慢在哪？',
+  '对象存储或缓存是否影响查询性能？',
   '现在有导入积压或大查询抢资源吗？',
 ];
 
@@ -36,6 +44,12 @@ interface ViewMessage {
   steps: AgentMessage['steps'];
   /** 当前 LLM 轮正在抵达的文本，直接以 Markdown 形式实时渲染。 */
   liveText?: string;
+  /** 网络流中的未分类文本；确认是最终回答前不渲染，避免暴露模型草稿。 */
+  bufferedText?: string;
+  /** 已确认的最终回答，用于安全的前端渐进呈现。 */
+  answerTarget?: string;
+  answerRevealDone?: boolean;
+  doneReceived?: boolean;
   /** 当前轮语义仅用于工具回合完成后清理临时草稿。 */
   phase?: 'reasoning' | 'answer';
   /** 流式中显示光标；done 后切为持久化的最终答案。 */
@@ -48,18 +62,29 @@ interface ViewMessage {
   feedback?: string | null;
   /** 用户手动停止的回合（保留已到文本 + 停止标记）。 */
   stopped?: boolean;
+  /** 这条助手消息在流式期间收到的动作申请。 */
+  actionIds?: number[];
+  /** 证据引用的展开状态。 */
+  evidenceOpen?: boolean;
 }
 
-/** 思考过程时间线项：思考与工具调用按发生顺序交错排列。 */
+/** 诊断活动项：只包含可审计的工具、结果、错误和确定性状态。 */
 interface TraceItem {
-  kind: 'thinking' | 'tool' | 'error';
+  kind: 'status' | 'tool' | 'error';
   title: string;
   detail?: string;
+  args?: Record<string, unknown>;
   durationMs?: number;
   /** undefined = 仍在执行中。 */
   ok?: boolean;
-  /** 长详情是否展开（默认收起露 4 行）。 */
-  open?: boolean;
+  /** 参数与长结果独立展开，避免单次点击同时撑开全部信息。 */
+  argsOpen?: boolean;
+  resultOpen?: boolean;
+}
+
+interface TurnStage {
+  label: string;
+  status: 'done' | 'active' | 'pending';
 }
 
 @Component({
@@ -91,7 +116,7 @@ export class AgentComponent implements OnInit, OnDestroy {
   private cdRef = inject(ChangeDetectorRef);
   private clusterContext = inject(ClusterContextService);
   private toastr = inject(NbToastrService);
-  private host = inject(ElementRef);
+  private host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   cluster: Cluster | null = null;
 
@@ -110,12 +135,18 @@ export class AgentComponent implements OnInit, OnDestroy {
     return this.host.nativeElement.querySelector('.agent-messages');
   }
   private transcriptRequest?: Subscription;
+  private turnEventsSub?: Subscription;
   private transcriptLoadId = 0;
   private readonly transcriptCache = new Map<number, ViewMessage[]>();
   private streamRenderFrame: number | null = null;
+  private answerRevealFrame: number | null = null;
   private scrollFrame: number | null = null;
   private scrollForce = false;
   private readonly minTranscriptLoadingMs = 180;
+  private readonly actionsById = new Map<number, ChatActionView>();
+  private actionsRevision = 0;
+  private actionLoadId = 0;
+  private actionClock: number | null = null;
 
   ngOnInit(): void {
     // 通知直达：/pages/cluster-ops/agent?session=<id> 自动打开对应会话
@@ -130,12 +161,19 @@ export class AgentComponent implements OnInit, OnDestroy {
     this.chatService.setUiFront(true);
 
     // 当前回合广播订阅（回合由全局服务持有，页面销毁不断连）
-    this.chatService.events().subscribe((ev) => {
+    this.turnEventsSub = this.chatService.events().subscribe((ev) => {
       if (!this.turnMessage) {
         return;
       }
       this.applyStreamEvent(this.turnMessage, ev);
     });
+
+    // 动作 TTL 只需低频刷新；不以高频计时器干扰流式渲染。
+    this.actionClock = window.setInterval(() => {
+      if ([...this.actionsById.values()].some((action) => action.status === 'pending')) {
+        this.cdRef.detectChanges();
+      }
+    }, 30_000);
 
     this.clusterContext.activeCluster$.subscribe((c) => {
       this.cluster = c;
@@ -146,11 +184,18 @@ export class AgentComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.chatService.setUiFront(false);
     this.transcriptRequest?.unsubscribe();
+    this.turnEventsSub?.unsubscribe();
     if (this.streamRenderFrame !== null) {
       cancelAnimationFrame(this.streamRenderFrame);
     }
+    if (this.answerRevealFrame !== null) {
+      cancelAnimationFrame(this.answerRevealFrame);
+    }
     if (this.scrollFrame !== null) {
       cancelAnimationFrame(this.scrollFrame);
+    }
+    if (this.actionClock !== null) {
+      window.clearInterval(this.actionClock);
     }
   }
 
@@ -162,6 +207,7 @@ export class AgentComponent implements OnInit, OnDestroy {
    * 已访问会话走本地转录缓存，切换时不再等待网络。
    */
   private loadTranscript(sessionId: number): void {
+    this.loadActions(sessionId);
     const cached = this.transcriptCache.get(sessionId);
     if (cached) {
       this.messages = this.cloneTranscript(cached);
@@ -234,7 +280,7 @@ export class AgentComponent implements OnInit, OnDestroy {
     }
     this.saveDraft();
     this.activeSessionId = sessionId;
-    this.pendingActions = [];
+    this.clearActions();
     this.restoreDraft();
     this.loadTranscript(sessionId);
   }
@@ -243,6 +289,7 @@ export class AgentComponent implements OnInit, OnDestroy {
     this.saveDraft();
     this.activeSessionId = null;
     this.messages = [];
+    this.clearActions();
     this.restoreDraft();
   }
 
@@ -377,64 +424,173 @@ export class AgentComponent implements OnInit, OnDestroy {
   }
 
   private turnMessage: ViewMessage | null = null;
-  /** 待确认的对话内动作（确认卡列表，渲染在消息流底部）。 */
-  pendingActions: ChatActionRequest[] = [];
   /** 切换会话加载中。 */
   loadingTranscript = false;
+
+  /** 读取持久动作，确保刷新和重新打开会话后仍能审阅每次决定。 */
+  private loadActions(sessionId: number): void {
+    const loadId = ++this.actionLoadId;
+    this.agentService.listChatActions(sessionId).subscribe({
+      next: (actions) => {
+        if (loadId !== this.actionLoadId || sessionId !== this.activeSessionId) {
+          return;
+        }
+        this.actionsById.clear();
+        for (const action of actions) {
+          this.actionsById.set(action.id, action);
+        }
+        this.actionsRevision++;
+        this.cdRef.detectChanges();
+      },
+      // 对话内容仍可正常显示；动作审计接口失败不应遮挡整段转录。
+      error: () => undefined,
+    });
+  }
+
+  private clearActions(): void {
+    this.actionLoadId++;
+    this.actionsById.clear();
+    this.actionsRevision++;
+  }
+
+  private upsertAction(action: ChatActionView): void {
+    this.actionsById.set(action.id, action);
+    this.actionsRevision++;
+  }
+
+  private toActionView(action: ChatActionRequest): ChatActionView {
+    return {
+      ...action,
+      session_id: this.activeSessionId ?? 0,
+      status: 'pending',
+      action_uuid: '',
+      created_by: '',
+      created_at: '',
+    };
+  }
+
+  /** 从已持久化的工具结果恢复动作卡，兼容旧会话而无需新增表关联。 */
+  private actionRequestFromResult(result?: string): ChatActionRequest | null {
+    const prefix = 'ACTION_PENDING:';
+    if (!result?.startsWith(prefix)) {
+      return null;
+    }
+    try {
+      const action = JSON.parse(result.slice(prefix.length)) as ChatActionRequest;
+      return typeof action.id === 'number' && !!action.title ? action : null;
+    } catch {
+      return null;
+    }
+  }
 
   /** 把广播回合事件应用到当前回合占位气泡（Flink 同款 token 直达气泡）。 */
   private applyStreamEvent(assistant: ViewMessage, ev: ChatStreamEvent): void {
     if (ev.type === 'delta' && ev.text) {
-      assistant.liveText = (assistant.liveText ?? '') + ev.text;
-      this.scheduleStreamRender();
+      // 在本轮是否调用工具尚不确定前，缓冲模型文本而不直接展示。工具回合的
+      // 草稿不属于用户可见的诊断记录；最终回答会在 answer 事件后安全渐进显示。
+      assistant.bufferedText = (assistant.bufferedText ?? '') + ev.text;
     } else if (ev.type === 'phase') {
       assistant.phase = ev.phase as 'reasoning' | 'answer';
       if (assistant.phase === 'reasoning') {
-        // 工具回合的草稿已转存到后端 reasoning step；清空临时气泡，等待工具链。
-        assistant.liveText = '';
+        assistant.bufferedText = '';
       }
       this.scheduleStreamRender();
     } else if (ev.type === 'step' && ev.step) {
       assistant.steps = [...assistant.steps, ev.step];
       this.scheduleStreamRender();
     } else if (ev.type === 'answer') {
-      assistant.content = ev.final_answer ?? assistant.liveText ?? '';
-      assistant.liveText = assistant.content;
-      this.scheduleStreamRender();
+      this.revealAnswer(assistant, ev.final_answer ?? assistant.bufferedText ?? '');
     } else if (ev.type === 'action_request' && ev.action) {
-      // 对话内动作申请确认卡：去重后展示
-      if (!this.pendingActions.some((a) => a.id === ev.action!.id)) {
-        this.pendingActions.push(ev.action!);
-      }
+      const action = this.toActionView(ev.action);
+      this.upsertAction(action);
+      assistant.actionIds = assistant.actionIds?.includes(action.id)
+        ? assistant.actionIds
+        : [...(assistant.actionIds ?? []), action.id];
       this.scrollToBottom(true);
     } else if (ev.type === 'done') {
       const visibleTurn = this.messages.includes(assistant);
       if (visibleTurn) {
         this.activeSessionId = ev.session_id ?? this.activeSessionId;
       }
-      assistant.content = assistant.content || assistant.liveText || '';
-      assistant.liveText = undefined;
-      assistant.streaming = false;
-      this.sending = false;
-      if (visibleTurn && this.activeSessionId) {
-        this.transcriptCache.set(this.activeSessionId, this.cloneTranscript(this.messages));
+      assistant.doneReceived = true;
+      if (!assistant.answerTarget) {
+        this.revealAnswer(assistant, assistant.bufferedText ?? '');
       }
-      this.turnMessage = null;
-      this.reloadSessions();
-      this.renderNow();
+      this.finishAnswerIfReady(assistant, visibleTurn);
     } else if (ev.type === 'error') {
-      assistant.content = `⚠️ ${ev.message ?? '诊断失败'}`;
+      this.cancelAnswerReveal();
+      const message = ev.message ?? '诊断失败';
+      assistant.content = `⚠️ ${message}`;
       assistant.liveText = undefined;
+      assistant.bufferedText = undefined;
       assistant.streaming = false;
       this.sending = false;
       this.turnMessage = null;
+      this.toastr.danger(message, this.i18n.instant('智能运维助手'));
       this.renderNow();
     }
   }
 
+  /** 安全的前端渐进呈现：只动画已确认的最终回答，不显示模型工具草稿。 */
+  private revealAnswer(assistant: ViewMessage, answer: string): void {
+    this.cancelAnswerReveal();
+    assistant.answerTarget = answer;
+    assistant.answerRevealDone = false;
+    assistant.liveText = '';
+    assistant.bufferedText = undefined;
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const step = () => {
+      const visibleLength = assistant.liveText?.length ?? 0;
+      const nextLength = reduceMotion
+        ? answer.length
+        : Math.min(answer.length, visibleLength + Math.max(4, Math.ceil(answer.length / 150)));
+      assistant.liveText = answer.slice(0, nextLength);
+      this.scheduleStreamRender();
+      if (nextLength < answer.length) {
+        this.answerRevealFrame = requestAnimationFrame(step);
+        return;
+      }
+      this.answerRevealFrame = null;
+      assistant.answerRevealDone = true;
+      this.finishAnswerIfReady(assistant, this.messages.includes(assistant));
+    };
+    step();
+  }
+
+  private cancelAnswerReveal(): void {
+    if (this.answerRevealFrame !== null) {
+      cancelAnimationFrame(this.answerRevealFrame);
+      this.answerRevealFrame = null;
+    }
+  }
+
+  private finishAnswerIfReady(assistant: ViewMessage, visibleTurn: boolean): void {
+    if (!assistant.doneReceived || !assistant.answerRevealDone) {
+      return;
+    }
+    assistant.content = assistant.answerTarget ?? '';
+    assistant.liveText = undefined;
+    assistant.streaming = false;
+    this.sending = false;
+    if (visibleTurn && this.activeSessionId) {
+      this.transcriptCache.set(this.activeSessionId, this.cloneTranscript(this.messages));
+      this.loadActions(this.activeSessionId);
+    }
+    this.turnMessage = null;
+    this.reloadSessions();
+    this.renderNow();
+  }
+
   send(): void {
     const text = this.input.trim();
-    if (!text || this.sending || !this.cluster || this.chatService.isRunning()) {
+    if (!text || this.sending || !this.cluster) {
+      return;
+    }
+    if (this.chatService.isRunning()) {
+      this.toastr.warning(
+        this.i18n.instant('正在处理上一条消息，请等待完成或停止当前诊断'),
+        this.i18n.instant('智能运维助手'),
+      );
       return;
     }
     this.sending = true;
@@ -445,8 +601,8 @@ export class AgentComponent implements OnInit, OnDestroy {
     this.cdRef.detectChanges();
     this.scrollToBottom(true);
 
-    // Streaming turn: placeholder bubble fills in as steps/answer arrive.
-    const assistant: ViewMessage = { role: 'assistant', content: '', steps: [], liveText: '', streaming: true };
+    // 工具回合先显示结构化活动；只有确认是最终回答后才显示文本。
+    const assistant: ViewMessage = { role: 'assistant', content: '', steps: [], bufferedText: '', streaming: true };
     this.messages.push(assistant);
     this.turnMessage = assistant;
 
@@ -482,13 +638,11 @@ export class AgentComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * 一轮会话的时间线（带缓存）：思考与工具调用按发生顺序交错排列，
-   * 每次工具调用与其结果合并为一行（调用中则标记执行中）。
-   *
-   * 模板多次调用 + 流式期间高频变更检测，必须复用实例，
-   * 否则展开状态（t.open）会随重建丢失（点开即被下一个 token 收起）。
+   * 一轮会话的可审计活动（带缓存）。原始 reasoning 文本永不进入用户视图；
+   * 工具调用和结果合并成一行，参数和结果分别渐进展开。
    */
   private readonly timelineCache = new WeakMap<ViewMessage, { len: number; items: TraceItem[] }>();
+  private readonly actionMessageCache = new WeakMap<ViewMessage, { len: number; revision: number; items: ChatActionView[] }>();
 
   timeline(m: ViewMessage): TraceItem[] {
     const len = m.steps?.length ?? 0;
@@ -510,9 +664,9 @@ export class AgentComponent implements OnInit, OnDestroy {
         continue;
       }
       if (s.kind === 'reasoning') {
-        const text = (s.detail || '').trim();
-        if (text) {
-          items.push({ kind: 'thinking', title: this.i18n.instant('思考'), detail: text });
+        // 兼容历史会话中保留的系统状态；模型自由文本不展示。
+        if ((s.detail || '').startsWith('工具执行完成')) {
+          items.push({ kind: 'status', title: this.i18n.instant('正在综合已收集的证据') });
         }
         continue;
       }
@@ -522,22 +676,25 @@ export class AgentComponent implements OnInit, OnDestroy {
         if (paired) {
           i++;
         }
+        const action = this.actionRequestFromResult(paired?.result);
         items.push({
           kind: 'tool',
           title: this.toolLabel(s.label),
           durationMs: paired?.duration_ms,
           ok: paired ? paired.status !== 'error' : undefined,
-          detail: paired?.result || undefined,
+          args: s.args,
+          detail: action ? undefined : paired?.result || undefined,
         });
         continue;
       }
       if (s.kind === 'tool_result') {
+        const action = this.actionRequestFromResult(s.result);
         items.push({
           kind: 'tool',
           title: this.toolLabel(s.label),
           durationMs: s.duration_ms,
           ok: s.status !== 'error',
-          detail: s.result || undefined,
+          detail: action ? undefined : s.result || undefined,
         });
         continue;
       }
@@ -555,15 +712,174 @@ export class AgentComponent implements OnInit, OnDestroy {
     return !!text && text.length > 200;
   }
 
+  hasArgs(t: TraceItem): boolean {
+    return !!t.args && Object.keys(t.args).length > 0;
+  }
+
+  formatArgs(args?: Record<string, unknown>): string {
+    return JSON.stringify(args ?? {}, null, 2);
+  }
+
+  isCodeOutput(text?: string): boolean {
+    return !!text && (/^\s*[\[{]/.test(text) || /\b(SELECT|SHOW|EXPLAIN|KILL|SET)\b/i.test(text));
+  }
+
+  durationLabel(durationMs?: number): string {
+    if (!durationMs || durationMs < 1_000) {
+      return durationMs ? `${durationMs}ms` : '';
+    }
+    const seconds = durationMs / 1_000;
+    return `${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)}s`;
+  }
+
+  activityLabel(m: ViewMessage): string {
+    const running = this.timeline(m).find((item) => item.kind === 'tool' && item.ok === undefined);
+    if (running) {
+      return `${this.i18n.instant('正在执行')}：${running.title}`;
+    }
+    if (m.phase === 'answer') {
+      return this.i18n.instant('正在形成诊断结论');
+    }
+    return this.i18n.instant('正在建立诊断上下文');
+  }
+
+  activitySummary(m: ViewMessage): string {
+    const items = this.timeline(m);
+    const tools = items.filter((item) => item.kind === 'tool');
+    const failed = tools.filter((item) => item.ok === false).length;
+    const totalMs = tools.reduce((total, item) => total + (item.durationMs ?? 0), 0);
+    if (!tools.length) {
+      return this.i18n.instant('已完成本轮诊断');
+    }
+    const duration = this.durationLabel(totalMs);
+    const base = `${this.i18n.instant('已完成')} ${tools.length} ${this.i18n.instant('次取证')}`;
+    const failedText = failed ? ` · ${failed} ${this.i18n.instant('项失败')}` : '';
+    return `${base}${duration ? ` · ${duration}` : ''}${failedText}`;
+  }
+
+  turnStages(m: ViewMessage): TurnStage[] {
+    const tools = this.timeline(m).filter((item) => item.kind === 'tool');
+    const toolsDone = tools.length > 0 && tools.every((item) => item.ok !== undefined);
+    const answering = m.phase === 'answer' || !!m.answerTarget;
+    return [
+      {
+        label: this.i18n.instant('收集证据'),
+        status: answering || toolsDone ? 'done' : 'active',
+      },
+      {
+        label: this.i18n.instant('分析证据'),
+        status: answering ? 'done' : tools.length ? 'active' : 'pending',
+      },
+      {
+        label: this.i18n.instant('形成结论'),
+        status: answering ? 'active' : 'pending',
+      },
+    ];
+  }
+
+  evidence(m: ViewMessage): TraceItem[] {
+    return this.timeline(m).filter((item) => item.kind === 'tool' && item.ok === true && !!item.detail);
+  }
+
+  showEvidence(m: ViewMessage, item: TraceItem): void {
+    m.evidenceOpen = true;
+    m.traceOpen = true;
+    item.resultOpen = true;
+    this.cdRef.detectChanges();
+    const index = this.timeline(m).indexOf(item);
+    if (index < 0) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      const target = this.host.nativeElement.querySelector(`#${this.traceAnchorId(m, index)}`) as HTMLElement | null;
+      if (!target) {
+        return;
+      }
+      const behavior = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+      target.scrollIntoView({ block: 'nearest', behavior });
+      target.focus({ preventScroll: true });
+    });
+  }
+
+  /** 证据列表与诊断活动之间的稳定阅读器锚点。 */
+  traceAnchorId(m: ViewMessage, index: number): string {
+    return `agent-trace-${m.id ?? this.messages.indexOf(m)}-${index}`;
+  }
+
+  evidenceListId(m: ViewMessage): string {
+    return `agent-evidence-${m.id ?? this.messages.indexOf(m)}`;
+  }
+
+  /** 会话转录与实时 SSE 共用同一套动作卡数据。 */
+  messageActions(m: ViewMessage): ChatActionView[] {
+    const cached = this.actionMessageCache.get(m);
+    const len = m.steps?.length ?? 0;
+    if (cached && cached.len === len && cached.revision === this.actionsRevision) {
+      return cached.items;
+    }
+    const ids = new Set<number>(m.actionIds ?? []);
+    for (const step of m.steps ?? []) {
+      const action = this.actionRequestFromResult(step.result);
+      if (action) {
+        ids.add(action.id);
+        if (!this.actionsById.has(action.id)) {
+          this.actionsById.set(action.id, this.toActionView(action));
+        }
+      }
+    }
+    const items = [...ids]
+      .map((id) => this.actionsById.get(id))
+      .filter((action): action is ChatActionView => !!action);
+    this.actionMessageCache.set(m, { len, revision: this.actionsRevision, items });
+    return items;
+  }
+
+  trackAction(_index: number, action: ChatActionView): number {
+    return action.id;
+  }
+
   /** 时间线项图标（Eva outline，已在 eva-icons/outline-icons.json 校验存在）。 */
   traceIcon(t: TraceItem): string {
-    if (t.kind === 'thinking') {
+    if (t.kind === 'status') {
       return 'bulb-outline';
     }
     if (t.kind === 'error' || t.ok === false) {
       return 'alert-triangle-outline';
     }
     return t.ok === undefined ? 'loader-outline' : 'flash-outline';
+  }
+
+  /** 会话列表遵循 listbox 键盘语义，避免只能用鼠标切换历史记录。 */
+  onSessionListKeydown(event: KeyboardEvent): void {
+    const sessions = this.filteredSessions();
+    if (!sessions.length || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+      return;
+    }
+    event.preventDefault();
+    const activeIndex = Math.max(0, sessions.findIndex((session) => session.id === this.activeSessionId));
+    const nextIndex = event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? sessions.length - 1
+        : (activeIndex + (event.key === 'ArrowDown' ? 1 : -1) + sessions.length) % sessions.length;
+    const session = sessions[nextIndex];
+    this.openSession(session.id);
+    requestAnimationFrame(() => {
+      const active = this.host.nativeElement.querySelector('.session-item.active') as HTMLElement | null;
+      active?.focus();
+    });
+  }
+
+  copyTraceResult(text?: string): void {
+    if (!text) {
+      return;
+    }
+    const done = () => this.toastr.success(this.i18n.instant('已复制'), this.i18n.instant('诊断证据'));
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(() => this.legacyCopy(text, done));
+    } else {
+      this.legacyCopy(text, done);
+    }
   }
 
   /** 复制回答正文（GPT 同款 hover 操作）。 */
@@ -609,7 +925,11 @@ export class AgentComponent implements OnInit, OnDestroy {
   }
 
   private cloneTranscript(messages: ViewMessage[]): ViewMessage[] {
-    return messages.map((message) => ({ ...message, steps: [...message.steps] }));
+    return messages.map((message) => ({
+      ...message,
+      steps: [...message.steps],
+      actionIds: message.actionIds ? [...message.actionIds] : undefined,
+    }));
   }
 
   /** 流式回调可能不在 Angular Zone；每帧最多做一次检测，既稳定又不阻塞主线程。 */
@@ -680,33 +1000,154 @@ export class AgentComponent implements OnInit, OnDestroy {
   }
 
   get presets(): string[] {
-    return PRESET_QUESTIONS.map(q => this.i18n.instant(q));
+    const questions = this.cluster?.deployment_mode === 'shared_data'
+      ? SHARED_DATA_PRESET_QUESTIONS
+      : PRESET_QUESTIONS;
+    return questions.map(q => this.i18n.instant(q));
   }
 
-  confirmActionCard(action: ChatActionRequest): void {
+  get emptyStateHint(): string {
+    return this.cluster?.deployment_mode === 'shared_data'
+      ? '集群查询变慢 · 存储与缓存性能 · 节点异常 · 导入积压 —— 我先取证，再给有数据依据的结论'
+      : '集群查询变慢 · 磁盘告急 · 节点异常 · 导入积压 —— 我先取证，再给有数据依据的结论';
+  }
+
+  actionStatus(action: ChatActionView): ChatActionView['status'] {
+    return action.status === 'pending' && this.isActionExpired(action) ? 'expired' : action.status;
+  }
+
+  actionStatusLabel(action: ChatActionView): string {
+    const labels: Record<ChatActionView['status'], string> = {
+      pending: this.i18n.instant('等待确认'),
+      executing: this.i18n.instant('正在执行'),
+      executed: this.i18n.instant('已执行'),
+      failed: this.i18n.instant('执行失败'),
+      cancelled: this.i18n.instant('已拒绝'),
+      expired: this.i18n.instant('已过期'),
+    };
+    return labels[this.actionStatus(action)];
+  }
+
+  actionIcon(action: ChatActionView): string {
+    const status = this.actionStatus(action);
+    if (status === 'executed') {
+      return 'checkmark-circle-2-outline';
+    }
+    if (status === 'failed' || status === 'cancelled' || status === 'expired') {
+      return status === 'cancelled' ? 'close-circle-outline' : 'alert-triangle-outline';
+    }
+    return status === 'executing' ? 'loader-outline' : 'shield-outline';
+  }
+
+  actionCanRespond(action: ChatActionView): boolean {
+    return this.actionStatus(action) === 'pending';
+  }
+
+  actionPreview(action: ChatActionView): string {
+    if (action.kind === 'kill_query') {
+      return `KILL QUERY ${String(action.params.query_id ?? '')}`;
+    }
+    if (action.kind === 'update_variable') {
+      const scope = String(action.params.scope ?? 'global').toUpperCase();
+      return `SET ${scope} ${String(action.params.key ?? '')} = ${String(action.params.value ?? '')}`;
+    }
+    return action.title;
+  }
+
+  actionScope(action: ChatActionView): string {
+    if (action.kind === 'kill_query') {
+      return `${this.i18n.instant('目标查询')}：${String(action.params.query_id ?? '-')}`;
+    }
+    if (action.kind === 'update_variable') {
+      return `${this.i18n.instant('集群变量')}：${String(action.params.scope ?? 'global').toUpperCase()}.${String(action.params.key ?? '-')}`;
+    }
+    return this.i18n.instant('当前集群');
+  }
+
+  actionParameters(action: ChatActionView): Array<{ label: string; value: string }> {
+    if (action.kind === 'kill_query') {
+      return [{ label: 'Query ID', value: String(action.params.query_id ?? '-') }];
+    }
+    if (action.kind === 'update_variable') {
+      return [
+        { label: this.i18n.instant('作用域'), value: String(action.params.scope ?? 'global').toUpperCase() },
+        { label: this.i18n.instant('变量'), value: String(action.params.key ?? '-') },
+        { label: this.i18n.instant('新值'), value: String(action.params.value ?? '-') },
+      ];
+    }
+    return Object.entries(action.params).map(([label, value]) => ({
+      label,
+      value: typeof value === 'string' ? value : JSON.stringify(value),
+    }));
+  }
+
+  actionExpiryLabel(action: ChatActionView): string {
+    if (this.isActionExpired(action)) {
+      return this.i18n.instant('确认窗口已关闭');
+    }
+    const deadline = this.actionDeadline(action);
+    const minutes = Math.max(1, Math.ceil((deadline.getTime() - Date.now()) / 60_000));
+    return `${this.i18n.instant('剩余')} ${minutes} ${this.i18n.instant('分钟可确认')}`;
+  }
+
+  actionAuditLabel(action: ChatActionView): string {
+    const status = this.actionStatus(action);
+    if (status === 'executed' || status === 'failed') {
+      return action.confirmed_by
+        ? this.i18n.instant('确认人：{user}', { user: action.confirmed_by })
+        : this.i18n.instant('已记录执行结果');
+    }
+    if (status === 'cancelled') {
+      return this.i18n.instant('该动作未执行');
+    }
+    return this.actionExpiryLabel(action);
+  }
+
+  private actionDeadline(action: ChatActionView): Date {
+    const value = action.expires_at.includes('T') ? action.expires_at : action.expires_at.replace(' ', 'T');
+    return new Date(value.endsWith('Z') ? value : `${value}Z`);
+  }
+
+  private isActionExpired(action: ChatActionView): boolean {
+    const deadline = this.actionDeadline(action).getTime();
+    return Number.isFinite(deadline) && deadline <= Date.now();
+  }
+
+  confirmActionCard(action: ChatActionView): void {
+    if (!this.actionCanRespond(action)) {
+      return;
+    }
+    this.upsertAction({ ...action, status: 'executing' });
+    this.cdRef.detectChanges();
     this.agentService.confirmChatAction(action.id).subscribe({
       next: (r) => {
-        const a = r.action;
+        const updated = r.action;
+        this.upsertAction(updated);
         this.toastr.success(
-          a.status === 'executed' ? a.result_json ?? '执行成功' : a.result_json ?? '执行失败',
+          updated.status === 'executed' ? updated.result_json ?? '执行成功' : updated.result_json ?? '执行失败',
           '动作执行',
         );
-        this.pendingActions = this.pendingActions.filter((x) => x.id !== action.id);
-        // 执行结果已由后端写入会话消息，刷新转录
+        // 执行结果已由后端写入会话消息，刷新转录。
         if (this.activeSessionId) {
           this.transcriptCache.delete(this.activeSessionId);
           this.loadTranscript(this.activeSessionId);
         }
       },
-      error: (e) => this.toastr.danger(e?.error?.message ?? '确认失败', '动作执行'),
+      error: (e) => {
+        this.upsertAction(action);
+        this.toastr.danger(e?.error?.message ?? '确认失败', '动作执行');
+      },
     });
   }
 
-  rejectActionCard(action: ChatActionRequest): void {
+  rejectActionCard(action: ChatActionView): void {
+    if (!this.actionCanRespond(action)) {
+      return;
+    }
     this.agentService.cancelChatAction(action.id).subscribe({
-      next: () => {
+      next: (r) => {
+        this.upsertAction(r.action);
         this.toastr.success(this.i18n.instant('已拒绝该动作'), this.i18n.instant('动作执行'));
-        this.pendingActions = this.pendingActions.filter((x) => x.id !== action.id);
       },
       error: (e) => this.toastr.danger(e?.error?.message ?? '取消失败', '动作执行'),
     });
@@ -720,6 +1161,11 @@ export class AgentComponent implements OnInit, OnDestroy {
   /** 回车发送 / Shift+回车换行（中文输入法组词中不触发）。 */
   onInputKey(event: KeyboardEvent): void {
     if (event.isComposing || event.keyCode === 229) {
+      return;
+    }
+    if (event.key === 'Escape' && this.sending) {
+      event.preventDefault();
+      this.stopTurn();
       return;
     }
     if (event.key === 'Enter' && (!event.shiftKey || event.ctrlKey || event.metaKey)) {
@@ -752,8 +1198,10 @@ export class AgentComponent implements OnInit, OnDestroy {
     }
     this.chatService.stop();
     const assistant = this.turnMessage;
+    this.cancelAnswerReveal();
     assistant.content = assistant.content || assistant.liveText || '';
     assistant.liveText = undefined;
+    assistant.bufferedText = undefined;
     assistant.streaming = false;
     assistant.stopped = true;
     this.sending = false;

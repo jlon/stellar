@@ -27,10 +27,11 @@ impl<DB: AppDb> QueryNodesTool<DB> {
                 Ok(truncate(&serde_json::to_string(&nodes).unwrap_or_default(), 6000))
             },
             _ => {
+                let node_label = if self.ctx.cluster.is_shared_data() { "CN" } else { "BE" };
                 let nodes = adapter
                     .get_backends()
                     .await
-                    .map_err(|e| format!("获取 BE 节点失败: {}", e))?;
+                    .map_err(|e| format!("获取 {} 节点失败: {}", node_label, e))?;
                 Ok(truncate(&serde_json::to_string(&nodes).unwrap_or_default(), 6000))
             },
         }
@@ -45,15 +46,15 @@ impl<DB: AppDb> AgentTool for QueryNodesTool<DB> {
     }
 
     fn description(&self) -> &'static str {
-        "查询集群节点的实时状态。kind=be 返回所有 BE（Backend）节点的存活状态、地址、\
-         磁盘与 tablet 信息；kind=fe 返回 FE（Frontend）节点。用于定位掉线/异常节点。"
+        "查询集群节点的实时状态。kind=be 返回所有计算节点（存算一体为 BE，存算分离为 CN）的\
+         存活状态、地址及节点指标；kind=fe 返回 FE（Frontend）节点。用于定位掉线/异常节点。"
     }
 
     fn parameters(&self) -> Value {
         json!({
             "type": "object",
             "properties": {
-                "kind": { "type": "string", "enum": ["be", "fe"], "description": "节点类型，默认 be" }
+                "kind": { "type": "string", "enum": ["be", "fe"], "description": "节点类型（be 表示当前集群的计算节点），默认 be" }
             }
         })
     }

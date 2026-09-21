@@ -10,4 +10,7 @@ pub mod llm_diagnosis;
 pub mod models;
 pub mod service;
 
+#[cfg(test)]
+mod tests;
+
 pub use service::AgentRuntimeService;

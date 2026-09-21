@@ -15,18 +15,17 @@ pub fn diagnose(events: &[EventRow]) -> DiagnosisOutcome {
         DiagnosisOutcome {
             root_cause_type: "node_failure".to_string(),
             confidence: 0.9,
-            summary: "计算节点离线，优先处理节点故障：检查 BE 进程、网络与磁盘状态。"
-                .to_string(),
+            summary: "计算节点离线，优先处理节点故障：检查进程、网络与本地资源状态。".to_string(),
             actions: vec![
                 DiagnosisAction {
-                    title: "检查离线 BE 节点".to_string(),
-                    detail: "登录对应 BE 主机确认进程存活（ps/be 日志），检查磁盘剩余空间与网络连通性。"
+                    title: "检查离线计算节点".to_string(),
+                    detail: "登录对应主机确认进程存活，检查系统日志、内存、网络连通性与本地资源。"
                         .to_string(),
                     risk_level: "low".to_string(),
                 },
                 DiagnosisAction {
                     title: "观察恢复与负载分配".to_string(),
-                    detail: "节点恢复后核对存活数（be_alive/be_total）回到 1.0，确认 tablet 均衡与查询无异常。"
+                    detail: "节点恢复后确认计算节点存活数恢复正常，核对负载重新分配且查询无异常。"
                         .to_string(),
                     risk_level: "low".to_string(),
                 },
@@ -61,8 +60,8 @@ pub fn diagnose(events: &[EventRow]) -> DiagnosisOutcome {
             summary: "Compaction Score 偏高，compaction 积压拖慢合并与查询。".to_string(),
             actions: vec![
                 DiagnosisAction {
-                    title: "检查磁盘 IO 与 compaction 并发".to_string(),
-                    detail: "确认 BE 磁盘 IO 未饱和；compaction score 持续高位时评估调整 max_compaction_concurrency。"
+                    title: "检查计算节点资源与 compaction 并发".to_string(),
+                    detail: "确认计算节点的 IO、CPU 未饱和；compaction score 持续高位时评估调整 max_compaction_concurrency。"
                         .to_string(),
                     risk_level: "low".to_string(),
                 },
@@ -77,10 +76,11 @@ pub fn diagnose(events: &[EventRow]) -> DiagnosisOutcome {
         DiagnosisOutcome {
             root_cause_type: "load_backlog".to_string(),
             confidence: 0.8,
-            summary: "导入任务积压，写入链路存在瓶颈（磁盘/compaction/节点负载）。".to_string(),
+            summary: "导入任务积压，写入链路存在瓶颈（计算节点负载/compaction/存储 IO）。"
+                .to_string(),
             actions: vec![DiagnosisAction {
                 title: "定位积压瓶颈".to_string(),
-                detail: "核对 BE 磁盘水位、compaction score 与负载；确认导入并发配置是否合理。"
+                detail: "核对计算节点负载、compaction score 与存储 IO；确认导入并发配置是否合理。"
                     .to_string(),
                 risk_level: "low".to_string(),
             }],
@@ -92,7 +92,8 @@ pub fn diagnose(events: &[EventRow]) -> DiagnosisOutcome {
             summary: "事务失败激增，写入链路异常（节点/网络/并发冲突）。".to_string(),
             actions: vec![DiagnosisAction {
                 title: "检查写入链路与节点健康".to_string(),
-                detail: "查看事务失败明细、BE 存活与磁盘状态，确认是否存在节点级故障。".to_string(),
+                detail: "查看事务失败明细、计算节点存活与网络状态，确认是否存在节点级故障。"
+                    .to_string(),
                 risk_level: "medium".to_string(),
             }],
         }

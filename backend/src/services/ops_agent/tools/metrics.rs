@@ -16,6 +16,11 @@ pub struct QueryMetricsTool<DB: AppDb> {
 #[app_impl]
 impl<DB: AppDb> QueryMetricsTool<DB> {
     async fn fetch(&self, limit: usize) -> Result<String, String> {
+        let (storage_kind, storage_key) = if self.ctx.cluster.is_shared_data() {
+            ("data_cache", "data_cache_pct")
+        } else {
+            ("data_disk", "disk_pct")
+        };
         let rows = db_query::query(
             "SELECT collected_at, qps, query_latency_p95, query_latency_p99, query_error, query_timeout, \
                     backend_alive, backend_total, frontend_alive, frontend_total, \
@@ -43,7 +48,8 @@ impl<DB: AppDb> QueryMetricsTool<DB> {
                     "fe": format!("{}/{}", r.get::<i32, _>("frontend_alive"), r.get::<i32, _>("frontend_total")),
                     "cpu_pct": r.get::<f64, _>("avg_cpu_usage"),
                     "mem_pct": r.get::<f64, _>("avg_memory_usage"),
-                    "disk_pct": r.get::<f64, _>("disk_usage_pct"),
+                    "storage_kind": storage_kind,
+                    (storage_key): r.get::<f64, _>("disk_usage_pct"),
                     "compaction_score": r.get::<f64, _>("max_compaction_score"),
                     "txn_running": r.get::<i32, _>("txn_running"),
                     "txn_failed_total": r.get::<i64, _>("txn_failed_total"),
@@ -71,7 +77,7 @@ impl<DB: AppDb> AgentTool for QueryMetricsTool<DB> {
 
     fn description(&self) -> &'static str {
         "查询集群最近的指标快照序列（按时间倒序）。包含 QPS、延迟 p95/p99、错误/超时、BE/FE 存活数、\
-         CPU/内存/磁盘使用率、compaction score、事务与导入、JVM 堆、磁盘 IO 速率。\
+         CPU/内存/存储使用率（存算一体为数据盘，存算分离为数据缓存）、compaction score、事务与导入、JVM 堆、磁盘 IO 速率。\
          用于判断负载趋势与异常时间点。"
     }
 

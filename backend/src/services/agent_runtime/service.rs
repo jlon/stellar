@@ -683,6 +683,11 @@ impl<DB: AppDb> AgentRuntimeService<DB> {
         .await;
         match metrics {
             Ok(rows) => {
+                let (storage_kind, storage_key) = if cluster.is_shared_data() {
+                    ("data_cache", "data_cache_pct")
+                } else {
+                    ("data_disk", "disk_pct")
+                };
                 let pts: Vec<Value> = rows
                     .iter()
                     .map(|r| {
@@ -691,7 +696,8 @@ impl<DB: AppDb> AgentRuntimeService<DB> {
                             "qps": r.get::<f64, _>("qps"),
                             "p95_ms": r.get::<f64, _>("query_latency_p95"),
                             "be": format!("{}/{}", r.get::<i32, _>("backend_alive"), r.get::<i32, _>("backend_total")),
-                            "disk_pct": r.get::<f64, _>("disk_usage_pct"),
+                            "storage_kind": storage_kind,
+                            (storage_key): r.get::<f64, _>("disk_usage_pct"),
                             "compaction": r.get::<f64, _>("max_compaction_score"),
                             "load_running": r.get::<i32, _>("load_running"),
                             "txn_failed_total": r.get::<i64, _>("txn_failed_total"),
@@ -703,7 +709,7 @@ impl<DB: AppDb> AgentRuntimeService<DB> {
                         incident_id,
                         "metrics",
                         "metrics_snapshots",
-                        json!({ "points": pts }),
+                        json!({ "storage_kind": storage_kind, "points": pts }),
                         None,
                     )
                     .await

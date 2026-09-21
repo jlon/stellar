@@ -88,6 +88,7 @@ pub fn build_system_message_with_context(
 
 /// Render a `MetricsSnapshot` (plus cluster metadata) into compact text.
 pub fn render_snapshot(cluster: &Cluster, latest: Option<&MetricsSnapshot>) -> ClusterSnapshot {
+    let storage_kind = if cluster.is_shared_data() { "data_cache" } else { "data_disk" };
     let head = format!(
         "cluster: name={}, type={:?} (deployment: {:?}), fe_host={}, active={}",
         cluster.name,
@@ -107,8 +108,8 @@ pub fn render_snapshot(cluster: &Cluster, latest: Option<&MetricsSnapshot>) -> C
             },
             "resource": {
                 "cpu_pct": m.avg_cpu_usage, "mem_pct": m.avg_memory_usage,
-                "disk_usage_pct": m.disk_usage_pct, "disk_used_bytes": m.disk_used_bytes,
-                "disk_total_bytes": m.disk_total_bytes
+                "storage_kind": storage_kind, "storage_usage_pct": m.disk_usage_pct,
+                "storage_used_bytes": m.disk_used_bytes, "storage_total_bytes": m.disk_total_bytes
             },
             "storage": {"tablets": m.tablet_count, "max_compaction_score": m.max_compaction_score},
             "txn": {"running": m.txn_running, "failed_total": m.txn_failed_total},
