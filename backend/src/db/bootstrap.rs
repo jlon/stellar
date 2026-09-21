@@ -8,6 +8,7 @@ use std::path::Path;
 use rand::RngCore;
 use stellar_macros::app_db;
 
+use crate::config::RuntimeMode;
 use crate::db::AppDb;
 use crate::db::query as db_query;
 use sqlx::Pool;
@@ -57,12 +58,17 @@ fn random_string(len: usize) -> String {
 /// known `admin` seed account. Replace that password once, but never modify a
 /// database that has been used to create another user.
 ///
-/// Password source: `STELLAR_ROOT_PASSWORD`, else a random one generated here
-/// and printed once. Returns `Some(password)` when a password was initialized;
-/// existing databases are left untouched.
+/// In production, the password comes from `STELLAR_ROOT_PASSWORD` or is
+/// generated and printed once. In development, an empty database gets the
+/// local default `admin`/`admin`; a historical `admin`/`admin` seed is kept
+/// intact. Existing initialized databases are never modified in either mode.
+///
+/// Returns `Some(password)` when a password was initialized or a production
+/// legacy seed was rotated.
 #[app_db]
 pub async fn ensure_root_user<DB: AppDb>(
     pool: &Pool<DB>,
+    runtime_mode: RuntimeMode,
     env_password: Option<String>,
 ) -> anyhow::Result<Option<String>> {
     const LEGACY_ADMIN_PASSWORD_HASH: &str =
@@ -83,6 +89,12 @@ pub async fn ensure_root_user<DB: AppDb>(
         return Ok(None);
     }
 
+    // Development keeps the historical local seed usable. An explicit reset is
+    // required for every other already-initialized database.
+    if has_legacy_seed && runtime_mode == RuntimeMode::Development {
+        return Ok(None);
+    }
+
     let password = match env_password
         .map(|p| p.trim().to_string())
         .filter(|p| !p.is_empty())
@@ -93,6 +105,13 @@ pub async fn ensure_root_user<DB: AppDb>(
                 ROOT_USERNAME
             );
             p
+        },
+        None if runtime_mode == RuntimeMode::Development => {
+            eprintln!(
+                "[stellar] Created initial development user '{}' with password 'admin'",
+                ROOT_USERNAME
+            );
+            "admin".to_string()
         },
         None => {
             let generated = random_string(16);

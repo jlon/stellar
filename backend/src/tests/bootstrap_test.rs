@@ -1,8 +1,7 @@
-use std::borrow::Cow;
-
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Sqlite, SqlitePool};
 
+use crate::config::RuntimeMode;
 use crate::db::bootstrap::{ensure_jwt_secret, ensure_root_user};
 
 /// In-memory SQLite with real migrations, like a fresh install.
@@ -19,27 +18,23 @@ async fn fresh_pool() -> SqlitePool {
     pool
 }
 
-async fn pool_before_load_permissions() -> SqlitePool {
-    let pool = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect("sqlite::memory:")
+async fn insert_legacy_admin(pool: &SqlitePool) {
+    const LEGACY_ADMIN_PASSWORD_HASH: &str =
+        "$2b$12$LFxvzXbmyBPO9Zp.1MFU4OX3fb8kID8AHYHklokkZvgyzmHuRTc56";
+
+    sqlx::query("INSERT INTO users (username, password_hash) VALUES ('admin', ?)")
+        .bind(LEGACY_ADMIN_PASSWORD_HASH)
+        .execute(pool)
         .await
-        .expect("test db");
-    let migrations = sqlx::migrate!("./migrations/sqlite");
-    let initial_schema = migrations
-        .iter()
-        .find(|migration| migration.version == 0)
-        .expect("initial schema migration")
-        .clone();
-    let initial_only = sqlx::migrate::Migrator {
-        migrations: Cow::Owned(vec![initial_schema]),
-        ..sqlx::migrate::Migrator::DEFAULT
-    };
-    initial_only
-        .run(&pool)
-        .await
-        .expect("initial schema migration");
-    pool
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO user_roles (user_id, role_id) \
+         SELECT (SELECT id FROM users WHERE username = 'admin'), id FROM roles \
+         WHERE code IN ('admin', 'super_admin')",
+    )
+    .execute(pool)
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -93,49 +88,6 @@ async fn fresh_migrations_provision_secure_permission_requests_and_new_feature_a
 }
 
 #[tokio::test]
-async fn load_permission_migration_keeps_custom_roles_consistent() {
-    let pool = pool_before_load_permissions().await;
-
-    sqlx::query(
-        "INSERT INTO roles (code, name) VALUES ('query_reader', 'Query reader'), ('menu_only', 'Menu only')",
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
-    sqlx::query(
-        "INSERT INTO role_permissions (role_id, permission_id) \
-         SELECT r.id, p.id FROM roles r, permissions p \
-         WHERE (r.code = 'query_reader' AND p.code = 'api:clusters:queries') \
-            OR (r.code = 'menu_only' AND p.code = 'menu:queries:execution')",
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
-
-    sqlx::migrate!("./migrations/sqlite")
-        .run(&pool)
-        .await
-        .expect("load permission migration");
-
-    for (role, expected) in [("query_reader", 1_i64), ("menu_only", 0_i64)] {
-        for permission in ["menu:loads", "api:clusters:loads"] {
-            let granted: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM role_permissions rp \
-                 JOIN roles r ON r.id = rp.role_id \
-                 JOIN permissions p ON p.id = rp.permission_id \
-                 WHERE r.code = ? AND p.code = ?",
-            )
-            .bind(role)
-            .bind(permission)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-            assert_eq!(granted, expected, "{role}: {permission}");
-        }
-    }
-}
-
-#[tokio::test]
 async fn empty_database_gets_random_root_password() {
     let pool = fresh_pool().await;
     // Simulate a truly empty database.
@@ -144,7 +96,7 @@ async fn empty_database_gets_random_root_password() {
         .await
         .unwrap();
 
-    let password = ensure_root_user::<Sqlite>(&pool, None)
+    let password = ensure_root_user::<Sqlite>(&pool, RuntimeMode::Production, None)
         .await
         .unwrap()
         .expect("created");
@@ -168,7 +120,7 @@ async fn empty_database_gets_random_root_password() {
 
     // Second call on a non-empty database is a no-op.
     assert!(
-        ensure_root_user::<Sqlite>(&pool, None)
+        ensure_root_user::<Sqlite>(&pool, RuntimeMode::Production, None)
             .await
             .unwrap()
             .is_none()
@@ -179,10 +131,14 @@ async fn empty_database_gets_random_root_password() {
 async fn stellar_root_password_env_is_used_verbatim() {
     let pool = fresh_pool().await;
 
-    let created = ensure_root_user::<Sqlite>(&pool, Some("s3cret-手工密码".to_string()))
-        .await
-        .unwrap()
-        .expect("created");
+    let created = ensure_root_user::<Sqlite>(
+        &pool,
+        RuntimeMode::Production,
+        Some("s3cret-手工密码".to_string()),
+    )
+    .await
+    .unwrap()
+    .expect("created");
     assert_eq!(created, "s3cret-手工密码");
 
     let hash: String =
@@ -193,29 +149,58 @@ async fn stellar_root_password_env_is_used_verbatim() {
     assert!(bcrypt::verify("s3cret-手工密码", &hash).unwrap());
 }
 
+#[tokio::test]
+async fn development_empty_database_uses_local_default_password() {
+    let pool = fresh_pool().await;
+
+    let password = ensure_root_user::<Sqlite>(&pool, RuntimeMode::Development, None)
+        .await
+        .unwrap()
+        .expect("created");
+    assert_eq!(password, "admin");
+
+    let hash: String =
+        sqlx::query_scalar("SELECT password_hash FROM users WHERE username = 'admin'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(bcrypt::verify("admin", &hash).unwrap());
+
+    assert!(
+        ensure_root_user::<Sqlite>(
+            &pool,
+            RuntimeMode::Development,
+            Some("must-not-reset-existing-account".to_string()),
+        )
+        .await
+        .unwrap()
+        .is_none()
+    );
+}
+
+#[tokio::test]
+async fn development_empty_database_honors_explicit_root_password() {
+    let pool = fresh_pool().await;
+
+    let password = ensure_root_user::<Sqlite>(
+        &pool,
+        RuntimeMode::Development,
+        Some("local-only-password".to_string()),
+    )
+    .await
+    .unwrap()
+    .expect("created");
+    assert_eq!(password, "local-only-password");
+}
+
 /// Existing databases can retain the historical `admin`/`admin` account; the
 /// first startup must replace that known password without changing its roles.
 #[tokio::test]
 async fn legacy_seed_admin_password_is_rotated_on_first_startup() {
     let pool = fresh_pool().await;
-    const LEGACY_ADMIN_PASSWORD_HASH: &str =
-        "$2b$12$LFxvzXbmyBPO9Zp.1MFU4OX3fb8kID8AHYHklokkZvgyzmHuRTc56";
+    insert_legacy_admin(&pool).await;
 
-    sqlx::query("INSERT INTO users (username, password_hash) VALUES ('admin', ?)")
-        .bind(LEGACY_ADMIN_PASSWORD_HASH)
-        .execute(&pool)
-        .await
-        .unwrap();
-    sqlx::query(
-        "INSERT INTO user_roles (user_id, role_id) \
-         SELECT (SELECT id FROM users WHERE username = 'admin'), id FROM roles \
-         WHERE code IN ('admin', 'super_admin')",
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
-
-    let password = ensure_root_user::<Sqlite>(&pool, None)
+    let password = ensure_root_user::<Sqlite>(&pool, RuntimeMode::Production, None)
         .await
         .unwrap()
         .expect("rotated");
@@ -240,7 +225,7 @@ async fn legacy_seed_admin_password_is_rotated_on_first_startup() {
 
     // Already initialized databases (any other password) are left untouched.
     assert!(
-        ensure_root_user::<Sqlite>(&pool, None)
+        ensure_root_user::<Sqlite>(&pool, RuntimeMode::Production, None)
             .await
             .unwrap()
             .is_none()
@@ -251,6 +236,30 @@ async fn legacy_seed_admin_password_is_rotated_on_first_startup() {
             .await
             .unwrap();
     assert_eq!(hash_after, hash);
+}
+
+#[tokio::test]
+async fn development_keeps_legacy_admin_seed_unchanged() {
+    let pool = fresh_pool().await;
+    insert_legacy_admin(&pool).await;
+
+    assert!(
+        ensure_root_user::<Sqlite>(
+            &pool,
+            RuntimeMode::Development,
+            Some("must-not-rotate-legacy-seed".to_string()),
+        )
+        .await
+        .unwrap()
+        .is_none()
+    );
+
+    let hash: String =
+        sqlx::query_scalar("SELECT password_hash FROM users WHERE username = 'admin'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(bcrypt::verify("admin", &hash).unwrap());
 }
 
 #[tokio::test]

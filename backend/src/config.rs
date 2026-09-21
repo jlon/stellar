@@ -15,9 +15,33 @@ pub struct Config {
     pub metrics: MetricsCollectorConfig,
     pub audit: AuditLogConfig,
     pub agent: AgentConfig,
-    /// Data directory resolved from `server [DATA_DIR]`; empty in --config mode.
+    /// Data directory resolved from `server [DATA_DIR]`; it persists the generated JWT secret.
     #[serde(skip)]
     pub data_dir: Option<PathBuf>,
+    /// Runtime environment resolved from `STELLAR_ENV`; it controls bootstrap-only behavior.
+    #[serde(skip)]
+    pub runtime_mode: RuntimeMode,
+}
+
+/// Explicit runtime context. It is intentionally not inferred from a port,
+/// database path, build profile, or config file name.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum RuntimeMode {
+    Development,
+    #[default]
+    Production,
+}
+
+impl RuntimeMode {
+    pub fn from_environment(value: Option<&str>) -> Result<Self, anyhow::Error> {
+        match value.map(str::trim).filter(|value| !value.is_empty()) {
+            None | Some("production") => Ok(Self::Production),
+            Some("development") => Ok(Self::Development),
+            Some(value) => anyhow::bail!(
+                "invalid STELLAR_ENV '{value}'; expected 'development' or 'production'"
+            ),
+        }
+    }
 }
 
 /// Audit log configuration for StarRocks audit table
@@ -186,6 +210,8 @@ impl Config {
     /// 4. Default values
     pub fn load() -> Result<Self, anyhow::Error> {
         let cli_args = CommandLineArgs::parse();
+        let runtime_mode =
+            RuntimeMode::from_environment(std::env::var("STELLAR_ENV").ok().as_deref())?;
 
         let (overrides, data_dir) = match cli_args.command {
             Some(Commands::Server { data_dir, overrides }) => (Some(overrides), data_dir),
@@ -201,8 +227,9 @@ impl Config {
             Self::default()
         };
 
-        // MinIO-style data directory: everything lives under one folder. Only
-        // applies in zero-config mode; --config users manage paths explicitly.
+        // MinIO-style zero-config mode puts every runtime file under one directory.
+        // With --config, DATA_DIR only persists the generated JWT secret; file
+        // configuration retains ownership of database and logging paths.
         if config_path.is_none() {
             let dir = data_dir
                 .or_else(|| std::env::var("STELLAR_DATA_DIR").ok().map(PathBuf::from))
@@ -212,6 +239,9 @@ impl Config {
             config.logging.file = Some(dir.join("logs").join("stellar.log").display().to_string());
             config.data_dir = Some(dir.clone());
             tracing::info!("Data directory: {} (stellar.db, .jwt-secret, logs/)", dir.display());
+        } else if let Some(dir) = data_dir {
+            fs::create_dir_all(&dir)?;
+            config.data_dir = Some(dir);
         }
 
         if let Some(o) = &overrides {
@@ -219,6 +249,7 @@ impl Config {
         }
 
         config.apply_env_overrides();
+        config.runtime_mode = runtime_mode;
 
         config.validate()?;
 
@@ -435,6 +466,10 @@ impl Config {
             anyhow::bail!("Database URL cannot be empty");
         }
 
+        if self.audit.database.trim().is_empty() || self.audit.table.trim().is_empty() {
+            anyhow::bail!("audit.database and audit.table cannot be empty");
+        }
+
         if self.metrics.interval_secs == 0 {
             anyhow::bail!("metrics.interval_secs must be > 0");
         }
@@ -445,7 +480,7 @@ impl Config {
         Ok(())
     }
 
-    fn from_toml(path: &str) -> Result<Self, anyhow::Error> {
+    pub(crate) fn from_toml(path: &str) -> Result<Self, anyhow::Error> {
         let content = fs::read_to_string(path)?;
         let config: Config = toml::from_str(&content)?;
         Ok(config)
