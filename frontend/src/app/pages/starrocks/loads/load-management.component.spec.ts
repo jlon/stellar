@@ -8,7 +8,6 @@ import { Subject, of } from "rxjs";
 import { ClusterContextService } from "../../../@core/data/cluster-context.service";
 import { LoadJob, LoadService } from "../../../@core/data/load.service";
 import { NodeService } from "../../../@core/data/node.service";
-import { ConfirmDialogService } from "../../../@core/services/confirm-dialog.service";
 import { LoadManagementComponent } from "./load-management.component";
 
 describe("LoadManagementComponent", () => {
@@ -25,9 +24,6 @@ describe("LoadManagementComponent", () => {
     executeSQL: jasmine.createSpy("executeSQL"),
     streamLoad: jasmine.createSpy("streamLoad"),
   };
-  const confirmDialogService = {
-    confirm: jasmine.createSpy("confirm"),
-  };
   const toastrService = {
     show: () => undefined,
     success: jasmine.createSpy("success"),
@@ -43,7 +39,6 @@ describe("LoadManagementComponent", () => {
         { provide: LoadService, useValue: loadService },
         { provide: NodeService, useValue: nodeService },
         { provide: NbDialogService, useValue: dialogService },
-        { provide: ConfirmDialogService, useValue: confirmDialogService },
         { provide: NbToastrService, useValue: toastrService },
         {
           provide: ActivatedRoute,
@@ -71,7 +66,6 @@ describe("LoadManagementComponent", () => {
     nodeService.getTables.and.returnValue(of([]));
     nodeService.executeSQL.calls.reset();
     nodeService.streamLoad.calls.reset();
-    confirmDialogService.confirm.calls.reset();
     toastrService.success.calls.reset();
   });
 
@@ -107,17 +101,62 @@ describe("LoadManagementComponent", () => {
     );
   });
 
+  it("opens the single import dialog once from the toolbar action", () => {
+    dialogService.open.and.returnValue({
+      close: jasmine.createSpy("close"),
+      onClose: of(undefined),
+    });
+    (
+      component as unknown as { importDialog: TemplateRef<unknown> }
+    ).importDialog = {} as TemplateRef<unknown>;
+    component.activeCluster = { cluster_type: "starrocks" } as NonNullable<
+      typeof component.activeCluster
+    >;
+
+    component.openImportDialog();
+
+    expect(dialogService.open).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not open the import dialog for Doris", () => {
+    (
+      component as unknown as { importDialog: TemplateRef<unknown> }
+    ).importDialog = {} as TemplateRef<unknown>;
+    component.activeCluster = { cluster_type: "doris" } as NonNullable<
+      typeof component.activeCluster
+    >;
+
+    component.openImportDialog();
+
+    expect(dialogService.open).not.toHaveBeenCalled();
+    expect(nodeService.getTables).not.toHaveBeenCalled();
+  });
+
+  it("switches the source type inside the same dialog", () => {
+    component.importForm.type = "path";
+    component.importForm.format = "parquet";
+
+    component.onImportTypeChange("kafka");
+
+    expect(component.importForm.type).toBe("kafka");
+    expect(component.importForm.format).toBe("csv");
+
+    component.onImportTypeChange("path");
+
+    expect(component.importForm.label).toMatch(/^stellar_broker_\d+$/);
+  });
+
   it("submits local files through the dedicated Stream Load path", () => {
-    component.streamLoadForm = {
-      database: "target_db",
-      table: "target_table",
-      format: "csv",
-      label: "daily_load",
-      columnSeparator: "\\t",
-      file: new File(["id\\n1\\n"], "daily.csv", { type: "text/csv" }),
-    };
+    component.importForm.type = "file";
+    component.importForm.database = "target_db";
+    component.importForm.table = "target_table";
+    component.importForm.format = "csv";
+    component.importForm.label = "daily_load";
+    component.importForm.columnSeparator = "\\t";
+    component.importForm.file = new File(["id\\n1\\n"], "daily.csv", {
+      type: "text/csv",
+    });
     const dialogRef = { close: jasmine.createSpy("close") };
-    confirmDialogService.confirm.and.returnValue(of(true));
     nodeService.streamLoad.and.returnValue(
       of({ success: true, number_loaded_rows: 1 }),
     );
@@ -128,7 +167,7 @@ describe("LoadManagementComponent", () => {
       }),
     );
 
-    component.submitStreamLoad(dialogRef as unknown as any);
+    component.submitImport(dialogRef as unknown as any);
 
     const formData = nodeService.streamLoad.calls.mostRecent()
       .args[0] as FormData;
@@ -141,71 +180,28 @@ describe("LoadManagementComponent", () => {
     expect(dialogRef.close).toHaveBeenCalled();
   });
 
-  it("routes the StarRocks import action through the source chooser", () => {
-    dialogService.open.and.returnValue({
-      close: jasmine.createSpy("close"),
-      onClose: of(undefined),
-    });
-    (
-      component as unknown as { importChooserDialog: TemplateRef<unknown> }
-    ).importChooserDialog = {} as TemplateRef<unknown>;
-    component.activeCluster = { cluster_type: "starrocks" } as NonNullable<
-      typeof component.activeCluster
-    >;
-
-    component.openImportChooser();
-
-    expect(dialogService.open).toHaveBeenCalled();
-  });
-
-  it("does not open an empty import chooser for Doris", () => {
-    (
-      component as unknown as { importChooserDialog: TemplateRef<unknown> }
-    ).importChooserDialog = {} as TemplateRef<unknown>;
-    component.activeCluster = { cluster_type: "doris" } as NonNullable<
-      typeof component.activeCluster
-    >;
-
-    component.openImportChooser();
-
-    expect(dialogService.open).not.toHaveBeenCalled();
-  });
-
-  it("does not open local file delivery for Doris", () => {
-    (
-      component as unknown as { streamLoadDialog: TemplateRef<unknown> }
-    ).streamLoadDialog = {} as TemplateRef<unknown>;
-    component.activeCluster = { cluster_type: "doris" } as NonNullable<
-      typeof component.activeCluster
-    >;
-
-    component.openStreamLoad();
-
-    expect(dialogService.open).not.toHaveBeenCalled();
-    expect(nodeService.getTables).not.toHaveBeenCalled();
-  });
-
   it("derives JSON format from a selected JSON file", () => {
-    component.streamLoadForm.format = "csv";
-    component.onStreamFileChange({
+    component.importForm.format = "csv";
+    component.onImportFileChange({
       target: { files: [new File(["{}"], "events.json")] },
     } as unknown as Event);
 
-    expect(component.streamLoadForm.format).toBe("json");
-    expect(component.isStreamLoadFormValid()).toBeFalse();
+    expect(component.importForm.format).toBe("json");
+    expect(component.isImportFormValid()).toBeFalse();
   });
 
   it("builds a credential-free Broker Load statement", () => {
-    component.brokerLoadForm = {
+    component.importForm = {
+      ...component.importForm,
+      type: "path",
       database: "analytics",
       table: "events",
       path: "hdfs://namenode:8020/data/events/*.parquet",
       format: "parquet",
       label: "events_backfill",
-      columnSeparator: ",",
     };
 
-    expect(component.buildBrokerLoadSql()).toBe(
+    expect(component.buildImportSql()).toBe(
       "LOAD LABEL `analytics`.`events_backfill` (\n" +
         '  DATA INFILE ("hdfs://namenode:8020/data/events/*.parquet") INTO TABLE `events`\n' +
         '  FORMAT AS "PARQUET"\n' +
@@ -214,48 +210,40 @@ describe("LoadManagementComponent", () => {
     );
   });
 
-  it("rejects credentials embedded in a Broker Load path", () => {
-    component.brokerLoadForm = {
+  it("rejects credentials, query parameters and root-only Broker Load paths", () => {
+    component.importForm = {
+      ...component.importForm,
+      type: "path",
       database: "analytics",
       table: "events",
-      path: "hdfs://reader:secret@namenode:8020/data/events.csv",
       format: "csv",
       label: "events_backfill",
-      columnSeparator: ",",
     };
 
-    expect(component.isBrokerLoadFormValid()).toBeFalse();
-    expect(component.buildBrokerLoadSql()).toBe("");
-  });
+    for (const path of [
+      "hdfs://reader:secret@namenode:8020/data/events.csv",
+      "hdfs://namenode:8020/data/events.csv?password=secret",
+      'hdfs://namenode:8020/data/"events.csv',
+      "hdfs://namenode:8020",
+    ]) {
+      component.importForm.path = path;
+      expect(component.isImportFormValid()).toBeFalse();
+    }
 
-  it("rejects Broker Load path query parameters and quote characters", () => {
-    component.brokerLoadForm = {
-      database: "analytics",
-      table: "events",
-      path: "hdfs://namenode:8020/data/events.csv?password=secret",
-      format: "csv",
-      label: "events_backfill",
-      columnSeparator: ",",
-    };
-
-    expect(component.isBrokerLoadFormValid()).toBeFalse();
-    component.brokerLoadForm.path = 'hdfs://namenode:8020/data/"events.csv';
-    expect(component.isBrokerLoadFormValid()).toBeFalse();
-    component.brokerLoadForm.path = "hdfs://namenode:8020";
-    expect(component.isBrokerLoadFormValid()).toBeFalse();
+    expect(component.buildImportSql()).toBe("");
   });
 
   it("submits a Broker Load without recording the source path in SQL history", () => {
-    component.brokerLoadForm = {
+    component.importForm = {
+      ...component.importForm,
+      type: "path",
       database: "analytics",
       table: "events",
       path: "file:///mnt/nas/events/*.csv",
       format: "csv",
       label: "events_backfill",
-      columnSeparator: ",",
     };
     const dialogRef = { close: jasmine.createSpy("close") };
-    confirmDialogService.confirm.and.returnValue(of(true));
     nodeService.executeSQL.and.returnValue(
       of({ results: [{ success: true }] }),
     );
@@ -266,10 +254,10 @@ describe("LoadManagementComponent", () => {
       }),
     );
 
-    component.submitBrokerLoad(dialogRef as unknown as any);
+    component.submitImport(dialogRef as unknown as any);
 
     expect(nodeService.executeSQL).toHaveBeenCalledWith(
-      component.buildBrokerLoadSql(),
+      component.buildImportSql(),
       undefined,
       undefined,
       "analytics",
@@ -278,7 +266,9 @@ describe("LoadManagementComponent", () => {
   });
 
   it("builds a plaintext Routine Load statement and rejects unsafe Kafka values", () => {
-    component.routineLoadForm = {
+    component.importForm = {
+      ...component.importForm,
+      type: "kafka",
       database: "analytics",
       table: "events",
       jobName: "events_topic",
@@ -286,20 +276,19 @@ describe("LoadManagementComponent", () => {
       topic: "events",
       format: "json",
       offset: "OFFSET_END",
-      columnSeparator: ",",
     };
 
-    expect(component.buildRoutineLoadSql()).toContain(
+    expect(component.buildImportSql()).toContain(
       "CREATE ROUTINE LOAD `analytics`.`events_topic` ON `events`",
     );
-    expect(component.buildRoutineLoadSql()).toContain(
+    expect(component.buildImportSql()).toContain(
       '"property.kafka_default_offsets" = "OFFSET_END"',
     );
-    component.routineLoadForm.brokers = "reader:secret@kafka-1.example:9092";
-    expect(component.isRoutineLoadFormValid()).toBeFalse();
-    component.routineLoadForm.brokers = "kafka-1.example:9092";
-    component.routineLoadForm.topic = 'events"; DROP TABLE events';
-    expect(component.isRoutineLoadFormValid()).toBeFalse();
+    component.importForm.brokers = "reader:secret@kafka-1.example:9092";
+    expect(component.isImportFormValid()).toBeFalse();
+    component.importForm.brokers = "kafka-1.example:9092";
+    component.importForm.topic = 'events"; DROP TABLE events';
+    expect(component.isImportFormValid()).toBeFalse();
   });
 
   it("passes the selected Smart Table row index to the Sheet opener", () => {

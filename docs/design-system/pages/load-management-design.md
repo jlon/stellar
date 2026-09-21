@@ -71,11 +71,11 @@
 │   ├── 搜索（Label / JobId）
 │   └── 手动刷新
 ├── 任务列表（ngx-admin 原生 `angular2-smart-table`，容器内横向滚动）
-├── 新建外部导入（先选择外部数据源，再配置目标表）
+├── 新建外部导入（页头单一入口，打开后在同一窗口内选来源类型并配置目标表）
 │   ├── 本地 CSV / JSON → 目标表（StarRocks Stream Load，已实施）
 │   ├── 无凭据 HDFS / 挂载 NAS → 目标表（StarRocks Broker Load，已实施）
 │   ├── plaintext Kafka Topic → 目标表（StarRocks Routine Load，已实施）
-│   └── 对象存储、认证 HDFS/Kafka、数据湖、外部数据库 / 外部运行时（显示前置条件，未接入时不可提交）
+│   └── 对象存储、认证 HDFS/Kafka、数据湖、外部数据库 / 外部运行时（无表单入口，需先具备受管连接能力）
 └── 任务详情 Sheet（点击行通过 Nebular `NbDialog` 从右侧打开，显示真实阶段、错误全文和复制入口）
 ```
 
@@ -135,7 +135,7 @@ Routine Load：不做批处理阶段时间线，改为**消费位点卡片**（�
 - **错误原因归类（对齐 EMR 原因分析）**：后端按 ERROR_MSG 模式匹配归类，输出 `cause: 超时 / 超阈值 / 格式错误 / 权限 / 目标表不存在 / 资源不足 / 未知`，每类附一句处置建议（如“Scan bytes exceed threshold → 减小单次导入体量或调大 `broker_load_scan_bytes_threshold`”）；归类结果在详情 Sheet 错误框顶部渲染为结论行，无法识别时回退原文展示，不臆断
 - **空态**：无任务时提示调整时间范围或清除筛选；树节点入口仍可直接带数据库筛选跳转
 - **错误详情**：详情 Sheet 提供 `ERROR_MSG`、`TRACKING_SQL` 和 `REJECTED_RECORD_PATH` 的原生输入控件与复制按钮；Doris 失败作业额外展示同一 `SHOW LOAD` 行的原始 `URL`、`ErrorMsg`、`JobDetails`，不接入 `get_load_errors_compromise` 或全局 error hub。
-- **新建外部导入**：具备 `api:clusters:queries:execute` 的用户可从页头打开外部数据源选择器。StarRocks 本地 CSV/JSON 使用专用 Stream Load 上传代理，文件内容不进入 SQL 历史；无用户信息的 `hdfs://`、已挂载到 BE/CN 的 `file:///` 使用 `WITH BROKER;` 提交异步 Broker Load；仅 `host:port` 的 plaintext Kafka 使用 Routine Load。Broker/Routine SQL 也不进入 Stellar SQL 历史。对象存储、认证 HDFS/Kafka、数据湖、外部数据库、Pipe、Catalog 和外部运行时在具备受管连接与凭据生命周期前只展示前置条件。`INSERT INTO ... SELECT` 只在已受管的外部 Catalog 或外部表上作为执行方式出现，不提供 StarRocks 内表互拷入口。
+- **新建外部导入**：页头保持**单一创建入口**（`api:clusters:queries:execute` 可见），点击一次即打开唯一创建窗口；来源类型（本地文件 / HDFS·NAS / Kafka）是**该窗口内的第一步选择**，切换类型不叠加第二层弹窗，也无二次确认弹窗。业界同类产品的创建流程均为“单一入口 + 类型作为创建流程的第一步”（Airbyte `New Source` → 连接器列表、Fivetran `Add connection` → 源 tile、DataWorks 新建节点 → 选择来源/去向类型、CloudCanal 创建任务 → 向导步骤），嵌套模态会阻断上下文并放大误操作。提交动作按类型分别使用：StarRocks 本地 CSV/JSON 使用专用 Stream Load 上传代理，文件内容不进入 SQL 历史；无用户信息的 `hdfs://`、已挂载到 BE/CN 的 `file:///` 使用 `WITH BROKER;` 提交异步 Broker Load；仅 `host:port` 的 plaintext Kafka 创建 Routine Load。Broker/Routine SQL 也不进入 Stellar SQL 历史。需要凭据的对象存储、认证 HDFS/Kafka、数据湖、外部数据库、Pipe、Catalog 和外部运行时不提供表单入口；`INSERT INTO ... SELECT` 只在已受管的外部 Catalog 或外部表上作为执行方式出现，不提供 StarRocks 内表互拷入口。
 - **过滤行数提示（P1）**：`Filtered_Rows / Scan_Rows > 1%` 且分母有效时行内显示 warning；StarRocks 源码中 `SCAN_ROWS` 已包含正常、异常和未选中行，不能再次把 `FILTERED_ROWS` 加入分母。阈值和原因提示后续再接入集群变量
 - **Stream Load profile**：P1 只展示可用的 `PROFILE_ID`/`RUNTIME_DETAILS` 原文，不自动修改集群变量；Profile 引导卡片列入后续迭代
 - **键盘可达**：原生 Smart Table 行打开详情 Sheet；打开前让触发行获得焦点，Nebular 焦点陷阱销毁后回焦至该行；Esc 和遮罩点击均可关闭，所有图标按钮带 `aria-label`。
@@ -188,14 +188,14 @@ pages/starrocks/loads/
 ```
 
 - 路由 `path: 'loads'` 挂在 starrocks 模块，一级菜单"数据导入"使用 `menu:loads`，路由守卫和 API 使用 `api:clusters:loads`
-- 页头"新建外部导入"使用 `api:clusters:queries:execute` 控制可见性；本地文件执行通过 `/api/clusters/queries/stream-load`，无凭据 Broker/Routine 作业复用现有 SQL 执行接口但不记录执行历史，三者均保留组织权限边界与提交后任务观测
+- 页头“新建外部导入”使用 `api:clusters:queries:execute` 控制可见性，并从同一窗口内切换来源类型；本地文件执行通过 `/api/clusters/queries/stream-load`，无凭据 Broker/Routine 作业复用现有 SQL 执行接口但不记录执行历史，三者均保留组织权限边界与提交后任务观测
 - 树节点 `viewLoads` 改为路由跳转携带 `?db=<db>` 预置筛选
 - 遵循 MASTER.md 的 ngx-admin 原生优先原则：`row/col + nb-card`、原生筛选控件、`angular2-smart-table`、Nebular `NbDialog` Sheet、`nb-alert` 与原生分页；二维表格在自身容器横向滚动，不重绘为自定义卡片列表或手写侧板。
 
 ## 8. 测试
 
 - 后端：`backend/src/tests/load_service_test.rs` 覆盖失败原因分类、真实时间阶段计算、终态缺时间戳不造假、SQL 字面量转义/limit、历史合并稳定游标、Routine Load 父作业/子任务字段、Doris 精确 Label 查询与 JobId 二次匹配和路由权限映射
-- 前端：`load-management.component.spec.ts` 覆盖态势摘要、Smart Table 详情入口和回焦、Sheet 初始焦点、服务端游标“加载更多”、本地文件 Stream Load 的 FormData 提交、无凭据 Broker Load / plaintext Routine Load SQL 构造与 StarRocks 集群边界；`npm run build` 验证路由、模板、Nebular 组件和 Smart Table 可编译
+- 前端：`load-management.component.spec.ts` 覆盖态势摘要、Smart Table 详情入口和回焦、Sheet 初始焦点、服务端游标“加载更多”、单一创建入口只打开一个窗口、窗口内来源类型切换（降级 path 专用格式、补默认 Label）、Doris 不打开创建窗口、本地文件 Stream Load 的 FormData 提交、无凭据 Broker Load / plaintext Routine Load SQL 构造与不安全路径/Kafka 取值拒绝；`npm run build` 验证路由、模板、Nebular 组件和 Smart Table 可编译
 - E2E 手册：对接真实集群造 1 个成功 + 1 个失败 Broker Load，核对 `RUNTIME_DETAILS` 原文、`TRACKING_SQL`、`REJECTED_RECORD_PATH` 与真实时间阶段；再验证一个 Routine Load 不被错误绘制成批处理阶段
 
 ## 9. 分期

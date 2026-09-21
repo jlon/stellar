@@ -45,7 +45,6 @@ import {
   StreamLoadResponse,
   TableInfo,
 } from "../../../@core/data/node.service";
-import { ConfirmDialogService } from "../../../@core/services/confirm-dialog.service";
 import { HasPermissionDirective } from "../../../@core/directives/has-permission.directive";
 import { ErrorHandler } from "../../../@core/utils/error-handler";
 import { assignTableRows } from "../../../@core/utils/table-rows";
@@ -62,32 +61,20 @@ interface LoadTableRow {
   job: LoadJob;
 }
 
-interface StreamLoadForm {
+type ImportSourceType = "file" | "path" | "kafka";
+
+interface ImportForm {
+  type: ImportSourceType;
   database: string;
   table: string;
-  format: "csv" | "json";
-  label: string;
-  columnSeparator: "," | "\\t" | "|";
   file?: File;
-}
-
-interface BrokerLoadForm {
-  database: string;
-  table: string;
   path: string;
-  format: "csv" | "json" | "parquet" | "orc";
-  label: string;
-  columnSeparator: "," | "\\t" | "|";
-}
-
-interface RoutineLoadForm {
-  database: string;
-  table: string;
   jobName: string;
   brokers: string;
   topic: string;
-  format: "csv" | "json";
   offset: "OFFSET_BEGINNING" | "OFFSET_END";
+  format: "csv" | "json" | "parquet" | "orc";
+  label: string;
   columnSeparator: "," | "\\t" | "|";
 }
 
@@ -124,31 +111,20 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
   private readonly loadService = inject(LoadService);
   private readonly nodeService = inject(NodeService);
   private readonly dialogService = inject(NbDialogService);
-  private readonly confirmDialogService = inject(ConfirmDialogService);
   private readonly toastrService = inject(NbToastrService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly destroy$ = new Subject<void>();
   private detailDialogRef?: NbDialogRef<unknown>;
-  private importChooserDialogRef?: NbDialogRef<unknown>;
-  private streamLoadDialogRef?: NbDialogRef<unknown>;
-  private brokerLoadDialogRef?: NbDialogRef<unknown>;
-  private routineLoadDialogRef?: NbDialogRef<unknown>;
+  private importDialogRef?: NbDialogRef<unknown>;
   private targetTableRequestId = 0;
   private detailTrigger?: HTMLElement;
   private readonly detailRequest$ = new Subject<void>();
   private sheetClosing = false;
 
   @ViewChild("detailDialog") private detailDialog?: TemplateRef<unknown>;
-  @ViewChild("importChooserDialog")
-  private importChooserDialog?: TemplateRef<unknown>;
-  @ViewChild("streamLoadDialog")
-  private streamLoadDialog?: TemplateRef<unknown>;
-  @ViewChild("brokerLoadDialog")
-  private brokerLoadDialog?: TemplateRef<unknown>;
-  @ViewChild("routineLoadDialog")
-  private routineLoadDialog?: TemplateRef<unknown>;
+  @ViewChild("importDialog") private importDialog?: TemplateRef<unknown>;
 
   source = new LocalDataSource();
   activeCluster: Cluster | null = null;
@@ -161,32 +137,19 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
   detailLoading = false;
   targetTables: TableInfo[] = [];
   targetTablesLoading = false;
-  streamLoadSubmitting = false;
-  sqlLoadSubmitting = false;
+  importSubmitting = false;
   loadFormErrorMessage = "";
-  streamLoadForm: StreamLoadForm = {
-    database: "",
-    table: "",
-    format: "csv",
-    label: "",
-    columnSeparator: ",",
-  };
-  brokerLoadForm: BrokerLoadForm = {
+  importForm: ImportForm = {
+    type: "file",
     database: "",
     table: "",
     path: "",
-    format: "csv",
-    label: "",
-    columnSeparator: ",",
-  };
-  routineLoadForm: RoutineLoadForm = {
-    database: "",
-    table: "",
     jobName: "",
     brokers: "",
     topic: "",
-    format: "csv",
     offset: "OFFSET_END",
+    format: "csv",
+    label: "",
     columnSeparator: ",",
   };
 
@@ -304,10 +267,7 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
     this.destroy$.next();
     this.destroy$.complete();
     this.detailDialogRef?.close();
-    this.importChooserDialogRef?.close();
-    this.streamLoadDialogRef?.close();
-    this.brokerLoadDialogRef?.close();
-    this.routineLoadDialogRef?.close();
+    this.importDialogRef?.close();
   }
 
   loadDatabases(): void {
@@ -328,45 +288,29 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
       });
   }
 
-  openImportChooser(): void {
-    const template = this.importChooserDialog;
+  openImportDialog(): void {
+    const template = this.importDialog;
     if (!template || !this.activeCluster || !this.isStarRocksCluster) {
       return;
     }
 
-    const dialogRef = this.dialogService.open(template, {
-      autoFocus: false,
-      closeOnBackdropClick: true,
-      closeOnEsc: true,
-      hasBackdrop: true,
-    });
-    this.importChooserDialogRef = dialogRef;
-    dialogRef.onClose.pipe(take(1)).subscribe(() => {
-      this.importChooserDialogRef = undefined;
-      this.cdr.markForCheck();
-    });
-  }
-
-  openStreamLoad(chooserRef?: NbDialogRef<unknown>): void {
-    const template = this.streamLoadDialog;
-    if (!template || !this.activeCluster || !this.isStarRocksCluster) {
-      return;
-    }
-
-    chooserRef?.close();
-    const database = this.databases.includes(this.filters.db)
-      ? this.filters.db
-      : this.databases[0] || "";
-    this.streamLoadForm = {
+    const database = this.defaultImportDatabase();
+    this.importForm = {
+      type: this.importForm.type,
       database,
       table: "",
+      path: "",
+      jobName: "",
+      brokers: "",
+      topic: "",
+      offset: "OFFSET_END",
       format: "csv",
-      label: "",
+      label: this.importForm.type === "path" ? this.defaultBrokerLabel() : "",
       columnSeparator: ",",
     };
     this.targetTables = [];
     this.loadFormErrorMessage = "";
-    this.streamLoadSubmitting = false;
+    this.importSubmitting = false;
 
     const dialogRef = this.dialogService.open(template, {
       autoFocus: false,
@@ -374,263 +318,226 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
       closeOnEsc: true,
       hasBackdrop: true,
     });
-    this.streamLoadDialogRef = dialogRef;
+    this.importDialogRef = dialogRef;
     dialogRef.onClose.pipe(take(1)).subscribe(() => {
-      this.streamLoadDialogRef = undefined;
-      this.streamLoadSubmitting = false;
+      this.importDialogRef = undefined;
+      this.importSubmitting = false;
       this.cdr.markForCheck();
     });
     this.loadTargetTables(database);
   }
 
-  onStreamDatabaseChange(): void {
-    this.streamLoadForm.table = "";
-    this.loadTargetTables(this.streamLoadForm.database);
-  }
-
-  onStreamFileChange(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    this.streamLoadForm.file = file;
-    if (file?.name.toLowerCase().endsWith(".json")) {
-      this.streamLoadForm.format = "json";
-    } else if (file) {
-      this.streamLoadForm.format = "csv";
-    }
-  }
-
-  isStreamLoadFormValid(): boolean {
-    const { database, table, file } = this.streamLoadForm;
-    return Boolean(database.trim() && table.trim() && file);
-  }
-
-  openBrokerLoad(chooserRef?: NbDialogRef<unknown>): void {
-    const template = this.brokerLoadDialog;
-    if (!template || !this.activeCluster || !this.isStarRocksCluster) {
-      return;
-    }
-
-    chooserRef?.close();
-    this.brokerLoadForm = {
-      database: this.defaultImportDatabase(),
-      table: "",
-      path: "",
-      format: "csv",
-      label: `stellar_broker_${Date.now()}`,
-      columnSeparator: ",",
-    };
-    this.targetTables = [];
+  onImportTypeChange(type: ImportSourceType): void {
+    this.importForm.type = type;
     this.loadFormErrorMessage = "";
-    this.sqlLoadSubmitting = false;
-    const dialogRef = this.dialogService.open(template, {
-      autoFocus: false,
-      closeOnBackdropClick: true,
-      closeOnEsc: true,
-      hasBackdrop: true,
-    });
-    this.brokerLoadDialogRef = dialogRef;
-    dialogRef.onClose.pipe(take(1)).subscribe(() => {
-      this.brokerLoadDialogRef = undefined;
-      this.sqlLoadSubmitting = false;
-      this.cdr.markForCheck();
-    });
-    this.loadTargetTables(this.brokerLoadForm.database);
-  }
-
-  onBrokerDatabaseChange(): void {
-    this.brokerLoadForm.table = "";
-    this.loadTargetTables(this.brokerLoadForm.database);
-  }
-
-  isBrokerLoadFormValid(): boolean {
-    const { database, table, path, label } = this.brokerLoadForm;
-    return Boolean(
-      database.trim() &&
-      table.trim() &&
-      this.isSafeLoadName(label) &&
-      this.isCredentialFreeBrokerPath(path),
-    );
-  }
-
-  buildBrokerLoadSql(): string {
-    if (!this.isBrokerLoadFormValid()) {
-      return "";
+    if (type === "path") {
+      if (!this.importForm.label.trim()) {
+        this.importForm.label = this.defaultBrokerLabel();
+      }
+    } else if (
+      this.importForm.format !== "csv" &&
+      this.importForm.format !== "json"
+    ) {
+      this.importForm.format = "csv";
     }
-
-    const { database, table, path, format, label, columnSeparator } =
-      this.brokerLoadForm;
-    const csvOptions =
-      format === "csv"
-        ? `\n  COLUMNS TERMINATED BY ${this.quoteSqlString(columnSeparator)}`
-        : "";
-    return [
-      `LOAD LABEL ${this.quoteIdentifier(database)}.${this.quoteIdentifier(label)} (`,
-      `  DATA INFILE (${this.quoteSqlString(path)}) INTO TABLE ${this.quoteIdentifier(table)}`,
-      `  FORMAT AS ${this.quoteSqlString(format.toUpperCase())}${csvOptions}`,
-      ")",
-      "WITH BROKER;",
-    ].join("\n");
+    this.cdr.markForCheck();
   }
 
-  submitBrokerLoad(ref: NbDialogRef<unknown>): void {
-    this.submitSqlLoad(
-      ref,
-      this.buildBrokerLoadSql(),
-      "Broker Load",
-      this.brokerLoadForm.database,
-      this.brokerLoadForm.table,
-    );
+  onImportDatabaseChange(): void {
+    this.importForm.table = "";
+    this.loadTargetTables(this.importForm.database);
   }
 
-  openRoutineLoad(chooserRef?: NbDialogRef<unknown>): void {
-    const template = this.routineLoadDialog;
-    if (!template || !this.activeCluster || !this.isStarRocksCluster) {
-      return;
+  onImportFileChange(event: Event): void {
+    const file = (event.target as HTMLInputElement).files?.[0];
+    this.importForm.file = file;
+    if (file) {
+      this.importForm.format = file.name.toLowerCase().endsWith(".json")
+        ? "json"
+        : "csv";
     }
-
-    chooserRef?.close();
-    this.routineLoadForm = {
-      database: this.defaultImportDatabase(),
-      table: "",
-      jobName: "",
-      brokers: "",
-      topic: "",
-      format: "csv",
-      offset: "OFFSET_END",
-      columnSeparator: ",",
-    };
-    this.targetTables = [];
-    this.loadFormErrorMessage = "";
-    this.sqlLoadSubmitting = false;
-    const dialogRef = this.dialogService.open(template, {
-      autoFocus: false,
-      closeOnBackdropClick: true,
-      closeOnEsc: true,
-      hasBackdrop: true,
-    });
-    this.routineLoadDialogRef = dialogRef;
-    dialogRef.onClose.pipe(take(1)).subscribe(() => {
-      this.routineLoadDialogRef = undefined;
-      this.sqlLoadSubmitting = false;
-      this.cdr.markForCheck();
-    });
-    this.loadTargetTables(this.routineLoadForm.database);
   }
 
-  onRoutineDatabaseChange(): void {
-    this.routineLoadForm.table = "";
-    this.loadTargetTables(this.routineLoadForm.database);
-  }
-
-  isRoutineLoadFormValid(): boolean {
-    const { database, table, jobName, brokers, topic } = this.routineLoadForm;
-    return Boolean(
-      database.trim() &&
-      table.trim() &&
-      this.isSafeLoadName(jobName) &&
-      this.isPlainKafkaBrokerList(brokers) &&
-      this.isKafkaTopic(topic),
+  isImportFormValid(): boolean {
+    const { type, database, table } = this.importForm;
+    if (!database.trim() || !table.trim()) {
+      return false;
+    }
+    if (type === "file") {
+      return Boolean(this.importForm.file);
+    }
+    if (type === "path") {
+      return (
+        this.isSafeLoadName(this.importForm.label) &&
+        this.isCredentialFreeBrokerPath(this.importForm.path)
+      );
+    }
+    return (
+      this.isSafeLoadName(this.importForm.jobName) &&
+      this.isPlainKafkaBrokerList(this.importForm.brokers) &&
+      this.isKafkaTopic(this.importForm.topic)
     );
   }
 
-  buildRoutineLoadSql(): string {
-    if (!this.isRoutineLoadFormValid()) {
+  buildImportSql(): string {
+    if (!this.isImportFormValid()) {
       return "";
     }
 
     const {
+      type,
       database,
       table,
+      path,
       jobName,
       brokers,
       topic,
       format,
       offset,
+      label,
       columnSeparator,
-    } = this.routineLoadForm;
-    const loadProperties =
-      format === "csv"
-        ? `COLUMNS TERMINATED BY ${this.quoteSqlString(columnSeparator)}\n`
-        : "";
-    return [
-      `CREATE ROUTINE LOAD ${this.quoteIdentifier(database)}.${this.quoteIdentifier(jobName)} ON ${this.quoteIdentifier(table)}`,
-      loadProperties + "PROPERTIES (",
-      `  \"format\" = ${this.quoteSqlString(format)},`,
-      `  \"property.kafka_default_offsets\" = ${this.quoteSqlString(offset)}`,
-      ")",
-      "FROM KAFKA (",
-      `  \"kafka_broker_list\" = ${this.quoteSqlString(brokers)},`,
-      `  \"kafka_topic\" = ${this.quoteSqlString(topic)}`,
-      ");",
-    ].join("\n");
-  }
+    } = this.importForm;
 
-  submitRoutineLoad(ref: NbDialogRef<unknown>): void {
-    this.submitSqlLoad(
-      ref,
-      this.buildRoutineLoadSql(),
-      "Routine Load",
-      this.routineLoadForm.database,
-      this.routineLoadForm.table,
-    );
-  }
-
-  submitStreamLoad(ref: NbDialogRef<unknown>): void {
-    if (!this.isStreamLoadFormValid() || this.streamLoadSubmitting) {
-      return;
+    if (type === "path") {
+      const csvOptions =
+        format === "csv"
+          ? `\n  COLUMNS TERMINATED BY ${this.quoteSqlString(columnSeparator)}`
+          : "";
+      return [
+        `LOAD LABEL ${this.quoteIdentifier(database)}.${this.quoteIdentifier(label)} (`,
+        `  DATA INFILE (${this.quoteSqlString(path)}) INTO TABLE ${this.quoteIdentifier(table)}`,
+        `  FORMAT AS ${this.quoteSqlString(format.toUpperCase())}${csvOptions}`,
+        ")",
+        "WITH BROKER;",
+      ].join("\n");
     }
 
-    const { database, table, file } = this.streamLoadForm;
-    this.confirmDialogService
-      .confirm(
-        "确认提交 Stream Load",
-        `将把本地文件 ${file?.name} 写入 ${database}.${table}。文件内容不会记录到 SQL 历史，是否继续？`,
-        "开始导入",
-        "取消",
-        "primary",
+    if (type === "kafka") {
+      const loadProperties =
+        format === "csv"
+          ? `COLUMNS TERMINATED BY ${this.quoteSqlString(columnSeparator)}\n`
+          : "";
+      return [
+        `CREATE ROUTINE LOAD ${this.quoteIdentifier(database)}.${this.quoteIdentifier(jobName)} ON ${this.quoteIdentifier(table)}`,
+        loadProperties + "PROPERTIES (",
+        `  \"format\" = ${this.quoteSqlString(format)},`,
+        `  \"property.kafka_default_offsets\" = ${this.quoteSqlString(offset)}`,
+        ")",
+        "FROM KAFKA (",
+        `  \"kafka_broker_list\" = ${this.quoteSqlString(brokers)},`,
+        `  \"kafka_topic\" = ${this.quoteSqlString(topic)}`,
+        ");",
+      ].join("\n");
+    }
+
+    return "";
+  }
+
+  importSubmitLabel(): string {
+    if (this.importForm.type === "file") {
+      return "开始导入";
+    }
+    return this.importForm.type === "path"
+      ? "提交 Broker Load"
+      : "创建 Routine Load";
+  }
+
+  submitImport(ref: NbDialogRef<unknown>): void {
+    if (!this.isImportFormValid() || this.importSubmitting) {
+      return;
+    }
+    if (this.importForm.type === "file") {
+      this.submitStreamLoad(ref);
+      return;
+    }
+    this.submitImportSql(ref);
+  }
+
+  private submitStreamLoad(ref: NbDialogRef<unknown>): void {
+    const { database, table, file, label, columnSeparator } = this.importForm;
+    if (!file) {
+      return;
+    }
+    const format = this.importForm.format === "json" ? "json" : "csv";
+    const formData = new FormData();
+    formData.append("database", database);
+    formData.append("table", table);
+    formData.append("format", format);
+    if (label.trim()) {
+      formData.append("label", label.trim());
+    }
+    if (format === "csv") {
+      formData.append("column_separator", columnSeparator);
+    }
+    formData.append("file", file, file.name);
+
+    this.importSubmitting = true;
+    this.loadFormErrorMessage = "";
+    this.cdr.markForCheck();
+    this.nodeService
+      .streamLoad(formData)
+      .pipe(
+        take(1),
+        finalize(() => {
+          this.importSubmitting = false;
+          this.cdr.markForCheck();
+        }),
       )
-      .pipe(take(1))
-      .subscribe((confirmed) => {
-        if (!confirmed || !file) {
-          return;
-        }
-
-        const formData = new FormData();
-        formData.append("database", database);
-        formData.append("table", table);
-        formData.append("format", this.streamLoadForm.format);
-        if (this.streamLoadForm.label.trim()) {
-          formData.append("label", this.streamLoadForm.label.trim());
-        }
-        if (this.streamLoadForm.format === "csv") {
-          formData.append(
-            "column_separator",
-            this.streamLoadForm.columnSeparator,
-          );
-        }
-        formData.append("file", file, file.name);
-
-        this.streamLoadSubmitting = true;
-        this.loadFormErrorMessage = "";
-        this.cdr.markForCheck();
-        this.nodeService
-          .streamLoad(formData)
-          .pipe(
-            take(1),
-            finalize(() => {
-              this.streamLoadSubmitting = false;
-              this.cdr.markForCheck();
-            }),
-          )
-          .subscribe({
-            next: (response) => this.handleStreamLoadResponse(response, ref),
-            error: (error) => {
-              this.loadFormErrorMessage =
-                ErrorHandler.extractErrorMessage(error);
-              this.cdr.markForCheck();
-            },
-          });
+      .subscribe({
+        next: (response) => this.handleStreamLoadResponse(response, ref),
+        error: (error) => {
+          this.loadFormErrorMessage = ErrorHandler.extractErrorMessage(error);
+          this.cdr.markForCheck();
+        },
       });
+  }
+
+  private submitImportSql(ref: NbDialogRef<unknown>): void {
+    const sql = this.buildImportSql();
+    if (!sql) {
+      return;
+    }
+    const { database, table } = this.importForm;
+    const loadType =
+      this.importForm.type === "path" ? "Broker Load" : "Routine Load";
+    this.importSubmitting = true;
+    this.loadFormErrorMessage = "";
+    this.cdr.markForCheck();
+    this.nodeService
+      .executeSQL(sql, undefined, undefined, database)
+      .pipe(
+        take(1),
+        finalize(() => {
+          this.importSubmitting = false;
+          this.cdr.markForCheck();
+        }),
+      )
+      .subscribe({
+        next: (response) => {
+          const result = response.results?.[0];
+          if (!result?.success) {
+            this.loadFormErrorMessage = result?.error || `${loadType} 提交失败`;
+            this.cdr.markForCheck();
+            return;
+          }
+          ref.close();
+          this.filters.db = database;
+          this.syncFiltersToUrl();
+          this.toastrService.success(
+            `${loadType} 作业已提交：${database}.${table}`,
+            "成功",
+          );
+          this.loadJobs();
+        },
+        error: (error) => {
+          this.loadFormErrorMessage = ErrorHandler.extractErrorMessage(error);
+          this.cdr.markForCheck();
+        },
+      });
+  }
+
+  private defaultBrokerLabel(): string {
+    return `stellar_broker_${Date.now()}`;
   }
 
   private loadTargetTables(database: string): void {
@@ -680,65 +587,6 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
     return this.databases.includes(this.filters.db)
       ? this.filters.db
       : this.databases[0] || "";
-  }
-
-  private submitSqlLoad(
-    ref: NbDialogRef<unknown>,
-    sql: string,
-    loadType: string,
-    database: string,
-    table: string,
-  ): void {
-    if (!sql || this.sqlLoadSubmitting) {
-      return;
-    }
-
-    this.confirmDialogService
-      .confirm(
-        `确认提交 ${loadType}`,
-        `将向 ${database}.${table} 提交 ${loadType} 作业。外部数据源认证由 StarRocks 集群侧配置负责，是否继续？`,
-        "提交作业",
-        "取消",
-        "primary",
-      )
-      .pipe(take(1))
-      .subscribe((confirmed) => {
-        if (!confirmed) return;
-
-        this.sqlLoadSubmitting = true;
-        this.loadFormErrorMessage = "";
-        this.cdr.markForCheck();
-        this.nodeService
-          .executeSQL(sql, undefined, undefined, database)
-          .pipe(
-            take(1),
-            finalize(() => {
-              this.sqlLoadSubmitting = false;
-              this.cdr.markForCheck();
-            }),
-          )
-          .subscribe({
-            next: (response) => {
-              const result = response.results?.[0];
-              if (!result?.success) {
-                this.loadFormErrorMessage =
-                  result?.error || `${loadType} 提交失败`;
-                this.cdr.markForCheck();
-                return;
-              }
-              ref.close();
-              this.filters.db = database;
-              this.syncFiltersToUrl();
-              this.toastrService.success(`${loadType} 作业已提交`, "成功");
-              this.loadJobs();
-            },
-            error: (error) => {
-              this.loadFormErrorMessage =
-                ErrorHandler.extractErrorMessage(error);
-              this.cdr.markForCheck();
-            },
-          });
-      });
   }
 
   private quoteIdentifier(value: string): string {
@@ -802,7 +650,7 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
     }
 
     ref.close();
-    this.filters.db = this.streamLoadForm.database;
+    this.filters.db = this.importForm.database;
     this.syncFiltersToUrl();
     const loadedRows = this.formatNumber(response.number_loaded_rows);
     this.toastrService.success(`已写入 ${loadedRows} 行`, "Stream Load 完成");
