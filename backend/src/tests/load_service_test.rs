@@ -47,6 +47,7 @@ fn every_failure_cause_carries_executable_steps() {
         ("filtered ratio exceeds max_filter_ratio", "ThresholdExceeded"),
         ("Access denied for user", "PermissionDenied"),
         ("unknown table t", "TargetMissing"),
+        ("fail to execute commit task: No rows were imported from upstream", "NoRowsLoaded"),
         ("parse error while reading csv", "FormatError"),
         ("out of memory in resource group", "ResourceExhausted"),
         ("something nobody classified", "Unknown"),

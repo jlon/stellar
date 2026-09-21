@@ -132,7 +132,7 @@ Routine Load：不做批处理阶段时间线，改为**消费位点卡片**（�
 - **刷新**：只在首次加载、筛选变化和用户点击刷新时请求数据；不在页面停留期间自动轮询。
 - **详情 Sheet**：点击原生 Smart Table 行通过 Nebular `NbDialog` 从右侧打开；保留遮罩、焦点陷阱和 Esc/遮罩点击关闭。关闭时先播放右移退出动画，`prefers-reduced-motion` 下直接关闭；关闭后焦点回到触发行。Sheet 按“任务概览 / 真实阶段 / 诊断信息”组织字段，展示错误全文、`TRACKING_SQL`、拒绝记录路径和 `RUNTIME_DETAILS`。
 - **失败优先排序**：默认排序 `失败 > 运行中 > 排队 > 已完成/取消`，组内按时间倒序——运维视角“先看坏消息”
-- **错误原因归类（对齐 EMR 原因分析）**：后端按 ERROR_MSG 模式匹配归类，输出 `cause: 超时 / 超阈值 / 格式错误 / 权限 / 目标表不存在 / 资源不足 / 未知`，每类附一句处置建议（如“Scan bytes exceed threshold → 减小单次导入体量或调大 `broker_load_scan_bytes_threshold`”）；归类结果在详情 Sheet 错误框顶部渲染为结论行，无法识别时回退原文展示，不臆断
+- **错误原因归类（对齐 EMR 原因分析）**：后端按 ERROR_MSG 模式匹配归类，输出 `cause: 超时 / 超阈值 / 无有效数据 / 格式错误 / 权限 / 目标表不存在 / 资源不足 / 未知`，每类附一句处置建议与可执行步骤（如“Scan bytes exceed threshold → 减小单次导入体量或调大 `broker_load_scan_bytes_threshold`”）；归类结果在详情 Sheet 错误框顶部渲染为结论行，无法识别时回退原文展示，不臆断。`NoRowsLoaded`（引擎报 `No rows were imported from upstream`）由真实集群错误补入，用于区分“数据被全部过滤或源为空”与真正的未知故障
 - **空态**：无任务时提示调整时间范围或清除筛选；树节点入口仍可直接带数据库筛选跳转
 - **错误详情**：详情 Sheet 提供 `ERROR_MSG`、`TRACKING_SQL` 和 `REJECTED_RECORD_PATH` 的原生输入控件与复制按钮；Doris 失败作业额外展示同一 `SHOW LOAD` 行的原始 `URL`、`ErrorMsg`、`JobDetails`，不接入 `get_load_errors_compromise` 或全局 error hub。
 - **处置闭环**：失败任务的详情 Sheet 除了原因归类，还展示按原因给出的**可执行修复步骤**（如 `PROPERTIES("max_filter_ratio" = "0.1")`、需核对的页面路径），并在引擎返回可判定的父作业状态时提供处置动作（Routine Load 的 `PAUSE` / `RESUME ROUTINE LOAD FOR db.job`）。动作区在按钮旁直接展示**将要下发的语句原文**，不弹二次确认框；执行后重新读取作业详情，用引擎返回的新状态呈现处置结果，并写入 `op_audit_logs`（`action=load:pause|load:resume`，不新建表）。动作列表由服务端按作业 ID 重新解析作业名与数据库，不信任客户端传入。

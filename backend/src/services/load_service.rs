@@ -764,6 +764,31 @@ pub(crate) fn classify_failure(message: &str) -> Option<LoadFailureCause> {
         )
     } else if contains_any(
         &normalized,
+        &[
+            "no rows were imported",
+            "no rows imported",
+            "all rows were filtered",
+            "no valid rows",
+            "empty file",
+            "no data",
+            "无数据",
+            "没有数据",
+            "空文件",
+        ],
+    ) {
+        (
+            "NoRowsLoaded",
+            "无有效数据",
+            "确认源文件或上游非空，且列与过滤条件不会滤掉全部行",
+            vec![
+                "确认源文件或上游 Topic 非空，且字段数与目标表列数一致",
+                "核对列分隔符与列顺序；JSON 需为每行一个对象（NDJSON）",
+                "检查过滤条件是否把所有行都滤掉，分区导入还要确认分区键取值存在",
+                "确认数据可接受后，用新的 Label 重新提交（同一 Label 不能重复使用）",
+            ],
+        )
+    } else if contains_any(
+        &normalized,
         &["permission", "privilege", "access denied", "unauthorized", "权限", "禁止"],
     ) {
         (
