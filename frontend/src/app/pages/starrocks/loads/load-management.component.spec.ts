@@ -378,6 +378,59 @@ describe("LoadManagementComponent", () => {
     expect(component.selectedJob?.state).toBe("RUNNING");
   });
 
+  it("prefills the import drawer from a failed job context", () => {
+    component.activeCluster = { cluster_type: "starrocks" } as NonNullable<
+      typeof component.activeCluster
+    >;
+    (
+      component as unknown as { importDialog: TemplateRef<unknown> }
+    ).importDialog = {} as TemplateRef<unknown>;
+    dialogService.open.and.returnValue({
+      close: jasmine.createSpy("close"),
+      onClose: of(undefined),
+    });
+    component.databases = ["analytics"];
+
+    component.openImportDialog({
+      type: "path",
+      database: "analytics",
+      table: "events",
+    });
+
+    expect(component.importForm.type).toBe("path");
+    expect(component.importForm.database).toBe("analytics");
+    expect(component.importForm.table).toBe("events");
+    // Broker 类型需要默认 Label，且源路径不会被预填
+    expect(component.importForm.label).toMatch(/^stellar_broker_\d+$/);
+    expect(component.importForm.path).toBe("");
+  });
+
+  it("offers re-import only for failed or cancelled jobs", () => {
+    component.activeCluster = { cluster_type: "starrocks" } as NonNullable<
+      typeof component.activeCluster
+    >;
+
+    expect(
+      component.canReopenImport({ state: "CANCELLED" } as LoadJob),
+    ).toBeTrue();
+    expect(
+      component.canReopenImport({ state: "FAILED" } as LoadJob),
+    ).toBeTrue();
+    expect(
+      component.canReopenImport({ state: "FINISHED" } as LoadJob),
+    ).toBeFalse();
+    expect(
+      component.canReopenImport({ state: "LOADING" } as LoadJob),
+    ).toBeFalse();
+
+    component.activeCluster = { cluster_type: "doris" } as NonNullable<
+      typeof component.activeCluster
+    >;
+    expect(
+      component.canReopenImport({ state: "CANCELLED" } as LoadJob),
+    ).toBeFalse();
+  });
+
   it("passes the selected Smart Table row index to the Sheet opener", () => {
     const job = { job_id: "job-1", state: "FINISHED" } as LoadJob;
     const openDetails = spyOn(component, "openDetails");

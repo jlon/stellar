@@ -303,24 +303,32 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
       });
   }
 
-  openImportDialog(): void {
+  openImportDialog(prefill?: {
+    type?: ImportSourceType;
+    database?: string;
+    table?: string;
+  }): void {
     const template = this.importDialog;
     if (!template || !this.activeCluster || !this.isStarRocksCluster) {
       return;
     }
 
-    const database = this.defaultImportDatabase();
+    const type = prefill?.type ?? this.importForm.type;
+    const database =
+      prefill?.database && this.databases.includes(prefill.database)
+        ? prefill.database
+        : this.defaultImportDatabase();
     this.importForm = {
-      type: this.importForm.type,
+      type,
       database,
-      table: "",
+      table: prefill?.table ?? "",
       path: "",
       jobName: "",
       brokers: "",
       topic: "",
       offset: "OFFSET_END",
       format: "csv",
-      label: this.importForm.type === "path" ? this.defaultBrokerLabel() : "",
+      label: type === "path" ? this.defaultBrokerLabel() : "",
       columnSeparator: ",",
     };
     this.targetTables = [];
@@ -1167,6 +1175,38 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
       (left, right) =>
         priority(left.state) - priority(right.state) ||
         (right.create_time || "").localeCompare(left.create_time || ""),
+    );
+  }
+
+  /// 失败/已取消的作业可以带着库表上下文重新发起导入。
+  canReopenImport(job: LoadJob): boolean {
+    const status = this.badgeStatus(job.state);
+    return (
+      this.isStarRocksCluster && (status === "danger" || status === "basic")
+    );
+  }
+
+  /// 按失败作业的已知信息打开创建抽屉。
+  ///
+  /// 只预填库、表与导入类型：源文件、HDFS 路径、Kafka 地址从不落库，
+  /// 必须由用户重新提供，不做"一键重跑"的假象。
+  reopenImportFromJob(job: LoadJob): void {
+    const type: ImportSourceType =
+      job.load_type === "ROUTINE_LOAD"
+        ? "kafka"
+        : job.load_type === "BROKER_LOAD"
+          ? "path"
+          : "file";
+    const prefill = {
+      type,
+      database: job.database,
+      table: job.table_name,
+    };
+    this.closeDetails();
+    // 等详情抽屉退场动画结束再打开创建抽屉，避免两层遮罩叠加
+    this.document.defaultView?.setTimeout(
+      () => this.openImportDialog(prefill),
+      LoadManagementComponent.sheetExitDurationMs + 40,
     );
   }
 

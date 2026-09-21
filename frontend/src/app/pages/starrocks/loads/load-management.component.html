@@ -542,7 +542,7 @@
           </nb-alert>
         }
 
-        @if (job.actions?.length) {
+        @if (job.actions?.length || canReopenImport(job)) {
           <section class="mb-4">
             <small class="text-hint d-block mb-2">可执行处置</small>
             <div class="load-actions">
@@ -572,6 +572,28 @@
                     <code class="load-action-statement">{{
                       action.statement
                     }}</code>
+                  </div>
+                </div>
+              }
+              @if (canReopenImport(job)) {
+                <div class="load-action">
+                  <button
+                    nbButton
+                    ghost
+                    size="small"
+                    status="basic"
+                    ngxHasPermission="api:clusters:queries:execute"
+                    (click)="reopenImportFromJob(job)"
+                    nbTooltip="用同一库表重新发起导入，源文件或路径需重新提供"
+                    aria-label="按此作业重新导入"
+                  >
+                    <nb-icon icon="refresh-outline"></nb-icon>
+                  </button>
+                  <div>
+                    <strong>按此作业重新导入</strong>
+                    <code class="load-action-statement"
+                      >同库表 · 源文件 / 路径需重新提供（不做留存）</code
+                    >
                   </div>
                 </div>
               }

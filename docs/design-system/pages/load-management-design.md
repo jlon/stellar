@@ -180,7 +180,7 @@ pub enum LoadFailureCause { Timeout, ThresholdExceeded, FormatError, PermissionD
 - 首选 `information_schema.loads`；查询失败时按数据库回退到 `SHOW LOAD`，缺失字段保持 `null`
 - 阶段列表只由 `CREATE_TIME`、`LOAD_START_TIME`、`LOAD_COMMIT_TIME`、`LOAD_FINISH_TIME` 计算；`RUNTIME_DETAILS` 当前作为原文保留，不把内部字段猜测成阶段
 - 失败原因按 `ERROR_MSG` 关键词归类为 `Timeout`、`ThresholdExceeded`、`FormatError`、`PermissionDenied`、`TargetMissing`、`ResourceExhausted`、`Unknown`
-- 使用独立 `api:clusters:loads` 权限；权限提取器将 `GET /api/clusters/loads*` 映射到该权限。迁移仅为已有 `api:clusters:queries` 查询读取权限的角色同时补发 `menu:loads` 与 `api:clusters:loads`；旧迁移对仅有 `menu:queries:execution` 的角色误补的 Load 菜单会在紧随其后的修正迁移中移除，保持菜单与路由守卫一致
+- 使用独立 `api:clusters:loads` 权限；权限提取器将 `GET /api/clusters/loads*` 映射到该权限。三方言 `00000000_initial_schema.sql` 统一初始化 `menu:loads`、`api:clusters:loads` 及 admin/super_admin 授权，保持菜单、路由守卫与 API 一致
 - `_statistics_.loads_history`、Routine Load 位点/子任务和游标分页已保持在同一查询链中；不为当前一条查询链预先增加 adapter 抽象。Doris 失败详情不使用 error hub；`SHOW LOAD` 不支持已确认的 JobId 谓词，故只将精确 Label 的结果在服务端按 JobId 二次收窄
 
 ## 7. 前端组件划分
