@@ -1,136 +1,181 @@
 <div class="cluster-overview">
   <div class="overview-toolbar">
     <nb-select class="overview-toolbar__select" [(selected)]="timeRange" (selectedChange)="onTimeRangeChange($event)" size="tiny" status="basic">
-      <nb-option *ngFor="let opt of timeRangeOptions" [value]="opt.value">{{ opt.label }}</nb-option>
+      @for (opt of timeRangeOptions; track opt) {
+        <nb-option [value]="opt.value">{{ opt.label }}</nb-option>
+      }
     </nb-select>
     <nb-select class="overview-toolbar__select" [(selected)]="refreshInterval" (selectedChange)="onRefreshIntervalChange($event)" size="tiny" status="basic">
-      <nb-option *ngFor="let opt of refreshIntervalOptions" [value]="opt.value">{{ opt.label }}</nb-option>
+      @for (opt of refreshIntervalOptions; track opt) {
+        <nb-option [value]="opt.value">{{ opt.label }}</nb-option>
+      }
     </nb-select>
     <button type="button" nbButton size="tiny" ghost status="basic" (click)="onManualRefresh()" [aria-label]="'立即刷新' | translate">
       <nb-icon icon="refresh-outline"></nb-icon>
     </button>
   </div>
 
-  <div *ngIf="loading && !overview" class="overview-loading">
-    <nb-spinner size="giant" status="primary"></nb-spinner>
-  </div>
-
-  <div *ngIf="overview" class="overview-board">
-    <ul class="alert-strip" *ngIf="overviewAlerts.length">
-      <li *ngFor="let alert of overviewAlerts" [attr.data-level]="alert.level">
-        <span>{{ alert.category }}</span>
-        <span>{{ alert.message }}</span>
-      </li>
-    </ul>
-
-    <div class="kpi-grid">
-      <ng-container *ngFor="let card of healthCards">
-        <button
-          *ngIf="isNavigableCard(card); else staticKpi"
-          type="button"
-          class="kpi kpi--action"
-          [attr.data-status]="cardStatus(card)"
-          [nbTooltip]="cardTooltip(card)"
-          [nbTooltipDisabled]="!cardTooltip(card)"
-          nbTooltipPlacement="top"
-          (click)="handleCardClick(card)">
-          <span class="kpi__label">{{ cardTitle(card) }}</span>
-          <span class="kpi__value">{{ cardValue(card) }}</span>
-        </button>
-        <ng-template #staticKpi>
-          <div
-            class="kpi"
-            [attr.data-status]="cardStatus(card)"
-            [nbTooltip]="cardTooltip(card)"
-            [nbTooltipDisabled]="!cardTooltip(card)"
-            nbTooltipPlacement="top">
-            <span class="kpi__label">{{ cardTitle(card) }}</span>
-            <span class="kpi__value">{{ cardValue(card) }}</span>
-          </div>
-        </ng-template>
-      </ng-container>
+  @if (loading && !overview) {
+    <div class="overview-loading">
+      <nb-spinner size="giant" status="primary"></nb-spinner>
     </div>
+  }
 
-    <div class="chart-grid chart-grid--trends">
-      <section class="panel" *ngFor="let chart of trendCharts">
-        <header class="panel__title">{{ chart.title }}</header>
-        <div class="panel__body">
-          <div *ngIf="chart.hasData" echarts [options]="chart.options" class="echart"></div>
-          <div class="fact-strip" *ngIf="chart.facts?.length">
-            <span *ngFor="let fact of chart.facts">{{ fact }}</span>
-          </div>
-          <p *ngIf="!chart.hasData" class="panel__empty">{{  '暂无数据' | translate }}</p>
-        </div>
-      </section>
-    </div>
-
-    <div class="chart-grid chart-grid--3">
-      <section class="panel">
-        <header class="panel__title">{{  '表大小' | translate }}</header>
-        <div class="panel__body">
-          <div *ngIf="topSizeChartOptions" echarts [options]="topSizeChartOptions" class="echart-rank"></div>
-          <p *ngIf="!topSizeChartOptions" class="panel__empty">{{  '暂无数据' | translate }}</p>
-        </div>
-      </section>
-      <section class="panel">
-        <header class="panel__title">{{  '访问' | translate }}</header>
-        <div class="panel__body">
-          <div *ngIf="topAccessChartOptions" echarts [options]="topAccessChartOptions" class="echart-rank"></div>
-          <p *ngIf="!topAccessChartOptions" class="panel__empty">{{ accessEmptyText }}</p>
-        </div>
-      </section>
-      <section class="panel">
-        <header class="panel__title">{{ storagePanelTitle }}</header>
-        <div class="panel__body">
-          <div *ngIf="storageChartOptions" echarts [options]="storageChartOptions" class="echart-rank"></div>
-          <div class="fact-strip" *ngIf="isSharedData && compactionDurationFacts.length">
-            <span *ngFor="let fact of compactionDurationFacts">{{ fact }}</span>
-          </div>
-          <p *ngIf="!storageChartOptions" class="panel__empty">{{  '暂无数据' | translate }}</p>
-        </div>
-      </section>
-    </div>
-
-    <div class="chart-grid chart-grid--2">
-      <section class="panel">
-        <header class="panel__title">{{ (isSharedData ? '数据缓存' : '容量') | translate }}</header>
-        <div class="panel__body">
-          <ng-container *ngIf="capacityPrediction; else noCapacity">
-            <div class="meter">
-              <span class="meter__value" [attr.data-tone]="capacityTone">{{ capacityPercent }}%</span>
-              <div
-                class="meter__track"
-                role="meter"
-                [attr.aria-valuenow]="capacityPercent"
-                aria-valuemin="0"
-                aria-valuemax="100"
-                [aria-label]="(isSharedData ? '数据缓存配额使用率' : '磁盘使用率') | translate">
-                <span class="meter__fill" [style.width.%]="capacityPercent" [attr.data-tone]="capacityTone"></span>
-              </div>
-            </div>
-            <div class="fact-strip">
-              <span>{{ formatBytes(capacityPrediction.disk_used_bytes) }} / {{ formatBytes(capacityPrediction.disk_total_bytes) }}</span>
-              <span *ngIf="capacityPrediction.days_until_full != null" [class.text-danger]="capacityPrediction.days_until_full < 30">
-                {{ capacityPrediction.days_until_full }} {{ '天后存满' | translate }}
-              </span>
-            </div>
-          </ng-container>
-          <ng-template #noCapacity><p class="panel__empty">{{  '暂无数据' | translate }}</p></ng-template>
-        </div>
-      </section>
-      <section class="panel">
-        <header class="panel__title">{{  '任务' | translate }}</header>
-        <div class="panel__body panel__body--split">
-          <div *ngIf="taskChartOptions" echarts [options]="taskChartOptions" class="echart-task"></div>
-          <ul class="stat-list" *ngIf="taskRows.length">
-            <li *ngFor="let row of taskRows" [attr.data-tone]="row.tone">
-              <span>{{ row.label }}</span>
-              <span>{{ row.value }}</span>
+  @if (overview) {
+    <div class="overview-board">
+      @if (overviewAlerts.length) {
+        <ul class="alert-strip">
+          @for (alert of overviewAlerts; track alert) {
+            <li [attr.data-level]="alert.level">
+              <span>{{ alert.category }}</span>
+              <span>{{ alert.message }}</span>
             </li>
-          </ul>
-          <p *ngIf="!taskChartOptions && !taskRows.length" class="panel__empty">{{  '暂无数据' | translate }}</p>
-        </div>
-      </section>
+          }
+        </ul>
+      }
+      <div class="kpi-grid">
+        @for (card of healthCards; track card) {
+          @if (isNavigableCard(card)) {
+            <button
+              type="button"
+              class="kpi kpi--action"
+              [attr.data-status]="cardStatus(card)"
+              [nbTooltip]="cardTooltip(card)"
+              [nbTooltipDisabled]="!cardTooltip(card)"
+              nbTooltipPlacement="top"
+              (click)="handleCardClick(card)">
+              <span class="kpi__label">{{ cardTitle(card) }}</span>
+              <span class="kpi__value">{{ cardValue(card) }}</span>
+            </button>
+          } @else {
+            <div
+              class="kpi"
+              [attr.data-status]="cardStatus(card)"
+              [nbTooltip]="cardTooltip(card)"
+              [nbTooltipDisabled]="!cardTooltip(card)"
+              nbTooltipPlacement="top">
+              <span class="kpi__label">{{ cardTitle(card) }}</span>
+              <span class="kpi__value">{{ cardValue(card) }}</span>
+            </div>
+          }
+        }
+      </div>
+      <div class="chart-grid chart-grid--trends">
+        @for (chart of trendCharts; track chart) {
+          <section class="panel">
+            <header class="panel__title">{{ chart.title }}</header>
+            <div class="panel__body">
+              @if (chart.hasData) {
+                <div echarts [options]="chart.options" class="echart"></div>
+              }
+              @if (chart.facts?.length) {
+                <div class="fact-strip">
+                  @for (fact of chart.facts; track fact) {
+                    <span>{{ fact }}</span>
+                  }
+                </div>
+              }
+              @if (!chart.hasData) {
+                <p class="panel__empty">{{  '暂无数据' | translate }}</p>
+              }
+            </div>
+          </section>
+        }
+      </div>
+      <div class="chart-grid chart-grid--3">
+        <section class="panel">
+          <header class="panel__title">{{  '表大小' | translate }}</header>
+          <div class="panel__body">
+            @if (topSizeChartOptions) {
+              <div echarts [options]="topSizeChartOptions" class="echart-rank"></div>
+            }
+            @if (!topSizeChartOptions) {
+              <p class="panel__empty">{{  '暂无数据' | translate }}</p>
+            }
+          </div>
+        </section>
+        <section class="panel">
+          <header class="panel__title">{{  '访问' | translate }}</header>
+          <div class="panel__body">
+            @if (topAccessChartOptions) {
+              <div echarts [options]="topAccessChartOptions" class="echart-rank"></div>
+            }
+            @if (!topAccessChartOptions) {
+              <p class="panel__empty">{{ accessEmptyText }}</p>
+            }
+          </div>
+        </section>
+        <section class="panel">
+          <header class="panel__title">{{ storagePanelTitle }}</header>
+          <div class="panel__body">
+            @if (storageChartOptions) {
+              <div echarts [options]="storageChartOptions" class="echart-rank"></div>
+            }
+            @if (isSharedData && compactionDurationFacts.length) {
+              <div class="fact-strip">
+                @for (fact of compactionDurationFacts; track fact) {
+                  <span>{{ fact }}</span>
+                }
+              </div>
+            }
+            @if (!storageChartOptions) {
+              <p class="panel__empty">{{  '暂无数据' | translate }}</p>
+            }
+          </div>
+        </section>
+      </div>
+      <div class="chart-grid chart-grid--2">
+        <section class="panel">
+          <header class="panel__title">{{ (isSharedData ? '数据缓存' : '容量') | translate }}</header>
+          <div class="panel__body">
+            @if (capacityPrediction) {
+              <div class="meter">
+                <span class="meter__value" [attr.data-tone]="capacityTone">{{ capacityPercent }}%</span>
+                <div
+                  class="meter__track"
+                  role="meter"
+                  [attr.aria-valuenow]="capacityPercent"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  [aria-label]="(isSharedData ? '数据缓存配额使用率' : '磁盘使用率') | translate">
+                  <span class="meter__fill" [style.width.%]="capacityPercent" [attr.data-tone]="capacityTone"></span>
+                </div>
+              </div>
+              <div class="fact-strip">
+                <span>{{ formatBytes(capacityPrediction.disk_used_bytes) }} / {{ formatBytes(capacityPrediction.disk_total_bytes) }}</span>
+                @if (capacityPrediction.days_until_full !== null) {
+                  <span [class.text-danger]="capacityPrediction.days_until_full < 30">
+                    {{ capacityPrediction.days_until_full }} {{ '天后存满' | translate }}
+                  </span>
+                }
+              </div>
+            } @else {
+              <p class="panel__empty">{{  '暂无数据' | translate }}</p>
+            }
+          </div>
+        </section>
+        <section class="panel">
+          <header class="panel__title">{{  '任务' | translate }}</header>
+          <div class="panel__body panel__body--split">
+            @if (taskChartOptions) {
+              <div echarts [options]="taskChartOptions" class="echart-task"></div>
+            }
+            @if (taskRows.length) {
+              <ul class="stat-list">
+                @for (row of taskRows; track row) {
+                  <li [attr.data-tone]="row.tone">
+                    <span>{{ row.label }}</span>
+                    <span>{{ row.value }}</span>
+                  </li>
+                }
+              </ul>
+            }
+            @if (!taskChartOptions && !taskRows.length) {
+              <p class="panel__empty">{{  '暂无数据' | translate }}</p>
+            }
+          </div>
+        </section>
+      </div>
     </div>
-  </div>
+  }
 </div>

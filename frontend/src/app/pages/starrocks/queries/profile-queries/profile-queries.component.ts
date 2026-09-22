@@ -11,13 +11,7 @@ import {
   inject,
 } from "@angular/core";
 import { ActivatedRoute } from "@angular/router";
-import {
-  CommonModule,
-  Location,
-  NgStyle,
-  NgClass,
-  DecimalPipe,
-} from "@angular/common"; // Import Location
+import { CommonModule, Location, NgStyle, NgClass, DecimalPipe } from "@angular/common"; // Import Location
 import {
   NbToastrService,
   NbDialogService,

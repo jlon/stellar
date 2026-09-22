@@ -23,7 +23,7 @@ import { I18nService } from '../../../@core/i18n/i18n.service';
 import { AuthService } from '../../../@core/data/auth.service';
 import { NodeService, Session } from '../../../@core/data/node.service';
 import { themeChartChrome, colorWithAlpha } from '../../../@core/utils/theme-color';
-import { CommonModule } from '@angular/common';
+
 import { NgxEchartsDirective } from 'ngx-echarts';
 import { donutOption, horizontalBarOption } from './overview-charts';
 
@@ -45,7 +45,6 @@ import { donutOption, horizontalBarOption } from './overview-charts';
     NbTooltipModule,
     NgxEchartsDirective,
     NbAlertModule,
-    CommonModule,
     NbProgressBarModule
 ],
 })

@@ -2,7 +2,9 @@
   <nb-action class="control-item action-bell" [nbPopover]="notificationPanel" nbPopoverPlacement="bottom" nbPopoverOffset="4">
     <button class="bell-btn" [class.has-unread]="unreadCount > 0" (click)="refresh(true)">
       <nb-icon icon="bell-outline"></nb-icon>
-      <span *ngIf="unreadCount > 0" class="bell-dot"></span>
+      @if (unreadCount > 0) {
+        <span class="bell-dot"></span>
+      }
     </button>
   </nb-action>
 
@@ -10,25 +12,36 @@
     <div class="notification-panel">
       <header class="notif-header">
         <span>{{  '通知' | translate }}</span>
-        <span class="notif-header-count" *ngIf="unreadCount > 0">{{ unreadCount }} {{ '条未读' | translate }}</span>
+        @if (unreadCount > 0) {
+          <span class="notif-header-count">{{ unreadCount }} {{ '条未读' | translate }}</span>
+        }
       </header>
-      <div class="notif-body" *ngIf="notifications.length > 0">
-        <div
-          *ngFor="let n of notifications"
-          class="notif-item"
-          [class.unread]="!n.read"
-          (click)="openNotification(n)"
-        >
-          <div class="notif-title">
-            <nb-icon [icon]="notifIcon(n.kind)" class="notif-kind-icon" [class.critical]="n.severity === 'critical'" [class.warning]="n.severity === 'warning'"></nb-icon>
-            {{ n.title }}
-            <span *ngIf="!n.read" class="notif-unread-dot"></span>
-          </div>
-          <div class="notif-body-text" *ngIf="n.body">{{ n.body }}</div>
-          <div class="notif-meta">{{ n.created_at | date: 'MM-dd HH:mm' }} · {{ notifKind(n.kind) }}</div>
+      @if (notifications.length > 0) {
+        <div class="notif-body">
+          @for (n of notifications; track n) {
+            <div
+              class="notif-item"
+              [class.unread]="!n.read"
+              (click)="openNotification(n)"
+              >
+              <div class="notif-title">
+                <nb-icon [icon]="notifIcon(n.kind)" class="notif-kind-icon" [class.critical]="n.severity === 'critical'" [class.warning]="n.severity === 'warning'"></nb-icon>
+                {{ n.title }}
+                @if (!n.read) {
+                  <span class="notif-unread-dot"></span>
+                }
+              </div>
+              @if (n.body) {
+                <div class="notif-body-text">{{ n.body }}</div>
+              }
+              <div class="notif-meta">{{ n.created_at | date: 'MM-dd HH:mm' }} · {{ notifKind(n.kind) }}</div>
+            </div>
+          }
         </div>
-      </div>
-      <div class="notif-empty" *ngIf="notifications.length === 0">{{  '暂无通知' | translate }}</div>
+      }
+      @if (notifications.length === 0) {
+        <div class="notif-empty">{{  '暂无通知' | translate }}</div>
+      }
     </div>
   </ng-template>
 </ng-container>

@@ -5,7 +5,7 @@ import { TranslatePipe } from '@ngx-translate/core';
 
 import { ChangeDetectorRef, Component, HostBinding, Input, OnInit, OnDestroy, booleanAttribute, inject } from '@angular/core';
 import { NavigationEnd, Router } from '@angular/router';
-import { CommonModule } from '@angular/common';
+
 import { FormsModule } from '@angular/forms';
 import { Subject } from 'rxjs';
 import { filter, takeUntil } from 'rxjs/operators';
@@ -43,7 +43,6 @@ const ASSISTANT_ROUTE = '/pages/cluster-ops/agent';
   standalone: true,
   imports: [
     TranslatePipe,
-    CommonModule,
     FormsModule,
     NbIconModule,
     NbButtonModule,
@@ -54,8 +53,8 @@ const ASSISTANT_ROUTE = '/pages/cluster-ops/agent';
     NbEvaIconsModule,
     NbToastrModule,
     MarkdownModule,
-    AiIllustrationComponent,
-  ],
+    AiIllustrationComponent
+],
 })
 export class ChatFloatComponent implements OnInit, OnDestroy {
   @Input({ transform: booleanAttribute }) drawer = false;

@@ -8,630 +8,735 @@
             <nb-tabset (changeTab)="selectTab($event.tabId)">
               <!-- Real-time Query Tab -->
               <nb-tab [tabTitle]="'实时查询' | translate" tabId="realtime" [active]="selectedTab === 'realtime'">
-              <div class="realtime-query-container">
-              <div class="query-split-layout">
-                <div class="nav-tree-wrapper" [class.collapsed]="treeCollapsed" [style.width.px]="treePanelWidth">
-                  <ng-container *ngIf="!treeCollapsed; else collapsedButton">
-                    <nb-card size="tiny" class="nav-tree-card">
-                      <nb-card-header>
-                        <div class="nav-tree-header">
-                          <nb-icon icon="layers-outline"></nb-icon>
-                          <span>{{  'Catalog / 数据库' | translate }}</span>
-                        </div>
-                        <button 
-                          nbButton 
+                <div class="realtime-query-container">
+                  <div class="query-split-layout">
+                    <div class="nav-tree-wrapper" [class.collapsed]="treeCollapsed" [style.width.px]="treePanelWidth">
+                      @if (!treeCollapsed) {
+                        <nb-card size="tiny" class="nav-tree-card">
+                          <nb-card-header>
+                            <div class="nav-tree-header">
+                              <nb-icon icon="layers-outline"></nb-icon>
+                              <span>{{  'Catalog / 数据库' | translate }}</span>
+                            </div>
+                            <button
+                              nbButton
+                              status="basic"
+                              size="tiny"
+                              class="tree-collapse-toggle header-button"
+                              type="button"
+                              (click)="toggleTreeCollapsed()"
+                              [title]="treeCollapsed ? ('展开数据库树' | translate) : ('收起数据库树' | translate)">
+                              <nb-icon icon="arrow-ios-back-outline"></nb-icon>
+                            </button>
+                          </nb-card-header>
+                          <nb-card-body>
+                            <div class="tree-scroll">
+                              @if (loadingCatalogs) {
+                                <div class="tree-loading">
+                                  <nb-spinner size="small" status="primary" [message]="''"></nb-spinner>
+                                </div>
+                              }
+                              @if (!loadingCatalogs && databaseTree.length > 0) {
+                                <ul class="nav-tree">
+                                  @for (node of databaseTree; track trackNodeById($index, node)) {
+                                    <ng-container *ngTemplateOutlet="treeNodeTemplate; context: { $implicit: node }"></ng-container>
+                                  }
+                                </ul>
+                              } @else {
+                                <div class="empty-tree">
+                                  <nb-icon icon="alert-circle-outline"></nb-icon>
+                                  <span>{{  '暂无 Catalog' | translate }}</span>
+                                </div>
+                              }
+                            </div>
+                          </nb-card-body>
+                        </nb-card>
+                      } @else {
+                        <button
+                          nbButton
                           status="basic"
-                          size="tiny" 
-                          class="tree-collapse-toggle header-button"
+                          size="tiny"
+                          class="tree-collapse-toggle collapsed-button"
                           type="button"
                           (click)="toggleTreeCollapsed()"
                           [title]="treeCollapsed ? ('展开数据库树' | translate) : ('收起数据库树' | translate)">
-                          <nb-icon icon="arrow-ios-back-outline"></nb-icon>
+                          <nb-icon icon="arrow-ios-forward-outline"></nb-icon>
                         </button>
-                      </nb-card-header>
-                      <nb-card-body>
-                        <div class="tree-scroll">
-                          <div class="tree-loading" *ngIf="loadingCatalogs">
-                            <nb-spinner size="small" status="primary" [message]="''"></nb-spinner>
-                          </div>
-                          <ul class="nav-tree" *ngIf="!loadingCatalogs && databaseTree.length > 0; else emptyTree">
-                            <ng-container *ngFor="let node of databaseTree; trackBy: trackNodeById">
-                              <ng-container *ngTemplateOutlet="treeNodeTemplate; context: { $implicit: node }"></ng-container>
-                            </ng-container>
-                          </ul>
-                          <ng-template #emptyTree>
-                            <div class="empty-tree">
-                              <nb-icon icon="alert-circle-outline"></nb-icon>
-                              <span>{{  '暂无 Catalog' | translate }}</span>
-                            </div>
-                          </ng-template>
-                        </div>
-                      </nb-card-body>
-                    </nb-card>
-                  </ng-container>
-                  <ng-template #collapsedButton>
-                    <button 
-                      nbButton 
-                      status="basic"
-                      size="tiny" 
-                      class="tree-collapse-toggle collapsed-button"
-                      type="button"
-                      (click)="toggleTreeCollapsed()"
-                      [title]="treeCollapsed ? ('展开数据库树' | translate) : ('收起数据库树' | translate)">
-                      <nb-icon icon="arrow-ios-forward-outline"></nb-icon>
-                    </button>
-                  </ng-template>
-                </div>
-
-                <div class="tree-resizer" *ngIf="!treeCollapsed" (mousedown)="startTreeResize($event)">
-                  <span class="resizer-grip"></span>
-                </div>
-
-                <div class="editor-panel" [class.editor-collapsed]="sqlEditorCollapsed">
-                  <!-- Collapsed SQL Bar (shown when editor is collapsed) -->
-                  <div *ngIf="sqlEditorCollapsed" class="collapsed-sql-bar" (click)="toggleSqlEditor(false)">
-                    <div class="collapsed-sql-preview">
-                      <nb-icon icon="code-outline" status="primary"></nb-icon>
-                      <span class="sql-text" *ngIf="sqlInput && sqlInput.length > 0">{{ sqlInput | slice:0:100 }}{{ sqlInput.length > 100 ? '...' : '' }}</span>
-                      <span class="sql-text sql-placeholder" *ngIf="!sqlInput || sqlInput.length === 0">{{  '点击展开 SQL 编辑器' | translate }}</span>
-                    </div>
-                  </div>
-
-                  <!-- SQL Editor - CodeMirror (shown when editor is expanded) -->
-                  <div class="sql-editor-section" [@editorCollapse]="sqlEditorCollapsed ? 'collapsed' : 'expanded'">
-                    <div class="selection-toolbar d-flex justify-content-between align-items-center">
-                      <div class="selection-path d-flex align-items-center">
-                        <nb-icon icon="pin-outline" status="primary"></nb-icon>
-                        <span class="path-segment" [class.inactive]="!selectedCatalog">{{  selectedCatalog || ('未选择 Catalog' | translate)  }}</span>
-                        <nb-icon icon="arrow-ios-forward-outline"></nb-icon>
-                        <span class="path-segment" [class.inactive]="!selectedDatabase">{{  selectedDatabase || ('未选择数据库' | translate)  }}</span>
-                        <nb-icon icon="arrow-ios-forward-outline"></nb-icon>
-                        <span class="path-segment" [class.inactive]="!selectedTable">{{  selectedTable || ('未选择表' | translate)  }}</span>
-                        <nb-spinner *ngIf="loadingDatabases" size="tiny" status="info" class="loading-indicator" [message]="''"></nb-spinner>
-                      </div>
-
-                      <div class="editor-action-buttons">
-                        <button
-                          *ngIf="!executing"
-                          type="button"
-                          class="icon-btn is-primary"
-                          (click)="executeSQL()"
-                          [disabled]="!clusterId || !sqlInput"
-                          [nbTooltip]="'执行（Ctrl / ⌘ + Enter）' | translate"
-                          nbTooltipPlacement="top"
-                          [aria-label]="'执行 SQL' | translate">
-                          <nb-icon icon="play-circle-outline"></nb-icon>
-                        </button>
-                        <button
-                          *ngIf="executing"
-                          type="button"
-                          class="icon-btn is-danger-active"
-                          (click)="cancelExecute()"
-                          [nbTooltip]="'断开等待并按指纹终止在跑查询' | translate"
-                          nbTooltipPlacement="top"
-                          [aria-label]="'取消执行' | translate">
-                          <nb-icon icon="stop-circle-outline"></nb-icon>
-                        </button>
-
-                        <span class="action-divider"></span>
-
-                        <button
-                          type="button"
-                          class="icon-btn is-danger"
-                          (click)="clearSQL()"
-                          [disabled]="executing || !sqlInput"
-                          [nbTooltip]="'清空 SQL' | translate"
-                          nbTooltipPlacement="top"
-                          [aria-label]="'清空 SQL' | translate">
-                          <nb-icon icon="backspace-outline"></nb-icon>
-                        </button>
-                        <button
-                          type="button"
-                          class="icon-btn"
-                          (click)="formatSQL()"
-                          [disabled]="executing || !sqlInput"
-                          [nbTooltip]="'格式化 SQL' | translate"
-                          nbTooltipPlacement="top"
-                          [aria-label]="'格式化 SQL' | translate">
-                          <nb-icon icon="code-outline"></nb-icon>
-                        </button>
-                        <div class="fav-wrap">
-                          <button
-                            type="button"
-                            class="icon-btn"
-                            [class.is-active]="isFavorited()"
-                            (click)="showFavorites = !showFavorites; $event.stopPropagation()"
-                            [nbTooltip]="'SQL 收藏夹' | translate"
-                            nbTooltipPlacement="top"
-                            [aria-label]="'SQL 收藏夹' | translate">
-                            <nb-icon [icon]="isFavorited() ? 'star' : 'star-outline'"></nb-icon>
-                          </button>
-                          <div class="fav-panel" *ngIf="showFavorites" (click)="$event.stopPropagation()">
-                            <div class="fav-panel-head">
-                              <span>{{ '收藏的 SQL（' | translate }}{{ favorites.length }}{{ '）' | translate }}</span>
-                              <button nbButton ghost size="tiny" (click)="toggleFavorite()" [title]="'收藏当前编辑器内容' | translate">
-                                <nb-icon icon="plus-outline"></nb-icon>
-                                {{ '收藏当前' | translate }}
-                              </button>
-                            </div>
-                            <div class="fav-empty" *ngIf="favorites.length === 0">{{  '暂无收藏，先写 SQL 再点“收藏当前”' | translate }}</div>
-                            <div class="fav-item" *ngFor="let f of favorites" (click)="applyFavorite(f)" [title]="f.sql">
-                              <div class="fav-item-main">
-                                <div class="fav-item-name">{{ f.name }}</div>
-                                <div class="fav-item-meta">{{ '用过' | translate }} {{ f.uses }} {{ '次' | translate }}<span *ngIf="f.database"> · {{ f.database }}</span></div>
-                              </div>
-                              <button nbButton ghost size="tiny" status="danger" (click)="removeFavorite(f.id, $event)" [title]="'删除' | translate">
-                                <nb-icon icon="trash-2-outline"></nb-icon>
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          class="icon-btn"
-                          [nbSpinner]="diagnosing"
-                          nbSpinnerStatus="basic"
-                          nbSpinnerSize="tiny"
-                          (click)="diagnoseSQL()"
-                          [disabled]="executing || diagnosing || !sqlInput || !clusterId"
-                          [nbTooltip]="'智能诊断' | translate"
-                          nbTooltipPlacement="top"
-                          [aria-label]="'智能诊断' | translate">
-                          <nb-icon *ngIf="!diagnosing" icon="bulb-outline"></nb-icon>
-                        </button>
-                        <button
-                          type="button"
-                          class="icon-btn"
-                          (click)="toggleSqlEditor(true)"
-                          [nbTooltip]="'收起 SQL 编辑器' | translate"
-                          nbTooltipPlacement="top"
-                          [aria-label]="'收起 SQL 编辑器' | translate">
-                          <nb-icon icon="chevron-up-outline"></nb-icon>
-                        </button>
-                      </div>
+                      }
                     </div>
 
-                    <!-- CodeMirror Editor Container -->
-                    <div class="editor-wrapper">
-                      <div #editorContainer class="codemirror-container"></div>
-
-                      <!-- 纵向拖拽手柄（镜像库表树横向拖拽，双击恢复自动高度） -->
-                      <div
-                        class="editor-resizer"
-                        (mousedown)="startEditorResize($event)"
-                        (dblclick)="resetEditorHeight()"
-                        [title]="'上下拖动调整编辑器高度，双击恢复自动' | translate"
-                        >
+                    @if (!treeCollapsed) {
+                      <div class="tree-resizer" (mousedown)="startTreeResize($event)">
                         <span class="resizer-grip"></span>
                       </div>
+                    }
 
-                      <div class="editor-footer d-flex justify-content-between align-items-center">
-                        <small class="hint-text">
-                          <nb-icon icon="info-outline"></nb-icon>
-                          {{ 'Ctrl / ⌘ + Enter 执行。未写 LIMIT 的 SELECT 会按右侧限制补上。' | translate }}
-                        </small>
+                    <div class="editor-panel" [class.editor-collapsed]="sqlEditorCollapsed">
+                      <!-- Collapsed SQL Bar (shown when editor is collapsed) -->
+                      @if (sqlEditorCollapsed) {
+                        <div class="collapsed-sql-bar" (click)="toggleSqlEditor(false)">
+                          <div class="collapsed-sql-preview">
+                            <nb-icon icon="code-outline" status="primary"></nb-icon>
+                            @if (sqlInput && sqlInput.length > 0) {
+                              <span class="sql-text">{{ sqlInput | slice:0:100 }}{{ sqlInput.length > 100 ? '...' : '' }}</span>
+                            }
+                            @if (!sqlInput || sqlInput.length === 0) {
+                              <span class="sql-text sql-placeholder">{{  '点击展开 SQL 编辑器' | translate }}</span>
+                            }
+                          </div>
+                        </div>
+                      }
 
-                        <div class="right-actions">
-                          <span class="limit-label">{{  '限制:' | translate }}</span>
-                          <nb-select 
-                            [(selected)]="queryLimit" 
-                            size="tiny"
-                            [disabled]="executing">
-                            <nb-option *ngFor="let option of limitOptions" [value]="option.value">
-                              {{ option.label }}
-                            </nb-option>
-                          </nb-select>
+                      <!-- SQL Editor - CodeMirror (shown when editor is expanded) -->
+                      <div class="sql-editor-section" [@editorCollapse]="sqlEditorCollapsed ? 'collapsed' : 'expanded'">
+                        <div class="selection-toolbar d-flex justify-content-between align-items-center">
+                          <div class="selection-path d-flex align-items-center">
+                            <nb-icon icon="pin-outline" status="primary"></nb-icon>
+                            <span class="path-segment" [class.inactive]="!selectedCatalog">{{  selectedCatalog || ('未选择 Catalog' | translate)  }}</span>
+                            <nb-icon icon="arrow-ios-forward-outline"></nb-icon>
+                            <span class="path-segment" [class.inactive]="!selectedDatabase">{{  selectedDatabase || ('未选择数据库' | translate)  }}</span>
+                            <nb-icon icon="arrow-ios-forward-outline"></nb-icon>
+                            <span class="path-segment" [class.inactive]="!selectedTable">{{  selectedTable || ('未选择表' | translate)  }}</span>
+                            @if (loadingDatabases) {
+                              <nb-spinner size="tiny" status="info" class="loading-indicator" [message]="''"></nb-spinner>
+                            }
+                          </div>
+
+                          <div class="editor-action-buttons">
+                            @if (!executing) {
+                              <button
+                                type="button"
+                                class="icon-btn is-primary"
+                                (click)="executeSQL()"
+                                [disabled]="!clusterId || !sqlInput"
+                                [nbTooltip]="'执行（Ctrl / ⌘ + Enter）' | translate"
+                                nbTooltipPlacement="top"
+                                [aria-label]="'执行 SQL' | translate">
+                                <nb-icon icon="play-circle-outline"></nb-icon>
+                              </button>
+                            }
+                            @if (executing) {
+                              <button
+                                type="button"
+                                class="icon-btn is-danger-active"
+                                (click)="cancelExecute()"
+                                [nbTooltip]="'断开等待并按指纹终止在跑查询' | translate"
+                                nbTooltipPlacement="top"
+                                [aria-label]="'取消执行' | translate">
+                                <nb-icon icon="stop-circle-outline"></nb-icon>
+                              </button>
+                            }
+
+                            <span class="action-divider"></span>
+
+                            <button
+                              type="button"
+                              class="icon-btn is-danger"
+                              (click)="clearSQL()"
+                              [disabled]="executing || !sqlInput"
+                              [nbTooltip]="'清空 SQL' | translate"
+                              nbTooltipPlacement="top"
+                              [aria-label]="'清空 SQL' | translate">
+                              <nb-icon icon="backspace-outline"></nb-icon>
+                            </button>
+                            <button
+                              type="button"
+                              class="icon-btn"
+                              (click)="formatSQL()"
+                              [disabled]="executing || !sqlInput"
+                              [nbTooltip]="'格式化 SQL' | translate"
+                              nbTooltipPlacement="top"
+                              [aria-label]="'格式化 SQL' | translate">
+                              <nb-icon icon="code-outline"></nb-icon>
+                            </button>
+                            <div class="fav-wrap">
+                              <button
+                                type="button"
+                                class="icon-btn"
+                                [class.is-active]="isFavorited()"
+                                (click)="showFavorites = !showFavorites; $event.stopPropagation()"
+                                [nbTooltip]="'SQL 收藏夹' | translate"
+                                nbTooltipPlacement="top"
+                                [aria-label]="'SQL 收藏夹' | translate">
+                                <nb-icon [icon]="isFavorited() ? 'star' : 'star-outline'"></nb-icon>
+                              </button>
+                              @if (showFavorites) {
+                                <div class="fav-panel" (click)="$event.stopPropagation()">
+                                  <div class="fav-panel-head">
+                                    <span>{{ '收藏的 SQL（' | translate }}{{ favorites.length }}{{ '）' | translate }}</span>
+                                    <button nbButton ghost size="tiny" (click)="toggleFavorite()" [title]="'收藏当前编辑器内容' | translate">
+                                      <nb-icon icon="plus-outline"></nb-icon>
+                                      {{ '收藏当前' | translate }}
+                                    </button>
+                                  </div>
+                                  @if (favorites.length === 0) {
+                                    <div class="fav-empty">{{  '暂无收藏，先写 SQL 再点“收藏当前”' | translate }}</div>
+                                  }
+                                  @for (f of favorites; track f) {
+                                    <div class="fav-item" (click)="applyFavorite(f)" [title]="f.sql">
+                                      <div class="fav-item-main">
+                                        <div class="fav-item-name">{{ f.name }}</div>
+                                        <div class="fav-item-meta">{{ '用过' | translate }} {{ f.uses }} {{ '次' | translate }}@if (f.database) {
+                                          <span> · {{ f.database }}</span>
+                                        }</div>
+                                      </div>
+                                      <button nbButton ghost size="tiny" status="danger" (click)="removeFavorite(f.id, $event)" [title]="'删除' | translate">
+                                        <nb-icon icon="trash-2-outline"></nb-icon>
+                                      </button>
+                                    </div>
+                                  }
+                                </div>
+                              }
+                            </div>
+                            <button
+                              type="button"
+                              class="icon-btn"
+                              [nbSpinner]="diagnosing"
+                              nbSpinnerStatus="basic"
+                              nbSpinnerSize="tiny"
+                              (click)="diagnoseSQL()"
+                              [disabled]="executing || diagnosing || !sqlInput || !clusterId"
+                              [nbTooltip]="'智能诊断' | translate"
+                              nbTooltipPlacement="top"
+                              [aria-label]="'智能诊断' | translate">
+                              @if (!diagnosing) {
+                                <nb-icon icon="bulb-outline"></nb-icon>
+                              }
+                            </button>
+                            <button
+                              type="button"
+                              class="icon-btn"
+                              (click)="toggleSqlEditor(true)"
+                              [nbTooltip]="'收起 SQL 编辑器' | translate"
+                              nbTooltipPlacement="top"
+                              [aria-label]="'收起 SQL 编辑器' | translate">
+                              <nb-icon icon="chevron-up-outline"></nb-icon>
+                            </button>
+                          </div>
+                        </div>
+
+                        <!-- CodeMirror Editor Container -->
+                        <div class="editor-wrapper">
+                          <div #editorContainer class="codemirror-container"></div>
+
+                          <!-- 纵向拖拽手柄（镜像库表树横向拖拽，双击恢复自动高度） -->
+                          <div
+                            class="editor-resizer"
+                            (mousedown)="startEditorResize($event)"
+                            (dblclick)="resetEditorHeight()"
+                            [title]="'上下拖动调整编辑器高度，双击恢复自动' | translate"
+                            >
+                            <span class="resizer-grip"></span>
+                          </div>
+
+                          <div class="editor-footer d-flex justify-content-between align-items-center">
+                            <small class="hint-text">
+                              <nb-icon icon="info-outline"></nb-icon>
+                              {{ 'Ctrl / ⌘ + Enter 执行。未写 LIMIT 的 SELECT 会按右侧限制补上。' | translate }}
+                            </small>
+
+                            <div class="right-actions">
+                              <span class="limit-label">{{  '限制:' | translate }}</span>
+                              <nb-select
+                                [(selected)]="queryLimit"
+                                size="tiny"
+                                [disabled]="executing">
+                                @for (option of limitOptions; track option) {
+                                  <nb-option [value]="option.value">
+                                    {{ option.label }}
+                                  </nb-option>
+                                }
+                              </nb-select>
+                            </div>
+                          </div>
                         </div>
                       </div>
+
+                      <!-- Query Results (attached to editor panel) -->
+                      @if (queryResult || showHistoryTab) {
+                        <div class="results-section">
+                          <nb-card class="result-card">
+                            <nb-card-body class="p-0">
+                              <nb-tabset class="result-history-tabset" (changeTab)="onResultTabChange($event.tabId)">
+                                <!-- 结果 Tab -->
+                                <nb-tab [tabTitle]="'结果' | translate" tabIcon="file-text-outline" tabId="result" [active]="resultTabId === 'result'">
+                                  @if (queryResult) {
+                                    <div class="tab-content-padding">
+                                      <!-- Single Result -->
+                                      @if (queryResults.length === 1) {
+                                        <div>
+                                          <div class="result-header mb-2">
+                                            <div class="result-actions">
+                                              <div class="result-stat-item">
+                                                <nb-icon icon="clock-outline" status="success" class="stat-icon"></nb-icon>
+                                                <span class="stat-label">{{  '执行耗时:' | translate }}</span>
+                                                <span class="stat-value stat-time">{{ executionTime }}ms</span>
+                                              </div>
+                                              <div class="result-stat-item">
+                                                <nb-icon icon="list-outline" status="info" class="stat-icon"></nb-icon>
+                                                <span class="stat-label">{{  '返回行数:' | translate }}</span>
+                                                <span class="stat-value stat-count">{{ rowCount | number }}</span>
+                                              </div>
+                                              @if (queryResults[0].success) {
+                                                <button
+                                                  type="button"
+                                                  class="icon-btn ml-2"
+                                                  (click)="exportResults(0)"
+                                                  [nbTooltip]="'导出 CSV' | translate"
+                                                  nbTooltipPlacement="top"
+                                                  [aria-label]="'导出 CSV' | translate">
+                                                  <nb-icon icon="download-outline"></nb-icon>
+                                                </button>
+                                              }
+                                            </div>
+                                          </div>
+                                          @if (queryResults[0].error) {
+                                            <div class="error-message mb-3">
+                                              <nb-alert status="danger" [title]="('执行失败' | translate)">{{ queryResults[0].error }}</nb-alert>
+                                              <div class="error-actions">
+                                                <button nbButton ghost size="tiny" status="basic" (click)="executeSQL()">
+                                                  <nb-icon icon="refresh-outline"></nb-icon>
+                                                  {{ '重试' | translate }}
+                                                </button>
+                                                <button nbButton ghost size="tiny" status="info" (click)="diagnoseSQL()">
+                                                  <nb-icon icon="bulb-outline"></nb-icon>
+                                                  {{ '去诊断' | translate }}
+                                                </button>
+                                              </div>
+                                            </div>
+                                          }
+                                          @if (resultSettings[0] && queryResults[0].success) {
+                                            <angular2-smart-table
+                                              [settings]="resultSettings[0]"
+                                              [source]="resultSources[0]">
+                                            </angular2-smart-table>
+                                          }
+                                          @if (queryResults[0].success && rowCount === 0) {
+                                            <div class="no-data-message">
+                                              <nb-icon icon="inbox-outline"></nb-icon>
+                                              <p>{{  '查询未返回任何数据' | translate }}</p>
+                                              <button nbButton ghost size="tiny" status="info" (click)="diagnoseSQL()">
+                                                <nb-icon icon="bulb-outline"></nb-icon>
+                                                {{ '去诊断' | translate }}
+                                              </button>
+                                            </div>
+                                          }
+                                        </div>
+                                      }
+                                      <!-- Multiple Results -->
+                                      @if (queryResults.length > 1) {
+                                        <div>
+                                          <div class="tabset-with-export">
+                                            <nb-tabset #tabsetRef class="result-tabset" (changeTab)="currentResultIndex = $event.tabId ? parseInt($event.tabId.split('-')[1]) : 0">
+                                              @for (result of queryResults; track result; let i = $index) {
+                                                <nb-tab
+                                                  [tabTitle]="('结果' | translate) + (i + 1)"
+                                                  [tabId]="'result-' + i"
+                                                  [active]="i === 0">
+                                                  <div class="tab-content-wrapper">
+                                                    @if (result.error) {
+                                                      <div class="error-message mb-3">
+                                                        <nb-alert status="danger" [title]="('执行失败' | translate)">{{ result.error }}</nb-alert>
+                                                      </div>
+                                                    }
+                                                    @if (resultSettings[i] && result.success) {
+                                                      <angular2-smart-table
+                                                        [settings]="resultSettings[i]"
+                                                        [source]="resultSources[i]">
+                                                      </angular2-smart-table>
+                                                    }
+                                                    @if (result.success) {
+                                                      <div class="result-stats-footer">
+                                                        <span class="stats-text">
+                                                          <nb-icon icon="list-outline" class="stats-icon"></nb-icon>
+                                                          {{ result.row_count }}{{ ' 行' | translate }}
+                                                          <span class="stats-separator">|</span>
+                                                          <nb-icon icon="clock-outline" class="stats-icon"></nb-icon>
+                                                          {{ executionTime }}ms
+                                                        </span>
+                                                      </div>
+                                                    }
+                                                    @if (result.success && result.row_count === 0) {
+                                                      <div class="no-data-message">
+                                                        <nb-icon icon="inbox-outline"></nb-icon>
+                                                        <p>{{  '查询未返回任何数据' | translate }}</p>
+                                                        <button nbButton ghost size="tiny" status="info" (click)="diagnoseSQL()">
+                                                          <nb-icon icon="bulb-outline"></nb-icon>
+                                                          {{ '去诊断' | translate }}
+                                                        </button>
+                                                      </div>
+                                                    }
+                                                  </div>
+                                                </nb-tab>
+                                              }
+                                            </nb-tabset>
+                                            @if (queryResults.length > 0 && queryResults[currentResultIndex]?.success && queryResults[currentResultIndex]?.row_count > 0) {
+                                              <div class="export-button-wrapper">
+                                                <button
+                                                  nbButton
+                                                  ghost
+                                                  size="small"
+                                                  status="info"
+                                                  (click)="exportResults(currentResultIndex)"
+                                                  class="export-btn">
+                                                  <nb-icon icon="download-outline" class="export-icon"></nb-icon>
+                                                  {{ '导出 CSV' | translate }}
+                                                </button>
+                                              </div>
+                                            }
+                                          </div>
+                                        </div>
+                                      }
+                                    </div>
+                                  }
+                                  @if (!queryResult) {
+                                    <div class="tab-content-padding empty-result">
+                                      <nb-icon icon="file-text-outline" class="empty-icon"></nb-icon>
+                                      <p class="text-hint">{{  '执行查询后结果将显示在这里' | translate }}</p>
+                                    </div>
+                                  }
+                                </nb-tab>
+                                <!-- 图表 Tab -->
+                                <nb-tab [tabTitle]="'图表' | translate" tabIcon="pie-chart-outline" tabId="chart" [active]="resultTabId === 'chart'" [badgeText]="chartConfigs.length > 0 ? chartConfigs.length.toString() : ''" badgeStatus="primary">
+                                  <div class="tab-content-padding chart-tab-content">
+                                    <div class="chart-layout">
+                                      <!-- 左侧字段列表 -->
+                                      <div class="chart-field-panel">
+                                        <div class="field-panel-header">
+                                          <nb-icon icon="grid-outline"></nb-icon>
+                                          <span>{{  '字段' | translate }}</span>
+                                          @if (selectedChartFields.length > 0) {
+                                            <span class="field-count">({{ selectedChartFields.length }})</span>
+                                          }
+                                        </div>
+                                        @if (chartFields.length > 0) {
+                                          <div class="field-list">
+                                            @for (field of chartFields; track field; let i = $index) {
+                                              <div
+                                                class="field-item"
+                                                [class.numeric]="field.type === 'numeric'"
+                                                [class.selected]="field.selected"
+                                                (click)="addChartFromField(field)"
+                                                [nbTooltip]="field.name">
+                                                <nb-checkbox
+                                                  [checked]="field.selected"
+                                                  (checkedChange)="toggleFieldSelection(field, $event)"
+                                                  (click)="$event.stopPropagation()"
+                                                  class="field-checkbox">
+                                                </nb-checkbox>
+                                                <nb-icon [icon]="field.type === 'numeric' ? 'bar-chart-outline' : 'file-text-outline'"></nb-icon>
+                                                <span class="field-name">{{ field.name }}</span>
+                                                @if (field.selected) {
+                                                  <span class="field-order">{{ selectedChartFields.indexOf(field) + 1 }}</span>
+                                                }
+                                              </div>
+                                            }
+                                          </div>
+                                        }
+                                        @if (chartFields.length === 0) {
+                                          <div class="field-empty">
+                                            <nb-icon icon="alert-circle-outline"></nb-icon>
+                                            <span>{{  '执行查询后显示字段' | translate }}</span>
+                                          </div>
+                                        }
+                                        <!-- 多字段选择操作栏 -->
+                                        @if (chartFields.length > 0) {
+                                          <div class="field-selection-bar">
+                                            <div class="selection-hint">{{ getSelectedFieldsHint() }}</div>
+                                            @if (selectedChartFields.length > 0) {
+                                              <div class="selection-actions">
+                                                <button nbButton size="tiny" status="primary" (click)="smartGenerateChart()">
+                                                  <nb-icon icon="flash-outline"></nb-icon>
+                                                  {{ '智能生成' | translate }}
+                                                </button>
+                                                <div class="chart-type-dropdown">
+                                                  <button nbButton ghost size="tiny" status="basic" (click)="toggleChartTypeMenu()">
+                                                    <nb-icon icon="options-2-outline"></nb-icon>
+                                                    <nb-icon [icon]="showChartTypeMenu ? 'chevron-up-outline' : 'chevron-down-outline'"></nb-icon>
+                                                  </button>
+                                                  @if (showChartTypeMenu) {
+                                                    <div class="chart-type-menu">
+                                                      <button nbButton ghost size="tiny" (click)="generateChartFromSelection('bar')">
+                                                        <nb-icon icon="bar-chart-outline"></nb-icon> {{ '柱状图' | translate }}
+                                                      </button>
+                                                      <button nbButton ghost size="tiny" (click)="generateChartFromSelection('line')">
+                                                        <nb-icon icon="trending-up-outline"></nb-icon> {{ '折线图' | translate }}
+                                                      </button>
+                                                      <button nbButton ghost size="tiny" (click)="generateChartFromSelection('pie')">
+                                                        <nb-icon icon="pie-chart-outline"></nb-icon> {{ '饼图' | translate }}
+                                                      </button>
+                                                      <button nbButton ghost size="tiny" (click)="generateChartFromSelection('scatter')">
+                                                        <nb-icon icon="radio-button-on-outline"></nb-icon> {{ '散点图' | translate }}
+                                                      </button>
+                                                    </div>
+                                                  }
+                                                </div>
+                                                <button nbButton ghost size="tiny" (click)="clearFieldSelection()">
+                                                  <nb-icon icon="close-outline"></nb-icon>
+                                                </button>
+                                              </div>
+                                            }
+                                          </div>
+                                        }
+                                      </div>
+                                      <!-- 右侧图表看板 -->
+                                      <div class="chart-board-panel">
+                                        <div class="board-header">
+                                          <span class="board-title">{{  '图表看板' | translate }}</span>
+                                          @if (chartConfigs.length > 0) {
+                                            <span class="board-count">{{ chartConfigs.length }} {{ '个图表' | translate }}</span>
+                                          }
+                                          @if (chartConfigs.length > 0) {
+                                            <button nbButton ghost size="tiny" status="danger" [nbTooltip]="'清除所有图表' | translate" (click)="clearAllCharts()">
+                                              <nb-icon icon="trash-2-outline"></nb-icon>
+                                            </button>
+                                          }
+                                        </div>
+                                        @if (chartConfigs.length > 0) {
+                                          <div class="chart-board">
+                                            @for (config of chartConfigs; track config) {
+                                              <div class="chart-card">
+                                                <div class="chart-card-header">
+                                                  <nb-icon icon="move-outline" class="drag-handle"></nb-icon>
+                                                  <span class="chart-title">{{ config.title }}</span>
+                                                  @if (config.mode === 'xy') {
+                                                    <span class="chart-mode-badge">X-Y</span>
+                                                  }
+                                                  @if (config.mode === 'multi') {
+                                                    <span class="chart-mode-badge multi">{{  '多维' | translate }}</span>
+                                                  }
+                                                  <div class="chart-actions">
+                                                    <button nbButton ghost size="tiny" [nbTooltip]="'设置' | translate" (click)="openChartConfig(config)">
+                                                      <nb-icon icon="settings-2-outline"></nb-icon>
+                                                    </button>
+                                                    <button nbButton ghost size="tiny" status="danger" [nbTooltip]="'删除' | translate" (click)="removeChart(config)">
+                                                      <nb-icon icon="close-outline"></nb-icon>
+                                                    </button>
+                                                  </div>
+                                                </div>
+                                                <div class="chart-card-body">
+                                                  <div echarts [options]="chartOptions.get(config.id)" class="chart-container"></div>
+                                                </div>
+                                              </div>
+                                            }
+                                          </div>
+                                        }
+                                        @if (chartConfigs.length === 0) {
+                                          <div class="board-empty">
+                                            <nb-icon icon="pie-chart-outline"></nb-icon>
+                                            <p>{{  '点击左侧字段添加图表' | translate }}</p>
+                                            <span class="hint">{{  '单击：快速生成单字段图表' | translate }}</span>
+                                            <span class="hint">{{  '勾选多个：生成 X-Y 关系图或多维饼图' | translate }}</span>
+                                          </div>
+                                        }
+                                      </div>
+                                    </div>
+                                  </div>
+                                </nb-tab>
+                                <!-- 历史 Tab -->
+                                <nb-tab [tabTitle]="'历史' | translate" tabIcon="clock-outline" tabId="history" [active]="resultTabId === 'history'" [badgeText]="executionHistoryTotal > 0 ? executionHistoryTotal.toString() : ''" badgeStatus="info">
+                                  <div class="tab-content-padding">
+                                    @if (loadingHistory) {
+                                      <div class="history-loading">
+                                        <nb-spinner status="primary" size="small" [message]="''"></nb-spinner>
+                                      </div>
+                                    }
+                                    @if (!loadingHistory && executionHistory.length === 0) {
+                                      <div class="history-empty">
+                                        <nb-icon icon="clock-outline"></nb-icon>
+                                        <span>{{  '暂无查询历史' | translate }}</span>
+                                      </div>
+                                    }
+                                    @if (!loadingHistory && executionHistory.length > 0) {
+                                      <div class="history-container">
+                                        <div class="history-toolbar">
+                                          <span class="history-count">{{ '共' | translate }} {{ executionHistoryTotal }} {{ '条记录' | translate }}</span>
+                                          <button nbButton size="tiny" status="danger" ghost (click)="clearAllHistory()">
+                                            <nb-icon icon="trash-2-outline"></nb-icon>{{ '清空' | translate }}
+                                          </button>
+                                        </div>
+                                        <div class="history-timeline">
+                                          @for (item of executionHistory; track item; let i = $index) {
+                                            <div
+                                              class="history-entry"
+                                              [class.is-error]="!item.success"
+                                              (click)="applyHistorySQL(item)">
+                                              <div class="entry-indicator">
+                                                <div class="indicator-dot" [class.error]="!item.success"></div>
+                                                @if (i < executionHistory.length - 1) {
+                                                  <div class="indicator-line"></div>
+                                                }
+                                              </div>
+                                              <div class="entry-content">
+                                                <div class="entry-header">
+                                                  <div class="entry-meta">
+                                                    <span class="entry-time">{{ item.created_at | date:'MM-dd HH:mm:ss' }}</span>
+                                                    @if (item.catalog || item.database_name) {
+                                                      <span class="entry-db">
+                                                        <nb-icon icon="layers-outline"></nb-icon>
+                                                        {{ item.catalog }}@if (item.catalog && item.database_name) {
+                                                        <span>.</span>
+                                                        }{{ item.database_name }}
+                                                      </span>
+                                                    }
+                                                  </div>
+                                                  <div class="entry-status">
+                                                    @if (item.success) {
+                                                      <span class="status-badge success">
+                                                        <nb-icon icon="checkmark-outline"></nb-icon>
+                                                        {{ item.row_count }}{{ ' 行' | translate }}
+                                                        <span class="status-divider">|</span>
+                                                        {{ item.execution_time_ms }}ms
+                                                      </span>
+                                                    }
+                                                    @if (!item.success) {
+                                                      <span class="status-badge error">
+                                                        <nb-icon icon="close-outline"></nb-icon>
+                                                        {{ '执行失败' | translate }}
+                                                      </span>
+                                                    }
+                                                  </div>
+                                                </div>
+                                                <div class="entry-sql">
+                                                  <code>{{ item.sql_statement | slice:0:200 }}{{ item.sql_statement.length > 200 ? '...' : '' }}</code>
+                                                </div>
+                                                <div class="entry-actions">
+                                                  <button nbButton ghost size="tiny" [nbTooltip]="'应用到编辑器' | translate" (click)="applyHistorySQL(item); $event.stopPropagation()">
+                                                    <nb-icon icon="edit-outline"></nb-icon>
+                                                  </button>
+                                                  <button nbButton ghost size="tiny" [nbTooltip]="'复制SQL' | translate" (click)="copyHistorySQL(item, $event)">
+                                                    <nb-icon icon="copy-outline"></nb-icon>
+                                                  </button>
+                                                  <button nbButton ghost size="tiny" status="danger" [nbTooltip]="'删除' | translate" (click)="deleteHistoryItem(item, $event)">
+                                                    <nb-icon icon="trash-2-outline"></nb-icon>
+                                                  </button>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          }
+                                        </div>
+                                        <ngx-table-pagination
+                                          [page]="historyPage"
+                                          [total]="executionHistoryTotal"
+                                          [pageSize]="historyPageSize"
+                                          [pageSizeOptions]="historyPageSizeOptions"
+                                          (pageChange)="loadExecutionHistory($event)"
+                                          (pageSizeChange)="onHistoryPageSizeChange($event)">
+                                        </ngx-table-pagination>
+                                      </div>
+                                    }
+                                  </div>
+                                </nb-tab>
+                              </nb-tabset>
+                            </nb-card-body>
+                          </nb-card>
+                        </div>
+                      }
                     </div>
                   </div>
 
-                  <!-- Query Results (attached to editor panel) -->
-                  <div class="results-section" *ngIf="queryResult || showHistoryTab">
-                    <nb-card class="result-card">
-                      <nb-card-body class="p-0">
-                        <nb-tabset class="result-history-tabset" (changeTab)="onResultTabChange($event.tabId)">
-                          <!-- 结果 Tab -->
-                          <nb-tab [tabTitle]="'结果' | translate" tabIcon="file-text-outline" tabId="result" [active]="resultTabId === 'result'">
-                            <div class="tab-content-padding" *ngIf="queryResult">
-                              <!-- Single Result -->
-                              <div *ngIf="queryResults.length === 1">
-                                <div class="result-header mb-2">
-                                  <div class="result-actions">
-                                    <div class="result-stat-item">
-                                      <nb-icon icon="clock-outline" status="success" class="stat-icon"></nb-icon>
-                                      <span class="stat-label">{{  '执行耗时:' | translate }}</span>
-                                      <span class="stat-value stat-time">{{ executionTime }}ms</span>
-                                    </div>
-                                    <div class="result-stat-item">
-                                      <nb-icon icon="list-outline" status="info" class="stat-icon"></nb-icon>
-                                      <span class="stat-label">{{  '返回行数:' | translate }}</span>
-                                      <span class="stat-value stat-count">{{ rowCount | number }}</span>
-                                    </div>
-                                      <button 
-                                      *ngIf="queryResults[0].success"
-                                      type="button"
-                                      class="icon-btn ml-2"
-                                      (click)="exportResults(0)"
-                                      [nbTooltip]="'导出 CSV' | translate"
-                                      nbTooltipPlacement="top"
-                                      [aria-label]="'导出 CSV' | translate">
-                                      <nb-icon icon="download-outline"></nb-icon>
-                                    </button>
-                                  </div>
-                                </div>
-                                <div *ngIf="queryResults[0].error" class="error-message mb-3">
-                                  <nb-alert status="danger" [title]="('执行失败' | translate)">{{ queryResults[0].error }}</nb-alert>
-                                  <div class="error-actions">
-                                    <button nbButton ghost size="tiny" status="basic" (click)="executeSQL()">
-                                      <nb-icon icon="refresh-outline"></nb-icon>
-                                      {{ '重试' | translate }}
-                                    </button>
-                                    <button nbButton ghost size="tiny" status="info" (click)="diagnoseSQL()">
-                                      <nb-icon icon="bulb-outline"></nb-icon>
-                                      {{ '去诊断' | translate }}
-                                    </button>
-                                  </div>
-                                </div>
-                                <angular2-smart-table 
-                                  *ngIf="resultSettings[0] && queryResults[0].success" 
-                                  [settings]="resultSettings[0]" 
-                                  [source]="resultSources[0]">
-                                </angular2-smart-table>
-                                <div *ngIf="queryResults[0].success && rowCount === 0" class="no-data-message">
-                                  <nb-icon icon="inbox-outline"></nb-icon>
-                                  <p>{{  '查询未返回任何数据' | translate }}</p>
-                                  <button nbButton ghost size="tiny" status="info" (click)="diagnoseSQL()">
-                                    <nb-icon icon="bulb-outline"></nb-icon>
-                                    {{ '去诊断' | translate }}
-                                  </button>
-                                </div>
-                              </div>
+                  <ng-template #treeNodeTemplate let-node>
+                    <li class="tree-node" [class.expanded]="node.expanded" [class.selected]="node.id === selectedNodeId">
+                      <div class="tree-node-row" [ngClass]="'type-' + node.type" [style.paddingLeft.px]="getNodeIndent(node)" (click)="onNodeSelect(node, $event)" (dblclick)="onTableDoubleClick(node, $event)" (contextmenu)="onNodeRightClick(node, $event)">
+                        @if (isNodeExpandable(node)) {
+                          <button
+                            nbButton
+                            ghost
+                            size="tiny"
+                            class="toggle-btn"
+                            type="button"
+                            (click)="toggleNode(node, $event)"
+                            [class.expanded]="node.expanded">
+                            <nb-icon [icon]="node.expanded ? 'chevron-down-outline' : 'chevron-right-outline'"></nb-icon>
+                          </button>
+                        }
+                        <div class="node-icon">
+                          <nb-icon [icon]="node.icon || 'folder-outline'"></nb-icon>
+                        </div>
+                        <span class="node-text">{{ node.name }}</span>
+                        @switch (node.data?.tableType) {
+                          @case ('VIEW') {
+                            <span class="node-badge node-badge-view">VIEW</span>
+                          }
+                          @case ('MATERIALIZED_VIEW') {
+                            <span class="node-badge node-badge-mv">MV</span>
+                          }
+                        }
+                        @if (node.loading) {
+                          <nb-spinner size="tiny" status="primary" [message]="''"></nb-spinner>
+                        }
+                      </div>
+                      @if (node.children && node.children.length && node.expanded) {
+                        <ul class="tree-children">
+                          @for (child of node.children; track trackNodeById($index, child)) {
+                            <ng-container *ngTemplateOutlet="treeNodeTemplate; context: { $implicit: child }"></ng-container>
+                          }
+                        </ul>
+                      }
+                    </li>
+                  </ng-template>
 
-                              <!-- Multiple Results -->
-                              <div *ngIf="queryResults.length > 1">
-                                <div class="tabset-with-export">
-                                  <nb-tabset #tabsetRef class="result-tabset" (changeTab)="currentResultIndex = $event.tabId ? parseInt($event.tabId.split('-')[1]) : 0">
-                                    <nb-tab 
-                                      *ngFor="let result of queryResults; let i = index" 
-                                      [tabTitle]="('结果' | translate) + (i + 1)"
-                                      [tabId]="'result-' + i"
-                                      [active]="i === 0">
-                                      <div class="tab-content-wrapper">
-                                        <div *ngIf="result.error" class="error-message mb-3">
-                                          <nb-alert status="danger" [title]="('执行失败' | translate)">{{ result.error }}</nb-alert>
-                                        </div>
-                                        <angular2-smart-table 
-                                          *ngIf="resultSettings[i] && result.success" 
-                                          [settings]="resultSettings[i]" 
-                                          [source]="resultSources[i]">
-                                        </angular2-smart-table>
-                                        <div *ngIf="result.success" class="result-stats-footer">
-                                          <span class="stats-text">
-                                            <nb-icon icon="list-outline" class="stats-icon"></nb-icon>
-                                            {{ result.row_count }}{{ ' 行' | translate }}
-                                            <span class="stats-separator">|</span>
-                                            <nb-icon icon="clock-outline" class="stats-icon"></nb-icon>
-                                            {{ executionTime }}ms
-                                          </span>
-                                        </div>
-                                        <div *ngIf="result.success && result.row_count === 0" class="no-data-message">
-                                          <nb-icon icon="inbox-outline"></nb-icon>
-                                          <p>{{  '查询未返回任何数据' | translate }}</p>
-                                          <button nbButton ghost size="tiny" status="info" (click)="diagnoseSQL()">
-                                            <nb-icon icon="bulb-outline"></nb-icon>
-                                            {{ '去诊断' | translate }}
-                                          </button>
-                                        </div>
-                                      </div>
-                                    </nb-tab>
-                                  </nb-tabset>
-                                  <div class="export-button-wrapper" *ngIf="queryResults.length > 0 && queryResults[currentResultIndex]?.success && queryResults[currentResultIndex]?.row_count > 0">
-                                    <button 
-                                      nbButton 
-                                      ghost
-                                      size="small" 
-                                      status="info"
-                                      (click)="exportResults(currentResultIndex)"
-                                      class="export-btn">
-                                      <nb-icon icon="download-outline" class="export-icon"></nb-icon>
-                                      {{ '导出 CSV' | translate }}
-                                    </button>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                            <div class="tab-content-padding empty-result" *ngIf="!queryResult">
-                              <nb-icon icon="file-text-outline" class="empty-icon"></nb-icon>
-                              <p class="text-hint">{{  '执行查询后结果将显示在这里' | translate }}</p>
-                            </div>
-                          </nb-tab>
-
-                          <!-- 图表 Tab -->
-                          <nb-tab [tabTitle]="'图表' | translate" tabIcon="pie-chart-outline" tabId="chart" [active]="resultTabId === 'chart'" [badgeText]="chartConfigs.length > 0 ? chartConfigs.length.toString() : ''" badgeStatus="primary">
-                            <div class="tab-content-padding chart-tab-content">
-                              <div class="chart-layout">
-                                <!-- 左侧字段列表 -->
-                                <div class="chart-field-panel">
-                                  <div class="field-panel-header">
-                                    <nb-icon icon="grid-outline"></nb-icon>
-                                    <span>{{  '字段' | translate }}</span>
-                                    <span class="field-count" *ngIf="selectedChartFields.length > 0">({{ selectedChartFields.length }})</span>
-                                  </div>
-                                  <div class="field-list" *ngIf="chartFields.length > 0">
-                                    <div *ngFor="let field of chartFields; let i = index" 
-                                         class="field-item"
-                                         [class.numeric]="field.type === 'numeric'"
-                                         [class.selected]="field.selected"
-                                         (click)="addChartFromField(field)"
-                                         [nbTooltip]="field.name">
-                                      <nb-checkbox 
-                                        [checked]="field.selected" 
-                                        (checkedChange)="toggleFieldSelection(field, $event)"
-                                        (click)="$event.stopPropagation()"
-                                        class="field-checkbox">
-                                      </nb-checkbox>
-                                      <nb-icon [icon]="field.type === 'numeric' ? 'bar-chart-outline' : 'file-text-outline'"></nb-icon>
-                                      <span class="field-name">{{ field.name }}</span>
-                                      <span class="field-order" *ngIf="field.selected">{{ selectedChartFields.indexOf(field) + 1 }}</span>
-                                    </div>
-                                  </div>
-                                  <div class="field-empty" *ngIf="chartFields.length === 0">
-                                    <nb-icon icon="alert-circle-outline"></nb-icon>
-                                    <span>{{  '执行查询后显示字段' | translate }}</span>
-                                  </div>
-                                  
-                                  <!-- 多字段选择操作栏 -->
-                                  <div class="field-selection-bar" *ngIf="chartFields.length > 0">
-                                    <div class="selection-hint">{{ getSelectedFieldsHint() }}</div>
-                                    <div class="selection-actions" *ngIf="selectedChartFields.length > 0">
-                                      <button nbButton size="tiny" status="primary" (click)="smartGenerateChart()">
-                                        <nb-icon icon="flash-outline"></nb-icon>
-                                        {{ '智能生成' | translate }}
-                                      </button>
-                                      <div class="chart-type-dropdown">
-                                        <button nbButton ghost size="tiny" status="basic" (click)="toggleChartTypeMenu()">
-                                          <nb-icon icon="options-2-outline"></nb-icon>
-                                          <nb-icon [icon]="showChartTypeMenu ? 'chevron-up-outline' : 'chevron-down-outline'"></nb-icon>
-                                        </button>
-                                        <div class="chart-type-menu" *ngIf="showChartTypeMenu">
-                                          <button nbButton ghost size="tiny" (click)="generateChartFromSelection('bar')">
-                                            <nb-icon icon="bar-chart-outline"></nb-icon> {{ '柱状图' | translate }}
-                                          </button>
-                                          <button nbButton ghost size="tiny" (click)="generateChartFromSelection('line')">
-                                            <nb-icon icon="trending-up-outline"></nb-icon> {{ '折线图' | translate }}
-                                          </button>
-                                          <button nbButton ghost size="tiny" (click)="generateChartFromSelection('pie')">
-                                            <nb-icon icon="pie-chart-outline"></nb-icon> {{ '饼图' | translate }}
-                                          </button>
-                                          <button nbButton ghost size="tiny" (click)="generateChartFromSelection('scatter')">
-                                            <nb-icon icon="radio-button-on-outline"></nb-icon> {{ '散点图' | translate }}
-                                          </button>
-                                        </div>
-                                      </div>
-                                      <button nbButton ghost size="tiny" (click)="clearFieldSelection()">
-                                        <nb-icon icon="close-outline"></nb-icon>
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <!-- 右侧图表看板 -->
-                                <div class="chart-board-panel">
-                                  <div class="board-header">
-                                    <span class="board-title">{{  '图表看板' | translate }}</span>
-                                    <span class="board-count" *ngIf="chartConfigs.length > 0">{{ chartConfigs.length }} {{ '个图表' | translate }}</span>
-                                    <button *ngIf="chartConfigs.length > 0" nbButton ghost size="tiny" status="danger" [nbTooltip]="'清除所有图表' | translate" (click)="clearAllCharts()">
-                                      <nb-icon icon="trash-2-outline"></nb-icon>
-                                    </button>
-                                  </div>
-                                  <div class="chart-board" *ngIf="chartConfigs.length > 0">
-                                    <div *ngFor="let config of chartConfigs" class="chart-card">
-                                      <div class="chart-card-header">
-                                        <nb-icon icon="move-outline" class="drag-handle"></nb-icon>
-                                        <span class="chart-title">{{ config.title }}</span>
-                                        <span class="chart-mode-badge" *ngIf="config.mode === 'xy'">X-Y</span>
-                                        <span class="chart-mode-badge multi" *ngIf="config.mode === 'multi'">{{  '多维' | translate }}</span>
-                                        <div class="chart-actions">
-                                          <button nbButton ghost size="tiny" [nbTooltip]="'设置' | translate" (click)="openChartConfig(config)">
-                                            <nb-icon icon="settings-2-outline"></nb-icon>
-                                          </button>
-                                          <button nbButton ghost size="tiny" status="danger" [nbTooltip]="'删除' | translate" (click)="removeChart(config)">
-                                            <nb-icon icon="close-outline"></nb-icon>
-                                          </button>
-                                        </div>
-                                      </div>
-                                      <div class="chart-card-body">
-                                        <div echarts [options]="chartOptions.get(config.id)" class="chart-container"></div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div class="board-empty" *ngIf="chartConfigs.length === 0">
-                                    <nb-icon icon="pie-chart-outline"></nb-icon>
-                                    <p>{{  '点击左侧字段添加图表' | translate }}</p>
-                                    <span class="hint">{{  '单击：快速生成单字段图表' | translate }}</span>
-                                    <span class="hint">{{  '勾选多个：生成 X-Y 关系图或多维饼图' | translate }}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </nb-tab>
-
-                          <!-- 历史 Tab -->
-                          <nb-tab [tabTitle]="'历史' | translate" tabIcon="clock-outline" tabId="history" [active]="resultTabId === 'history'" [badgeText]="executionHistoryTotal > 0 ? executionHistoryTotal.toString() : ''" badgeStatus="info">
-                            <div class="tab-content-padding">
-                              <div *ngIf="loadingHistory" class="history-loading">
-                                <nb-spinner status="primary" size="small" [message]="''"></nb-spinner>
-                              </div>
-                              <div *ngIf="!loadingHistory && executionHistory.length === 0" class="history-empty">
-                                <nb-icon icon="clock-outline"></nb-icon>
-                                <span>{{  '暂无查询历史' | translate }}</span>
-                              </div>
-                              <div *ngIf="!loadingHistory && executionHistory.length > 0" class="history-container">
-                                <div class="history-toolbar">
-                                  <span class="history-count">{{ '共' | translate }} {{ executionHistoryTotal }} {{ '条记录' | translate }}</span>
-                                  <button nbButton size="tiny" status="danger" ghost (click)="clearAllHistory()">
-                                    <nb-icon icon="trash-2-outline"></nb-icon>{{ '清空' | translate }}
-                                  </button>
-                                </div>
-                                <div class="history-timeline">
-                                  <div *ngFor="let item of executionHistory; let i = index" 
-                                       class="history-entry" 
-                                       [class.is-error]="!item.success"
-                                       (click)="applyHistorySQL(item)">
-                                    <div class="entry-indicator">
-                                      <div class="indicator-dot" [class.error]="!item.success"></div>
-                                      <div class="indicator-line" *ngIf="i < executionHistory.length - 1"></div>
-                                    </div>
-                                    <div class="entry-content">
-                                      <div class="entry-header">
-                                        <div class="entry-meta">
-                                          <span class="entry-time">{{ item.created_at | date:'MM-dd HH:mm:ss' }}</span>
-                                          <span class="entry-db" *ngIf="item.catalog || item.database_name">
-                                            <nb-icon icon="layers-outline"></nb-icon>
-                                            {{ item.catalog }}<span *ngIf="item.catalog && item.database_name">.</span>{{ item.database_name }}
-                                          </span>
-                                        </div>
-                                        <div class="entry-status">
-                                          <span *ngIf="item.success" class="status-badge success">
-                                            <nb-icon icon="checkmark-outline"></nb-icon>
-                                            {{ item.row_count }}{{ ' 行' | translate }}
-                                            <span class="status-divider">|</span>
-                                            {{ item.execution_time_ms }}ms
-                                          </span>
-                                          <span *ngIf="!item.success" class="status-badge error">
-                                            <nb-icon icon="close-outline"></nb-icon>
-                                            {{ '执行失败' | translate }}
-                                          </span>
-                                        </div>
-                                      </div>
-                                      <div class="entry-sql">
-                                        <code>{{ item.sql_statement | slice:0:200 }}{{ item.sql_statement.length > 200 ? '...' : '' }}</code>
-                                      </div>
-                                      <div class="entry-actions">
-                                        <button nbButton ghost size="tiny" [nbTooltip]="'应用到编辑器' | translate" (click)="applyHistorySQL(item); $event.stopPropagation()">
-                                          <nb-icon icon="edit-outline"></nb-icon>
-                                        </button>
-                                        <button nbButton ghost size="tiny" [nbTooltip]="'复制SQL' | translate" (click)="copyHistorySQL(item, $event)">
-                                          <nb-icon icon="copy-outline"></nb-icon>
-                                        </button>
-                                        <button nbButton ghost size="tiny" status="danger" [nbTooltip]="'删除' | translate" (click)="deleteHistoryItem(item, $event)">
-                                          <nb-icon icon="trash-2-outline"></nb-icon>
-                                        </button>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                                <ngx-table-pagination
-                                  [page]="historyPage"
-                                  [total]="executionHistoryTotal"
-                                  [pageSize]="historyPageSize"
-                                  [pageSizeOptions]="historyPageSizeOptions"
-                                  (pageChange)="loadExecutionHistory($event)"
-                                  (pageSizeChange)="onHistoryPageSizeChange($event)">
-                                </ngx-table-pagination>
-                              </div>
-                            </div>
-                          </nb-tab>
-                        </nb-tabset>
-                      </nb-card-body>
-                    </nb-card>
-                  </div>
                 </div>
-              </div>
+              </nb-tab>
 
-              <ng-template #treeNodeTemplate let-node>
-                <li class="tree-node" [class.expanded]="node.expanded" [class.selected]="node.id === selectedNodeId">
-                  <div class="tree-node-row" [ngClass]="'type-' + node.type" [style.paddingLeft.px]="getNodeIndent(node)" (click)="onNodeSelect(node, $event)" (dblclick)="onTableDoubleClick(node, $event)" (contextmenu)="onNodeRightClick(node, $event)">
-                    <button 
-                      *ngIf="isNodeExpandable(node)"
-                      nbButton 
-                      ghost 
-                      size="tiny" 
-                      class="toggle-btn"
-                      type="button"
-                      (click)="toggleNode(node, $event)"
-                      [class.expanded]="node.expanded">
-                      <nb-icon [icon]="node.expanded ? 'chevron-down-outline' : 'chevron-right-outline'"></nb-icon>
-                    </button>
-                    <div class="node-icon">
-                      <nb-icon [icon]="node.icon || 'folder-outline'"></nb-icon>
+              <!-- Running Queries Tab -->
+              <nb-tab [tabTitle]="'运行中' | translate" tabId="running" [active]="selectedTab === 'running'">
+                <!-- Filter and Actions Bar -->
+                <div class="running-query-filters mb-3">
+                  <div class="filter-content">
+                    <div class="filter-options">
+                      <nb-checkbox
+                        [(ngModel)]="runningQueryFilter.slowQueryOnly"
+                        (checkedChange)="applyRunningQueryFilter()"
+                        class="filter-checkbox">
+                        <span class="text-hint">{{  '仅显示慢查询（≥5分钟）' | translate }}</span>
+                      </nb-checkbox>
+                      <nb-checkbox
+                        [(ngModel)]="runningQueryFilter.highCostOnly"
+                        (checkedChange)="applyRunningQueryFilter()"
+                        class="filter-checkbox">
+                        <span class="text-hint">{{  '仅显示高消耗查询（≥1GB）' | translate }}</span>
+                      </nb-checkbox>
+                      @if (runningQueryFilter.slowQueryOnly || runningQueryFilter.highCostOnly) {
+                        <button
+                          nbButton
+                          ghost
+                          size="tiny"
+                          status="basic"
+                          (click)="resetRunningQueryFilter()"
+                          class="clear-filter-btn">
+                          <span class="text-hint">{{  '清除筛选' | translate }}</span>
+                        </button>
+                      }
                     </div>
-                    <span class="node-text">{{ node.name }}</span>
-                    <ng-container [ngSwitch]="node.data?.tableType">
-                      <span *ngSwitchCase="'VIEW'" class="node-badge node-badge-view">VIEW</span>
-                      <span *ngSwitchCase="'MATERIALIZED_VIEW'" class="node-badge node-badge-mv">MV</span>
-                    </ng-container>
-                    <nb-spinner *ngIf="node.loading" size="tiny" status="primary" [message]="''"></nb-spinner>
+                    <div class="filter-actions">
+                      <button
+                        nbButton
+                        ghost
+                        status="danger"
+                        size="small"
+                        (click)="batchKillSelectedQueries()"
+                        [disabled]="loading || selectedRunningQueries.length === 0">
+                        <nb-icon icon="trash-2-outline"></nb-icon>
+                        {{ '查杀已选' | translate }}{{ selectedRunningQueries.length }}{{ ' 个查询' | translate }}
+                      </button>
+                    </div>
                   </div>
-                  <ul class="tree-children" *ngIf="node.children && node.children.length && node.expanded">
-                    <ng-container *ngFor="let child of node.children; trackBy: trackNodeById">
-                      <ng-container *ngTemplateOutlet="treeNodeTemplate; context: { $implicit: child }"></ng-container>
-                    </ng-container>
-                  </ul>
-                </li>
-              </ng-template>
-
-            </div>
-          </nb-tab>
-
-          <!-- Running Queries Tab -->
-          <nb-tab [tabTitle]="'运行中' | translate" tabId="running" [active]="selectedTab === 'running'">
-            <!-- Filter and Actions Bar -->
-            <div class="running-query-filters mb-3">
-              <div class="filter-content">
-                <div class="filter-options">
-                  <nb-checkbox 
-                    [(ngModel)]="runningQueryFilter.slowQueryOnly"
-                    (checkedChange)="applyRunningQueryFilter()"
-                    class="filter-checkbox">
-                    <span class="text-hint">{{  '仅显示慢查询（≥5分钟）' | translate }}</span>
-                  </nb-checkbox>
-                  <nb-checkbox 
-                    [(ngModel)]="runningQueryFilter.highCostOnly"
-                    (checkedChange)="applyRunningQueryFilter()"
-                    class="filter-checkbox">
-                    <span class="text-hint">{{  '仅显示高消耗查询（≥1GB）' | translate }}</span>
-                  </nb-checkbox>
-                  <button 
-                    *ngIf="runningQueryFilter.slowQueryOnly || runningQueryFilter.highCostOnly"
-                    nbButton 
-                    ghost 
-                    size="tiny"
-                    status="basic"
-                    (click)="resetRunningQueryFilter()"
-                    class="clear-filter-btn">
-                    <span class="text-hint">{{  '清除筛选' | translate }}</span>
-                  </button>
                 </div>
-                <div class="filter-actions">
-                  <button 
-                    nbButton 
-                    ghost
-                    status="danger" 
-                    size="small"
-                    (click)="batchKillSelectedQueries()"
-                    [disabled]="loading || selectedRunningQueries.length === 0">
-                    <nb-icon icon="trash-2-outline"></nb-icon>
-                    {{ '查杀已选' | translate }}{{ selectedRunningQueries.length }}{{ ' 个查询' | translate }}
-                  </button>
+
+                <div [nbSpinner]="loading" nbSpinnerStatus="primary" [nbSpinnerMessage]="'加载中' | translate">
+                  <angular2-smart-table
+                    [settings]="runningSettings"
+                    [source]="runningSource"
+                    (delete)="onQueryDeleteConfirm($event)"
+                    (edit)="onQueryEdit($event)"
+                    (userRowSelect)="onRunningRowSelect($event)">
+                  </angular2-smart-table>
                 </div>
-              </div>
-            </div>
-            
-            <div [nbSpinner]="loading" nbSpinnerStatus="primary" [nbSpinnerMessage]="'加载中' | translate">
-            <angular2-smart-table 
-              [settings]="runningSettings" 
-              [source]="runningSource"
-              (delete)="onQueryDeleteConfirm($event)"
-              (edit)="onQueryEdit($event)"
-              (userRowSelect)="onRunningRowSelect($event)">
-            </angular2-smart-table>
-            </div>
-          </nb-tab>
-          </nb-tabset>
+              </nb-tab>
+            </nb-tabset>
           </div>
-          
+
         </div>
       </nb-card-body>
     </nb-card>
@@ -647,7 +752,9 @@
           <nb-icon icon="file-text-outline" status="info"></nb-icon>
           <div class="schema-text-group">
             <span class="schema-title-text">{{  schemaDialogTitle || ('表结构' | translate)  }}</span>
-            <span class="schema-subtitle-text" *ngIf="schemaDialogSubtitle">{{ schemaDialogSubtitle }}</span>
+            @if (schemaDialogSubtitle) {
+              <span class="schema-subtitle-text">{{ schemaDialogSubtitle }}</span>
+            }
           </div>
         </div>
         <button nbButton ghost status="basic" size="tiny" (click)="ref.close()">
@@ -656,96 +763,110 @@
       </div>
     </nb-card-header>
     <nb-card-body>
-      <div class="schema-loading" *ngIf="tableSchemaLoading">
-        <nb-spinner status="primary" size="large" [message]="''"></nb-spinner>
-        <p class="mt-2 text-hint">{{  '正在获取表结构...' | translate }}</p>
-      </div>
-      <div class="schema-content" *ngIf="!tableSchemaLoading">
-        <div class="schema-scroll">
-          <ng-container *ngIf="currentTableSchema; else emptySchema">
-            <div class="schema-editor" [attr.data-schema-dialog-id]="schemaDialogId" *ngIf="schemaContentType === 'sql'; else plainSchema"></div>
-            <ng-template #plainSchema>
-              <pre class="schema-text">{{ currentTableSchema }}</pre>
-            </ng-template>
-          </ng-container>
-          <ng-template #emptySchema>
-            <div class="empty-schema">
-              <nb-icon icon="alert-circle-outline" status="warning"></nb-icon>
-              <p class="mb-0">{{  '未获取到建表语句' | translate }}</p>
-            </div>
-          </ng-template>
+      @if (tableSchemaLoading) {
+        <div class="schema-loading">
+          <nb-spinner status="primary" size="large" [message]="''"></nb-spinner>
+          <p class="mt-2 text-hint">{{  '正在获取表结构...' | translate }}</p>
         </div>
-      </div>
+      }
+      @if (!tableSchemaLoading) {
+        <div class="schema-content">
+          <div class="schema-scroll">
+            @if (currentTableSchema) {
+              @if (schemaContentType === 'sql') {
+                <div class="schema-editor" [attr.data-schema-dialog-id]="schemaDialogId"></div>
+              } @else {
+                <pre class="schema-text">{{ currentTableSchema }}</pre>
+              }
+            } @else {
+              <div class="empty-schema">
+                <nb-icon icon="alert-circle-outline" status="warning"></nb-icon>
+                <p class="mb-0">{{  '未获取到建表语句' | translate }}</p>
+              </div>
+            }
+          </div>
+        </div>
+      }
     </nb-card-body>
   </nb-card>
 </ng-template>
 
-<div 
-  class="tree-context-menu" 
-  *ngIf="contextMenuVisible"
-  [style.left.px]="contextMenuX"
-  [style.top.px]="contextMenuY"
-  (contextmenu)="$event.preventDefault()">
-  <button 
-    type="button"
-    class="context-menu-item"
-    *ngFor="let item of contextMenuItems"
-    (click)="onContextMenuItemClick(item, $event)">
-    <nb-icon [icon]="item.icon"></nb-icon>
-    <span>{{ item.label }}</span>
-  </button>
-</div>
+@if (contextMenuVisible) {
+  <div
+    class="tree-context-menu"
+    [style.left.px]="contextMenuX"
+    [style.top.px]="contextMenuY"
+    (contextmenu)="$event.preventDefault()">
+    @for (item of contextMenuItems; track item) {
+      <button
+        type="button"
+        class="context-menu-item"
+        (click)="onContextMenuItemClick(item, $event)">
+        <nb-icon [icon]="item.icon"></nb-icon>
+        <span>{{ item.label }}</span>
+      </button>
+    }
+  </div>
+}
 
 <!-- Chart Config Dialog -->
-<div class="chart-config-overlay" *ngIf="showChartConfig" (click)="cancelChartConfig()">
-  <div class="chart-config-dialog" (click)="$event.stopPropagation()">
-    <div class="config-header">
-      <span>{{  '图表配置' | translate }}</span>
-      <button nbButton ghost size="tiny" (click)="cancelChartConfig()">
-        <nb-icon icon="close-outline"></nb-icon>
-      </button>
-    </div>
-    <div class="config-body" *ngIf="editingChart">
-      <div class="config-field">
-        <label>{{  '标题' | translate }}</label>
-        <input nbInput fullWidth [(ngModel)]="editingChart.title" [placeholder]="'图表标题' | translate">
+@if (showChartConfig) {
+  <div class="chart-config-overlay" (click)="cancelChartConfig()">
+    <div class="chart-config-dialog" (click)="$event.stopPropagation()">
+      <div class="config-header">
+        <span>{{  '图表配置' | translate }}</span>
+        <button nbButton ghost size="tiny" (click)="cancelChartConfig()">
+          <nb-icon icon="close-outline"></nb-icon>
+        </button>
       </div>
-      <div class="config-field">
-        <label>{{  '图表类型' | translate }}</label>
-        <nb-select fullWidth [(selected)]="editingChart.chartType">
-          <nb-option value="bar">{{  '柱状图' | translate }}</nb-option>
-          <nb-option value="line">{{  '折线图' | translate }}</nb-option>
-          <nb-option value="pie">{{  '饼图' | translate }}</nb-option>
-        </nb-select>
+      @if (editingChart) {
+        <div class="config-body">
+          <div class="config-field">
+            <label>{{  '标题' | translate }}</label>
+            <input nbInput fullWidth [(ngModel)]="editingChart.title" [placeholder]="'图表标题' | translate">
+          </div>
+          <div class="config-field">
+            <label>{{  '图表类型' | translate }}</label>
+            <nb-select fullWidth [(selected)]="editingChart.chartType">
+              <nb-option value="bar">{{  '柱状图' | translate }}</nb-option>
+              <nb-option value="line">{{  '折线图' | translate }}</nb-option>
+              <nb-option value="pie">{{  '饼图' | translate }}</nb-option>
+            </nb-select>
+          </div>
+          @if (editingChart.fieldType === 'numeric') {
+            <div class="config-field">
+              <label>{{  '聚合方式' | translate }}</label>
+              <nb-select fullWidth [(selected)]="editingChart.aggregation">
+                <nb-option value="COUNT">{{  '计数 (COUNT)' | translate }}</nb-option>
+                <nb-option value="SUM">{{  '求和 (SUM)' | translate }}</nb-option>
+                <nb-option value="AVG">{{  '平均值 (AVG)' | translate }}</nb-option>
+                <nb-option value="MAX">{{  '最大值 (MAX)' | translate }}</nb-option>
+                <nb-option value="MIN">{{  '最小值 (MIN)' | translate }}</nb-option>
+              </nb-select>
+            </div>
+          }
+        </div>
+      }
+      <div class="config-footer">
+        <button nbButton status="basic" size="small" (click)="cancelChartConfig()">{{  '取消' | translate }}</button>
+        <button nbButton status="primary" size="small" (click)="saveChartConfig()">{{  '保存' | translate }}</button>
       </div>
-      <div class="config-field" *ngIf="editingChart.fieldType === 'numeric'">
-        <label>{{  '聚合方式' | translate }}</label>
-        <nb-select fullWidth [(selected)]="editingChart.aggregation">
-          <nb-option value="COUNT">{{  '计数 (COUNT)' | translate }}</nb-option>
-          <nb-option value="SUM">{{  '求和 (SUM)' | translate }}</nb-option>
-          <nb-option value="AVG">{{  '平均值 (AVG)' | translate }}</nb-option>
-          <nb-option value="MAX">{{  '最大值 (MAX)' | translate }}</nb-option>
-          <nb-option value="MIN">{{  '最小值 (MIN)' | translate }}</nb-option>
-        </nb-select>
-      </div>
-    </div>
-    <div class="config-footer">
-      <button nbButton status="basic" size="small" (click)="cancelChartConfig()">{{  '取消' | translate }}</button>
-      <button nbButton status="primary" size="small" (click)="saveChartConfig()">{{  '保存' | translate }}</button>
     </div>
   </div>
-</div>
+}
 
 <!-- Info Dialog Template -->
 <ng-template #infoDialog let-ref="dialogRef">
   <nb-card class="info-dialog-card">
     <!-- Loading overlay inside the dialog so it covers the card regardless of stacking context -->
-    <div class="info-dialog-loading-overlay" *ngIf="infoDialogPageLoading">
-      <div class="loading-content">
-        <nb-spinner status="primary" size="large" [message]="''"></nb-spinner>
-        <p class="mt-3 text-hint">{{  '正在加载数据...' | translate }}</p>
+    @if (infoDialogPageLoading) {
+      <div class="info-dialog-loading-overlay">
+        <div class="loading-content">
+          <nb-spinner status="primary" size="large" [message]="''"></nb-spinner>
+          <p class="mt-3 text-hint">{{  '正在加载数据...' | translate }}</p>
+        </div>
       </div>
-    </div>
+    }
     <nb-card-header>
       <div class="d-flex justify-content-between align-items-center">
         <h6>{{ infoDialogTitle }}</h6>
@@ -755,120 +876,127 @@
       </div>
     </nb-card-header>
     <nb-card-body class="info-dialog-body">
-      <nb-alert *ngIf="infoDialogError" status="danger" closable="false">
-        <strong>{{  '错误：' | translate }}</strong>{{ infoDialogError }}
-      </nb-alert>
+      @if (infoDialogError) {
+        <nb-alert status="danger" closable="false">
+          <strong>{{  '错误：' | translate }}</strong>{{ infoDialogError }}
+        </nb-alert>
+      }
 
       <!-- Transaction tabs (only for transactions type) -->
-      <nb-tabset *ngIf="infoDialogType === 'transactions' && !infoDialogError" (changeTab)="switchTransactionTab($event.tabId)">
-        <nb-tab [tabTitle]="'运行中' | translate" tabId="running" [active]="transactionCurrentTab === 'running'">
-        </nb-tab>
-        <nb-tab [tabTitle]="'已完成' | translate" tabId="finished" [active]="transactionCurrentTab === 'finished'">
-        </nb-tab>
-      </nb-tabset>
+      @if (infoDialogType === 'transactions' && !infoDialogError) {
+        <nb-tabset (changeTab)="switchTransactionTab($event.tabId)">
+          <nb-tab [tabTitle]="'运行中' | translate" tabId="running" [active]="transactionCurrentTab === 'running'">
+          </nb-tab>
+          <nb-tab [tabTitle]="'已完成' | translate" tabId="finished" [active]="transactionCurrentTab === 'finished'">
+          </nb-tab>
+        </nb-tabset>
+      }
 
       <!-- Table stats tabs (only for tableStats type) -->
-      <nb-tabset *ngIf="infoDialogType === 'tableStats' && !infoDialogError" (changeTab)="switchTableStatsTab($event.tabId)">
-        <nb-tab [tabTitle]="'分区结构' | translate" tabId="partition" [active]="tableStatsCurrentTab === 'partition'">
-        </nb-tab>
-        <nb-tab tabTitle="Compaction Score" tabId="compaction" [active]="tableStatsCurrentTab === 'compaction'">
-        </nb-tab>
-        <nb-tab [tabTitle]="'表统计' | translate" tabId="storage" [active]="tableStatsCurrentTab === 'storage'">
-        </nb-tab>
-      </nb-tabset>
+      @if (infoDialogType === 'tableStats' && !infoDialogError) {
+        <nb-tabset (changeTab)="switchTableStatsTab($event.tabId)">
+          <nb-tab [tabTitle]="'分区结构' | translate" tabId="partition" [active]="tableStatsCurrentTab === 'partition'">
+          </nb-tab>
+          <nb-tab tabTitle="Compaction Score" tabId="compaction" [active]="tableStatsCurrentTab === 'compaction'">
+          </nb-tab>
+          <nb-tab [tabTitle]="'表统计' | translate" tabId="storage" [active]="tableStatsCurrentTab === 'storage'">
+          </nb-tab>
+        </nb-tabset>
+      }
 
       <!-- Bucket analysis tabs (only for bucketAnalysis type) -->
-      <nb-tabset *ngIf="infoDialogType === 'bucketAnalysis' && !infoDialogError" (changeTab)="switchBucketAnalysisTab($event.tabId)">
-        <nb-tab [tabTitle]="'分桶倾斜分析' | translate" tabId="skew" [active]="bucketAnalysisCurrentTab === 'skew'">
-        </nb-tab>
-        <nb-tab [tabTitle]="'BE级别分布' | translate" tabId="distribution" [active]="bucketAnalysisCurrentTab === 'distribution'">
-        </nb-tab>
-        <nb-tab [tabTitle]="'排序键基数分析' | translate" tabId="sortkey" [active]="bucketAnalysisCurrentTab === 'sortkey'">
-        </nb-tab>
-        <nb-tab [tabTitle]="'分桶调整' | translate" tabId="adjust" [active]="bucketAnalysisCurrentTab === 'adjust'">
-        </nb-tab>
-      </nb-tabset>
+      @if (infoDialogType === 'bucketAnalysis' && !infoDialogError) {
+        <nb-tabset (changeTab)="switchBucketAnalysisTab($event.tabId)">
+          <nb-tab [tabTitle]="'分桶倾斜分析' | translate" tabId="skew" [active]="bucketAnalysisCurrentTab === 'skew'">
+          </nb-tab>
+          <nb-tab [tabTitle]="'BE级别分布' | translate" tabId="distribution" [active]="bucketAnalysisCurrentTab === 'distribution'">
+          </nb-tab>
+          <nb-tab [tabTitle]="'排序键基数分析' | translate" tabId="sortkey" [active]="bucketAnalysisCurrentTab === 'sortkey'">
+          </nb-tab>
+          <nb-tab [tabTitle]="'分桶调整' | translate" tabId="adjust" [active]="bucketAnalysisCurrentTab === 'adjust'">
+          </nb-tab>
+        </nb-tabset>
+      }
 
       <!-- Bucket adjustment form (only for bucketAnalysis type, adjust tab) -->
-      <div *ngIf="infoDialogType === 'bucketAnalysis' && bucketAnalysisCurrentTab === 'adjust' && !infoDialogError" class="bucket-adjustment-form">
-        <div class="form-group">
-          <label class="label">{{  '当前分桶数' | translate }}</label>
-          <div class="form-control-static">
-            <strong>{{ bucketAnalysisCurrentBuckets }}</strong>
+      @if (infoDialogType === 'bucketAnalysis' && bucketAnalysisCurrentTab === 'adjust' && !infoDialogError) {
+        <div class="bucket-adjustment-form">
+          <div class="form-group">
+            <label class="label">{{  '当前分桶数' | translate }}</label>
+            <div class="form-control-static">
+              <strong>{{ bucketAnalysisCurrentBuckets }}</strong>
+            </div>
           </div>
-        </div>
-
-        <div class="form-group mt-3">
-          <label class="label">{{  '推荐分桶数' | translate }}</label>
-          <div class="form-control-static">
-            <strong>{{ getBucketAdjustmentRecommendedBuckets() }}</strong>
-            <button 
-              nbButton 
-              size="tiny" 
-              status="basic" 
-              class="ml-2"
-              (click)="useRecommendedBuckets()">
-              {{ '使用推荐值' | translate }}
+          <div class="form-group mt-3">
+            <label class="label">{{  '推荐分桶数' | translate }}</label>
+            <div class="form-control-static">
+              <strong>{{ getBucketAdjustmentRecommendedBuckets() }}</strong>
+              <button
+                nbButton
+                size="tiny"
+                status="basic"
+                class="ml-2"
+                (click)="useRecommendedBuckets()">
+                {{ '使用推荐值' | translate }}
+              </button>
+            </div>
+            <small class="form-text text-muted">
+              {{ '推荐值基于数据大小计算（每10GB约1个分桶）' | translate }}
+            </small>
+          </div>
+          <div class="form-group mt-3">
+            <label class="label">{{  '新分桶数' | translate }}<span class="text-danger">*</span></label>
+            <input
+              type="number"
+              nbInput
+              [(ngModel)]="bucketAdjustmentNewBuckets"
+              (ngModelChange)="onBucketAdjustmentInputChange($event)"
+              [min]="1"
+              [max]="128"
+              [placeholder]="'请输入新的分桶数（1-128）' | translate"
+              [disabled]="bucketAdjustmentAdjusting">
+            <small class="form-text text-muted">
+              {{ '分桶数范围：1-128。建议使用推荐值或根据数据量调整' | translate }}
+            </small>
+          </div>
+          <nb-alert status="warning" closable="false" class="mt-3">
+            <strong>{{  '警告：' | translate }}</strong>
+            <ul class="mb-0 mt-2">
+              <li>{{  '分桶调整需要重建表，这是一个耗时操作' | translate }}</li>
+              <li>{{  '重建表期间，表将被锁定，无法进行读写操作' | translate }}</li>
+              <li>{{  '请确保有足够的存储空间用于数据迁移' | translate }}</li>
+              <li>{{  '建议在业务低峰期执行此操作' | translate }}</li>
+              <li>{{  '此操作需要 ALTER TABLE 和 CREATE TABLE 权限' | translate }}</li>
+            </ul>
+          </nb-alert>
+          <div class="d-flex justify-content-end mt-4">
+            <button
+              nbButton
+              status="basic"
+              class="mr-2"
+              (click)="previewBucketAdjustment()"
+              [disabled]="!bucketAdjustmentNewBuckets || bucketAdjustmentNewBuckets <= 0 || bucketAdjustmentAdjusting">
+              {{ '预览调整' | translate }}
+            </button>
+            <button
+              nbButton
+              status="danger"
+              (click)="executeBucketAdjustment()"
+              [disabled]="!bucketAdjustmentNewBuckets || bucketAdjustmentNewBuckets <= 0 || bucketAdjustmentAdjusting || bucketAdjustmentNewBuckets === bucketAnalysisCurrentBuckets">
+              <nb-icon icon="flash-outline"></nb-icon>
+              {{  bucketAdjustmentAdjusting ? ('调整中...' | translate) : ('执行调整' | translate)  }}
             </button>
           </div>
-          <small class="form-text text-muted">
-            {{ '推荐值基于数据大小计算（每10GB约1个分桶）' | translate }}
-          </small>
         </div>
-
-        <div class="form-group mt-3">
-          <label class="label">{{  '新分桶数' | translate }}<span class="text-danger">*</span></label>
-          <input 
-            type="number" 
-            nbInput 
-            [(ngModel)]="bucketAdjustmentNewBuckets"
-            (ngModelChange)="onBucketAdjustmentInputChange($event)"
-            [min]="1" 
-            [max]="128"
-            [placeholder]="'请输入新的分桶数（1-128）' | translate"
-            [disabled]="bucketAdjustmentAdjusting">
-          <small class="form-text text-muted">
-            {{ '分桶数范围：1-128。建议使用推荐值或根据数据量调整' | translate }}
-          </small>
-        </div>
-
-        <nb-alert status="warning" closable="false" class="mt-3">
-          <strong>{{  '警告：' | translate }}</strong>
-          <ul class="mb-0 mt-2">
-            <li>{{  '分桶调整需要重建表，这是一个耗时操作' | translate }}</li>
-            <li>{{  '重建表期间，表将被锁定，无法进行读写操作' | translate }}</li>
-            <li>{{  '请确保有足够的存储空间用于数据迁移' | translate }}</li>
-            <li>{{  '建议在业务低峰期执行此操作' | translate }}</li>
-            <li>{{  '此操作需要 ALTER TABLE 和 CREATE TABLE 权限' | translate }}</li>
-          </ul>
-        </nb-alert>
-
-        <div class="d-flex justify-content-end mt-4">
-          <button 
-            nbButton 
-            status="basic" 
-            class="mr-2"
-            (click)="previewBucketAdjustment()"
-            [disabled]="!bucketAdjustmentNewBuckets || bucketAdjustmentNewBuckets <= 0 || bucketAdjustmentAdjusting">
-            {{ '预览调整' | translate }}
-          </button>
-          <button 
-            nbButton 
-            status="danger"
-            (click)="executeBucketAdjustment()"
-            [disabled]="!bucketAdjustmentNewBuckets || bucketAdjustmentNewBuckets <= 0 || bucketAdjustmentAdjusting || bucketAdjustmentNewBuckets === bucketAnalysisCurrentBuckets">
-            <nb-icon icon="flash-outline"></nb-icon>
-            {{  bucketAdjustmentAdjusting ? ('调整中...' | translate) : ('执行调整' | translate)  }}
-          </button>
-        </div>
-      </div>
+      }
 
       <!-- Regular table display for other tabs -->
-      <angular2-smart-table
-        *ngIf="!infoDialogError && !(infoDialogType === 'bucketAnalysis' && bucketAnalysisCurrentTab === 'adjust')"
-        [settings]="infoDialogSettings"
-        [source]="infoDialogSource">
-      </angular2-smart-table>
+      @if (!infoDialogError && !(infoDialogType === 'bucketAnalysis' && bucketAnalysisCurrentTab === 'adjust')) {
+        <angular2-smart-table
+          [settings]="infoDialogSettings"
+          [source]="infoDialogSource">
+        </angular2-smart-table>
+      }
     </nb-card-body>
   </nb-card>
 </ng-template>
@@ -896,24 +1024,29 @@
         </small>
       </div>
 
-      <div class="form-group mt-3" *ngIf="compactionTriggerMode === 'partition'">
-        <label class="label">{{  '选择分区（可多选）' | translate }}</label>
-        <div class="partition-selector">
-          <nb-checkbox
-            *ngFor="let partition of (availablePartitions || [])"
-            [checked]="compactionSelectedPartitions.includes(partition)"
-            (checkedChange)="togglePartitionSelection(partition, $event)"
-            class="mb-2">
-            {{ partition }}
-          </nb-checkbox>
-          <p *ngIf="!availablePartitions || availablePartitions.length === 0" class="text-hint">
-            {{ '暂无分区数据' | translate }}
-          </p>
+      @if (compactionTriggerMode === 'partition') {
+        <div class="form-group mt-3">
+          <label class="label">{{  '选择分区（可多选）' | translate }}</label>
+          <div class="partition-selector">
+            @for (partition of (availablePartitions || []); track partition) {
+              <nb-checkbox
+                [checked]="compactionSelectedPartitions.includes(partition)"
+                (checkedChange)="togglePartitionSelection(partition, $event)"
+                class="mb-2">
+                {{ partition }}
+              </nb-checkbox>
+            }
+            @if (!availablePartitions || availablePartitions.length === 0) {
+              <p class="text-hint">
+                {{ '暂无分区数据' | translate }}
+              </p>
+            }
+          </div>
+          <small class="form-text text-muted">
+            {{ '选择要执行Compaction的分区，可以多选' | translate }}
+          </small>
         </div>
-        <small class="form-text text-muted">
-          {{ '选择要执行Compaction的分区，可以多选' | translate }}
-        </small>
-      </div>
+      }
 
       <nb-alert status="info" closable="false" class="mt-3">
         <strong>{{  '提示：' | translate }}</strong>
@@ -957,64 +1090,74 @@
         </button>
       </div>
     </nb-card-header>
-    <nb-card-body *ngIf="currentQueryDetail">
-      <div class="query-detail-content">
-        <div class="detail-row">
-          <label class="detail-label">Query ID:</label>
-          <span class="detail-value">{{ currentQueryDetail.QueryId }}</span>
-        </div>
-        <div class="detail-row">
-          <label class="detail-label">{{  '用户:' | translate }}</label>
-          <span class="detail-value">{{ currentQueryDetail.User }}</span>
-        </div>
-        <div class="detail-row">
-          <label class="detail-label">{{  '数据库:' | translate }}</label>
-          <span class="detail-value">{{ currentQueryDetail.Database || 'N/A' }}</span>
-        </div>
-        <div class="detail-row">
-          <label class="detail-label">{{  '连接ID:' | translate }}</label>
-          <span class="detail-value">{{ currentQueryDetail.ConnectionId }}</span>
-        </div>
-        <div class="detail-row">
-          <label class="detail-label">{{  '执行时间:' | translate }}</label>
-          <span class="detail-value" [innerHTML]="renderSlowQueryBadge(currentQueryDetail.ExecTime)"></span>
-        </div>
-        <div class="detail-row">
-          <label class="detail-label">{{  '扫描数据量:' | translate }}</label>
-          <span class="detail-value" [innerHTML]="formatBytes(currentQueryDetail.ScanBytes)"></span>
-        </div>
-        <div class="detail-row">
-          <label class="detail-label">{{  '处理行数:' | translate }}</label>
-          <span class="detail-value">{{ formatNumber(currentQueryDetail.ProcessRows) }}</span>
-        </div>
-        <div class="detail-row">
-          <label class="detail-label">{{  'CPU时间:' | translate }}</label>
-          <span class="detail-value" [innerHTML]="formatTime(currentQueryDetail.CPUTime)"></span>
-        </div>
-        <div class="detail-row" *ngIf="currentQueryDetail.StartTime">
-          <label class="detail-label">{{  '开始时间:' | translate }}</label>
-          <span class="detail-value">{{ currentQueryDetail.StartTime }}</span>
-        </div>
-        <div class="detail-row" *ngIf="currentQueryDetail.MemoryUsage">
-          <label class="detail-label">{{  '内存使用:' | translate }}</label>
-          <span class="detail-value">{{ currentQueryDetail.MemoryUsage }}</span>
-        </div>
-        <div class="detail-row" *ngIf="currentQueryDetail.ResourceGroup">
-          <label class="detail-label">{{  '资源组:' | translate }}</label>
-          <span class="detail-value">{{ currentQueryDetail.ResourceGroup }}</span>
-        </div>
-        <div class="detail-row" *ngIf="currentQueryDetail.feIp">
-          <label class="detail-label">{{  'FE节点:' | translate }}</label>
-          <span class="detail-value">{{ currentQueryDetail.feIp }}</span>
-        </div>
-        <div class="detail-row detail-row-full">
-          <label class="detail-label">{{  'SQL语句:' | translate }}</label>
-          <div class="sql-content">
-            <pre class="sql-text">{{ currentQueryDetail.Sql || 'N/A' }}</pre>
+    @if (currentQueryDetail) {
+      <nb-card-body>
+        <div class="query-detail-content">
+          <div class="detail-row">
+            <label class="detail-label">Query ID:</label>
+            <span class="detail-value">{{ currentQueryDetail.QueryId }}</span>
+          </div>
+          <div class="detail-row">
+            <label class="detail-label">{{  '用户:' | translate }}</label>
+            <span class="detail-value">{{ currentQueryDetail.User }}</span>
+          </div>
+          <div class="detail-row">
+            <label class="detail-label">{{  '数据库:' | translate }}</label>
+            <span class="detail-value">{{ currentQueryDetail.Database || 'N/A' }}</span>
+          </div>
+          <div class="detail-row">
+            <label class="detail-label">{{  '连接ID:' | translate }}</label>
+            <span class="detail-value">{{ currentQueryDetail.ConnectionId }}</span>
+          </div>
+          <div class="detail-row">
+            <label class="detail-label">{{  '执行时间:' | translate }}</label>
+            <span class="detail-value" [innerHTML]="renderSlowQueryBadge(currentQueryDetail.ExecTime)"></span>
+          </div>
+          <div class="detail-row">
+            <label class="detail-label">{{  '扫描数据量:' | translate }}</label>
+            <span class="detail-value" [innerHTML]="formatBytes(currentQueryDetail.ScanBytes)"></span>
+          </div>
+          <div class="detail-row">
+            <label class="detail-label">{{  '处理行数:' | translate }}</label>
+            <span class="detail-value">{{ formatNumber(currentQueryDetail.ProcessRows) }}</span>
+          </div>
+          <div class="detail-row">
+            <label class="detail-label">{{  'CPU时间:' | translate }}</label>
+            <span class="detail-value" [innerHTML]="formatTime(currentQueryDetail.CPUTime)"></span>
+          </div>
+          @if (currentQueryDetail.StartTime) {
+            <div class="detail-row">
+              <label class="detail-label">{{  '开始时间:' | translate }}</label>
+              <span class="detail-value">{{ currentQueryDetail.StartTime }}</span>
+            </div>
+          }
+          @if (currentQueryDetail.MemoryUsage) {
+            <div class="detail-row">
+              <label class="detail-label">{{  '内存使用:' | translate }}</label>
+              <span class="detail-value">{{ currentQueryDetail.MemoryUsage }}</span>
+            </div>
+          }
+          @if (currentQueryDetail.ResourceGroup) {
+            <div class="detail-row">
+              <label class="detail-label">{{  '资源组:' | translate }}</label>
+              <span class="detail-value">{{ currentQueryDetail.ResourceGroup }}</span>
+            </div>
+          }
+          @if (currentQueryDetail.feIp) {
+            <div class="detail-row">
+              <label class="detail-label">{{  'FE节点:' | translate }}</label>
+              <span class="detail-value">{{ currentQueryDetail.feIp }}</span>
+            </div>
+          }
+          <div class="detail-row detail-row-full">
+            <label class="detail-label">{{  'SQL语句:' | translate }}</label>
+            <div class="sql-content">
+              <pre class="sql-text">{{ currentQueryDetail.Sql || 'N/A' }}</pre>
+            </div>
           </div>
         </div>
-      </div>
-    </nb-card-body>
+      </nb-card-body>
+    }
     <nb-card-footer>
       <div class="d-flex justify-content-end">
         <button nbButton status="danger" (click)="killQueryFromDetail(); ref.close()">
@@ -1034,102 +1177,118 @@
         <div class="d-flex align-items-center">
           <nb-icon icon="bulb-outline" status="warning" class="mr-2"></nb-icon>
           <h6 class="mb-0">{{  'SQL 诊断报告' | translate }}</h6>
-          <nb-badge *ngIf="diagCached" status="info" class="ml-2">{{  '缓存' | translate }}</nb-badge>
+          @if (diagCached) {
+            <nb-badge status="info" class="ml-2">{{  '缓存' | translate }}</nb-badge>
+          }
         </div>
         <button nbButton ghost status="basic" size="tiny" (click)="closeDiagDialog()" class="diag-close-btn">
           <nb-icon icon="close-outline"></nb-icon>
         </button>
       </div>
     </nb-card-header>
-    
+
     <nb-card-body>
       <!-- Loading state -->
-      <div *ngIf="diagnosing" class="text-center py-5">
-        <nb-spinner status="primary" size="large" [message]="''"></nb-spinner>
-        <h6 class="mt-3 mb-2">{{  '正在分析 SQL 性能' | translate }}</h6>
-        <p class="text-hint">{{  'AI 正在深度分析您的查询语句...' | translate }}</p>
-      </div>
+      @if (diagnosing) {
+        <div class="text-center py-5">
+          <nb-spinner status="primary" size="large" [message]="''"></nb-spinner>
+          <h6 class="mt-3 mb-2">{{  '正在分析 SQL 性能' | translate }}</h6>
+          <p class="text-hint">{{  'AI 正在深度分析您的查询语句...' | translate }}</p>
+        </div>
+      }
 
       <!-- Error state -->
-      <nb-alert *ngIf="diagError && !diagnosing" status="danger" closable="false">
-        <strong>{{  '诊断失败：' | translate }}</strong>{{ diagError }}
-      </nb-alert>
+      @if (diagError && !diagnosing) {
+        <nb-alert status="danger" closable="false">
+          <strong>{{  '诊断失败：' | translate }}</strong>{{ diagError }}
+        </nb-alert>
+      }
 
       <!-- Result state -->
-      <div *ngIf="diagResult && !diagnosing">
-        
-        <!-- 1. 优化后的 SQL (最重要，放在第一位) -->
-        <div *ngIf="diagResult.changed && diagResult.sql" class="mb-3">
-          <nb-card accent="success">
-            <nb-card-header>
-              <div class="d-flex align-items-center">
-                <nb-icon icon="code-outline" status="success" class="mr-2"></nb-icon>
-                <h6 class="mb-0">{{  '优化后的 SQL' | translate }}</h6>
-              </div>
-            </nb-card-header>
-            <nb-card-body>
-              <div class="sql-code-box">
-                <pre>{{ formatDiagSQL(diagResult.sql) }}</pre>
-              </div>
-            </nb-card-body>
-          </nb-card>
-        </div>
-
-        <!-- 2. 诊断摘要 + 性能问题（合并显示） -->
-        <div class="mb-3">
-          <nb-card>
-            <nb-card-header>
-              <div class="d-flex justify-content-between align-items-center">
-                <div class="d-flex align-items-center">
-                  <nb-icon [icon]="hasIssues() ? 'alert-triangle-outline' : 'checkmark-circle-2-outline'" 
-                           [status]="hasIssues() ? 'warning' : 'success'" class="mr-2"></nb-icon>
-                  <h6 class="mb-0">{{  hasIssues() ? ('已应用' | translate) + diagResult.perf_issues.length + ('个优化项' | translate) : ('未发现明显问题' | translate)  }}</h6>
-                </div>
-                <nb-badge [status]="diagResult.confidence > 0.7 ? 'success' : 'warning'">
-                  {{ (diagResult.confidence * 100).toFixed(0) }}%
-                </nb-badge>
-              </div>
-            </nb-card-header>
-            <nb-card-body>
-              <!-- 摘要 -->
-              <p class="text-hint mb-3">{{ diagResult.summary }}</p>
-              
-              <!-- 问题列表 -->
-              <div *ngIf="diagResult.perf_issues?.length > 0">
-                <div *ngFor="let issue of diagResult.perf_issues; let i = index; let last = last" 
-                     class="issue-item" [class.mb-3]="!last">
-                  <div class="d-flex align-items-start">
-                    <nb-badge [status]="getSeverityStatus(issue.severity)" class="mr-2 mt-1">
-                      {{ getSeverityLabel(issue.severity) }}
-                    </nb-badge>
-                    <div class="flex-grow-1">
-                      <strong class="d-block mb-1">{{ issue.type }}</strong>
-                      <p class="text-hint mb-2">{{ issue.desc }}</p>
-                      <div *ngIf="issue.fix" class="fix-box">
-                        <nb-icon icon="lightbulb-outline" status="success" class="mr-1"></nb-icon>
-                        {{ issue.fix }}
-                      </div>
-                    </div>
+      @if (diagResult && !diagnosing) {
+        <div>
+          <!-- 1. 优化后的 SQL (最重要，放在第一位) -->
+          @if (diagResult.changed && diagResult.sql) {
+            <div class="mb-3">
+              <nb-card accent="success">
+                <nb-card-header>
+                  <div class="d-flex align-items-center">
+                    <nb-icon icon="code-outline" status="success" class="mr-2"></nb-icon>
+                    <h6 class="mb-0">{{  '优化后的 SQL' | translate }}</h6>
                   </div>
+                </nb-card-header>
+                <nb-card-body>
+                  <div class="sql-code-box">
+                    <pre>{{ formatDiagSQL(diagResult.sql) }}</pre>
+                  </div>
+                </nb-card-body>
+              </nb-card>
+            </div>
+          }
+          <!-- 2. 诊断摘要 + 性能问题（合并显示） -->
+          <div class="mb-3">
+            <nb-card>
+              <nb-card-header>
+                <div class="d-flex justify-content-between align-items-center">
+                  <div class="d-flex align-items-center">
+                    <nb-icon [icon]="hasIssues() ? 'alert-triangle-outline' : 'checkmark-circle-2-outline'"
+                    [status]="hasIssues() ? 'warning' : 'success'" class="mr-2"></nb-icon>
+                    <h6 class="mb-0">{{  hasIssues() ? ('已应用' | translate) + diagResult.perf_issues.length + ('个优化项' | translate) : ('未发现明显问题' | translate)  }}</h6>
+                  </div>
+                  <nb-badge [status]="diagResult.confidence > 0.7 ? 'success' : 'warning'">
+                    {{ (diagResult.confidence * 100).toFixed(0) }}%
+                  </nb-badge>
                 </div>
-              </div>
-            </nb-card-body>
-          </nb-card>
+              </nb-card-header>
+              <nb-card-body>
+                <!-- 摘要 -->
+                <p class="text-hint mb-3">{{ diagResult.summary }}</p>
+                <!-- 问题列表 -->
+                @if (diagResult.perf_issues?.length > 0) {
+                  <div>
+                    @for (issue of diagResult.perf_issues; track issue; let i = $index; let last = $last) {
+                      <div
+                        class="issue-item" [class.mb-3]="!last">
+                        <div class="d-flex align-items-start">
+                          <nb-badge [status]="getSeverityStatus(issue.severity)" class="mr-2 mt-1">
+                            {{ getSeverityLabel(issue.severity) }}
+                          </nb-badge>
+                          <div class="flex-grow-1">
+                            <strong class="d-block mb-1">{{ issue.type }}</strong>
+                            <p class="text-hint mb-2">{{ issue.desc }}</p>
+                            @if (issue.fix) {
+                              <div class="fix-box">
+                                <nb-icon icon="lightbulb-outline" status="success" class="mr-1"></nb-icon>
+                                {{ issue.fix }}
+                              </div>
+                            }
+                          </div>
+                        </div>
+                      </div>
+                    }
+                  </div>
+                }
+              </nb-card-body>
+            </nb-card>
+          </div>
         </div>
-
-      </div>
+      }
     </nb-card-body>
-    
+
     <nb-card-footer>
       <div class="d-flex align-items-center text-hint">
         <nb-icon icon="info-outline" class="mr-1"></nb-icon>
         <span>{{  '由 AI 智能分析生成' | translate }}</span>
-        <span *ngIf="diagElapsedMs > 0" class="ml-2">• {{ '耗时' | translate }}: {{ diagElapsedMs }}ms</span>
+        @if (diagElapsedMs > 0) {
+          <span class="ml-2">• {{ '耗时' | translate }}: {{ diagElapsedMs }}ms</span>
+        }
       </div>
-      <button *ngIf="diagResult?.changed && diagResult?.sql" nbButton status="success" size="small" (click)="acceptDiagSQL()">
-        <nb-icon icon="checkmark-outline" class="mr-1"></nb-icon>
-        {{ '应用优化' | translate }}
-      </button>
+      @if (diagResult?.changed && diagResult?.sql) {
+        <button nbButton status="success" size="small" (click)="acceptDiagSQL()">
+          <nb-icon icon="checkmark-outline" class="mr-1"></nb-icon>
+          {{ '应用优化' | translate }}
+        </button>
+      }
     </nb-card-footer>
   </nb-card>
 </ng-template>
@@ -1148,8 +1307,8 @@
     <nb-card-body>
       <div class="form-group">
         <label class="label">{{  '正则表达式' | translate }}</label>
-        <textarea nbInput fullWidth rows="4" [(ngModel)]="newBlacklistPattern" 
-          [placeholder]="'例如: SELECT.*FROM.*sensitive_table.*' | translate"></textarea>
+        <textarea nbInput fullWidth rows="4" [(ngModel)]="newBlacklistPattern"
+        [placeholder]="'例如: SELECT.*FROM.*sensitive_table.*' | translate"></textarea>
         <span class="hint-text">{{  '匹配此正则表达式的 SQL 语句将被拒绝执行' | translate }}</span>
       </div>
     </nb-card-body>
@@ -1157,7 +1316,9 @@
       <div class="d-flex justify-content-end gap-2">
         <button nbButton status="basic" size="small" (click)="cancelBlacklistDialog()">{{  '取消' | translate }}</button>
         <button nbButton status="primary" size="small" (click)="submitBlacklistPattern()" [disabled]="blacklistLoading">
-          <nb-spinner *ngIf="blacklistLoading" size="tiny" status="control"></nb-spinner>
+          @if (blacklistLoading) {
+            <nb-spinner size="tiny" status="control"></nb-spinner>
+          }
           {{ '添加' | translate }}
         </button>
       </div>

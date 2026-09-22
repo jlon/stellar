@@ -1,7 +1,7 @@
 import { I18nService } from '../../@core/i18n/i18n.service';
 import { TranslatePipe } from '@ngx-translate/core';
 import { Component, inject, ViewEncapsulation } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { Router, RouterLink } from '@angular/router';
 import { NbToastrService, NbAlertModule, NbInputModule, NbButtonModule, NbIconModule } from '@nebular/theme';
 import { AuthService } from '../../@core/data/auth.service';
@@ -15,7 +15,14 @@ import { FormsModule } from '@angular/forms';
     styleUrls: ['./register.component.scss'],
     encapsulation: ViewEncapsulation.None,
     imports: [
-    TranslatePipe,CommonModule, NbAlertModule, FormsModule, NbInputModule, NbButtonModule, NbIconModule, RouterLink]
+    TranslatePipe,
+    NbAlertModule,
+    FormsModule,
+    NbInputModule,
+    NbButtonModule,
+    NbIconModule,
+    RouterLink
+]
 })
 export class RegisterComponent {
   protected router = inject(Router);

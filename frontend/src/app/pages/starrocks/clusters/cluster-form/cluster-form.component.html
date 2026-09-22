@@ -14,318 +14,322 @@
             <div class="form-group">
               <label for="organization" class="label">{{  '所属组织 *' | translate }}</label>
               <!-- 组织列表就绪后再渲染：Nebular select 的 ContentChildren 不会随异步 @for 插入刷新；
-                   @if must wrap the whole nb-form-field -->
-              <nb-form-field [hidden]="organizations.length === 0">
+              @if must wrap the whole nb-form-field -->
+                <nb-form-field [hidden]="organizations.length === 0">
                   <nb-select size="small"
-                  formControlName="organization_id"
-                  id="organization"
-                  [placeholder]="'请选择组织' | translate"
-                  [status]="clusterForm.get('organization_id')?.invalid && clusterForm.get('organization_id')?.touched ? 'danger' : 'basic'"
+                    formControlName="organization_id"
+                    id="organization"
+                    [placeholder]="'请选择组织' | translate"
+                    [status]="clusterForm.get('organization_id')?.invalid && clusterForm.get('organization_id')?.touched ? 'danger' : 'basic'"
+                    fullWidth
+                    >
+                    @for (org of organizations; track org) {
+                      <nb-option [value]="org.id">
+                        {{ org.name }}
+                        @if (org.code) {
+                          <span class="text-hint"> ({{ org.code }})</span>
+                        }
+                      </nb-option>
+                    }
+                  </nb-select>
+                </nb-form-field>
+                @if (clusterForm.get('organization_id')?.invalid && clusterForm.get('organization_id')?.touched) {
+                  <small class="form-text text-danger">
+                    {{ '请选择组织' | translate }}
+                  </small>
+                }
+              </div>
+            </div>
+          }
+
+          @if (!isSuperAdmin && currentOrganization) {
+            <div class="col-md-6">
+              <div class="form-group">
+                <label class="label">{{  '所属组织' | translate }}</label>
+                <div class="alert alert-info d-flex align-items-center">
+                  <nb-icon icon="info-outline" class="me-2"></nb-icon>
+                  <span>{{ currentOrganization.name }} <span class="text-hint">({{ currentOrganization.code }})</span></span>
+                </div>
+              </div>
+            </div>
+          }
+
+          <div class="col-md-6">
+            <div class="form-group">
+              <label for="deployment_mode" class="label">{{  '部署模式 *' | translate }}</label>
+              <nb-form-field>
+                <nb-select size="small"
+                  formControlName="deployment_mode"
+                  id="deployment_mode"
+                  [placeholder]="'请选择部署模式' | translate"
+                  [status]="clusterForm.get('deployment_mode')?.invalid && clusterForm.get('deployment_mode')?.touched ? 'danger' : 'basic'"
                   fullWidth
                   >
-                  @for (org of organizations; track org) {
-                    <nb-option [value]="org.id">
-                      {{ org.name }}
-                      @if (org.code) {
-                        <span class="text-hint"> ({{ org.code }})</span>
-                      }
-                    </nb-option>
-                  }
-                  </nb-select>
+                  <nb-option value="shared_nothing">{{  '存算一体 (Shared-Nothing)' | translate }}</nb-option>
+                  <nb-option value="shared_data">{{  '存算分离 (Shared-Data)' | translate }}</nb-option>
+                </nb-select>
               </nb-form-field>
-              @if (clusterForm.get('organization_id')?.invalid && clusterForm.get('organization_id')?.touched) {
+              @if (clusterForm.get('deployment_mode')?.invalid && clusterForm.get('deployment_mode')?.touched) {
                 <small class="form-text text-danger">
-                  {{ '请选择组织' | translate }}
+                  {{ '请选择部署模式' | translate }}
                 </small>
               }
             </div>
           </div>
-        }
+        </div>
 
-        @if (!isSuperAdmin && currentOrganization) {
+        <div class="row">
           <div class="col-md-6">
             <div class="form-group">
-              <label class="label">{{  '所属组织' | translate }}</label>
-              <div class="alert alert-info d-flex align-items-center">
-                <nb-icon icon="info-outline" class="me-2"></nb-icon>
-                <span>{{ currentOrganization.name }} <span class="text-hint">({{ currentOrganization.code }})</span></span>
+              <label for="name" class="label">{{  '集群名称 *' | translate }}</label>
+              <input
+                nbInput fieldSize="small"
+                fullWidth
+                type="text"
+                id="name"
+                formControlName="name"
+                [placeholder]="'输入集群名称' | translate"
+                [status]="clusterForm.get('name')?.invalid && clusterForm.get('name')?.touched ? 'danger' : 'basic'"
+                />
+              @if (clusterForm.get('name')?.invalid && clusterForm.get('name')?.touched) {
+                <small class="form-text text-danger">
+                  {{ '请输入集群名称' | translate }}
+                </small>
+              }
+            </div>
+          </div>
+
+          <div class="col-md-6">
+            <div class="form-group">
+              <label for="cluster_type" class="label">{{  '集群类型 *' | translate }}</label>
+              <nb-form-field>
+                <nb-select size="small"
+                  formControlName="cluster_type"
+                  id="cluster_type"
+                  [placeholder]="'请选择集群类型' | translate"
+                  [status]="clusterForm.get('cluster_type')?.invalid && clusterForm.get('cluster_type')?.touched ? 'danger' : 'basic'"
+                  fullWidth
+                  >
+                  <nb-option value="starrocks">StarRocks</nb-option>
+                  <nb-option value="doris">Apache Doris</nb-option>
+                </nb-select>
+              </nb-form-field>
+              @if (clusterForm.get('cluster_type')?.invalid && clusterForm.get('cluster_type')?.touched) {
+                <small class="form-text text-danger">
+                  {{ '请选择集群类型' | translate }}
+                </small>
+              }
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-6">
+            <div class="form-group">
+              <label for="catalog" class="label">Catalog</label>
+              <input
+                nbInput fieldSize="small"
+                fullWidth
+                type="text"
+                id="catalog"
+                formControlName="catalog"
+                placeholder="default_catalog"
+                />
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">{{  '连接信息' | translate }}</div>
+
+        <div class="row">
+          <div class="col-md-6">
+            <div class="form-group">
+              <label for="fe_host" class="label">{{  'FE 地址 *' | translate }}</label>
+              <input
+                nbInput fieldSize="small"
+                fullWidth
+                type="text"
+                id="fe_host"
+                formControlName="fe_host"
+                placeholder="192.168.1.100"
+                [status]="clusterForm.get('fe_host')?.invalid && clusterForm.get('fe_host')?.touched ? 'danger' : 'basic'"
+                />
+            </div>
+          </div>
+
+          <div class="col-md-3">
+            <div class="form-group">
+              <label for="fe_http_port" class="label">{{  'HTTP 端口 *' | translate }}</label>
+              <input
+                nbInput fieldSize="small"
+                fullWidth
+                type="number"
+                id="fe_http_port"
+                formControlName="fe_http_port"
+                placeholder="8030"
+                />
+            </div>
+          </div>
+
+          <div class="col-md-3">
+            <div class="form-group">
+              <label for="fe_query_port" class="label">{{  '查询端口 *' | translate }}</label>
+              <input
+                nbInput fieldSize="small"
+                fullWidth
+                type="number"
+                id="fe_query_port"
+                formControlName="fe_query_port"
+                placeholder="9030"
+                />
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">{{  '认证信息' | translate }}</div>
+
+        <div class="row">
+          <div class="col-md-6">
+            <div class="form-group">
+              <label for="username" class="label">{{  '用户名 *' | translate }}</label>
+              <input
+                nbInput fieldSize="small"
+                fullWidth
+                type="text"
+                id="username"
+                formControlName="username"
+                placeholder="root"
+                [status]="clusterForm.get('username')?.invalid && clusterForm.get('username')?.touched ? 'danger' : 'basic'"
+                />
+            </div>
+          </div>
+
+          <div class="col-md-6">
+            <div class="form-group">
+              <label for="password" class="label">{{ '密码' | translate }} {{ isEditMode ? ('(留空表示不修改)' | translate) : ('(可选)' | translate) }}</label>
+              <input
+                nbInput fieldSize="small"
+                fullWidth
+                type="password"
+                id="password"
+                formControlName="password"
+                [placeholder]="'输入密码或留空' | translate"
+                [status]="clusterForm.get('password')?.invalid && clusterForm.get('password')?.touched ? 'danger' : 'basic'"
+                />
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">{{  '高级选项' | translate }}</div>
+
+        @if (isOrgAdmin || isSuperAdmin) {
+          <div class="row">
+            <div class="col-md-6">
+              <div class="form-group">
+                <label for="admin_user" class="label">{{  '管理用户（可选）' | translate }}</label>
+                <input
+                  nbInput fieldSize="small"
+                  fullWidth
+                  type="text"
+                  id="admin_user"
+                  formControlName="admin_user"
+                  placeholder="root"
+                  />
+                <small class="form-text text-muted">{{  '用于执行权限授权操作的用户名' | translate }}</small>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="form-group">
+                <label for="admin_password" class="label">{{ '管理密码' | translate }} {{ isEditMode ? ('(留空表示不修改)' | translate) : '' }}</label>
+                <input
+                  nbInput fieldSize="small"
+                  fullWidth
+                  type="password"
+                  id="admin_password"
+                  formControlName="admin_password"
+                  [placeholder]="'输入管理用户密码' | translate"
+                  />
+                <small class="form-text text-muted">{{  '管理用户的密码' | translate }}</small>
               </div>
             </div>
           </div>
         }
 
-        <div class="col-md-6">
-          <div class="form-group">
-            <label for="deployment_mode" class="label">{{  '部署模式 *' | translate }}</label>
-            <nb-form-field>
-              <nb-select size="small"
-                formControlName="deployment_mode"
-                id="deployment_mode"
-                [placeholder]="'请选择部署模式' | translate"
-                [status]="clusterForm.get('deployment_mode')?.invalid && clusterForm.get('deployment_mode')?.touched ? 'danger' : 'basic'"
-                fullWidth
-                >
-                <nb-option value="shared_nothing">{{  '存算一体 (Shared-Nothing)' | translate }}</nb-option>
-                <nb-option value="shared_data">{{  '存算分离 (Shared-Data)' | translate }}</nb-option>
-              </nb-select>
-            </nb-form-field>
-            @if (clusterForm.get('deployment_mode')?.invalid && clusterForm.get('deployment_mode')?.touched) {
-              <small class="form-text text-danger">
-                {{ '请选择部署模式' | translate }}
-              </small>
-            }
-          </div>
-        </div>
-      </div>
-
-      <div class="row">
-        <div class="col-md-6">
-          <div class="form-group">
-            <label for="name" class="label">{{  '集群名称 *' | translate }}</label>
-            <input
-              nbInput fieldSize="small"
-              fullWidth
-              type="text"
-              id="name"
-              formControlName="name"
-              [placeholder]="'输入集群名称' | translate"
-              [status]="clusterForm.get('name')?.invalid && clusterForm.get('name')?.touched ? 'danger' : 'basic'"
-              />
-            @if (clusterForm.get('name')?.invalid && clusterForm.get('name')?.touched) {
-              <small class="form-text text-danger">
-                {{ '请输入集群名称' | translate }}
-              </small>
-            }
-          </div>
-        </div>
-
-        <div class="col-md-6">
-          <div class="form-group">
-            <label for="cluster_type" class="label">{{  '集群类型 *' | translate }}</label>
-            <nb-form-field>
-              <nb-select size="small"
-                formControlName="cluster_type"
-                id="cluster_type"
-                [placeholder]="'请选择集群类型' | translate"
-                [status]="clusterForm.get('cluster_type')?.invalid && clusterForm.get('cluster_type')?.touched ? 'danger' : 'basic'"
-                fullWidth
-                >
-                <nb-option value="starrocks">StarRocks</nb-option>
-                <nb-option value="doris">Apache Doris</nb-option>
-              </nb-select>
-            </nb-form-field>
-            @if (clusterForm.get('cluster_type')?.invalid && clusterForm.get('cluster_type')?.touched) {
-              <small class="form-text text-danger">
-                {{ '请选择集群类型' | translate }}
-              </small>
-            }
-          </div>
-        </div>
-      </div>
-
-      <div class="row">
-        <div class="col-md-6">
-          <div class="form-group">
-            <label for="catalog" class="label">Catalog</label>
-            <input
-              nbInput fieldSize="small"
-              fullWidth
-              type="text"
-              id="catalog"
-              formControlName="catalog"
-              placeholder="default_catalog"
-              />
-          </div>
-        </div>
-      </div>
-
-      <div class="form-section">{{  '连接信息' | translate }}</div>
-
-      <div class="row">
-        <div class="col-md-6">
-          <div class="form-group">
-            <label for="fe_host" class="label">{{  'FE 地址 *' | translate }}</label>
-            <input
-              nbInput fieldSize="small"
-              fullWidth
-              type="text"
-              id="fe_host"
-              formControlName="fe_host"
-              placeholder="192.168.1.100"
-              [status]="clusterForm.get('fe_host')?.invalid && clusterForm.get('fe_host')?.touched ? 'danger' : 'basic'"
-              />
-          </div>
-        </div>
-
-        <div class="col-md-3">
-          <div class="form-group">
-            <label for="fe_http_port" class="label">{{  'HTTP 端口 *' | translate }}</label>
-            <input
-              nbInput fieldSize="small"
-              fullWidth
-              type="number"
-              id="fe_http_port"
-              formControlName="fe_http_port"
-              placeholder="8030"
-              />
-          </div>
-        </div>
-
-        <div class="col-md-3">
-          <div class="form-group">
-            <label for="fe_query_port" class="label">{{  '查询端口 *' | translate }}</label>
-            <input
-              nbInput fieldSize="small"
-              fullWidth
-              type="number"
-              id="fe_query_port"
-              formControlName="fe_query_port"
-              placeholder="9030"
-              />
-          </div>
-        </div>
-      </div>
-
-      <div class="form-section">{{  '认证信息' | translate }}</div>
-
-      <div class="row">
-        <div class="col-md-6">
-          <div class="form-group">
-            <label for="username" class="label">{{  '用户名 *' | translate }}</label>
-            <input
-              nbInput fieldSize="small"
-              fullWidth
-              type="text"
-              id="username"
-              formControlName="username"
-              placeholder="root"
-              [status]="clusterForm.get('username')?.invalid && clusterForm.get('username')?.touched ? 'danger' : 'basic'"
-              />
-          </div>
-        </div>
-
-        <div class="col-md-6">
-          <div class="form-group">
-            <label for="password" class="label">{{ '密码' | translate }} {{ isEditMode ? ('(留空表示不修改)' | translate) : ('(可选)' | translate) }}</label>
-            <input
-              nbInput fieldSize="small"
-              fullWidth
-              type="password"
-              id="password"
-              formControlName="password"
-              [placeholder]="'输入密码或留空' | translate"
-              [status]="clusterForm.get('password')?.invalid && clusterForm.get('password')?.touched ? 'danger' : 'basic'"
-              />
-          </div>
-        </div>
-      </div>
-
-      <div class="form-section">{{  '高级选项' | translate }}</div>
-
-      @if (isOrgAdmin || isSuperAdmin) {
         <div class="row">
           <div class="col-md-6">
             <div class="form-group">
-              <label for="admin_user" class="label">{{  '管理用户（可选）' | translate }}</label>
+              <label for="connection_timeout" class="label">{{  '连接超时（秒）' | translate }}</label>
+              <input
+                nbInput fieldSize="small"
+                fullWidth
+                type="number"
+                id="connection_timeout"
+                formControlName="connection_timeout"
+                placeholder="10"
+                />
+            </div>
+          </div>
+
+          <div class="col-md-6">
+            <div class="form-group">
+              <label for="tags" class="label">{{  '标签（逗号分隔）' | translate }}</label>
               <input
                 nbInput fieldSize="small"
                 fullWidth
                 type="text"
-                id="admin_user"
-                formControlName="admin_user"
-                placeholder="root"
+                id="tags"
+                formControlName="tags"
+                [placeholder]="'生产, 北京, 主集群' | translate"
                 />
-              <small class="form-text text-muted">{{  '用于执行权限授权操作的用户名' | translate }}</small>
-            </div>
-          </div>
-          <div class="col-md-6">
-            <div class="form-group">
-              <label for="admin_password" class="label">{{ '管理密码' | translate }} {{ isEditMode ? ('(留空表示不修改)' | translate) : '' }}</label>
-              <input
-                nbInput fieldSize="small"
-                fullWidth
-                type="password"
-                id="admin_password"
-                formControlName="admin_password"
-                [placeholder]="'输入管理用户密码' | translate"
-                />
-              <small class="form-text text-muted">{{  '管理用户的密码' | translate }}</small>
             </div>
           </div>
         </div>
+
+        <div class="form-group">
+          <nb-checkbox formControlName="enable_ssl">{{  '启用 SSL' | translate }}</nb-checkbox>
+        </div>
+
+        <div class="form-group">
+          <label for="description" class="label">{{  '备注' | translate }}</label>
+          <textarea
+            nbInput size="small"
+            fullWidth
+            id="description"
+            formControlName="description"
+            [placeholder]="'输入集群描述（可选）' | translate"
+            rows="2"
+          ></textarea>
+        </div>
+      </form>
+    </nb-card-body>
+
+    <nb-card-footer class="dialog-footer">
+      <button
+        type="button"
+        class="icon-btn"
+        (click)="testConnection()"
+        [disabled]="loading || saving"
+        [nbSpinner]="testing"
+        nbSpinnerStatus="basic"
+        nbSpinnerSize="tiny"
+        [nbTooltip]="'测试连接' | translate"
+        nbTooltipPlacement="top"
+        [aria-label]="'测试连接' | translate"
+        >
+        <nb-icon icon="refresh-outline"></nb-icon>
+      </button>
+      @if (testing) {
+        <button type="button" class="icon-btn is-danger" (click)="cancelTest()" [nbTooltip]="'取消测试' | translate" nbTooltipPlacement="top" [aria-label]="'取消测试' | translate"><nb-icon icon="close-outline"></nb-icon></button>
+      }
+      @if (lastTestOkAt && !testing) {
+        <span class="test-ok-hint">{{ '上次成功' | translate }} {{ lastTestOkAt | date:'HH:mm:ss' }}</span>
       }
 
-      <div class="row">
-        <div class="col-md-6">
-          <div class="form-group">
-            <label for="connection_timeout" class="label">{{  '连接超时（秒）' | translate }}</label>
-            <input
-              nbInput fieldSize="small"
-              fullWidth
-              type="number"
-              id="connection_timeout"
-              formControlName="connection_timeout"
-              placeholder="10"
-              />
-          </div>
+      <div class="footer-right">
+        <button type="button" class="icon-btn" (click)="onCancel()" [disabled]="loading || saving" [nbTooltip]="'取消' | translate" nbTooltipPlacement="top" [aria-label]="'取消' | translate"><nb-icon icon="close-outline"></nb-icon></button>
+
+        <button type="button" class="icon-btn is-primary" (click)="onSubmit()" [disabled]="loading || saving"
+          [nbTooltip]="'保存' | translate" nbTooltipPlacement="top" [aria-label]="'保存' | translate">@if (saving) {<nb-icon icon="loader-outline" class="spin"></nb-icon>}@else {<nb-icon icon="checkmark-outline"></nb-icon>}</button>
         </div>
-
-        <div class="col-md-6">
-          <div class="form-group">
-            <label for="tags" class="label">{{  '标签（逗号分隔）' | translate }}</label>
-            <input
-              nbInput fieldSize="small"
-              fullWidth
-              type="text"
-              id="tags"
-              formControlName="tags"
-              [placeholder]="'生产, 北京, 主集群' | translate"
-              />
-          </div>
-        </div>
-      </div>
-
-      <div class="form-group">
-        <nb-checkbox formControlName="enable_ssl">{{  '启用 SSL' | translate }}</nb-checkbox>
-      </div>
-
-      <div class="form-group">
-        <label for="description" class="label">{{  '备注' | translate }}</label>
-        <textarea
-          nbInput size="small"
-          fullWidth
-          id="description"
-          formControlName="description"
-          [placeholder]="'输入集群描述（可选）' | translate"
-          rows="2"
-        ></textarea>
-      </div>
-    </form>
-  </nb-card-body>
-
-  <nb-card-footer class="dialog-footer">
-    <button
-      type="button"
-      class="icon-btn"
-      (click)="testConnection()"
-      [disabled]="loading || saving"
-      [nbSpinner]="testing"
-      nbSpinnerStatus="basic"
-      nbSpinnerSize="tiny"
-      [nbTooltip]="'测试连接' | translate"
-      nbTooltipPlacement="top"
-      [aria-label]="'测试连接' | translate"
-      >
-      <nb-icon icon="refresh-outline"></nb-icon>
-    </button>
-    <button type="button" class="icon-btn is-danger" *ngIf="testing" (click)="cancelTest()" [nbTooltip]="'取消测试' | translate" nbTooltipPlacement="top" [aria-label]="'取消测试' | translate"><nb-icon icon="close-outline"></nb-icon></button>
-    <span class="test-ok-hint" *ngIf="lastTestOkAt && !testing">{{ '上次成功' | translate }} {{ lastTestOkAt | date:'HH:mm:ss' }}</span>
-
-    <div class="footer-right">
-      <button type="button" class="icon-btn" (click)="onCancel()" [disabled]="loading || saving" [nbTooltip]="'取消' | translate" nbTooltipPlacement="top" [aria-label]="'取消' | translate"><nb-icon icon="close-outline"></nb-icon></button>
-
-      <button type="button" class="icon-btn is-primary" (click)="onSubmit()" [disabled]="loading || saving"
-         [nbTooltip]="'保存' | translate" nbTooltipPlacement="top" [aria-label]="'保存' | translate">@if (saving) {<nb-icon icon="loader-outline" class="spin"></nb-icon>}@else {<nb-icon icon="checkmark-outline"></nb-icon>}</button>
-    </div>
-  </nb-card-footer>
-</nb-card>
+      </nb-card-footer>
+    </nb-card>

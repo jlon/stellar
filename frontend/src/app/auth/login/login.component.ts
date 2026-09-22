@@ -3,7 +3,7 @@ import { TranslatePipe } from '@ngx-translate/core';
 import { inject, AfterViewInit, ChangeDetectorRef, Component, ElementRef, OnDestroy, OnInit, ViewEncapsulation } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { CommonModule } from '@angular/common';
+
 import { NbAlertModule, NbButtonModule, NbCheckboxModule, NbIconModule, NbInputModule, NbToastrService } from '@nebular/theme';
 import { AuthService } from '../../@core/data/auth.service';
 
@@ -13,7 +13,15 @@ import { AuthService } from '../../@core/data/auth.service';
   templateUrl: './login.component.html',
   styleUrls: ['./login.component.scss'],
   imports: [
-    TranslatePipe,CommonModule, NbAlertModule, FormsModule, NbInputModule, NbCheckboxModule, NbButtonModule, NbIconModule, RouterLink],
+    TranslatePipe,
+    NbAlertModule,
+    FormsModule,
+    NbInputModule,
+    NbCheckboxModule,
+    NbButtonModule,
+    NbIconModule,
+    RouterLink
+],
   encapsulation: ViewEncapsulation.None,
 })
 export class LoginComponent implements OnInit, AfterViewInit, OnDestroy {
@@ -36,14 +44,12 @@ export class LoginComponent implements OnInit, AfterViewInit, OnDestroy {
   private readonly minPanelWidth = 360;
   private readonly minVisualWidth = 280;
 
-  constructor(
-    protected router: Router,
-    private route: ActivatedRoute,
-    private authService: AuthService,
-    private toastrService: NbToastrService,
-    private el: ElementRef<HTMLElement>,
-    private cdr: ChangeDetectorRef,
-  ) {}
+  protected readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+  private readonly authService = inject(AuthService);
+  private readonly toastrService = inject(NbToastrService);
+  private readonly el = inject(ElementRef<HTMLElement>);
+  private readonly cdr = inject(ChangeDetectorRef);
 
   ngOnInit(): void {
     const rawReturnUrl = this.route.snapshot.queryParams['returnUrl'];

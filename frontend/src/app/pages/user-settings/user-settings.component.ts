@@ -1,7 +1,7 @@
 import { I18nService } from '../../@core/i18n/i18n.service';
 import { TranslatePipe } from '@ngx-translate/core';
 import { Component, OnInit, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { Router } from '@angular/router';
 import { NbToastrService, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule, NbAlertModule, NbInputModule, NbTooltipModule } from '@nebular/theme';
 import { AuthService, User } from '../../@core/data/auth.service';
@@ -15,8 +15,16 @@ import { FormsModule } from '@angular/forms';
     templateUrl: './user-settings.component.html',
     styleUrls: ['./user-settings.component.scss'],
     imports: [
-    TranslatePipe,CommonModule, NbCardModule, NbButtonModule, NbIconModule, NbSpinnerModule, NbAlertModule, FormsModule, NbInputModule,
-    NbTooltipModule,]
+    TranslatePipe,
+    NbCardModule,
+    NbButtonModule,
+    NbIconModule,
+    NbSpinnerModule,
+    NbAlertModule,
+    FormsModule,
+    NbInputModule,
+    NbTooltipModule
+]
 })
 export class UserSettingsComponent implements OnInit {
   private authService = inject(AuthService)

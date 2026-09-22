@@ -12,77 +12,89 @@
         class="session-search"
         [placeholder]="'搜索会话' | translate"
         [(ngModel)]="sessionQuery"
-      />
+        />
       <nb-list class="sessions-list" role="listbox" [attr.aria-label]="'会话' | translate" (keydown)="onSessionListKeydown($event)">
-        <nb-list-item
-          *ngFor="let s of filteredSessions()"
-          class="session-item"
-          [class.active]="s.id === activeSessionId"
-          role="option"
-          tabindex="0"
-          [attr.aria-selected]="s.id === activeSessionId"
-          (click)="openSession(s.id)"
-        >
-          <div class="session-main">
-            <div *ngIf="renamingId !== s.id" class="session-title">{{  s.title || ('(无标题)' | translate)  }}</div>
-            <input
-              *ngIf="renamingId === s.id"
-              class="session-rename"
-              [(ngModel)]="renameDraft"
-              (click)="$event.stopPropagation()"
-              (keydown.enter)="saveRename(s)"
-              (keydown.escape)="cancelRename()"
-              (blur)="saveRename(s)"
-              maxlength="60"
-            />
-            <div class="session-meta">{{ s.last_active_at | date: 'MM-dd HH:mm' }}</div>
-          </div>
-          <button
-            *ngIf="renamingId !== s.id"
-            nbButton
-            size="tiny"
-            ghost
-            [nbTooltip]="'重命名' | translate"
-            (click)="startRename(s, $event)"
-          >
-            <nb-icon icon="edit-outline"></nb-icon>
-          </button>
-          <button
-            nbButton
-            size="tiny"
-            status="danger"
-            ghost
-            [nbTooltip]="'删除会话' | translate"
-            (click)="deleteSession(s.id, $event)"
-          >
-            <nb-icon icon="trash-2-outline"></nb-icon>
-          </button>
-        </nb-list-item>
+        @for (s of filteredSessions(); track s) {
+          <nb-list-item
+            class="session-item"
+            [class.active]="s.id === activeSessionId"
+            role="option"
+            tabindex="0"
+            [attr.aria-selected]="s.id === activeSessionId"
+            (click)="openSession(s.id)"
+            >
+            <div class="session-main">
+              @if (renamingId !== s.id) {
+                <div class="session-title">{{  s.title || ('(无标题)' | translate)  }}</div>
+              }
+              @if (renamingId === s.id) {
+                <input
+                  class="session-rename"
+                  [(ngModel)]="renameDraft"
+                  (click)="$event.stopPropagation()"
+                  (keydown.enter)="saveRename(s)"
+                  (keydown.escape)="cancelRename()"
+                  (blur)="saveRename(s)"
+                  maxlength="60"
+                  />
+              }
+              <div class="session-meta">{{ s.last_active_at | date: 'MM-dd HH:mm' }}</div>
+            </div>
+            @if (renamingId !== s.id) {
+              <button
+                nbButton
+                size="tiny"
+                ghost
+                [nbTooltip]="'重命名' | translate"
+                (click)="startRename(s, $event)"
+                >
+                <nb-icon icon="edit-outline"></nb-icon>
+              </button>
+            }
+            <button
+              nbButton
+              size="tiny"
+              status="danger"
+              ghost
+              [nbTooltip]="'删除会话' | translate"
+              (click)="deleteSession(s.id, $event)"
+              >
+              <nb-icon icon="trash-2-outline"></nb-icon>
+            </button>
+          </nb-list-item>
+        }
       </nb-list>
-      <div *ngIf="!loadingSessions && sessions.length === 0" class="sessions-empty">
-        <ngx-ai-illustration kind="sessions" class="sessions-empty-art"></ngx-ai-illustration>
-        <span>{{  '暂无会话，输入问题开始对话' | translate }}</span>
-      </div>
-      <div *ngIf="!loadingSessions && sessions.length > 0 && filteredSessions().length === 0" class="sessions-empty">
-        <span>{{  '无匹配会话' | translate }}</span>
-      </div>
+      @if (!loadingSessions && sessions.length === 0) {
+        <div class="sessions-empty">
+          <ngx-ai-illustration kind="sessions" class="sessions-empty-art"></ngx-ai-illustration>
+          <span>{{  '暂无会话，输入问题开始对话' | translate }}</span>
+        </div>
+      }
+      @if (!loadingSessions && sessions.length > 0 && filteredSessions().length === 0) {
+        <div class="sessions-empty">
+          <span>{{  '无匹配会话' | translate }}</span>
+        </div>
+      }
     </nb-card-body>
   </nb-card>
 
   <!-- 对话区 -->
   <nb-card class="agent-chat-card">
     <nb-card-header class="chat-header">
-      <span class="chat-title">{{  '智能助手' | translate }}<span *ngIf="cluster" class="chat-subtitle">· {{ cluster.name }}</span></span>
-      <button
-        *ngIf="messages.length > 0"
-        nbButton
-        size="tiny"
-        ghost
-        [nbTooltip]="'导出为 Markdown' | translate"
-        (click)="exportMarkdown()"
-      >
-        <nb-icon icon="download-outline"></nb-icon>
-      </button>
+      <span class="chat-title">{{  '智能助手' | translate }}@if (cluster) {
+        <span class="chat-subtitle">· {{ cluster.name }}</span>
+      }</span>
+      @if (messages.length > 0) {
+        <button
+          nbButton
+          size="tiny"
+          ghost
+          [nbTooltip]="'导出为 Markdown' | translate"
+          (click)="exportMarkdown()"
+          >
+          <nb-icon icon="download-outline"></nb-icon>
+        </button>
+      }
     </nb-card-header>
 
     <nb-card-body
@@ -97,181 +109,257 @@
       (scroll)="onMessagesScroll()">
       <div class="transcript" [class.dimmed]="loadingTranscript && messages.length > 0">
 
-      <div *ngIf="messages.length === 0 && !loadingTranscript" class="chat-empty">
-        <ngx-ai-illustration kind="chat"></ngx-ai-illustration>
-        <div class="chat-empty-title">{{  '集群出问题了吗？问我' | translate }}</div>
-        <p class="chat-hint">{{ emptyStateHint | translate }}</p>
-        <div class="preset-grid">
-          <button *ngFor="let q of presets" class="preset-card" (click)="askPreset(q)">{{ q }}</button>
-        </div>
-      </div>
-
-      <div *ngFor="let m of messages; trackBy: trackMessage" class="msg-row" [class.user]="m.role === 'user'">
-        <ng-container *ngIf="m.role === 'assistant'">
-          <div class="msg-avatar msg-avatar-ai" [title]="('智能助手' | translate)">
-            <svg viewBox="0 0 48 48" width="30" height="30" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="24" cy="24" r="22" fill="var(--color-primary-500)"/>
-              <ellipse cx="24" cy="24" rx="15" ry="7" transform="rotate(-20 24 24)" stroke="#fff" stroke-opacity="0.35" stroke-width="1.6"/>
-              <path d="M24 24 L33 15 M24 24 L15 16 M24 24 L24 35" stroke="#fff" stroke-opacity="0.55" stroke-width="2" stroke-linecap="round"/>
-              <circle cx="33" cy="15" r="2.6" fill="#fff"/>
-              <circle cx="15" cy="16" r="2.6" fill="#fff"/>
-              <circle cx="24" cy="35" r="2.6" fill="#fff"/>
-              <circle cx="24" cy="24" r="5" fill="#fff"/>
-              <circle cx="24" cy="24" r="2" fill="var(--color-primary-500)"/>
-            </svg>
-          </div>
-        </ng-container>
-        <div class="msg-main" [class.assistant-col]="m.role === 'assistant'">
-          <!-- Agent Activity：只显示可审计的诊断活动，运行时展开、完成后收纳。 -->
-          <div *ngIf="m.role === 'assistant' && (m.streaming || timeline(m).length > 0)" class="trace" [class.working]="m.streaming">
-            <div *ngIf="m.streaming" class="trace-live-status" role="status" aria-live="polite">
-              <nb-icon icon="loader-outline" class="spin trace-live"></nb-icon>
-              <span>{{ activityLabel(m) }}</span>
+        @if (messages.length === 0 && !loadingTranscript) {
+          <div class="chat-empty">
+            <ngx-ai-illustration kind="chat"></ngx-ai-illustration>
+            <div class="chat-empty-title">{{  '集群出问题了吗？问我' | translate }}</div>
+            <p class="chat-hint">{{ emptyStateHint | translate }}</p>
+            <div class="preset-grid">
+              @for (q of presets; track q) {
+                <button class="preset-card" (click)="askPreset(q)">{{ q }}</button>
+              }
             </div>
-            <button *ngIf="!m.streaming" class="trace-toggle" type="button" (click)="m.traceOpen = !m.traceOpen" [class.open]="m.traceOpen" [attr.aria-expanded]="m.traceOpen">
-              <nb-icon icon="chevron-right-outline" class="trace-chevron"></nb-icon>
-              <span>{{ activitySummary(m) }}</span>
-            </button>
-            <div *ngIf="m.streaming || m.traceOpen" class="trace-body" role="region" [attr.aria-label]="'诊断过程' | translate">
-              <div *ngIf="m.streaming" class="turn-stages" [attr.aria-label]="'本轮进度' | translate">
-                <span *ngFor="let stage of turnStages(m)" class="turn-stage" [class.done]="stage.status === 'done'" [class.active]="stage.status === 'active'">
-                  <nb-icon [icon]="stage.status === 'done' ? 'checkmark-outline' : stage.status === 'active' ? 'radio-button-on-outline' : 'minus-outline'"></nb-icon>
-                  {{ stage.label }}
-                </span>
+          </div>
+        }
+
+        @for (m of messages; track trackMessage($index, m)) {
+          <div class="msg-row" [class.user]="m.role === 'user'">
+            @if (m.role === 'assistant') {
+              <div class="msg-avatar msg-avatar-ai" [title]="('智能助手' | translate)">
+                <svg viewBox="0 0 48 48" width="30" height="30" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="24" cy="24" r="22" fill="var(--color-primary-500)"/>
+                  <ellipse cx="24" cy="24" rx="15" ry="7" transform="rotate(-20 24 24)" stroke="#fff" stroke-opacity="0.35" stroke-width="1.6"/>
+                  <path d="M24 24 L33 15 M24 24 L15 16 M24 24 L24 35" stroke="#fff" stroke-opacity="0.55" stroke-width="2" stroke-linecap="round"/>
+                  <circle cx="33" cy="15" r="2.6" fill="#fff"/>
+                  <circle cx="15" cy="16" r="2.6" fill="#fff"/>
+                  <circle cx="24" cy="35" r="2.6" fill="#fff"/>
+                  <circle cx="24" cy="24" r="5" fill="#fff"/>
+                  <circle cx="24" cy="24" r="2" fill="var(--color-primary-500)"/>
+                </svg>
               </div>
-              <div *ngFor="let t of timeline(m); let i = index" [id]="traceAnchorId(m, i)" class="trace-step" tabindex="-1" [class.result-open]="t.resultOpen" [class.running]="t.ok === undefined && t.kind === 'tool'" [class.error]="t.kind === 'error' || t.ok === false">
-                <nb-icon class="trace-icon" [class.err]="t.kind === 'error' || t.ok === false" [class.running]="t.ok === undefined && t.kind === 'tool'" [icon]="traceIcon(t)"></nb-icon>
-                <div class="trace-step-main">
-                  <div class="trace-step-line">
-                    <span *ngIf="t.kind === 'tool'" class="trace-kind">{{ '工具' | translate }}</span>
-                    <span *ngIf="t.kind === 'error'" class="trace-kind">{{ '错误' | translate }}</span>
-                    <span class="trace-label">{{ t.title }}</span>
-                    <span *ngIf="t.ok === undefined && t.kind === 'tool'" class="trace-running">{{ '执行中' | translate }}</span>
-                    <span *ngIf="t.durationMs" class="step-ms">{{ durationLabel(t.durationMs) }}</span>
+            }
+            <div class="msg-main" [class.assistant-col]="m.role === 'assistant'">
+              <!-- Agent Activity：只显示可审计的诊断活动，运行时展开、完成后收纳。 -->
+              @if (m.role === 'assistant' && (m.streaming || timeline(m).length > 0)) {
+                <div class="trace" [class.working]="m.streaming">
+                  @if (m.streaming) {
+                    <div class="trace-live-status" role="status" aria-live="polite">
+                      <nb-icon icon="loader-outline" class="spin trace-live"></nb-icon>
+                      <span>{{ activityLabel(m) }}</span>
+                    </div>
+                  }
+                  @if (!m.streaming) {
+                    <button class="trace-toggle" type="button" (click)="m.traceOpen = !m.traceOpen" [class.open]="m.traceOpen" [attr.aria-expanded]="m.traceOpen">
+                      <nb-icon icon="chevron-right-outline" class="trace-chevron"></nb-icon>
+                      <span>{{ activitySummary(m) }}</span>
+                    </button>
+                  }
+                  @if (m.streaming || m.traceOpen) {
+                    <div class="trace-body" role="region" [attr.aria-label]="'诊断过程' | translate">
+                      @if (m.streaming) {
+                        <div class="turn-stages" [attr.aria-label]="'本轮进度' | translate">
+                          @for (stage of turnStages(m); track stage) {
+                            <span class="turn-stage" [class.done]="stage.status === 'done'" [class.active]="stage.status === 'active'">
+                              <nb-icon [icon]="stage.status === 'done' ? 'checkmark-outline' : stage.status === 'active' ? 'radio-button-on-outline' : 'minus-outline'"></nb-icon>
+                              {{ stage.label }}
+                            </span>
+                          }
+                        </div>
+                      }
+                      @for (t of timeline(m); track t; let i = $index) {
+                        <div [id]="traceAnchorId(m, i)" class="trace-step" tabindex="-1" [class.result-open]="t.resultOpen" [class.running]="t.ok === undefined && t.kind === 'tool'" [class.error]="t.kind === 'error' || t.ok === false">
+                          <nb-icon class="trace-icon" [class.err]="t.kind === 'error' || t.ok === false" [class.running]="t.ok === undefined && t.kind === 'tool'" [icon]="traceIcon(t)"></nb-icon>
+                          <div class="trace-step-main">
+                            <div class="trace-step-line">
+                              @if (t.kind === 'tool') {
+                                <span class="trace-kind">{{ '工具' | translate }}</span>
+                              }
+                              @if (t.kind === 'error') {
+                                <span class="trace-kind">{{ '错误' | translate }}</span>
+                              }
+                              <span class="trace-label">{{ t.title }}</span>
+                              @if (t.ok === undefined && t.kind === 'tool') {
+                                <span class="trace-running">{{ '执行中' | translate }}</span>
+                              }
+                              @if (t.durationMs) {
+                                <span class="step-ms">{{ durationLabel(t.durationMs) }}</span>
+                              }
+                            </div>
+                            @if (hasArgs(t)) {
+                              <button class="trace-detail-toggle" type="button" (click)="t.argsOpen = !t.argsOpen" [attr.aria-expanded]="t.argsOpen">
+                                <nb-icon icon="code-outline"></nb-icon>{{ t.argsOpen ? ('收起参数' | translate) : ('查看参数' | translate) }}
+                              </button>
+                            }
+                            @if (t.argsOpen) {
+                              <pre class="trace-code">{{ formatArgs(t.args) }}</pre>
+                            }
+                            @if (t.detail) {
+                              <pre class="step-result" [class.clamped]="!t.resultOpen" [class.code-result]="isCodeOutput(t.detail)">{{ t.detail }}</pre>
+                            }
+                            @if (t.detail) {
+                              <div class="trace-result-actions">
+                                <button class="trace-detail-toggle" type="button" (click)="t.resultOpen = !t.resultOpen" [attr.aria-expanded]="t.resultOpen">
+                                  <nb-icon [icon]="t.resultOpen ? 'chevron-up-outline' : 'chevron-down-outline'"></nb-icon>{{ t.resultOpen ? ('收起结果' | translate) : ('查看结果' | translate) }}
+                                </button>
+                                @if (t.resultOpen) {
+                                  <button class="trace-detail-toggle icon-only" type="button" (click)="copyTraceResult(t.detail)" [title]="'复制' | translate" [attr.aria-label]="'复制' | translate">
+                                    <nb-icon icon="copy-outline"></nb-icon>
+                                  </button>
+                                }
+                              </div>
+                            }
+                          </div>
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              }
+              <div class="bubble" [class.user-bubble]="m.role === 'user'" [class.assistant-bubble]="m.role === 'assistant'">
+                @if (m.role === 'user') {
+                  <div class="msg-content">{{ m.content }}</div>
+                }
+                @if (m.role === 'assistant' && (m.streaming ? m.liveText : m.content) && !m.content.startsWith('⚠️')) {
+                  <markdown
+                    class="msg-content assistant-content markdown-body"
+                    [data]="m.streaming ? m.liveText : m.content"
+                    [clipboard]="!m.streaming"
+                  ></markdown>
+                }
+                @if (m.role === 'assistant' && m.content && m.content.startsWith('⚠️')) {
+                  <div class="msg-content">
+                    {{ m.content }}
+                    <button nbButton size="tiny" status="danger" outline class="retry-btn" (click)="retryMessage(m)">
+                      <nb-icon icon="refresh-outline"></nb-icon> {{ '重试' | translate }}
+                    </button>
                   </div>
-                  <button *ngIf="hasArgs(t)" class="trace-detail-toggle" type="button" (click)="t.argsOpen = !t.argsOpen" [attr.aria-expanded]="t.argsOpen">
-                    <nb-icon icon="code-outline"></nb-icon>{{ t.argsOpen ? ('收起参数' | translate) : ('查看参数' | translate) }}
+                }
+                @if (m.role === 'assistant' && m.streaming && (m.liveText || m.content)) {
+                  <span class="stream-caret" [aria-label]="'正在生成' | translate"></span>
+                }
+              </div>
+              @for (a of messageActions(m); track trackAction($index, a)) {
+                <section class="action-card" [ngClass]="'action-' + actionStatus(a)" [attr.aria-label]="'动作审阅' | translate">
+                  <div class="action-card-head">
+                    <nb-icon [icon]="actionIcon(a)" class="action-card-icon" [class.spin]="actionStatus(a) === 'executing'"></nb-icon>
+                    <div class="action-title-block">
+                      <span class="action-eyebrow">{{ '受控运维动作' | translate }}</span>
+                      <b>{{ a.title }}</b>
+                    </div>
+                    <span class="action-status">{{ actionStatusLabel(a) }}</span>
+                  </div>
+                  @if (a.reason) {
+                    <p class="action-card-reason">{{ a.reason }}</p>
+                  }
+                  <div class="action-scope">{{ actionScope(a) }}</div>
+                  <pre class="action-preview">{{ actionPreview(a) }}</pre>
+                  <dl class="action-parameters">
+                    @for (item of actionParameters(a); track item) {
+                      <div>
+                        <dt>{{ item.label }}</dt>
+                        <dd>{{ item.value }}</dd>
+                      </div>
+                    }
+                  </dl>
+                  <div class="action-card-meta">
+                    <span><nb-icon icon="clock-outline"></nb-icon>{{ actionAuditLabel(a) }}</span>
+                    @if (actionCanRespond(a)) {
+                      <span><nb-icon icon="shield-outline"></nb-icon>{{ '单次执行' | translate }}</span>
+                    }
+                  </div>
+                  @if (a.result_json) {
+                    <pre class="action-result">{{ a.result_json }}</pre>
+                  }
+                  @if (actionCanRespond(a)) {
+                    <div class="action-card-ops">
+                      <button nbButton size="small" status="success" (click)="confirmActionCard(a)">
+                        <nb-icon icon="checkmark-outline"></nb-icon> {{ '确认并执行' | translate }}
+                      </button>
+                      <button nbButton size="small" status="basic" ghost (click)="rejectActionCard(a)">
+                        <nb-icon icon="close-outline"></nb-icon> {{ '拒绝' | translate }}
+                      </button>
+                    </div>
+                  }
+                </section>
+              }
+              @if (m.role === 'assistant' && m.stopped) {
+                <div class="stopped-note">{{  '已手动停止' | translate }}</div>
+              }
+              @if (m.role === 'assistant' && !m.streaming && m.content && !m.content.startsWith('⚠️')) {
+                <div class="msg-actions" role="toolbar" [attr.aria-label]="'回答操作' | translate">
+                  <button class="mini-btn" [class.copied]="m.copied" (click)="copyMessage(m)" [nbTooltip]="m.copied ? ('已复制' | translate) : ('复制' | translate)" [attr.aria-label]="m.copied ? ('已复制' | translate) : ('复制' | translate)">
+                    <nb-icon [icon]="m.copied ? 'checkmark-outline' : 'copy-outline'"></nb-icon>
                   </button>
-                  <pre *ngIf="t.argsOpen" class="trace-code">{{ formatArgs(t.args) }}</pre>
-                  <pre *ngIf="t.detail" class="step-result" [class.clamped]="!t.resultOpen" [class.code-result]="isCodeOutput(t.detail)">{{ t.detail }}</pre>
-                  <div *ngIf="t.detail" class="trace-result-actions">
-                    <button class="trace-detail-toggle" type="button" (click)="t.resultOpen = !t.resultOpen" [attr.aria-expanded]="t.resultOpen">
-                      <nb-icon [icon]="t.resultOpen ? 'chevron-up-outline' : 'chevron-down-outline'"></nb-icon>{{ t.resultOpen ? ('收起结果' | translate) : ('查看结果' | translate) }}
+                  <button class="mini-btn" (click)="regenerate(m)" [nbTooltip]="'换一种思路再答一次' | translate" [attr.aria-label]="'换一种思路再答一次' | translate">
+                    <i class="fas fa-undo-alt" aria-hidden="true"></i>
+                  </button>
+                  <button class="mini-btn" [class.active]="m.feedback === 'up'" (click)="rate(m, 'up')" [nbTooltip]="'回答有帮助' | translate" [attr.aria-label]="'回答有帮助' | translate" [attr.aria-pressed]="m.feedback === 'up'">
+                    <i class="far fa-thumbs-up" aria-hidden="true"></i>
+                  </button>
+                  <button class="mini-btn" [class.active]="m.feedback === 'down'" (click)="rate(m, 'down')" [nbTooltip]="'回答没帮助' | translate" [attr.aria-label]="'回答没帮助' | translate" [attr.aria-pressed]="m.feedback === 'down'">
+                    <i class="far fa-thumbs-down" aria-hidden="true"></i>
+                  </button>
+                  @if (evidence(m).length > 0) {
+                    <button class="evidence-toggle" type="button" (click)="m.evidenceOpen = !m.evidenceOpen" [attr.aria-controls]="evidenceListId(m)" [attr.aria-expanded]="m.evidenceOpen ? 'true' : 'false'" [attr.aria-label]="'诊断证据' | translate">
+                      <span class="evidence-stack" aria-hidden="true">
+                        @for (item of evidence(m) | slice: 0 : 3; track item) {
+                          <span class="evidence-favicon"><nb-icon icon="flash-outline"></nb-icon></span>
+                        }
+                      </span>
+                      <span class="evidence-count-label">{{ evidence(m).length }} {{ (evidence(m).length === 1 ? '项证据' : '项证据') | translate }}</span>
+                      <nb-icon icon="chevron-down-outline" class="evidence-chevron" [class.open]="m.evidenceOpen" aria-hidden="true"></nb-icon>
                     </button>
-                    <button *ngIf="t.resultOpen" class="trace-detail-toggle icon-only" type="button" (click)="copyTraceResult(t.detail)" [title]="'复制' | translate" [attr.aria-label]="'复制' | translate">
-                      <nb-icon icon="copy-outline"></nb-icon>
-                    </button>
+                  }
+                </div>
+              }
+              @if (m.role === 'assistant' && evidence(m).length > 0) {
+                <div class="evidence-disclosure">
+                  <div [id]="evidenceListId(m)" class="evidence-list" [hidden]="!m.evidenceOpen">
+                    @for (item of evidence(m); track item; let i = $index) {
+                      <button class="evidence-row" type="button" (click)="showEvidence(m, item)">
+                        <span class="evidence-favicon"><nb-icon icon="flash-outline"></nb-icon></span>
+                        <span class="evidence-title">{{ item.title }}</span>
+                        <span class="evidence-index">{{ i + 1 }}</span>
+                        <nb-icon icon="arrow-forward-outline"></nb-icon>
+                      </button>
+                    }
                   </div>
                 </div>
-              </div>
+              }
             </div>
           </div>
-          <div class="bubble" [class.user-bubble]="m.role === 'user'" [class.assistant-bubble]="m.role === 'assistant'">
-          <div *ngIf="m.role === 'user'" class="msg-content">{{ m.content }}</div>
-          <markdown
-            *ngIf="m.role === 'assistant' && (m.streaming ? m.liveText : m.content) && !m.content.startsWith('⚠️')"
-            class="msg-content assistant-content markdown-body"
-            [data]="m.streaming ? m.liveText : m.content"
-            [clipboard]="!m.streaming"
-          ></markdown>
-          <div *ngIf="m.role === 'assistant' && m.content && m.content.startsWith('⚠️')" class="msg-content">
-            {{ m.content }}
-            <button nbButton size="tiny" status="danger" outline class="retry-btn" (click)="retryMessage(m)">
-              <nb-icon icon="refresh-outline"></nb-icon> {{ '重试' | translate }}
-            </button>
-          </div>
-
-          <span *ngIf="m.role === 'assistant' && m.streaming && (m.liveText || m.content)" class="stream-caret" [aria-label]="'正在生成' | translate"></span>
-        </div>
-          <section *ngFor="let a of messageActions(m); trackBy: trackAction" class="action-card" [ngClass]="'action-' + actionStatus(a)" [attr.aria-label]="'动作审阅' | translate">
-            <div class="action-card-head">
-              <nb-icon [icon]="actionIcon(a)" class="action-card-icon" [class.spin]="actionStatus(a) === 'executing'"></nb-icon>
-              <div class="action-title-block">
-                <span class="action-eyebrow">{{ '受控运维动作' | translate }}</span>
-                <b>{{ a.title }}</b>
-              </div>
-              <span class="action-status">{{ actionStatusLabel(a) }}</span>
-            </div>
-            <p *ngIf="a.reason" class="action-card-reason">{{ a.reason }}</p>
-            <div class="action-scope">{{ actionScope(a) }}</div>
-            <pre class="action-preview">{{ actionPreview(a) }}</pre>
-            <dl class="action-parameters">
-              <div *ngFor="let item of actionParameters(a)">
-                <dt>{{ item.label }}</dt>
-                <dd>{{ item.value }}</dd>
-              </div>
-            </dl>
-            <div class="action-card-meta">
-              <span><nb-icon icon="clock-outline"></nb-icon>{{ actionAuditLabel(a) }}</span>
-              <span *ngIf="actionCanRespond(a)"><nb-icon icon="shield-outline"></nb-icon>{{ '单次执行' | translate }}</span>
-            </div>
-            <pre *ngIf="a.result_json" class="action-result">{{ a.result_json }}</pre>
-            <div *ngIf="actionCanRespond(a)" class="action-card-ops">
-              <button nbButton size="small" status="success" (click)="confirmActionCard(a)">
-                <nb-icon icon="checkmark-outline"></nb-icon> {{ '确认并执行' | translate }}
-              </button>
-              <button nbButton size="small" status="basic" ghost (click)="rejectActionCard(a)">
-                <nb-icon icon="close-outline"></nb-icon> {{ '拒绝' | translate }}
-              </button>
-            </div>
-          </section>
-          <div *ngIf="m.role === 'assistant' && m.stopped" class="stopped-note">{{  '已手动停止' | translate }}</div>
-          <div *ngIf="m.role === 'assistant' && !m.streaming && m.content && !m.content.startsWith('⚠️')" class="msg-actions" role="toolbar" [attr.aria-label]="'回答操作' | translate">
-            <button class="mini-btn" [class.copied]="m.copied" (click)="copyMessage(m)" [nbTooltip]="m.copied ? ('已复制' | translate) : ('复制' | translate)" [attr.aria-label]="m.copied ? ('已复制' | translate) : ('复制' | translate)">
-              <nb-icon [icon]="m.copied ? 'checkmark-outline' : 'copy-outline'"></nb-icon>
-            </button>
-            <button class="mini-btn" (click)="regenerate(m)" [nbTooltip]="'换一种思路再答一次' | translate" [attr.aria-label]="'换一种思路再答一次' | translate">
-              <i class="fas fa-undo-alt" aria-hidden="true"></i>
-            </button>
-            <button class="mini-btn" [class.active]="m.feedback === 'up'" (click)="rate(m, 'up')" [nbTooltip]="'回答有帮助' | translate" [attr.aria-label]="'回答有帮助' | translate" [attr.aria-pressed]="m.feedback === 'up'">
-              <i class="far fa-thumbs-up" aria-hidden="true"></i>
-            </button>
-            <button class="mini-btn" [class.active]="m.feedback === 'down'" (click)="rate(m, 'down')" [nbTooltip]="'回答没帮助' | translate" [attr.aria-label]="'回答没帮助' | translate" [attr.aria-pressed]="m.feedback === 'down'">
-              <i class="far fa-thumbs-down" aria-hidden="true"></i>
-            </button>
-            <button *ngIf="evidence(m).length > 0" class="evidence-toggle" type="button" (click)="m.evidenceOpen = !m.evidenceOpen" [attr.aria-controls]="evidenceListId(m)" [attr.aria-expanded]="m.evidenceOpen ? 'true' : 'false'" [attr.aria-label]="'诊断证据' | translate">
-              <span class="evidence-stack" aria-hidden="true">
-                <span *ngFor="let item of evidence(m) | slice: 0 : 3" class="evidence-favicon"><nb-icon icon="flash-outline"></nb-icon></span>
-              </span>
-              <span class="evidence-count-label">{{ evidence(m).length }} {{ (evidence(m).length === 1 ? '项证据' : '项证据') | translate }}</span>
-              <nb-icon icon="chevron-down-outline" class="evidence-chevron" [class.open]="m.evidenceOpen" aria-hidden="true"></nb-icon>
-            </button>
-          </div>
-          <div *ngIf="m.role === 'assistant' && evidence(m).length > 0" class="evidence-disclosure">
-            <div [id]="evidenceListId(m)" class="evidence-list" [hidden]="!m.evidenceOpen">
-              <button *ngFor="let item of evidence(m); let i = index" class="evidence-row" type="button" (click)="showEvidence(m, item)">
-                <span class="evidence-favicon"><nb-icon icon="flash-outline"></nb-icon></span>
-                <span class="evidence-title">{{ item.title }}</span>
-                <span class="evidence-index">{{ i + 1 }}</span>
-                <nb-icon icon="arrow-forward-outline"></nb-icon>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+        }
 
       </div>
-      <div *ngIf="loadingTranscript" class="transcript-loading" role="status" aria-live="polite">
-        <div class="transcript-loading-card">
-          <nb-icon icon="loader-outline" class="typing-icon"></nb-icon>
-          <span>{{  '正在打开会话' | translate }}</span>
+      @if (loadingTranscript) {
+        <div class="transcript-loading" role="status" aria-live="polite">
+          <div class="transcript-loading-card">
+            <nb-icon icon="loader-outline" class="typing-icon"></nb-icon>
+            <span>{{  '正在打开会话' | translate }}</span>
+          </div>
+          @if (messages.length === 0) {
+            <div class="transcript-skeleton" aria-hidden="true">
+              <span></span><span></span><span></span>
+            </div>
+          }
         </div>
-        <div *ngIf="messages.length === 0" class="transcript-skeleton" aria-hidden="true">
-          <span></span><span></span><span></span>
-        </div>
-      </div>
-      <button *ngIf="showBackToBottom" class="back-bottom" (click)="scrollToBottom(true)" [title]="'回到直播位置' | translate" [attr.aria-label]="'回到直播位置' | translate">
-        <nb-icon icon="arrow-down-outline"></nb-icon>
-      </button>
+      }
+      @if (showBackToBottom) {
+        <button class="back-bottom" (click)="scrollToBottom(true)" [title]="'回到直播位置' | translate" [attr.aria-label]="'回到直播位置' | translate">
+          <nb-icon icon="arrow-down-outline"></nb-icon>
+        </button>
+      }
     </nb-card-body>
 
     <nb-card-footer class="chat-input">
-      <div id="agent-context" class="chat-context" *ngIf="cluster">
-        <nb-icon icon="layers-outline"></nb-icon>
-        <span>{{ '当前上下文' | translate }}：{{ cluster.name }}</span>
-        <span class="context-separator" aria-hidden="true">·</span>
-        <span>{{ cluster.deployment_mode === 'shared_data' ? ('共享数据集群' | translate) : ('本地存储集群' | translate) }}</span>
-      </div>
+      @if (cluster) {
+        <div id="agent-context" class="chat-context">
+          <nb-icon icon="layers-outline"></nb-icon>
+          <span>{{ '当前上下文' | translate }}：{{ cluster.name }}</span>
+          <span class="context-separator" aria-hidden="true">·</span>
+          <span>{{ cluster.deployment_mode === 'shared_data' ? ('共享数据集群' | translate) : ('本地存储集群' | translate) }}</span>
+        </div>
+      }
       <div class="input-pill">
         <textarea
           class="input-field"
@@ -283,12 +371,16 @@
           [disabled]="sending"
           [attr.aria-describedby]="cluster ? 'agent-context' : null"
         ></textarea>
-        <button *ngIf="!sending" class="send-btn" [disabled]="!input.trim()" (click)="send()" [title]="'发送' | translate">
-          <nb-icon icon="arrow-up-outline"></nb-icon>
-        </button>
-        <button *ngIf="sending" class="stop-btn" (click)="stopTurn()" [title]="'停止生成' | translate">
-          <nb-icon icon="stop-circle-outline"></nb-icon>
-        </button>
+        @if (!sending) {
+          <button class="send-btn" [disabled]="!input.trim()" (click)="send()" [title]="'发送' | translate">
+            <nb-icon icon="arrow-up-outline"></nb-icon>
+          </button>
+        }
+        @if (sending) {
+          <button class="stop-btn" (click)="stopTurn()" [title]="'停止生成' | translate">
+            <nb-icon icon="stop-circle-outline"></nb-icon>
+          </button>
+        }
       </div>
     </nb-card-footer>
   </nb-card>

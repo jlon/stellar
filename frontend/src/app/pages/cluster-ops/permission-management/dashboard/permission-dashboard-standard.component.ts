@@ -44,7 +44,7 @@ interface PermissionRecord extends DbUserPermissionDto {
     NbTooltipModule
 ],
 })
-export class PermissionDashboardStandardComponent implements AfterViewInit, OnDestroy {
+export class PermissionDashboardStandardComponent implements OnInit, AfterViewInit, OnDestroy {
   private permissionService = inject(PermissionRequestService)
   private i18n = inject(I18nService);
   private toastr = inject(NbToastrService);

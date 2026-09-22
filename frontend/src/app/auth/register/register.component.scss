@@ -27,7 +27,12 @@ ngx-register .register-visual {
   background:
     radial-gradient(ellipse at 25% 15%, nb-theme(stellar-auth-accent-orb-soft) 0%, transparent 50%),
     radial-gradient(ellipse at 80% 85%, nb-theme(stellar-auth-secondary-orb-soft) 0%, transparent 55%),
-    linear-gradient(160deg, nb-theme(stellar-auth-bg-deep) 0%, nb-theme(stellar-auth-bg-mid) 50%, nb-theme(stellar-auth-bg-deep) 100%);
+    linear-gradient(
+      160deg,
+      nb-theme(stellar-auth-bg-deep) 0%,
+      nb-theme(stellar-auth-bg-mid) 50%,
+      nb-theme(stellar-auth-bg-deep) 100%
+    );
 }
 
 ngx-register .visual-grid {
@@ -274,7 +279,7 @@ ngx-register form {
     color: nb-theme(stellar-auth-danger) !important;
   }
 
-  button[nbButton][status="primary"] {
+  button[nbButton][status='primary'] {
     background: nb-theme(stellar-auth-accent) !important;
     border: none !important;
     color: nb-theme(stellar-auth-accent-text) !important;

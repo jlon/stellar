@@ -1,5 +1,5 @@
 import { I18nService } from '../../../@core/i18n/i18n.service';
-import { CommonModule } from '@angular/common';
+
 import { TranslatePipe } from '@ngx-translate/core';
 import { Component, OnInit, OnDestroy, ChangeDetectionStrategy, ChangeDetectorRef, inject } from '@angular/core';
 import { Router } from '@angular/router';
@@ -32,7 +32,6 @@ interface ClusterCard {
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
     TranslatePipe,
-    CommonModule,
     NbIconModule,
     NbButtonModule,
     NbSpinnerModule,

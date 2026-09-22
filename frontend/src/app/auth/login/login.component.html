@@ -33,12 +33,12 @@
   </div>
 
   <div class="login-panel"
-       [style.flex-basis.px]="panelWidth"
-       [class.resizing]="isResizing">
+    [style.flex-basis.px]="panelWidth"
+    [class.resizing]="isResizing">
     <div class="panel-resize-handle"
-         role="separator"
-         aria-orientation="vertical"
-         [aria-label]="'调整登录面板宽度' | translate">
+      role="separator"
+      aria-orientation="vertical"
+      [aria-label]="'调整登录面板宽度' | translate">
       <span class="panel-resize-handle__grip"></span>
     </div>
     <div class="panel-glow" aria-hidden="true"></div>
@@ -47,57 +47,69 @@
       <p class="sub-title">{{  '登录后管理你的 StarRocks 集群' | translate }}</p>
     </div>
 
-    <nb-alert *ngIf="errors?.length && !submitted" outline="danger" role="alert">
-      <ul class="alert-message-list">
-        <li *ngFor="let error of errors" class="alert-message">{{ error }}</li>
-      </ul>
-    </nb-alert>
+    @if (errors?.length && !submitted) {
+      <nb-alert outline="danger" role="alert">
+        <ul class="alert-message-list">
+          @for (error of errors; track error) {
+            <li class="alert-message">{{ error }}</li>
+          }
+        </ul>
+      </nb-alert>
+    }
 
-    <nb-alert *ngIf="messages?.length && !submitted" outline="success" role="alert">
-      <ul class="alert-message-list">
-        <li *ngFor="let message of messages" class="alert-message">{{ message }}</li>
-      </ul>
-    </nb-alert>
+    @if (messages?.length && !submitted) {
+      <nb-alert outline="success" role="alert">
+        <ul class="alert-message-list">
+          @for (message of messages; track message) {
+            <li class="alert-message">{{ message }}</li>
+          }
+        </ul>
+      </nb-alert>
+    }
 
     <form (ngSubmit)="login()" #form="ngForm" aria-labelledby="title">
       <div class="form-control-group">
         <label class="label" for="input-username">{{  '用户名' | translate }}</label>
         <input nbInput
-               fullWidth
-               [(ngModel)]="user.username"
-               #username="ngModel"
-               name="username"
-               id="input-username"
-               [placeholder]="'请输入用户名' | translate"
-               autofocus
-               [status]="username.dirty ? (username.invalid ? 'danger' : 'success') : 'basic'"
-               [required]="true"
-               [attr.aria-invalid]="username.invalid && username.touched ? true : null">
-        <ng-container *ngIf="username.invalid && username.touched">
-          <p class="caption status-danger" *ngIf="username.errors?.['required']">
-            {{ '请填写用户名' | translate }}
-          </p>
-        </ng-container>
+          fullWidth
+          [(ngModel)]="user.username"
+          #username="ngModel"
+          name="username"
+          id="input-username"
+          [placeholder]="'请输入用户名' | translate"
+          autofocus
+          [status]="username.dirty ? (username.invalid ? 'danger' : 'success') : 'basic'"
+          [required]="true"
+          [attr.aria-invalid]="username.invalid && username.touched ? true : null">
+        @if (username.invalid && username.touched) {
+          @if (username.errors?.['required']) {
+            <p class="caption status-danger">
+              {{ '请填写用户名' | translate }}
+            </p>
+          }
+        }
       </div>
 
       <div class="form-control-group">
         <label class="label" for="input-password">{{  '密码' | translate }}</label>
         <input nbInput
-               fullWidth
-               [(ngModel)]="user.password"
-               #password="ngModel"
-               name="password"
-               type="password"
-               id="input-password"
-               [placeholder]="'请输入密码' | translate"
-               [status]="password.dirty ? (password.invalid ? 'danger' : 'success') : 'basic'"
-               [required]="true"
-               [attr.aria-invalid]="password.invalid && password.touched ? true : null">
-        <ng-container *ngIf="password.invalid && password.touched">
-          <p class="caption status-danger" *ngIf="password.errors?.['required']">
-            {{ '请填写密码' | translate }}
-          </p>
-        </ng-container>
+          fullWidth
+          [(ngModel)]="user.password"
+          #password="ngModel"
+          name="password"
+          type="password"
+          id="input-password"
+          [placeholder]="'请输入密码' | translate"
+          [status]="password.dirty ? (password.invalid ? 'danger' : 'success') : 'basic'"
+          [required]="true"
+          [attr.aria-invalid]="password.invalid && password.touched ? true : null">
+        @if (password.invalid && password.touched) {
+          @if (password.errors?.['required']) {
+            <p class="caption status-danger">
+              {{ '请填写密码' | translate }}
+            </p>
+          }
+        }
       </div>
 
       <div class="form-control-group accept-group">
@@ -105,11 +117,13 @@
       </div>
 
       <button nbButton
-              fullWidth
-              status="primary"
-              size="large"
-              [disabled]="submitted || !form.valid">
-        <nb-icon *ngIf="!submitted" icon="log-in-outline"></nb-icon>
+        fullWidth
+        status="primary"
+        size="large"
+        [disabled]="submitted || !form.valid">
+        @if (!submitted) {
+          <nb-icon icon="log-in-outline"></nb-icon>
+        }
         {{  submitted ? ('正在登录...' | translate) : ('登录' | translate)  }}
       </button>
     </form>

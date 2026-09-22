@@ -1,4 +1,4 @@
-<ng-container *ngIf="!drawer && visible">
+@if (!drawer && visible) {
   <button
     class="chat-fab"
     type="button"
@@ -7,7 +7,7 @@
     [attr.aria-label]="'打开智能助手' | translate"
     [title]="'打开智能助手' | translate"
     nbTooltipPlacement="left"
-  >
+    >
     <span class="chat-fab__ring" aria-hidden="true"></span>
     <span class="chat-fab__core" aria-hidden="true">
       <nb-icon icon="message-circle-outline"></nb-icon>
@@ -16,16 +16,18 @@
       <nb-icon icon="flash-outline"></nb-icon>
     </span>
   </button>
-</ng-container>
+}
 
-<ng-container *ngIf="drawer && open">
+@if (drawer && open) {
   <!-- 右侧 Nebular 抽屉内容 -->
   <div class="chat-float-panel">
     <header class="chat-float-header">
       <div class="float-title">
         <nb-icon icon="activity-outline"></nb-icon>
         <span>{{  '智能助手' | translate }}</span>
-        <span class="float-cluster" *ngIf="clusterName">· {{ clusterName }}</span>
+        @if (clusterName) {
+          <span class="float-cluster">· {{ clusterName }}</span>
+        }
       </div>
       <div class="float-header-actions">
         <button nbButton ghost size="tiny" type="button" (click)="closeDrawer()" [nbTooltip]="'最小化' | translate" [attr.aria-label]="'最小化' | translate">
@@ -36,7 +38,6 @@
         </button>
       </div>
     </header>
-
     <div class="chat-float-sessions">
       <nb-select
         size="tiny"
@@ -45,72 +46,92 @@
         [disabled]="!sessions.length"
         (selectedChange)="onSessionChange($event)"
         fullWidth
-      >
-        <nb-option *ngFor="let s of sessions" [value]="s.id">{{  s.title || ('(无标题)' | translate)  }}</nb-option>
+        >
+        @for (s of sessions; track s) {
+          <nb-option [value]="s.id">{{  s.title || ('(无标题)' | translate)  }}</nb-option>
+        }
         <nb-option [value]="null">{{  '＋ 新会话…' | translate }}</nb-option>
       </nb-select>
     </div>
-
     <div class="chat-float-messages">
-      <div *ngIf="messages.length === 0" class="float-empty">
-        <ngx-ai-illustration kind="float"></ngx-ai-illustration>
-        <p>{{  '集群查询慢、磁盘紧、节点异常？先取证，再给结论' | translate }}</p>
-      </div>
-
-      <div *ngFor="let m of messages" class="float-row" [class.user]="m.role === 'user'">
-        <div class="float-bubble" [class.user-bubble]="m.role === 'user'" [class.assistant-bubble]="m.role === 'assistant'">
-          <div *ngIf="m.role === 'user'" class="float-content">{{ m.content }}</div>
-          <markdown
-            *ngIf="m.role === 'assistant' && (m.streaming ? m.liveText : m.content)"
-            class="float-content markdown-body float-md"
-            [data]="m.streaming ? m.liveText : m.content"
-            [clipboard]="!m.streaming"
-          ></markdown>
-          <div *ngIf="m.role === 'assistant' && m.streaming && !m.liveText && !m.content" class="float-thinking">
-            <nb-icon icon="loader-outline" class="float-spin"></nb-icon>
-            <span>{{  '正在采集证据与推理…' | translate }}</span>
+      @if (messages.length === 0) {
+        <div class="float-empty">
+          <ngx-ai-illustration kind="float"></ngx-ai-illustration>
+          <p>{{  '集群查询慢、磁盘紧、节点异常？先取证，再给结论' | translate }}</p>
+        </div>
+      }
+      @for (m of messages; track m) {
+        <div class="float-row" [class.user]="m.role === 'user'">
+          <div class="float-bubble" [class.user-bubble]="m.role === 'user'" [class.assistant-bubble]="m.role === 'assistant'">
+            @if (m.role === 'user') {
+              <div class="float-content">{{ m.content }}</div>
+            }
+            @if (m.role === 'assistant' && (m.streaming ? m.liveText : m.content)) {
+              <markdown
+                class="float-content markdown-body float-md"
+                [data]="m.streaming ? m.liveText : m.content"
+                [clipboard]="!m.streaming"
+              ></markdown>
+            }
+            @if (m.role === 'assistant' && m.streaming && !m.liveText && !m.content) {
+              <div class="float-thinking">
+                <nb-icon icon="loader-outline" class="float-spin"></nb-icon>
+                <span>{{  '正在采集证据与推理…' | translate }}</span>
+              </div>
+            }
+            @if (m.role === 'assistant' && m.stopped) {
+              <div class="float-stopped">{{  '已手动停止' | translate }}</div>
+            }
           </div>
-          <div *ngIf="m.role === 'assistant' && m.stopped" class="float-stopped">{{  '已手动停止' | translate }}</div>
+          @if (m.role === 'assistant' && !m.streaming && m.content) {
+            <div class="float-actions">
+              <button class="float-mini" (click)="copyFloat(m)" [title]="'复制' | translate">
+                <nb-icon [icon]="m.copied ? 'checkmark-outline' : 'copy-outline'"></nb-icon>
+              </button>
+              @if (m.id) {
+                <button class="float-mini" [class.active]="m.feedback === 'up'" (click)="rateFloat(m, 'up')" [title]="'有帮助' | translate">
+                  <nb-icon icon="arrow-upward-outline"></nb-icon>
+                </button>
+              }
+              @if (m.id) {
+                <button class="float-mini" [class.active]="m.feedback === 'down'" (click)="rateFloat(m, 'down')" [title]="'没帮助' | translate">
+                  <nb-icon icon="arrow-downward-outline"></nb-icon>
+                </button>
+              }
+            </div>
+          }
+          @if (m.role === 'user') {
+            <div class="float-actions float-actions-user">
+              <button class="float-mini" (click)="copyFloat(m)" [title]="'复制' | translate">
+                <nb-icon [icon]="m.copied ? 'checkmark-outline' : 'copy-outline'"></nb-icon>
+              </button>
+            </div>
+          }
         </div>
-        <div *ngIf="m.role === 'assistant' && !m.streaming && m.content" class="float-actions">
-          <button class="float-mini" (click)="copyFloat(m)" [title]="'复制' | translate">
-            <nb-icon [icon]="m.copied ? 'checkmark-outline' : 'copy-outline'"></nb-icon>
-          </button>
-          <button *ngIf="m.id" class="float-mini" [class.active]="m.feedback === 'up'" (click)="rateFloat(m, 'up')" [title]="'有帮助' | translate">
-            <nb-icon icon="arrow-upward-outline"></nb-icon>
-          </button>
-          <button *ngIf="m.id" class="float-mini" [class.active]="m.feedback === 'down'" (click)="rateFloat(m, 'down')" [title]="'没帮助' | translate">
-            <nb-icon icon="arrow-downward-outline"></nb-icon>
-          </button>
+      }
+      @for (a of pendingActions; track a) {
+        <div class="float-action-card">
+          <div class="float-action-head">
+            <nb-icon icon="shield-outline"></nb-icon>
+            <b>{{ '需要在完整助手中审阅动作' | translate }}</b>
+          </div>
+          <div class="float-action-reason">{{ a.title }}</div>
+          <div class="float-action-ops">
+            <button nbButton size="tiny" status="primary" (click)="openAgentReview()">
+              <nb-icon icon="external-link-outline"></nb-icon>{{ '打开审阅' | translate }}
+            </button>
+          </div>
         </div>
-        <div *ngIf="m.role === 'user'" class="float-actions float-actions-user">
-          <button class="float-mini" (click)="copyFloat(m)" [title]="'复制' | translate">
-            <nb-icon [icon]="m.copied ? 'checkmark-outline' : 'copy-outline'"></nb-icon>
-          </button>
+      }
+      @if (sending) {
+        <div class="float-row">
+          <div class="float-bubble assistant-bubble">
+            <nb-icon icon="loader-outline" class="float-spin"></nb-icon>
+            <span class="float-sending-text">{{  '正在取证分析…' | translate }}</span>
+          </div>
         </div>
-      </div>
-
-      <div *ngFor="let a of pendingActions" class="float-action-card">
-        <div class="float-action-head">
-          <nb-icon icon="shield-outline"></nb-icon>
-          <b>{{ '需要在完整助手中审阅动作' | translate }}</b>
-        </div>
-        <div class="float-action-reason">{{ a.title }}</div>
-        <div class="float-action-ops">
-          <button nbButton size="tiny" status="primary" (click)="openAgentReview()">
-            <nb-icon icon="external-link-outline"></nb-icon>{{ '打开审阅' | translate }}
-          </button>
-        </div>
-      </div>
-
-      <div *ngIf="sending" class="float-row">
-        <div class="float-bubble assistant-bubble">
-          <nb-icon icon="loader-outline" class="float-spin"></nb-icon>
-          <span class="float-sending-text">{{  '正在取证分析…' | translate }}</span>
-        </div>
-      </div>
+      }
     </div>
-
     <footer class="chat-float-input">
       <textarea
         class="float-field"
@@ -121,25 +142,27 @@
         (input)="autoGrowFloat($event)"
         [disabled]="sending"
       ></textarea>
-      <button
-        *ngIf="!sending"
-        class="float-send"
-        [disabled]="!input.trim()"
-        (click)="send()"
-        [nbTooltip]="'发送' | translate"
-        nbTooltipPlacement="left"
-      >
-        <nb-icon icon="arrow-up-outline"></nb-icon>
-      </button>
-      <button
-        *ngIf="sending"
-        class="float-send float-stop"
-        (click)="stopTurn()"
-        [nbTooltip]="'停止生成' | translate"
-        nbTooltipPlacement="left"
-      >
-        <nb-icon icon="stop-circle-outline"></nb-icon>
-      </button>
+      @if (!sending) {
+        <button
+          class="float-send"
+          [disabled]="!input.trim()"
+          (click)="send()"
+          [nbTooltip]="'发送' | translate"
+          nbTooltipPlacement="left"
+          >
+          <nb-icon icon="arrow-up-outline"></nb-icon>
+        </button>
+      }
+      @if (sending) {
+        <button
+          class="float-send float-stop"
+          (click)="stopTurn()"
+          [nbTooltip]="'停止生成' | translate"
+          nbTooltipPlacement="left"
+          >
+          <nb-icon icon="stop-circle-outline"></nb-icon>
+        </button>
+      }
     </footer>
   </div>
-</ng-container>
+}

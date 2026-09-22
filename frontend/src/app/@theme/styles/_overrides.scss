@@ -104,7 +104,6 @@
       &:hover::after {
         content: attr(data-th-title);
         position: fixed;
-        top: auto;
         bottom: auto;
         // 固定在 th 下方：无法用 %/transform 定位到伪元素自身，改由 CSS 变量
         // （--th-bottom / --th-center，由同步器写入）提供锚点，避免 overflow 裁剪。
@@ -463,7 +462,8 @@
   .cdk-overlay-pane.profile-dialog-lg,
   .cdk-overlay-pane.profile-detail-dialog {
     max-width: unset !important;
-    max-height: unset !important;  }
+    max-height: unset !important;
+  }
 
   // 下拉选项永不换行：长文本单行省略（overlay 挂 body 下，无法按组件隔离，
   // 但 nowrap+ellipsis 对所有下拉都是正确行为）

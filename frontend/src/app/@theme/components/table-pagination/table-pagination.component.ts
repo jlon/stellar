@@ -1,5 +1,5 @@
 import { Component, EventEmitter, Input, Output } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { NbButtonModule, NbIconModule, NbSelectModule, NbOptionModule } from '@nebular/theme';
 import { TranslatePipe } from '@ngx-translate/core';
 
@@ -11,7 +11,7 @@ import { TranslatePipe } from '@ngx-translate/core';
 @Component({
   selector: 'ngx-table-pagination',
   standalone: true,
-  imports: [CommonModule, NbButtonModule, NbIconModule, NbSelectModule, NbOptionModule, TranslatePipe],
+  imports: [NbButtonModule, NbIconModule, NbSelectModule, NbOptionModule, TranslatePipe],
   template: `
     <div class="ngx-table-pagination">
       <div class="ngx-table-pagination__info">

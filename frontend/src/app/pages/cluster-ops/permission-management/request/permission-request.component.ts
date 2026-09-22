@@ -1,7 +1,7 @@
 import { I18nService } from '../../../../@core/i18n/i18n.service';
 import { TranslatePipe } from '@ngx-translate/core';
 import { Component, OnInit, OnDestroy, Input, Output, EventEmitter, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { FormBuilder, FormGroup, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { Subject, forkJoin } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
@@ -53,8 +53,7 @@ import { NbButtonGroupModule, NbButtonModule, NbCardModule, NbCheckboxModule, Nb
     NbSpinnerModule,
     NbTooltipModule,
     TablePaginationComponent,
-    Angular2SmartTableModule,
-    CommonModule
+    Angular2SmartTableModule
 ],
 })
 export class PermissionRequestComponent implements OnInit, OnDestroy {

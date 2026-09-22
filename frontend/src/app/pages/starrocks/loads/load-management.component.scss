@@ -63,7 +63,7 @@
   margin-right: 0;
 }
 
-.dialog-body .row > [class*="col-"] {
+.dialog-body .row > [class*='col-'] {
   flex: 0 0 auto;
   width: 100%;
   max-width: 100%;
@@ -142,7 +142,7 @@
 }
 
 /* 原生 file input 的按钮不继承 nbInput 主题，需显式对齐 Nebular 输入框外观 */
-#import-file[type="file"] {
+.load-import-file-input[type='file'] {
   padding-block: 0.1875rem;
 
   &::file-selector-button {

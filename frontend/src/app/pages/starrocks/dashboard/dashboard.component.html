@@ -1,167 +1,197 @@
 <div class="cluster-page">
-  <div class="cluster-toolbar" *ngIf="hasClusterAccess">
-    <div class="cluster-toolbar__facts">
-      <ng-container *ngIf="!loading && clusters.length">
-        <span>{{ clusters.length }}{{ ' 个' | translate }}</span>
-        <span *ngIf="alertCount" data-tone="warning">{{ alertCount }} {{ '告警' | translate }}</span>
-      </ng-container>
+  @if (hasClusterAccess) {
+    <div class="cluster-toolbar">
+      <div class="cluster-toolbar__facts">
+        @if (!loading && clusters.length) {
+          <span>{{ clusters.length }}{{ ' 个' | translate }}</span>
+          @if (alertCount) {
+            <span data-tone="warning">{{ alertCount }} {{ '告警' | translate }}</span>
+          }
+        }
+      </div>
+      <button
+        type="button"
+        nbButton
+        size="small"
+        ghost
+        status="primary"
+        (click)="addCluster()"
+        [disabled]="!canCreateCluster"
+        [title]="'添加集群' | translate"
+        [aria-label]="'添加集群' | translate">
+        <nb-icon icon="plus-outline"></nb-icon>
+      </button>
     </div>
-    <button
-      type="button"
-      nbButton
-      size="small"
-      ghost
-      status="primary"
-      (click)="addCluster()"
-      [disabled]="!canCreateCluster"
-      [title]="'添加集群' | translate"
-      [aria-label]="'添加集群' | translate">
-      <nb-icon icon="plus-outline"></nb-icon>
-    </button>
-  </div>
+  }
 
-  <div *ngIf="loading" class="cluster-page__state">
-    <nb-spinner status="primary"></nb-spinner>
-  </div>
+  @if (loading) {
+    <div class="cluster-page__state">
+      <nb-spinner status="primary"></nb-spinner>
+    </div>
+  }
 
-  <div *ngIf="!loading && !hasClusterAccess" class="cluster-page__state">
-    <p>{{  '暂无权限' | translate }}</p>
-    <p class="cluster-page__hint">{{  '请联系管理员授予集群相关权限' | translate }}</p>
-  </div>
+  @if (!loading && !hasClusterAccess) {
+    <div class="cluster-page__state">
+      <p>{{  '暂无权限' | translate }}</p>
+      <p class="cluster-page__hint">{{  '请联系管理员授予集群相关权限' | translate }}</p>
+    </div>
+  }
 
-  <div *ngIf="!loading && hasClusterAccess && clusters.length === 0" class="cluster-page__state setup-guide">
-    <h6>{{  '三步接入第一个集群' | translate }}</h6>
-    <ol>
-      <li><strong>{{  '填写连接' | translate }}</strong><span>{{  'FE 地址、端口、账号密码' | translate }}</span></li>
-      <li><strong>{{  '测试连接' | translate }}</strong><span>{{  '确认网络与权限没问题' | translate }}</span></li>
-      <li><strong>{{  '设为当前集群' | translate }}</strong><span>{{  '开始查看概览与实时查询' | translate }}</span></li>
-    </ol>
-    <button nbButton status="primary" size="small" (click)="addCluster()" [disabled]="!canCreateCluster">
-      <nb-icon icon="plus-outline"></nb-icon>{{ '添加集群' | translate }}
-    </button>
-  </div>
+  @if (!loading && hasClusterAccess && clusters.length === 0) {
+    <div class="cluster-page__state setup-guide">
+      <h6>{{  '三步接入第一个集群' | translate }}</h6>
+      <ol>
+        <li><strong>{{  '填写连接' | translate }}</strong><span>{{  'FE 地址、端口、账号密码' | translate }}</span></li>
+        <li><strong>{{  '测试连接' | translate }}</strong><span>{{  '确认网络与权限没问题' | translate }}</span></li>
+        <li><strong>{{  '设为当前集群' | translate }}</strong><span>{{  '开始查看概览与实时查询' | translate }}</span></li>
+      </ol>
+      <button nbButton status="primary" size="small" (click)="addCluster()" [disabled]="!canCreateCluster">
+        <nb-icon icon="plus-outline"></nb-icon>{{ '添加集群' | translate }}
+      </button>
+    </div>
+  }
 
-  <div class="cluster-grid" *ngIf="!loading && hasClusterAccess && clusters.length > 0">
-    <article
-      class="cluster-card"
-      *ngFor="let card of clusters; trackBy: trackByClusterId"
-      [attr.data-status]="statusTone(card.health?.status)"
-      role="link"
-      tabindex="0"
-      (click)="navigateToClusterOverview(card)"
-      (keydown.enter)="onClusterCardKeydown($event, card)"
-      (keydown.space)="onClusterCardKeydown($event, card)">
-      <div class="cluster-card__head">
-        <div class="cluster-card__name">
-          <div class="cluster-card__title-line">
-            <button
-              type="button"
-              class="cluster-card__title"
-              (click)="$event.stopPropagation(); navigateToClusterOverview(card)">
-              {{ card.cluster.name }}
-            </button>
-            <span class="cluster-card__current" *ngIf="card.isActive">{{  '当前' | translate }}</span>
+  @if (!loading && hasClusterAccess && clusters.length > 0) {
+    <div class="cluster-grid">
+      @for (card of clusters; track trackByClusterId($index, card)) {
+        <article
+          class="cluster-card"
+          [attr.data-status]="statusTone(card.health?.status)"
+          role="link"
+          tabindex="0"
+          (click)="navigateToClusterOverview(card)"
+          (keydown.enter)="onClusterCardKeydown($event, card)"
+          (keydown.space)="onClusterCardKeydown($event, card)">
+          <div class="cluster-card__head">
+            <div class="cluster-card__name">
+              <div class="cluster-card__title-line">
+                <button
+                  type="button"
+                  class="cluster-card__title"
+                  (click)="$event.stopPropagation(); navigateToClusterOverview(card)">
+                  {{ card.cluster.name }}
+                </button>
+                @if (card.isActive) {
+                  <span class="cluster-card__current">{{  '当前' | translate }}</span>
+                }
+              </div>
+              @if (card.organization && isSuperAdmin) {
+                <span class="cluster-card__meta">
+                  {{ card.organization.name }}
+                </span>
+              }
+              @if (card.cluster.description) {
+                <span class="cluster-card__meta">
+                  {{ card.cluster.description }}
+                </span>
+              }
+            </div>
+            <div class="cluster-card__actions">
+              @if (!card.isActive) {
+                <button
+                  type="button"
+                  nbButton
+                  ghost
+                  size="tiny"
+                  status="basic"
+                  (click)="$event.stopPropagation(); toggleActiveCluster(card)"
+                  [disabled]="!canActivateCluster"
+                  [aria-label]="'设为当前集群' | translate">
+                  <nb-icon icon="star-outline"></nb-icon>
+                </button>
+              }
+              <button
+                type="button"
+                nbButton
+                ghost
+                size="tiny"
+                status="basic"
+                (click)="$event.stopPropagation(); editCluster(card.cluster)"
+                [disabled]="!canUpdateCluster"
+                [aria-label]="'设置' | translate">
+                <nb-icon icon="settings-2-outline"></nb-icon>
+              </button>
+              <button
+                type="button"
+                nbButton
+                ghost
+                size="tiny"
+                status="basic"
+                (click)="$event.stopPropagation(); deleteCluster(card.cluster)"
+                [disabled]="!canDeleteCluster"
+                [aria-label]="'删除' | translate">
+                <nb-icon icon="trash-2-outline"></nb-icon>
+              </button>
+            </div>
           </div>
-          <span class="cluster-card__meta" *ngIf="card.organization && isSuperAdmin">
-            {{ card.organization.name }}
-          </span>
-          <span class="cluster-card__meta" *ngIf="card.cluster.description">
-            {{ card.cluster.description }}
-          </span>
-        </div>
-        <div class="cluster-card__actions">
-          <button
-            *ngIf="!card.isActive"
-            type="button"
-            nbButton
-            ghost
-            size="tiny"
-            status="basic"
-            (click)="$event.stopPropagation(); toggleActiveCluster(card)"
-            [disabled]="!canActivateCluster"
-            [aria-label]="'设为当前集群' | translate">
-            <nb-icon icon="star-outline"></nb-icon>
-          </button>
-          <button
-            type="button"
-            nbButton
-            ghost
-            size="tiny"
-            status="basic"
-            (click)="$event.stopPropagation(); editCluster(card.cluster)"
-            [disabled]="!canUpdateCluster"
-            [aria-label]="'设置' | translate">
-            <nb-icon icon="settings-2-outline"></nb-icon>
-          </button>
-          <button
-            type="button"
-            nbButton
-            ghost
-            size="tiny"
-            status="basic"
-            (click)="$event.stopPropagation(); deleteCluster(card.cluster)"
-            [disabled]="!canDeleteCluster"
-            [aria-label]="'删除' | translate">
-            <nb-icon icon="trash-2-outline"></nb-icon>
-          </button>
-        </div>
-      </div>
-
-      <div class="cluster-card__facts">
-        <button
-          *ngIf="card.health"
-          type="button"
-          class="cluster-card__status"
-          [attr.data-tone]="statusTone(card.health.status)"
-          (click)="$event.stopPropagation(); toggleHealthDetails(card)">
-          <span class="cluster-card__dot" aria-hidden="true"></span>
-          {{ getHealthBadgeText(card) }}
-          <span *ngIf="failedCountLabel(card)" class="cluster-card__fail">{{ failedCountLabel(card) }}</span>
-        </button>
-        <span *ngIf="!card.health" class="cluster-card__status">
-          <span class="cluster-card__dot" aria-hidden="true"></span>
-          {{ '未知' | translate }}
-        </span>
-        <button type="button" class="cluster-card__link" (click)="$event.stopPropagation(); navigateToFrontends(card.cluster.id)">
-          FE {{ getFeCount(card) }}
-        </button>
-        <button type="button" class="cluster-card__link" (click)="$event.stopPropagation(); navigateToBackends(card.cluster.id)">
-          {{ computeNodeShort(card) }} {{ getComputeNodeCount(card) }}
-        </button>
-        <span class="cluster-card__addr">{{ card.cluster.fe_host }}:{{ card.cluster.fe_http_port }}</span>
-      </div>
-
-      <div class="cluster-card__meters" *ngIf="card.resources; else metersLoading">
-        <div class="meter" [attr.data-tone]="usageTone(card.resources.cpu_usage_pct)">
-          <nb-icon icon="flash-outline"></nb-icon>
-          <span>CPU {{ formatPct(card.resources.cpu_usage_pct) }}</span>
-          <span class="meter__track"><span class="meter__fill" [style.width.%]="clampPct(card.resources.cpu_usage_pct)"></span></span>
-        </div>
-        <div class="meter" [attr.data-tone]="usageTone(card.resources.memory_usage_pct)">
-          <nb-icon icon="pie-chart-outline"></nb-icon>
-          <span>{{ '内存' | translate }} {{ formatPct(card.resources.memory_usage_pct) }}</span>
-          <span class="meter__track"><span class="meter__fill" [style.width.%]="clampPct(card.resources.memory_usage_pct)"></span></span>
-        </div>
-        <div class="meter" [attr.data-tone]="storageTone(card)" [attr.title]="storageUnavailableTitle(card)">
-          <nb-icon icon="hard-drive-outline"></nb-icon>
-          <span>{{ (isSharedData(card) ? '数据缓存' : '磁盘') | translate }} {{ formatPct(card.resources.disk_usage_pct) }}</span>
-          <span class="meter__track"><span class="meter__fill" [style.width.%]="clampPct(card.resources.disk_usage_pct)"></span></span>
-        </div>
-      </div>
-      <ng-template #metersLoading>
-        <div class="cluster-card__meters-empty">{{  '指标采集中…' | translate }}</div>
-      </ng-template>
-
-      <span class="cluster-card__tags" *ngIf="card.cluster.tags?.length">
-        <span *ngFor="let tag of card.cluster.tags">{{ tag }}</span>
-      </span>
-
-      <ul class="cluster-card__checks" *ngIf="card.showHealthDetails && card.health">
-        <li *ngFor="let check of card.health.checks" [attr.data-tone]="check.status === 'ok' ? null : 'danger'">
-          <span>{{ check.name }}</span>
-          <span>{{ check.message }}</span>
-        </li>
-      </ul>
-    </article>
-  </div>
+          <div class="cluster-card__facts">
+            @if (card.health) {
+              <button
+                type="button"
+                class="cluster-card__status"
+                [attr.data-tone]="statusTone(card.health.status)"
+                (click)="$event.stopPropagation(); toggleHealthDetails(card)">
+                <span class="cluster-card__dot" aria-hidden="true"></span>
+                {{ getHealthBadgeText(card) }}
+                @if (failedCountLabel(card)) {
+                  <span class="cluster-card__fail">{{ failedCountLabel(card) }}</span>
+                }
+              </button>
+            }
+            @if (!card.health) {
+              <span class="cluster-card__status">
+                <span class="cluster-card__dot" aria-hidden="true"></span>
+                {{ '未知' | translate }}
+              </span>
+            }
+            <button type="button" class="cluster-card__link" (click)="$event.stopPropagation(); navigateToFrontends(card.cluster.id)">
+              FE {{ getFeCount(card) }}
+            </button>
+            <button type="button" class="cluster-card__link" (click)="$event.stopPropagation(); navigateToBackends(card.cluster.id)">
+              {{ computeNodeShort(card) }} {{ getComputeNodeCount(card) }}
+            </button>
+            <span class="cluster-card__addr">{{ card.cluster.fe_host }}:{{ card.cluster.fe_http_port }}</span>
+          </div>
+          @if (card.resources) {
+            <div class="cluster-card__meters">
+              <div class="meter" [attr.data-tone]="usageTone(card.resources.cpu_usage_pct)">
+                <nb-icon icon="flash-outline"></nb-icon>
+                <span>CPU {{ formatPct(card.resources.cpu_usage_pct) }}</span>
+                <span class="meter__track"><span class="meter__fill" [style.width.%]="clampPct(card.resources.cpu_usage_pct)"></span></span>
+              </div>
+              <div class="meter" [attr.data-tone]="usageTone(card.resources.memory_usage_pct)">
+                <nb-icon icon="pie-chart-outline"></nb-icon>
+                <span>{{ '内存' | translate }} {{ formatPct(card.resources.memory_usage_pct) }}</span>
+                <span class="meter__track"><span class="meter__fill" [style.width.%]="clampPct(card.resources.memory_usage_pct)"></span></span>
+              </div>
+              <div class="meter" [attr.data-tone]="storageTone(card)" [attr.title]="storageUnavailableTitle(card)">
+                <nb-icon icon="hard-drive-outline"></nb-icon>
+                <span>{{ (isSharedData(card) ? '数据缓存' : '磁盘') | translate }} {{ formatPct(card.resources.disk_usage_pct) }}</span>
+                <span class="meter__track"><span class="meter__fill" [style.width.%]="clampPct(card.resources.disk_usage_pct)"></span></span>
+              </div>
+            </div>
+          } @else {
+            <div class="cluster-card__meters-empty">{{  '指标采集中…' | translate }}</div>
+          }
+          @if (card.cluster.tags?.length) {
+            <span class="cluster-card__tags">
+              @for (tag of card.cluster.tags; track tag) {
+                <span>{{ tag }}</span>
+              }
+            </span>
+          }
+          @if (card.showHealthDetails && card.health) {
+            <ul class="cluster-card__checks">
+              @for (check of card.health.checks; track check) {
+                <li [attr.data-tone]="check.status === 'ok' ? null : 'danger'">
+                  <span>{{ check.name }}</span>
+                  <span>{{ check.message }}</span>
+                </li>
+              }
+            </ul>
+          }
+        </article>
+      }
+    </div>
+  }
 </div>

@@ -1,7 +1,7 @@
 import { I18nService } from '../../../@core/i18n/i18n.service';
 import { TranslatePipe } from '@ngx-translate/core';
 import { Component, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 
 import { NbToastrService, NbDialogService, NbCardModule, NbButtonModule, NbIconModule, NbSelectModule, NbOptionModule, NbSpinnerModule, NbTooltipModule } from '@nebular/theme';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
@@ -34,8 +34,7 @@ import { ActivatedRoute, Router } from '@angular/router';
     NbOptionModule,
     NbSpinnerModule,
     NbTooltipModule,
-    Angular2SmartTableModule,
-    CommonModule
+    Angular2SmartTableModule
 ],
 })
 export class SessionsComponent implements OnInit, OnDestroy {

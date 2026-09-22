@@ -13,194 +13,207 @@
 
       <nb-card-body>
         <!-- Loading Indicator -->
-        <div *ngIf="loading" class="text-center">
-          <nb-spinner size="large"></nb-spinner>
-        </div>
+        @if (loading) {
+          <div class="text-center">
+            <nb-spinner size="large"></nb-spinner>
+          </div>
+        }
 
         <!-- Error Messages -->
-        <nb-alert *ngFor="let error of errors" status="danger" closable (close)="errors = []">
-          {{ error }}
-        </nb-alert>
+        @for (error of errors; track error) {
+          <nb-alert status="danger" closable (close)="errors = []">
+            {{ error }}
+          </nb-alert>
+        }
 
         <!-- User Settings Form -->
-        <form *ngIf="!loading" (ngSubmit)="onSubmit()" #form="ngForm">
-          <!-- Avatar Selection - First Section -->
-          <div class="row">
-            <div class="col-md-4">
-              <div class="form-group">
-                <label class="label">{{  '头像设置' | translate }}</label>
-                
-                <!-- Current Avatar Preview -->
-                <div class="avatar-preview-section">
-                  <div class="current-avatar-large">
-                    <img *ngIf="userForm.avatar" [src]="userForm.avatar" [alt]="'Current Avatar'" class="preview-image">
-                    <div *ngIf="!userForm.avatar" class="avatar-placeholder-large">
-                      <nb-icon icon="person-outline"></nb-icon>
+        @if (!loading) {
+          <form (ngSubmit)="onSubmit()" #form="ngForm">
+            <!-- Avatar Selection - First Section -->
+            <div class="row">
+              <div class="col-md-4">
+                <div class="form-group">
+                  <label class="label">{{  '头像设置' | translate }}</label>
+                  <!-- Current Avatar Preview -->
+                  <div class="avatar-preview-section">
+                    <div class="current-avatar-large">
+                      @if (userForm.avatar) {
+                        <img [src]="userForm.avatar" [alt]="'Current Avatar'" class="preview-image">
+                      }
+                      @if (!userForm.avatar) {
+                        <div class="avatar-placeholder-large">
+                          <nb-icon icon="person-outline"></nb-icon>
+                        </div>
+                      }
                     </div>
+                  </div>
+                  <!-- Avatar Options Grid -->
+                  <div class="avatar-options-grid">
+                    @for (avatar of availableAvatars; track avatar; let i = $index) {
+                      <div
+                        class="avatar-option-small"
+                        [class.selected]="userForm.avatar === avatar"
+                        (click)="selectAvatar(avatar)">
+                        <img [src]="avatar" [alt]="'Avatar Option'" class="option-image">
+                      </div>
+                    }
+                  </div>
+                  <!-- Refresh Button -->
+                  <div class="refresh-section">
+                    <button type="button" class="icon-btn" (click)="generateAvatarOptions()" [nbTooltip]="'换一批' | translate" nbTooltipPlacement="top" [aria-label]="'换一批' | translate"><nb-icon icon="refresh-outline"></nb-icon></button>
                   </div>
                 </div>
-
-                <!-- Avatar Options Grid -->
-                <div class="avatar-options-grid">
-                  <div 
-                    *ngFor="let avatar of availableAvatars; let i = index" 
-                    class="avatar-option-small"
-                    [class.selected]="userForm.avatar === avatar"
-                    (click)="selectAvatar(avatar)">
-                    <img [src]="avatar" [alt]="'Avatar Option'" class="option-image">
-                  </div>
+              </div>
+              <!-- User Info Section -->
+              <div class="col-md-8">
+                <!-- Username -->
+                <div class="form-group">
+                  <label class="label" for="input-username">{{  '用户名' | translate }}</label>
+                  <input
+                    nbInput
+                    fullWidth
+                    [(ngModel)]="userForm.username"
+                    #username="ngModel"
+                    id="input-username"
+                    name="username"
+                    [placeholder]="'请输入用户名' | translate"
+                    [status]="username.dirty ? (username.invalid ? 'danger' : 'success') : 'basic'"
+                    [required]="true"
+                    [minlength]="3">
+                  @if (username.invalid && username.touched) {
+                    @if (username.errors?.['required']) {
+                      <p class="caption status-danger">
+                        {{ '用户名不能为空' | translate }}
+                      </p>
+                    }
+                    @if (username.errors?.['minlength']) {
+                      <p class="caption status-danger">
+                        {{ '用户名至少需要3个字符' | translate }}
+                      </p>
+                    }
+                  }
                 </div>
-
-                <!-- Refresh Button -->
-                <div class="refresh-section">
-                  <button type="button" class="icon-btn" (click)="generateAvatarOptions()" [nbTooltip]="'换一批' | translate" nbTooltipPlacement="top" [aria-label]="'换一批' | translate"><nb-icon icon="refresh-outline"></nb-icon></button>
+                <!-- Email -->
+                <div class="form-group">
+                  <label class="label" for="input-email">{{  '邮箱地址' | translate }}</label>
+                  <input
+                    nbInput
+                    fullWidth
+                    [(ngModel)]="userForm.email"
+                    #email="ngModel"
+                    type="email"
+                    id="input-email"
+                    name="email"
+                    [placeholder]="'请输入邮箱地址' | translate"
+                    [status]="email.dirty ? (email.invalid ? 'danger' : 'success') : 'basic'"
+                    [required]="true"
+                    pattern="^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,4}$">
+                  @if (email.invalid && email.touched) {
+                    @if (email.errors?.['required']) {
+                      <p class="caption status-danger">
+                        {{ '邮箱不能为空' | translate }}
+                      </p>
+                    }
+                    @if (email.errors?.['pattern']) {
+                      <p class="caption status-danger">
+                        {{ '请输入有效的邮箱地址' | translate }}
+                      </p>
+                    }
+                  }
                 </div>
               </div>
             </div>
-
-            <!-- User Info Section -->
-            <div class="col-md-8">
-              <!-- Username -->
-              <div class="form-group">
-                <label class="label" for="input-username">{{  '用户名' | translate }}</label>
-                <input 
-                  nbInput
-                  fullWidth
-                  [(ngModel)]="userForm.username"
-                  #username="ngModel"
-                  id="input-username"
-                  name="username"
-                  [placeholder]="'请输入用户名' | translate"
-                  [status]="username.dirty ? (username.invalid ? 'danger' : 'success') : 'basic'"
-                  [required]="true"
-                  [minlength]="3">
-                <ng-container *ngIf="username.invalid && username.touched">
-                  <p class="caption status-danger" *ngIf="username.errors?.['required']">
-                    {{ '用户名不能为空' | translate }}
-                  </p>
-                  <p class="caption status-danger" *ngIf="username.errors?.['minlength']">
-                    {{ '用户名至少需要3个字符' | translate }}
-                  </p>
-                </ng-container>
-              </div>
-
-              <!-- Email -->
-              <div class="form-group">
-                <label class="label" for="input-email">{{  '邮箱地址' | translate }}</label>
-                <input 
-                  nbInput
-                  fullWidth
-                  [(ngModel)]="userForm.email"
-                  #email="ngModel"
-                  type="email"
-                  id="input-email"
-                  name="email"
-                  [placeholder]="'请输入邮箱地址' | translate"
-                  [status]="email.dirty ? (email.invalid ? 'danger' : 'success') : 'basic'"
-                  [required]="true"
-                  pattern="^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,4}$">
-                <ng-container *ngIf="email.invalid && email.touched">
-                  <p class="caption status-danger" *ngIf="email.errors?.['required']">
-                    {{ '邮箱不能为空' | translate }}
-                  </p>
-                  <p class="caption status-danger" *ngIf="email.errors?.['pattern']">
-                    {{ '请输入有效的邮箱地址' | translate }}
-                  </p>
-                </ng-container>
-              </div>
-            </div>
-          </div>
-
-          <!-- Change Password Section -->
-          <div class="row mt-3">
-            <div class="col-md-12">
-              <nb-card>
-                <nb-card-header>
-                  <div class="d-flex align-items-center justify-content-between">
-                    <span>{{  '修改密码' | translate }}</span>
-                    <button type="button" class="icon-btn" (click)="togglePasswordFields()" [nbTooltip]="'修改密码' | translate" nbTooltipPlacement="top" [aria-label]="'修改密码' | translate"><nb-icon [icon]="showPasswordFields ? 'eye-off-outline' : 'edit-outline'"></nb-icon></button>
-                  </div>
-                </nb-card-header>
-
-                <nb-card-body *ngIf="showPasswordFields">
-                  <div class="row">
-                    <div class="col-md-12">
-                      <!-- Current Password -->
-                      <div class="form-group">
-                        <label class="label" for="input-current-password">{{  '当前密码' | translate }}</label>
-                        <input 
-                          nbInput
-                          fullWidth
-                          [(ngModel)]="userForm.currentPassword"
-                          #currentPassword="ngModel"
-                          type="password"
-                          id="input-current-password"
-                          name="currentPassword"
-                          [placeholder]="'请输入当前密码' | translate"
-                          [status]="currentPassword.dirty ? (currentPassword.invalid ? 'danger' : 'success') : 'basic'">
-                      </div>
+            <!-- Change Password Section -->
+            <div class="row mt-3">
+              <div class="col-md-12">
+                <nb-card>
+                  <nb-card-header>
+                    <div class="d-flex align-items-center justify-content-between">
+                      <span>{{  '修改密码' | translate }}</span>
+                      <button type="button" class="icon-btn" (click)="togglePasswordFields()" [nbTooltip]="'修改密码' | translate" nbTooltipPlacement="top" [aria-label]="'修改密码' | translate"><nb-icon [icon]="showPasswordFields ? 'eye-off-outline' : 'edit-outline'"></nb-icon></button>
                     </div>
-
-                    <div class="col-md-6">
-                      <!-- New Password -->
-                      <div class="form-group">
-                        <label class="label" for="input-new-password">{{  '新密码' | translate }}</label>
-                        <input 
-                          nbInput
-                          fullWidth
-                          [(ngModel)]="userForm.newPassword"
-                          #newPassword="ngModel"
-                          type="password"
-                          id="input-new-password"
-                          name="newPassword"
-                          [placeholder]="'请输入新密码（至少6个字符）' | translate"
-                          [status]="newPassword.dirty ? (newPassword.invalid ? 'danger' : 'success') : 'basic'"
-                          [minlength]="6">
-                        <ng-container *ngIf="newPassword.invalid && newPassword.touched">
-                          <p class="caption status-danger" *ngIf="newPassword.errors?.['minlength']">
-                            {{ '新密码至少需要6个字符' | translate }}
-                          </p>
-                        </ng-container>
+                  </nb-card-header>
+                  @if (showPasswordFields) {
+                    <nb-card-body>
+                      <div class="row">
+                        <div class="col-md-12">
+                          <!-- Current Password -->
+                          <div class="form-group">
+                            <label class="label" for="input-current-password">{{  '当前密码' | translate }}</label>
+                            <input
+                              nbInput
+                              fullWidth
+                              [(ngModel)]="userForm.currentPassword"
+                              #currentPassword="ngModel"
+                              type="password"
+                              id="input-current-password"
+                              name="currentPassword"
+                              [placeholder]="'请输入当前密码' | translate"
+                              [status]="currentPassword.dirty ? (currentPassword.invalid ? 'danger' : 'success') : 'basic'">
+                          </div>
+                        </div>
+                        <div class="col-md-6">
+                          <!-- New Password -->
+                          <div class="form-group">
+                            <label class="label" for="input-new-password">{{  '新密码' | translate }}</label>
+                            <input
+                              nbInput
+                              fullWidth
+                              [(ngModel)]="userForm.newPassword"
+                              #newPassword="ngModel"
+                              type="password"
+                              id="input-new-password"
+                              name="newPassword"
+                              [placeholder]="'请输入新密码（至少6个字符）' | translate"
+                              [status]="newPassword.dirty ? (newPassword.invalid ? 'danger' : 'success') : 'basic'"
+                              [minlength]="6">
+                            @if (newPassword.invalid && newPassword.touched) {
+                              @if (newPassword.errors?.['minlength']) {
+                                <p class="caption status-danger">
+                                  {{ '新密码至少需要6个字符' | translate }}
+                                </p>
+                              }
+                            }
+                          </div>
+                        </div>
+                        <div class="col-md-6">
+                          <!-- Confirm Password -->
+                          <div class="form-group">
+                            <label class="label" for="input-confirm-password">{{  '确认新密码' | translate }}</label>
+                            <input
+                              nbInput
+                              fullWidth
+                              [(ngModel)]="userForm.confirmPassword"
+                              #confirmPassword="ngModel"
+                              type="password"
+                              id="input-confirm-password"
+                              name="confirmPassword"
+                              [placeholder]="'请再次输入新密码' | translate"
+                              [status]="confirmPassword.dirty ? (confirmPassword.invalid ? 'danger' : 'success') : 'basic'">
+                            @if (userForm.newPassword !== userForm.confirmPassword && confirmPassword.touched) {
+                              <p class="caption status-danger">
+                                {{ '两次输入的密码不一致' | translate }}
+                              </p>
+                            }
+                          </div>
+                        </div>
                       </div>
-                    </div>
-
-                    <div class="col-md-6">
-                      <!-- Confirm Password -->
-                      <div class="form-group">
-                        <label class="label" for="input-confirm-password">{{  '确认新密码' | translate }}</label>
-                        <input 
-                          nbInput
-                          fullWidth
-                          [(ngModel)]="userForm.confirmPassword"
-                          #confirmPassword="ngModel"
-                          type="password"
-                          id="input-confirm-password"
-                          name="confirmPassword"
-                          [placeholder]="'请再次输入新密码' | translate"
-                          [status]="confirmPassword.dirty ? (confirmPassword.invalid ? 'danger' : 'success') : 'basic'">
-                        <ng-container *ngIf="userForm.newPassword !== userForm.confirmPassword && confirmPassword.touched">
-                          <p class="caption status-danger">
-                            {{ '两次输入的密码不一致' | translate }}
-                          </p>
-                        </ng-container>
-                      </div>
-                    </div>
-                  </div>
-                </nb-card-body>
-              </nb-card>
-            </div>
-          </div>
-
-          <!-- Action Buttons -->
-          <div class="row mt-3">
-            <div class="col-md-12">
-              <div class="d-flex justify-content-end">
-                <button type="button" class="icon-btn" (click)="onCancel()" [nbTooltip]="'取消' | translate" nbTooltipPlacement="top" [aria-label]="'取消' | translate"><nb-icon icon="close-outline"></nb-icon></button>
-                <button type="submit" class="icon-btn is-primary" [disabled]="submitted || !form.valid" [nbTooltip]="'保存更改' | translate" nbTooltipPlacement="top" [aria-label]="'保存更改' | translate">@if (submitted) {<nb-icon icon="loader-outline" class="spin"></nb-icon>} @else {<nb-icon icon="checkmark-outline"></nb-icon>}</button>
+                    </nb-card-body>
+                  }
+                </nb-card>
               </div>
             </div>
-          </div>
-        </form>
+            <!-- Action Buttons -->
+            <div class="row mt-3">
+              <div class="col-md-12">
+                <div class="d-flex justify-content-end">
+                  <button type="button" class="icon-btn" (click)="onCancel()" [nbTooltip]="'取消' | translate" nbTooltipPlacement="top" [aria-label]="'取消' | translate"><nb-icon icon="close-outline"></nb-icon></button>
+                  <button type="submit" class="icon-btn is-primary" [disabled]="submitted || !form.valid" [nbTooltip]="'保存更改' | translate" nbTooltipPlacement="top" [aria-label]="'保存更改' | translate">@if (submitted) {<nb-icon icon="loader-outline" class="spin"></nb-icon>} @else {<nb-icon icon="checkmark-outline"></nb-icon>}</button>
+                </div>
+              </div>
+            </div>
+          </form>
+        }
       </nb-card-body>
     </nb-card>
   </div>
