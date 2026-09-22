@@ -138,8 +138,7 @@ m = g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act
     pub async fn reload_policies_from_db<DB: AppDb>(&self, pool: &Pool<DB>) -> ApiResult<()>
     where
         for<'c> &'c mut <DB as sqlx::Database>::Connection: sqlx::Executor<'c, Database = DB>,
-        for<'q> <DB as sqlx::database::HasArguments<'q>>::Arguments:
-            sqlx::IntoArguments<'q, DB> + Default,
+        for<'q> <DB as sqlx::Database>::Arguments<'q>: sqlx::IntoArguments<'q, DB> + Default,
         usize: sqlx::ColumnIndex<<DB as sqlx::Database>::Row>,
         for<'a> &'a str: sqlx::ColumnIndex<<DB as sqlx::Database>::Row>,
         for<'q> i64: sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB> + sqlx::Type<DB>,

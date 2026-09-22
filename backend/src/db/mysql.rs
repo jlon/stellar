@@ -14,8 +14,7 @@ use super::AppDb;
 static MIGRATIONS: sqlx::migrate::Migrator = sqlx::migrate!("./migrations/mysql");
 
 impl AppDb for MySql {
-    type Query<'q> =
-        sqlx::query::Query<'q, Self, <Self as sqlx::database::HasArguments<'q>>::Arguments>;
+    type Query<'q> = sqlx::query::Query<'q, Self, <Self as sqlx::Database>::Arguments<'q>>;
 
     fn make_query<'q>(sql: &'q str) -> Self::Query<'q> {
         sqlx::query(sql)

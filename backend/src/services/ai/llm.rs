@@ -28,6 +28,8 @@ struct WireResponse {
 #[derive(Deserialize)]
 struct WireChoice {
     message: WireMessage,
+    #[serde(default)]
+    finish_reason: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -134,6 +136,17 @@ impl ChatClient {
         messages: &[ChatMessage],
         tools: Option<&Value>,
     ) -> Result<ChatCompletion, String> {
+        self.chat_with_max_tokens(messages, tools, self.provider.max_tokens.max(1) as u32)
+            .await
+    }
+
+    /// One completion with a caller-selected output budget (used by compaction).
+    pub async fn chat_with_max_tokens(
+        &self,
+        messages: &[ChatMessage],
+        tools: Option<&Value>,
+        max_tokens: u32,
+    ) -> Result<ChatCompletion, String> {
         let api_key = self
             .provider
             .api_key_encrypted
@@ -144,7 +157,7 @@ impl ChatClient {
             "model": self.provider.model_name,
             "messages": messages,
             "temperature": self.provider.temperature,
-            "max_tokens": self.provider.max_tokens,
+            "max_tokens": max_tokens,
         });
         if let Some(tools) = tools {
             body["tools"] = tools.clone();
@@ -200,6 +213,7 @@ impl ChatClient {
             content: msg.message.content,
             tool_calls,
             usage_tokens: wire.usage.total_tokens,
+            finish_reason: msg.finish_reason,
         })
     }
 
@@ -365,6 +379,7 @@ fn finish_stream(
         content: if content_acc.is_empty() { None } else { Some(content_acc) },
         tool_calls,
         usage_tokens: 0, // 流式响应默认不携带 usage（未请求 include_usage）
+        finish_reason: None,
     })
 }
 

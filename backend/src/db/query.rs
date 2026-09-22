@@ -10,7 +10,6 @@ use std::marker::PhantomData;
 
 use sqlx::{
     Database, Encode, Executor, FromRow, MySql, Sqlite, Type,
-    database::HasArguments,
     mysql::MySqlQueryResult,
     postgres::{PgQueryResult, PgRow},
     sqlite::SqliteQueryResult,
@@ -213,7 +212,7 @@ macro_rules! impl_direct_sqlx_query {
     ($db:ty, $insert_id:expr) => {
         #[async_trait::async_trait]
         impl<'q> AppQuery<'q, $db>
-            for sqlx::query::Query<'q, $db, <$db as HasArguments<'q>>::Arguments>
+            for sqlx::query::Query<'q, $db, <$db as Database>::Arguments<'q>>
         {
             fn bind<T: 'q + Send + Encode<'q, $db> + Type<$db>>(self, value: T) -> Self {
                 sqlx::query::Query::bind(self, value)

@@ -8,11 +8,18 @@
   right: max(1.25rem, env(safe-area-inset-right));
   bottom: max(1.25rem, env(safe-area-inset-bottom));
   z-index: 1200;
+  touch-action: none;
 }
 
 :host(.drawer-mode) {
   height: 100%;
   min-height: 0;
+}
+
+.chat-fab-launcher {
+  position: relative;
+  width: 3.75rem;
+  height: 3.75rem;
 }
 
 .chat-fab {
@@ -51,6 +58,41 @@
     outline: none;
     box-shadow: 0 0 0 0.25rem var(--color-primary-transparent-200), 0 0.75rem 1.75rem rgba(0, 0, 0, 0.22);
   }
+}
+
+.chat-fab__dismiss {
+  position: absolute;
+  top: -0.25rem;
+  right: -0.25rem;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: 1px solid var(--border-basic-color-3);
+  border-radius: 50%;
+  background: var(--background-basic-color-1);
+  color: var(--text-hint-color);
+  cursor: pointer;
+  opacity: 0.75;
+  transform: scale(1);
+  transition: opacity 160ms ease, transform 160ms ease, color 160ms ease;
+
+  nb-icon {
+    font-size: 0.75rem;
+  }
+
+  &:hover,
+  &:focus-visible {
+    color: var(--text-basic-color);
+    opacity: 1;
+  }
+}
+
+.chat-fab-launcher:hover .chat-fab__dismiss,
+.chat-fab-launcher:focus-within .chat-fab__dismiss {
+  opacity: 1;
 }
 
 .chat-fab__ring {
@@ -123,6 +165,142 @@
   animation: drawer-content-in 180ms ease;
 }
 
+.chat-float-workspace {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.chat-float-conversation {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 会话历史默认是窄轨道，点击后才在抽屉内部展开列表。 */
+.chat-float-history {
+  display: flex;
+  flex: 0 0 3rem;
+  min-width: 3rem;
+  min-height: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--border-basic-color-3);
+  background: var(--background-basic-color-2);
+  transition: flex-basis 180ms ease;
+
+  &.expanded {
+    flex-basis: min(13.5rem, 38%);
+  }
+}
+
+.history-rail {
+  display: flex;
+  flex: 0 0 3rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.55rem 0.35rem;
+  border-right: 1px solid var(--border-basic-color-3);
+}
+
+.history-rail-button {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--text-hint-color);
+  cursor: pointer;
+  transition: background-color 160ms ease, color 160ms ease;
+
+  &:hover:not(:disabled),
+  &:focus-visible {
+    background: var(--color-primary-transparent-100);
+    color: var(--color-primary-500);
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.45;
+  }
+
+  nb-icon {
+    font-size: 1rem;
+  }
+}
+
+.history-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0.55rem 0.35rem;
+}
+
+.history-heading {
+  padding: 0.3rem 0.4rem 0.55rem;
+  color: var(--text-hint-color);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.history-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.history-session {
+  width: 100%;
+  padding: 0.5rem 0.4rem;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--text-basic-color);
+  cursor: pointer;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  text-align: left;
+
+  span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &:hover,
+  &:focus-visible {
+    background: var(--background-basic-color-3);
+  }
+
+  &.active {
+    background: var(--color-primary-transparent-100);
+    color: var(--color-primary-500);
+  }
+}
+
+.history-state {
+  display: grid;
+  place-items: center;
+  min-height: 3.5rem;
+  padding: 0.4rem;
+  color: var(--text-hint-color);
+  font-size: 0.72rem;
+  line-height: 1.4;
+  text-align: center;
+}
+
 @keyframes drawer-content-in {
   from {
     opacity: 0;
@@ -160,16 +338,6 @@
   font-size: 0.72rem;
   color: var(--text-hint-color);
   font-weight: 400;
-}
-
-.float-header-actions {
-  display: flex;
-  gap: 0.1rem;
-}
-
-/* sessions */
-.chat-float-sessions {
-  padding: 0.55rem 0.8rem 0.15rem;
 }
 
 /* messages */
@@ -445,5 +613,16 @@
   .float-row,
   .float-action-card {
     animation: none;
+  }
+
+  .chat-float-history,
+  .chat-fab__dismiss {
+    transition: none;
+  }
+}
+
+@media (max-width: 32rem) {
+  .chat-float-history.expanded {
+    flex-basis: min(8.5rem, 30%);
   }
 }

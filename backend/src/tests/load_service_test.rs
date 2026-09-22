@@ -1,5 +1,5 @@
 use crate::middleware::permission_extractor::extract_permission;
-use crate::models::{LoadFailureCause, LoadJob, LoadQueryParams, RoutineLoadDetails};
+use crate::models::{LoadJob, LoadQueryParams, RoutineLoadDetails};
 use crate::services::load_service::{
     available_actions, build_doris_load_failure_query, build_information_schema_query,
     build_stage_timeline, build_starrocks_load_query, classify_failure, encode_load_cursor,

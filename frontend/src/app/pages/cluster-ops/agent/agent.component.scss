@@ -918,7 +918,7 @@
 .action-card.action-pending {
   border-color: var(--color-warning-500);
   box-shadow: 0 0 0 2px var(--color-warning-transparent-100);
-  animation: approval-attention 2.4s ease-in-out infinite;
+  animation: approval-attention 0.6s ease-in-out 3;
 }
 
 .action-card.action-executing {

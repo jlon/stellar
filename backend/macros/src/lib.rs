@@ -21,7 +21,7 @@ use quote::quote;
 const DB_BOUNDS: &[&str] = &[
     "for<'q> <DB as crate::db::AppDb>::Query<'q>: ::std::marker::Send",
     "for<'c> &'c mut <DB as ::sqlx::Database>::Connection: ::sqlx::Executor<'c, Database = DB> + ::std::marker::Send",
-    "for<'q> <DB as ::sqlx::database::HasArguments<'q>>::Arguments: \
+    "for<'q> <DB as ::sqlx::Database>::Arguments<'q>: \
      ::sqlx::IntoArguments<'q, DB> + ::std::default::Default",
     "::std::primitive::usize: ::sqlx::ColumnIndex<<DB as ::sqlx::Database>::Row>",
     "for<'a> &'a ::std::primitive::str: ::sqlx::ColumnIndex<<DB as ::sqlx::Database>::Row>",

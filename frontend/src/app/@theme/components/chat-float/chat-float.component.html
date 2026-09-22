@@ -1,58 +1,106 @@
 @if (!drawer && visible) {
-  <button
-    class="chat-fab"
-    type="button"
-    (click)="openDrawer()"
-    [nbTooltip]="'打开智能助手' | translate"
-    [attr.aria-label]="'打开智能助手' | translate"
-    [title]="'打开智能助手' | translate"
-    nbTooltipPlacement="left"
-    >
-    <span class="chat-fab__ring" aria-hidden="true"></span>
-    <span class="chat-fab__core" aria-hidden="true">
-      <nb-icon icon="message-circle-outline"></nb-icon>
-    </span>
-    <span class="chat-fab__spark" aria-hidden="true">
-      <nb-icon icon="flash-outline"></nb-icon>
-    </span>
-  </button>
+  <div class="chat-fab-launcher">
+    <button
+      class="chat-fab"
+      type="button"
+      (pointerdown)="onLauncherPointerDown($event)"
+      (click)="openDrawer()"
+      [nbTooltip]="'打开智能助手' | translate"
+      [attr.aria-label]="'打开智能助手' | translate"
+      [title]="'打开智能助手' | translate"
+      nbTooltipPlacement="left"
+      >
+      <span class="chat-fab__ring" aria-hidden="true"></span>
+      <span class="chat-fab__core" aria-hidden="true">
+        <nb-icon icon="message-circle-outline"></nb-icon>
+      </span>
+      <span class="chat-fab__spark" aria-hidden="true">
+        <nb-icon icon="flash-outline"></nb-icon>
+      </span>
+    </button>
+    <button
+      class="chat-fab__dismiss"
+      type="button"
+      (pointerdown)="$event.stopPropagation()"
+      (click)="dismissLauncher($event)"
+      [nbTooltip]="'关闭快速入口' | translate"
+      [attr.aria-label]="'关闭快速入口' | translate"
+      [title]="'关闭快速入口' | translate"
+      nbTooltipPlacement="left"
+      >
+      <nb-icon icon="close-outline"></nb-icon>
+    </button>
+  </div>
 }
 
 @if (drawer && open) {
   <!-- 右侧 Nebular 抽屉内容 -->
   <div class="chat-float-panel">
-    <header class="chat-float-header">
-      <div class="float-title">
-        <nb-icon icon="activity-outline"></nb-icon>
-        <span>{{  '智能助手' | translate }}</span>
-        @if (clusterName) {
-          <span class="float-cluster">· {{ clusterName }}</span>
+    <div class="chat-float-workspace">
+      <aside class="chat-float-history" [class.expanded]="historyExpanded" [attr.aria-label]="'会话历史' | translate">
+        <div class="history-rail">
+          <button
+            class="history-rail-button"
+            type="button"
+            (click)="toggleHistory()"
+            [nbTooltip]="(historyExpanded ? '收起会话历史' : '展开会话历史') | translate"
+            [attr.aria-label]="(historyExpanded ? '收起会话历史' : '展开会话历史') | translate"
+            [attr.aria-expanded]="historyExpanded"
+            nbTooltipPlacement="right"
+            >
+            <nb-icon [icon]="historyExpanded ? 'chevron-left-outline' : 'clock-outline'"></nb-icon>
+          </button>
+          <button
+            class="history-rail-button"
+            type="button"
+            (click)="newSession()"
+            [disabled]="!currentCluster"
+            [nbTooltip]="'新建会话' | translate"
+            [attr.aria-label]="'新建会话' | translate"
+            nbTooltipPlacement="right"
+            >
+            <nb-icon icon="plus-outline"></nb-icon>
+          </button>
+        </div>
+        @if (historyExpanded) {
+          <div class="history-content">
+            <div class="history-heading">{{ '会话' | translate }}</div>
+            <div class="history-list" role="listbox" [attr.aria-label]="'会话历史' | translate">
+              @if (loading) {
+                <div class="history-state" role="status">
+                  <nb-icon icon="loader-outline" class="float-spin"></nb-icon>
+                </div>
+              } @else if (sessions.length) {
+                @for (s of sessions; track s.id) {
+                  <button
+                    class="history-session"
+                    type="button"
+                    role="option"
+                    [class.active]="s.id === activeSessionId"
+                    [attr.aria-selected]="s.id === activeSessionId"
+                    [title]="s.title || ('(无标题)' | translate)"
+                    (click)="selectSession(s.id)"
+                    >
+                    <span>{{ s.title || ('(无标题)' | translate) }}</span>
+                  </button>
+                }
+              } @else {
+                <div class="history-state">{{ '暂无会话，输入问题开始对话' | translate }}</div>
+              }
+            </div>
+          </div>
         }
-      </div>
-      <div class="float-header-actions">
-        <button nbButton ghost size="tiny" type="button" (click)="closeDrawer()" [nbTooltip]="'最小化' | translate" [attr.aria-label]="'最小化' | translate">
-          <nb-icon icon="chevron-down-outline"></nb-icon>
-        </button>
-        <button nbButton ghost size="tiny" type="button" (click)="closeDrawer()" [nbTooltip]="'关闭' | translate" [attr.aria-label]="'关闭' | translate">
-          <nb-icon icon="close-outline"></nb-icon>
-        </button>
-      </div>
-    </header>
-    <div class="chat-float-sessions">
-      <nb-select
-        size="tiny"
-        [selected]="activeSessionId"
-        [placeholder]="'选择会话' | translate"
-        [disabled]="!sessions.length"
-        (selectedChange)="onSessionChange($event)"
-        fullWidth
-        >
-        @for (s of sessions; track s) {
-          <nb-option [value]="s.id">{{  s.title || ('(无标题)' | translate)  }}</nb-option>
-        }
-        <nb-option [value]="null">{{  '＋ 新会话…' | translate }}</nb-option>
-      </nb-select>
-    </div>
+      </aside>
+      <section class="chat-float-conversation">
+        <header class="chat-float-header">
+          <div class="float-title">
+            <nb-icon icon="activity-outline"></nb-icon>
+            <span>{{  '智能助手' | translate }}</span>
+            @if (clusterName) {
+              <span class="float-cluster">· {{ clusterName }}</span>
+            }
+          </div>
+        </header>
     <div class="chat-float-messages">
       @if (messages.length === 0) {
         <div class="float-empty">
@@ -163,6 +211,8 @@
           <nb-icon icon="stop-circle-outline"></nb-icon>
         </button>
       }
-    </footer>
+      </footer>
+      </section>
+    </div>
   </div>
 }

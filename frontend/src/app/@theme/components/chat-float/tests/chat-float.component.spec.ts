@@ -85,4 +85,64 @@ describe('ChatFloatComponent', () => {
     sidebar.onCollapse().next({ tag: 'assistant-drawer' });
     expect(component.visible).toBeTrue();
   });
+
+  it('keeps session history collapsed until the user expands it', () => {
+    expect(component.historyExpanded).toBeFalse();
+
+    component.toggleHistory();
+    expect(component.historyExpanded).toBeTrue();
+
+    component.toggleHistory();
+    expect(component.historyExpanded).toBeFalse();
+  });
+
+  it('collapses an open drawer when the pointer lands outside it', () => {
+    component.drawer = true;
+    component.open = true;
+
+    component.onDocumentPointerDown({ target: document.body } as unknown as PointerEvent);
+
+    expect(sidebar.collapse).toHaveBeenCalledWith('assistant-drawer');
+  });
+
+  it('keeps Escape as the keyboard fallback to collapse an open drawer', () => {
+    component.drawer = true;
+    component.open = true;
+
+    component.onEscape();
+
+    expect(sidebar.collapse).toHaveBeenCalledWith('assistant-drawer');
+  });
+
+  it('suppresses the click that ends a launcher drag', () => {
+    const launcher = document.createElement('button');
+    component.onLauncherPointerDown({
+      button: 0,
+      currentTarget: launcher,
+      pointerId: 7,
+      clientX: 20,
+      clientY: 20,
+    } as unknown as PointerEvent);
+    component.onLauncherPointerMove({
+      pointerId: 7,
+      clientX: 40,
+      clientY: 50,
+      preventDefault: () => undefined,
+    } as unknown as PointerEvent);
+    component.onLauncherPointerEnd({ pointerId: 7 } as unknown as PointerEvent);
+
+    component.openDrawer();
+    expect(sidebar.expand).not.toHaveBeenCalled();
+
+    component.openDrawer();
+    expect(sidebar.expand).toHaveBeenCalledWith('assistant-drawer');
+  });
+
+  it('hides the launcher after the user closes the quick entry', () => {
+    component.ngOnInit();
+
+    component.dismissLauncher(new MouseEvent('click'));
+
+    expect(component.visible).toBeFalse();
+  });
 });

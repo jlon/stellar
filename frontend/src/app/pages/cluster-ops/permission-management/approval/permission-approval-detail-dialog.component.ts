@@ -287,7 +287,7 @@ import { NgClass } from '@angular/common';
       }
     }
 
-    // nb-list 样式
+    /* nb-list 样式 */
     .info-list {
       border: 1px solid var(--border-basic-color-3);
       border-radius: 0.375rem;
@@ -421,7 +421,7 @@ import { NgClass } from '@angular/common';
       border-top: 1px solid var(--border-basic-color-3);
     }
 
-    // Utilities
+    /* Utilities */
     .mr-1 { margin-right: 0.25rem; }
     .mt-2 { margin-top: 0.5rem; }
 

@@ -426,3 +426,25 @@ ngx-login .login-panel.resizing .panel-resize-handle__grip {
     display: none;
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  ngx-login .visual-orb,
+  ngx-login .brand-ring__pulse,
+  ngx-login .visual-hero-img,
+  ngx-login .brand-row,
+  ngx-login .brand-tagline,
+  ngx-login .visual-metrics,
+  ngx-login .login-panel,
+  ngx-login .panel-header .title,
+  ngx-login .panel-header .sub-title,
+  ngx-login form,
+  ngx-login .another-action,
+  ngx-login nb-alert {
+    animation: none;
+  }
+
+  ngx-login input[nbInput],
+  ngx-login button[nbButton][status='primary'] {
+    transition: none !important;
+  }
+}

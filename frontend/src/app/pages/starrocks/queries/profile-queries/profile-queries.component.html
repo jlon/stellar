@@ -207,11 +207,17 @@
                         [status]="isFlowAnimationEnabled ? 'primary' : 'basic'"
                         ghost
                         (click)="toggleFlowAnimation()"
-                      [nbTooltip]="
-                        isFlowAnimationEnabled
-                          ? ('关闭流动效果' | translate)
-                          : ('开启流动效果' | translate)
-                      "
+                        [attr.aria-pressed]="isFlowAnimationEnabled"
+                        [attr.aria-label]="
+                          (isFlowAnimationEnabled
+                            ? '关闭流动效果'
+                            : '开启流动效果') | translate
+                        "
+                        [nbTooltip]="
+                          isFlowAnimationEnabled
+                            ? ('关闭流动效果' | translate)
+                            : ('开启流动效果' | translate)
+                        "
                         >
                         <nb-icon icon="activity-outline"></nb-icon>
                       </button>

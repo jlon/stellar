@@ -32,7 +32,6 @@ import { VariableActionsCellComponent } from './variable-actions-cell.component'
     NbTooltipModule,
     Angular2SmartTableModule,
     NbFormFieldModule,
-    VariableActionsCellComponent
 ],
 })
 export class VariablesComponent implements OnInit, OnDestroy {

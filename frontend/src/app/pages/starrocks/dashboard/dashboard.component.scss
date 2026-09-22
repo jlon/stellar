@@ -237,7 +237,6 @@ span.cluster-card__status {
 
 .cluster-card__status[data-tone='ok'] .cluster-card__dot {
   background: nb-theme(color-success-default);
-  animation: cluster-dot-breath 2.8s ease-in-out infinite;
 }
 
 .cluster-card__status[data-tone='warning'] .cluster-card__dot {
@@ -246,27 +245,6 @@ span.cluster-card__status {
 
 .cluster-card__status[data-tone='danger'] .cluster-card__dot {
   background: nb-theme(color-danger-default);
-}
-
-@keyframes cluster-dot-breath {
-  0%,
-  100% {
-    opacity: 0.45;
-    box-shadow: 0 0 0 0 transparent;
-  }
-
-  50% {
-    opacity: 1;
-    box-shadow: 0 0 5px 1px nb-theme(color-success-transparent-200);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .cluster-card__status[data-tone='ok'] .cluster-card__dot {
-    animation: none;
-    opacity: 1;
-    box-shadow: none;
-  }
 }
 
 .cluster-card__fail {

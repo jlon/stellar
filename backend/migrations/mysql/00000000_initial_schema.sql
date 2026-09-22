@@ -207,6 +207,7 @@ CREATE TABLE IF NOT EXISTS metrics_snapshots (
     disk_total_bytes BIGINT NOT NULL DEFAULT 0,
     disk_used_bytes BIGINT NOT NULL DEFAULT 0,
     disk_usage_pct REAL NOT NULL DEFAULT 0.0,
+    max_disk_usage_pct REAL NOT NULL DEFAULT 0.0,
 
     -- Storage Metrics
     tablet_count BIGINT NOT NULL DEFAULT 0,

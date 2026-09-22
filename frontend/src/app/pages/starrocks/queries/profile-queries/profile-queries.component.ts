@@ -149,7 +149,7 @@ export class ProfileQueriesComponent implements OnInit, OnDestroy {
   // Graph direction: 'BT' (bottom-to-top) or 'LR' (left-to-right)
   graphDirection: "BT" | "LR" = "BT";
 
-  // Data flow animation (enabled by default)
+  // Visualize plan data flow by default; it does not indicate that a saved query is still running.
   isFlowAnimationEnabled = true;
 
   // Node detail view state (when a node is selected)

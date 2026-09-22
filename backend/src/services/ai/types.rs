@@ -70,6 +70,7 @@ pub struct ChatCompletion {
     pub content: Option<String>,
     pub tool_calls: Vec<ToolCallDelta>,
     pub usage_tokens: i64,
+    pub finish_reason: Option<String>,
 }
 
 /// One recorded step of the agent run (TraceStep-like event model).

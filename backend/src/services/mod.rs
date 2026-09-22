@@ -32,6 +32,9 @@ pub mod system_function_service;
 pub mod user_role_service;
 pub mod user_service;
 
+#[cfg(test)]
+mod tests;
+
 pub use agent_runtime::AgentRuntimeService;
 pub use audit_log_service::{AuditLogService, SlowQuery, TopTableByAccess};
 pub use auth_service::AuthService;

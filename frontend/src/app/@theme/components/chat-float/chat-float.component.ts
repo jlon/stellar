@@ -3,18 +3,18 @@ import { TranslatePipe } from '@ngx-translate/core';
 //! 全局助手入口：离开全量助手页后保留右下角图标，点击展开 Nebular 右侧抽屉。
 //! 抽屉复用 AgentService 与 AgentChatService，不另建会话或流式通道。
 
-import { ChangeDetectorRef, Component, HostBinding, Input, OnInit, OnDestroy, booleanAttribute, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, HostBinding, HostListener, Input, OnDestroy, OnInit, booleanAttribute, inject } from '@angular/core';
 import { NavigationEnd, Router } from '@angular/router';
 
 import { FormsModule } from '@angular/forms';
 import { Subject } from 'rxjs';
 import { filter, takeUntil } from 'rxjs/operators';
-import { NbButtonModule, NbCardModule, NbIconModule, NbInputModule, NbSelectModule, NbSidebarService, NbTooltipModule } from '@nebular/theme';
+import { NbButtonModule, NbIconModule, NbInputModule, NbSidebarService, NbTooltipModule } from '@nebular/theme';
 import { NbEvaIconsModule } from '@nebular/eva-icons';
 import { NbToastrModule } from '@nebular/theme';
 import { NbToastrService } from '@nebular/theme';
 import { MarkdownModule } from 'ngx-markdown';
-import { AgentService, AgentSession, AgentMessage, ChatActionRequest } from '../../../@core/data/agent.service';
+import { AgentService, AgentSession, ChatActionRequest } from '../../../@core/data/agent.service';
 import { AgentChatService } from '../../../@core/data/agent-chat.service';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
 import { AiIllustrationComponent } from '../ai-illustration/ai-illustration.component';
@@ -47,9 +47,7 @@ const ASSISTANT_ROUTE = '/pages/cluster-ops/agent';
     NbIconModule,
     NbButtonModule,
     NbInputModule,
-    NbSelectModule,
     NbTooltipModule,
-    NbCardModule,
     NbEvaIconsModule,
     NbToastrModule,
     MarkdownModule,
@@ -64,9 +62,21 @@ export class ChatFloatComponent implements OnInit, OnDestroy {
   @HostBinding('class.launcher-mode') get launcherMode(): boolean {
     return !this.drawer;
   }
+  @HostBinding('style.left') get launcherLeft(): string | null {
+    return this.launcherPosition ? `${this.launcherPosition.left}px` : null;
+  }
+  @HostBinding('style.top') get launcherTop(): string | null {
+    return this.launcherPosition ? `${this.launcherPosition.top}px` : null;
+  }
+  @HostBinding('style.right') get launcherRight(): string | null {
+    return this.launcherPosition ? 'auto' : null;
+  }
+  @HostBinding('style.bottom') get launcherBottom(): string | null {
+    return this.launcherPosition ? 'auto' : null;
+  }
 
-  private agentService = inject(AgentService)
-  private i18n = inject(I18nService);;
+  private agentService = inject(AgentService);
+  private i18n = inject(I18nService);
   private chatService = inject(AgentChatService);
   private router = inject(Router);
   private sidebarService = inject(NbSidebarService);
@@ -79,7 +89,16 @@ export class ChatFloatComponent implements OnInit, OnDestroy {
   /** 无 agent 权限或仍在全量助手页时，不显示右下角入口。 */
   visible = false;
   open = false;
+  /** 轨道默认收起；展开后呈现当前集群的历史会话。 */
+  historyExpanded = false;
   private drawerOpen = false;
+  private launcherDismissed = false;
+  private launcherPosition: { left: number; top: number } | null = null;
+  private launcherDrag: { pointerId: number; startX: number; startY: number; left: number; top: number } | null = null;
+  private launcherDragMoved = false;
+  private suppressLauncherClick = false;
+  private readonly launcherDiameter = 60;
+  private readonly launcherInset = 20;
   private currentCluster: Cluster | null = null;
   clusterName = '';
   sessions: AgentSession[] = [];
@@ -171,7 +190,10 @@ export class ChatFloatComponent implements OnInit, OnDestroy {
 
   private updateLauncherVisibility(): void {
     const isAssistantPage = this.router.url.split('?')[0] === ASSISTANT_ROUTE;
-    this.visible = this.permissionService.hasPermission('menu:agent') && !isAssistantPage && !this.drawerOpen;
+    this.visible = this.permissionService.hasPermission('menu:agent')
+      && !isAssistantPage
+      && !this.drawerOpen
+      && !this.launcherDismissed;
     if (isAssistantPage) {
       this.sidebarService.collapse(ASSISTANT_DRAWER_TAG);
     }
@@ -215,12 +237,111 @@ export class ChatFloatComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** 仅抽屉展开时响应外部点击；overlay 属于当前交互的一部分，不触发收起。 */
+  @HostListener('document:pointerdown', ['$event'])
+  onDocumentPointerDown(event: PointerEvent): void {
+    if (!this.drawer || !this.open || !(event.target instanceof Node)) {
+      return;
+    }
+    const sidebar = document.querySelector<HTMLElement>('nb-sidebar.assistant-drawer');
+    if (sidebar?.contains(event.target)) {
+      return;
+    }
+    const target = event.target instanceof Element ? event.target : event.target.parentElement;
+    if (target?.closest('.cdk-overlay-container, nb-overlay-container')) {
+      return;
+    }
+    this.closeDrawer();
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    if (this.drawer && this.open) {
+      this.closeDrawer();
+    }
+  }
+
+  onLauncherPointerDown(event: PointerEvent): void {
+    if (this.drawer || event.button !== 0 || !(event.currentTarget instanceof HTMLElement)) {
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    this.launcherDrag = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      left: rect.left,
+      top: rect.top,
+    };
+    this.launcherDragMoved = false;
+    this.suppressLauncherClick = false;
+  }
+
+  @HostListener('document:pointermove', ['$event'])
+  onLauncherPointerMove(event: PointerEvent): void {
+    const drag = this.launcherDrag;
+    if (!drag || event.pointerId !== drag.pointerId) {
+      return;
+    }
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (!this.launcherDragMoved && Math.hypot(deltaX, deltaY) < 4) {
+      return;
+    }
+    event.preventDefault();
+    this.launcherDragMoved = true;
+    this.launcherPosition = this.clampLauncherPosition(drag.left + deltaX, drag.top + deltaY);
+  }
+
+  @HostListener('document:pointerup', ['$event'])
+  @HostListener('document:pointercancel', ['$event'])
+  onLauncherPointerEnd(event: PointerEvent): void {
+    const drag = this.launcherDrag;
+    if (!drag || event.pointerId !== drag.pointerId) {
+      return;
+    }
+    this.suppressLauncherClick = this.launcherDragMoved;
+    this.launcherDragMoved = false;
+    this.launcherDrag = null;
+  }
+
+  @HostListener('window:resize')
+  onViewportResize(): void {
+    if (this.launcherPosition) {
+      this.launcherPosition = this.clampLauncherPosition(this.launcherPosition.left, this.launcherPosition.top);
+    }
+  }
+
+  private clampLauncherPosition(left: number, top: number): { left: number; top: number } {
+    const maxLeft = Math.max(this.launcherInset, window.innerWidth - this.launcherDiameter - this.launcherInset);
+    const maxTop = Math.max(this.launcherInset, window.innerHeight - this.launcherDiameter - this.launcherInset);
+    return {
+      left: Math.min(maxLeft, Math.max(this.launcherInset, left)),
+      top: Math.min(maxTop, Math.max(this.launcherInset, top)),
+    };
+  }
+
   openDrawer(): void {
+    if (this.suppressLauncherClick) {
+      this.suppressLauncherClick = false;
+      return;
+    }
     this.sidebarService.expand(ASSISTANT_DRAWER_TAG);
+  }
+
+  dismissLauncher(event: Event): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.launcherDismissed = true;
+    this.visible = false;
   }
 
   closeDrawer(): void {
     this.sidebarService.collapse(ASSISTANT_DRAWER_TAG);
+  }
+
+  toggleHistory(): void {
+    this.historyExpanded = !this.historyExpanded;
   }
 
   /** 高风险动作只在完整助手中确认，浮窗只负责提醒和跳转。 */
@@ -230,14 +351,6 @@ export class ChatFloatComponent implements OnInit, OnDestroy {
     this.router.navigate(['/pages/cluster-ops/agent'], {
       queryParams: session ? { session } : undefined,
     });
-  }
-
-  onSessionChange(id: number | null): void {
-    if (id === null) {
-      this.newSession();
-    } else {
-      this.selectSession(id);
-    }
   }
 
   newSession(): void {

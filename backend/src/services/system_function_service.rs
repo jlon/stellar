@@ -471,16 +471,19 @@ impl<DB: AppDb> SystemFunctionService<DB> {
 /// - `/cluster_balance` reads TabletScheduler/TabletChecker (local replica balance,
 ///   shared-nothing only; shared-data has no local tablet replicas)
 /// - `/compute_nodes` is the CN listing (shared-data only; shared-nothing clusters
-///   have no CNs, `/backends` covers nodes there)
+///   have no CNs); `/backends` enumerates only BE nodes (shared-nothing only)
+/// - `/warehouses` always exposes the default warehouse; `/colocation_group` supports
+///   both local replica and Lake/StarOS colocate metadata
 ///
 /// Everything else works in both modes.
-fn function_supports_mode(function_name: &str, mode: DeploymentMode) -> bool {
+pub(crate) fn function_supports_mode(function_name: &str, mode: DeploymentMode) -> bool {
     let name = function_name.trim();
     match name {
         "compactions" | "replications" | "historical_nodes" | "compute_nodes" => {
             mode == DeploymentMode::SharedData
         },
         "cluster_balance" => mode == DeploymentMode::SharedNothing,
+        "backends" => mode == DeploymentMode::SharedNothing,
         _ => true,
     }
 }

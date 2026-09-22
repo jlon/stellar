@@ -1,4 +1,4 @@
-/* 主题变量映射（深浅主题自动适配）+ SVG 动效 */
+/* 主题变量映射（深浅主题自动适配）+ 静态 SVG */
 :host {
   --illu-accent: var(--color-primary-400);
   --illu-accent-2: var(--color-info-300);
@@ -18,93 +18,7 @@
   overflow: visible;
 }
 
-/* ---------- 动效 ---------- */
-
-/* 悬浮元素缓浮（错峰 via inline delay） */
-.illu-float {
-  animation: illu-float 3.4s ease-in-out infinite;
-}
-@keyframes illu-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-7px); }
-}
-
-/* 数据点脉冲 */
-.illu-pulse {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: illu-pulse 2.1s ease-in-out infinite;
-}
-@keyframes illu-pulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.3); opacity: 0.6; }
-}
-
-/* 折线描画循环 */
+/* 图表线在静态空态中完整可见。 */
 .illu-line {
-  stroke-dasharray: 200;
-  stroke-dashoffset: 200;
-  animation: illu-line 3s ease-in-out infinite;
-}
-@keyframes illu-line {
-  0% { stroke-dashoffset: 200; }
-  55% { stroke-dashoffset: 0; }
-  100% { stroke-dashoffset: -200; }
-}
-
-/* 进度条增长循环 */
-.illu-progress {
-  animation: illu-progress 2.6s ease-in-out infinite;
-}
-@keyframes illu-progress {
-  0%, 100% { width: 30px; }
-  50% { width: 52px; }
-}
-
-/* 装饰星点闪烁 */
-.illu-twinkle {
-  animation: illu-twinkle 2.6s ease-in-out infinite;
-}
-@keyframes illu-twinkle {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.25; }
-}
-
-/* 浮窗：光点沿折线移动（往返） */
-.illu-dot-travel {
-  transform-box: fill-box;
-  animation: illu-travel 3.2s ease-in-out infinite;
-}
-@keyframes illu-travel {
-  0%, 100% { transform: translate(0, 0); opacity: 0.9; }
-  50% { transform: translate(176px, -12px); opacity: 0.3; }
-}
-
-/* 机器人眨眼（低频，轻巧） */
-.illu-blink {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: illu-blink 4.6s ease-in-out infinite;
-}
-@keyframes illu-blink {
-  0%, 90%, 100% { transform: scaleY(1); }
-  93%, 96% { transform: scaleY(0.08); }
-}
-
-/* 打字点依次闪烁 */
-.illu-typing {
-  animation: illu-typing 1.4s ease-in-out infinite;
-}
-@keyframes illu-typing {
-  0%, 100% { opacity: 0.25; }
-  50% { opacity: 1; }
-}
-
-/* 额头灯 / 天线端部发光 */
-.illu-lamp {
-  animation: illu-lamp 2.8s ease-in-out infinite;
-}
-@keyframes illu-lamp {
-  0%, 100% { opacity: 0.55; }
-  50% { opacity: 1; }
+  stroke-dashoffset: 0;
 }

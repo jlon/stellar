@@ -9,7 +9,6 @@ import { persistTheme } from '../../styles/theme-preference';
 import { map, takeUntil, filter } from 'rxjs/operators';
 import { Subject } from 'rxjs';
 
-import { TranslatePipe } from '@ngx-translate/core';
 import { ClusterSelectorComponent } from '../cluster-selector/cluster-selector.component';
 import { NotificationBellComponent } from './notification-bell.component';
 import { NbSecurityModule } from '@nebular/security';
@@ -20,7 +19,6 @@ import { NbSecurityModule } from '@nebular/security';
     templateUrl: './header.component.html',
     imports: [
     NbIconModule,
-    TranslatePipe,
     NbSelectModule,
     NbOptionModule,
     ClusterSelectorComponent,

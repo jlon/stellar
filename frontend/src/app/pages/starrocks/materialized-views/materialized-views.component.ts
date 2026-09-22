@@ -47,8 +47,6 @@ import { FormsModule } from '@angular/forms';
     NbFormFieldModule,
     NbTooltipModule,
     MarkdownModule,
-    BadgeRenderComponent,
-    ActiveToggleRenderComponent
 ],
 })
 export class MaterializedViewsComponent implements OnInit, OnDestroy {

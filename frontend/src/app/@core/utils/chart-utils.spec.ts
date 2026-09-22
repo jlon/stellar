@@ -30,7 +30,7 @@ describe('Chart Utils', () => {
      * Validates: Requirements 2.2, 3.1, 3.2
      */
     it('Property 1: should correctly infer numeric type for all-numeric arrays', () => {
-      fc.assert(
+      expect(() => fc.assert(
         fc.property(
           fc.array(fc.double({ min: -1e10, max: 1e10, noNaN: true }), { minLength: 1, maxLength: 20 }),
           (numbers) => {
@@ -39,11 +39,11 @@ describe('Chart Utils', () => {
           }
         ),
         { numRuns: 20 }
-      );
+      )).not.toThrow();
     });
 
     it('Property 1: should correctly infer text type for arrays with non-numeric values', () => {
-      fc.assert(
+      expect(() => fc.assert(
         fc.property(
           fc.array(fc.string({ minLength: 1 }), { minLength: 1, maxLength: 20 }),
           (strings) => {
@@ -55,7 +55,7 @@ describe('Chart Utils', () => {
           }
         ),
         { numRuns: 20 }
-      );
+      )).not.toThrow();
     });
   });
 
@@ -104,7 +104,7 @@ describe('Chart Utils', () => {
      * Validates: Requirements 4.1, 4.2, 4.5
      */
     it('Property 2: should always return at most 20 data points', () => {
-      fc.assert(
+      expect(() => fc.assert(
         fc.property(
           fc.array(fc.array(fc.string(), { minLength: 1, maxLength: 5 }), { minLength: 1, maxLength: 50 }),
           (rows) => {
@@ -114,11 +114,11 @@ describe('Chart Utils', () => {
           }
         ),
         { numRuns: 20 }
-      );
+      )).not.toThrow();
     });
 
     it('Property 2: should always return sorted results in descending order', () => {
-      fc.assert(
+      expect(() => fc.assert(
         fc.property(
           fc.array(fc.array(fc.string({ minLength: 1 }), { minLength: 1, maxLength: 3 }), { minLength: 1, maxLength: 30 }),
           (rows) => {
@@ -131,11 +131,11 @@ describe('Chart Utils', () => {
           }
         ),
         { numRuns: 20 }
-      );
+      )).not.toThrow();
     });
 
     it('Property 2: COUNT aggregation should equal total row count', () => {
-      fc.assert(
+      expect(() => fc.assert(
         fc.property(
           fc.array(fc.array(fc.constantFrom('a', 'b', 'c'), { minLength: 1, maxLength: 1 }), { minLength: 1, maxLength: 30 }),
           (rows) => {
@@ -145,7 +145,7 @@ describe('Chart Utils', () => {
           }
         ),
         { numRuns: 20 }
-      );
+      )).not.toThrow();
     });
   });
 });

@@ -408,3 +408,26 @@ ngx-register nb-alert {
     padding: 2rem 1.5rem;
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  ngx-register .visual-orb,
+  ngx-register .brand-ring__pulse,
+  ngx-register .visual-hero-img,
+  ngx-register .brand-row,
+  ngx-register .brand-tagline,
+  ngx-register .visual-metrics,
+  ngx-register .register-panel,
+  ngx-register .panel-header .title,
+  ngx-register .panel-header .sub-title,
+  ngx-register form,
+  ngx-register .another-action,
+  ngx-register nb-alert {
+    animation: none;
+  }
+
+  ngx-register input[nbInput],
+  ngx-register button[nbButton][status='primary'],
+  ngx-register .avatar-option {
+    transition: none !important;
+  }
+}

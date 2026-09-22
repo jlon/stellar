@@ -38,11 +38,12 @@
       box-sizing: border-box;
     }
 
-    > .main-container {
+    > .main-container.main-container-fixed {
       // Nebular 给 fixed sidebar 的内部容器也加 fixed，百分比宽度会以视口
       // 计算而撑破抽屉。让它相对外层 fixed sidebar 定位即可。
       position: absolute;
       inset: 0;
+      top: 0 !important;
       width: auto;
       height: auto;
     }

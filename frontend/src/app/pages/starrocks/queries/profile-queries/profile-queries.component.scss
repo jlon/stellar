@@ -355,10 +355,10 @@
     }
   }
 
-  // Top 1 Node (RED) - Most time consuming with pulse glow effect
+  // Top 1 node is a historical ranking, not a live alert.
   &.is-top-1 {
     border-color: var(--color-danger-default);
-    animation: pulseGlow 2s ease-in-out infinite;
+    box-shadow: 0 6px 14px var(--color-danger-transparent-300);
 
     .node-header.header-red {
       // SIMPLIFIED: Solid color for crisp rendering
@@ -379,21 +379,6 @@
     .node-bottom-progress .progress-bar {
       // SIMPLIFIED: Solid color for crisp rendering
       background: var(--color-danger-default) !important;
-    }
-  }
-
-  // Pulse glow animation for Top 1 node
-  @keyframes pulseGlow {
-    0%,
-    100% {
-      box-shadow:
-        0 6px 14px var(--color-danger-transparent-300),
-        0 0 0 0 var(--color-danger-transparent-500);
-    }
-    50% {
-      box-shadow:
-        0 8px 20px var(--color-danger-transparent-400),
-        0 0 0 8px transparent;
     }
   }
 
@@ -465,6 +450,13 @@
     stroke-dashoffset: 16;
   }
   100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .edges-svg .edge-flow {
+    animation: none;
     stroke-dashoffset: 0;
   }
 }
@@ -1543,6 +1535,12 @@
       }
       to {
         transform: rotate(360deg);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .llm-loading-badge .spin {
+        animation: none;
       }
     }
 

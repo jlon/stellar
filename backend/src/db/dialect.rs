@@ -42,7 +42,7 @@ macro_rules! impl_string_backed_db_type {
             String: ::sqlx::Decode<'r, DB>,
         {
             fn decode(
-                value: <DB as ::sqlx::database::HasValueRef<'r>>::ValueRef,
+                value: <DB as ::sqlx::Database>::ValueRef<'r>,
             ) -> ::std::result::Result<
                 Self,
                 ::std::boxed::Box<dyn ::std::error::Error + Send + Sync>,
@@ -59,8 +59,11 @@ macro_rules! impl_string_backed_db_type {
         {
             fn encode_by_ref(
                 &self,
-                buf: &mut <DB as ::sqlx::database::HasArguments<'q>>::ArgumentBuffer,
-            ) -> ::sqlx::encode::IsNull {
+                buf: &mut <DB as ::sqlx::Database>::ArgumentBuffer<'q>,
+            ) -> ::std::result::Result<
+                ::sqlx::encode::IsNull,
+                ::std::boxed::Box<dyn ::std::error::Error + Send + Sync>,
+            > {
                 self.to_string().encode_by_ref(buf)
             }
         }

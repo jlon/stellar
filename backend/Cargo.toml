@@ -35,7 +35,7 @@ tokio = { version = "1", features = ["full"] }
 
 # Database
 # 同时启用 sqlite、mysql 与 postgres，运行时按 database.url 协议选择后端（见 db 模块）
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "mysql", "postgres", "migrate", "chrono"] }
+sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "sqlite", "mysql", "postgres", "migrate", "chrono"] }
 mysql_async = "0.34"
 
 # Serialization

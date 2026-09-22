@@ -1,3 +1,5 @@
+@use 'sass:map';
+
 @import '@nebular/theme/styles/theming';
 @import '@nebular/theme/styles/themes';
 
@@ -48,7 +50,7 @@ $stellar-auth-vars: (
   stellar-auth-grid-line: rgba(255, 255, 255, 0.05),
 );
 
-$nb-themes: nb-register-theme(map-merge((
+$nb-themes: nb-register-theme(map.merge((
   layout-padding-top: 2.25rem,
 
   menu-item-icon-margin: 0 0.5rem 0 0,
@@ -93,7 +95,7 @@ $nb-themes: nb-register-theme(map-merge((
   slide-out-shadow-color-rtl: 0 4px 14px 0 #8f9bb3,
 ), $stellar-auth-vars), default, default);
 
-$nb-themes: nb-register-theme(map-merge((
+$nb-themes: nb-register-theme(map.merge((
   layout-padding-top: 2.25rem,
 
   menu-item-icon-margin: 0 0.5rem 0 0,
@@ -142,7 +144,7 @@ $nb-themes: nb-register-theme(map-merge((
   scrollbar-background-color: rgba(255, 255, 255, 0.08),
 ), $stellar-auth-vars), cosmic, cosmic);
 
-$nb-themes: nb-register-theme(map-merge((
+$nb-themes: nb-register-theme(map.merge((
   layout-padding-top: 2.25rem,
 
   menu-item-icon-margin: 0 0.5rem 0 0,
@@ -187,7 +189,7 @@ $nb-themes: nb-register-theme(map-merge((
   slide-out-shadow-color-rtl: 0 4px 14px 0 #8f9bb3,
 ), $stellar-auth-vars), corporate, corporate);
 
-$nb-themes: nb-register-theme(map-merge((
+$nb-themes: nb-register-theme(map.merge((
   layout-padding-top: 2.25rem,
 
   menu-item-icon-margin: 0 0.5rem 0 0,

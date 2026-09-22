@@ -1980,8 +1980,8 @@ mod tests {
                 cluster_id, collected_at, qps, query_latency_p99,
                 backend_total, backend_alive, frontend_total, frontend_alive,
                 avg_cpu_usage, disk_total_bytes, disk_used_bytes, disk_usage_pct,
-                max_compaction_score, load_running
-            ) VALUES (1, ?, 1.0, 10.0, ?, ?, ?, ?, ?, 1000, ?, ?, ?, 0)
+                max_disk_usage_pct, max_compaction_score, load_running
+            ) VALUES (1, ?, 1.0, 10.0, ?, ?, ?, ?, ?, 1000, ?, ?, ?, ?, 0)
             "#,
         )
         .bind(Utc::now())
@@ -1991,6 +1991,7 @@ mod tests {
         .bind(fe_online)
         .bind(avg_cpu_usage)
         .bind(used)
+        .bind(disk_usage_pct)
         .bind(disk_usage_pct)
         .bind(compaction_score)
         .execute(pool)

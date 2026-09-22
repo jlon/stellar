@@ -11,19 +11,19 @@
       </defs>
       <!-- 背景柔光 -->
       <!-- 可爱小机器人（整体缓浮） -->
-      <g class="illu-float">
+      <g>
         <!-- 底座阴影 -->
         <ellipse cx="162" cy="198" rx="46" ry="9" fill="var(--illu-accent)" fill-opacity="0.12"/>
         <!-- 天线 -->
         <path d="M178 62 Q186 50 196 49" stroke="var(--illu-accent)" stroke-width="4" stroke-linecap="round" fill="none"/>
-        <circle class="illu-lamp" cx="198" cy="47" r="6" fill="var(--illu-accent)"/>
-        <circle class="illu-lamp" style="animation-delay:.9s" cx="198" cy="47" r="11" stroke="var(--illu-accent)" stroke-opacity="0.35" stroke-width="2" fill="none"/>
+        <circle cx="198" cy="47" r="6" fill="var(--illu-accent)"/>
+        <circle cx="198" cy="47" r="11" stroke="var(--illu-accent)" stroke-opacity="0.35" stroke-width="2" fill="none"/>
         <!-- 头 -->
         <rect x="126" y="62" width="90" height="82" rx="32" fill="url(#cB)"/>
         <!-- 额头灯 -->
-        <circle class="illu-lamp" style="animation-delay:.4s" cx="171" cy="78" r="4" fill="#fff" fill-opacity="0.9"/>
+        <circle cx="171" cy="78" r="4" fill="#fff" fill-opacity="0.9"/>
         <!-- 眼（白底+主瞳+高光，带眨眼动画） -->
-        <g class="illu-blink">
+        <g>
           <ellipse cx="152" cy="98" rx="11" ry="13" fill="#fff"/>
           <circle cx="154" cy="99" r="6.5" fill="var(--illu-accent)" />
           <circle cx="156.5" cy="96.5" r="2.2" fill="#fff"/>
@@ -40,32 +40,32 @@
         <rect x="136" y="146" width="70" height="46" rx="20" fill="var(--illu-card)" stroke="var(--illu-accent)" stroke-opacity="0.5" stroke-width="2.2"/>
         <!-- 前胸屏幕：迷你仪表（一个斜率小信号） -->
         <rect x="152" y="156" width="38" height="24" rx="8" fill="var(--illu-soft)" fill-opacity="0.7"/>
-        <path class="illu-line" style="animation-duration:2.4s" d="M158 174 L164 168 L170 172 L180 162" stroke="url(#cB)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-        <circle class="illu-pulse" cx="180" cy="162" r="3.4" fill="var(--illu-accent)"/>
+        <path class="illu-line" d="M158 174 L164 168 L170 172 L180 162" stroke="url(#cB)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <circle cx="180" cy="162" r="3.4" fill="var(--illu-accent)"/>
         <!-- 臂（圆点手） -->
         <circle cx="122" cy="158" r="8" fill="var(--illu-card)" stroke="var(--illu-accent)" stroke-opacity="0.55" stroke-width="2.4"/>
         <circle cx="220" cy="158" r="8" fill="var(--illu-card)" stroke="var(--illu-accent)" stroke-opacity="0.55" stroke-width="2.4"/>
       </g>
       <!-- 左：对话气泡（打字点动画） -->
-      <g class="illu-float" style="animation-delay:.35s">
+      <g>
         <path d="M74 92 L96 88 L88 100" fill="var(--illu-card)" stroke="var(--illu-line)" stroke-width="1.4" stroke-linejoin="round"/>
         <rect x="60" y="64" width="88" height="52" rx="18" fill="var(--illu-card)" stroke="var(--illu-line)" stroke-width="1.6"/>
-        <circle class="illu-typing" cx="80" cy="90" r="5" fill="var(--illu-accent)"/>
-        <circle class="illu-typing" style="animation-delay:.22s" cx="100" cy="90" r="5" fill="var(--illu-accent)"/>
-        <circle class="illu-typing" style="animation-delay:.44s" cx="120" cy="90" r="5" fill="var(--illu-accent)"/>
+        <circle cx="80" cy="90" r="5" fill="var(--illu-accent)"/>
+        <circle cx="100" cy="90" r="5" fill="var(--illu-accent)"/>
+        <circle cx="120" cy="90" r="5" fill="var(--illu-accent)"/>
       </g>
       <!-- 右：悬浮小卡（集群节点） -->
-      <g class="illu-float" style="animation-delay:.6s">
+      <g>
         <rect x="236" y="100" width="58" height="46" rx="15" fill="var(--illu-card)" stroke="var(--illu-line)" stroke-width="1.4"/>
         <rect x="246" y="108" width="30" height="5" rx="2.5" fill="var(--illu-soft)"/>
-        <circle class="illu-pulse" style="animation-delay:1s" cx="251" cy="126" r="6" fill="var(--illu-ok)"/>
+        <circle cx="251" cy="126" r="6" fill="var(--illu-ok)"/>
         <circle cx="267" cy="126" r="6" fill="var(--illu-ok)"/>
         <circle cx="283" cy="126" r="6" fill="var(--illu-ok)"/>
       </g>
       <!-- 装饰 -->
-      <circle class="illu-twinkle" cx="86" cy="150" r="3.5" fill="var(--illu-accent-2)"/>
-      <circle class="illu-twinkle" style="animation-delay:1.1s" cx="256" cy="72" r="3" fill="var(--illu-accent)"/>
-      <circle class="illu-twinkle" style="animation-delay:1.6s" cx="112" cy="44" r="2.6" fill="var(--illu-accent-2)"/>
+      <circle cx="86" cy="150" r="3.5" fill="var(--illu-accent-2)"/>
+      <circle cx="256" cy="72" r="3" fill="var(--illu-accent)"/>
+      <circle cx="112" cy="44" r="2.6" fill="var(--illu-accent-2)"/>
     </svg>
   }
   <!-- ============ 事件中心：渐变铃铛 + 心跳 ============ -->
@@ -77,7 +77,7 @@
           <stop offset="1" stop-color="var(--illu-accent-2)"/>
         </linearGradient>
       </defs>
-      <g class="illu-float">
+      <g>
         <!-- 铃身 -->
         <path d="M108 96 Q108 66 160 66 Q212 66 212 96" fill="var(--illu-card)" stroke="url(#iB)" stroke-width="3.2" stroke-linejoin="round"/>
         <path d="M118 96 L132 78 L188 78 L202 96 Z" fill="var(--illu-accent)" fill-opacity="0.16"/>
@@ -87,16 +87,16 @@
       </g>
       <!-- 心跳线 -->
       <path d="M74 156 L104 156 L116 138 L128 170 L140 146 L154 156 L246 156" fill="none" stroke="url(#iB)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="illu-line"/>
-      <circle class="illu-pulse" cx="128" cy="170" r="5" fill="var(--illu-accent)"/>
+      <circle cx="128" cy="170" r="5" fill="var(--illu-accent)"/>
       <!-- 悬浮卡：事件数 -->
-      <g class="illu-float" style="animation-delay:.5s">
+      <g>
         <rect x="222" y="70" width="66" height="40" rx="13" fill="var(--illu-card)" stroke="var(--illu-line)" stroke-width="1.4"/>
         <rect x="232" y="80" width="30" height="5" rx="2.5" fill="var(--illu-soft)"/>
-        <circle class="illu-pulse" cx="270" cy="88" r="6" fill="var(--illu-warn)"/>
+        <circle cx="270" cy="88" r="6" fill="var(--illu-warn)"/>
         <rect x="232" y="93" width="22" height="5" rx="2.5" fill="var(--illu-soft)"/>
       </g>
-      <circle class="illu-twinkle" cx="96" cy="60" r="3.5" fill="var(--illu-accent-2)"/>
-      <circle class="illu-twinkle" style="animation-delay:1.2s" cx="248" cy="152" r="3" fill="var(--illu-accent)"/>
+      <circle cx="96" cy="60" r="3.5" fill="var(--illu-accent-2)"/>
+      <circle cx="248" cy="152" r="3" fill="var(--illu-accent)"/>
     </svg>
   }
   <!-- ============ 会话：层叠玻璃卡片 + 新建 ============ -->
@@ -109,30 +109,30 @@
         </linearGradient>
       </defs>
       <!-- 层叠卡 1 -->
-      <g class="illu-float" style="animation-delay:0s">
+      <g>
         <rect x="118" y="150" width="132" height="44" rx="14" fill="var(--illu-card)" stroke="var(--illu-line)" stroke-width="1.4" opacity="0.6"/>
         <circle cx="136" cy="172" r="6.5" fill="var(--illu-accent)" fill-opacity="0.35"/>
       </g>
       <!-- 层叠卡 2 -->
-      <g class="illu-float" style="animation-delay:.3s">
+      <g>
         <rect x="104" y="122" width="144" height="44" rx="14" fill="var(--illu-card)" stroke="var(--illu-line)" stroke-width="1.4" opacity="0.8"/>
         <circle cx="122" cy="144" r="6.5" fill="var(--illu-accent)" fill-opacity="0.55"/>
       </g>
       <!-- 主卡 -->
-      <g class="illu-float" style="animation-delay:.55s">
+      <g>
         <rect x="88" y="92" width="158" height="48" rx="15" fill="var(--illu-card)" stroke="var(--illu-line)" stroke-width="1.6"/>
-        <circle class="illu-pulse" cx="108" cy="116" r="8" fill="var(--illu-accent)"/>
+        <circle cx="108" cy="116" r="8" fill="var(--illu-accent)"/>
         <path d="M105 116 L108 119 L112 113" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
         <rect x="124" y="106" width="66" height="6" rx="3" fill="var(--illu-accent)" fill-opacity="0.5"/>
         <rect x="124" y="120" width="42" height="5" rx="2.5" fill="var(--illu-soft)"/>
       </g>
       <!-- 新建按钮 -->
-      <g class="illu-pulse" style="animation-delay:.9s">
+      <g>
         <circle cx="248" cy="86" r="20" fill="var(--illu-card)" stroke="url(#sB)" stroke-width="2.6"/>
         <path d="M248 78.5 V93.5 M240.5 86 H255.5" stroke="url(#sB)" stroke-width="2.6" stroke-linecap="round"/>
       </g>
-      <circle class="illu-twinkle" cx="78" cy="60" r="3.5" fill="var(--illu-accent-2)"/>
-      <circle class="illu-twinkle" style="animation-delay:1.1s" cx="252" cy="160" r="3" fill="var(--illu-accent)"/>
+      <circle cx="78" cy="60" r="3.5" fill="var(--illu-accent-2)"/>
+      <circle cx="252" cy="160" r="3" fill="var(--illu-accent)"/>
     </svg>
   }
   <!-- ============ 浮窗：迷你聊天窗 + 发送光点 ============ -->
@@ -145,7 +145,7 @@
         </linearGradient>
       </defs>
       <!-- 迷你窗 -->
-      <g class="illu-float">
+      <g>
         <rect x="74" y="66" width="172" height="108" rx="20" fill="var(--illu-card)" stroke="var(--illu-line)" stroke-width="1.6"/>
         <rect x="74" y="66" width="172" height="26" rx="20" fill="var(--illu-accent)" fill-opacity="0.07"/>
         <circle cx="90" cy="79" r="4" fill="var(--illu-accent)"/>
@@ -159,16 +159,16 @@
         <rect x="170" y="146" width="40" height="5" rx="2.5" fill="#fff" fill-opacity="0.85"/>
       </g>
       <!-- 发送光点 -->
-      <g class="illu-dot-travel">
+      <g>
         <circle cx="78" cy="136" r="5" fill="var(--illu-accent)"/>
       </g>
       <!-- 圆形按钮 -->
-      <g class="illu-pulse" style="animation-delay:.7s">
+      <g>
         <circle cx="252" cy="160" r="16" fill="var(--illu-accent)"/>
         <path d="M247 158 L252 153 L257 158" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
       </g>
-      <circle class="illu-twinkle" cx="92" cy="52" r="3.5" fill="var(--illu-accent-2)"/>
-      <circle class="illu-twinkle" style="animation-delay:1.1s" cx="262" cy="104" r="3" fill="var(--illu-accent)"/>
+      <circle cx="92" cy="52" r="3.5" fill="var(--illu-accent-2)"/>
+      <circle cx="262" cy="104" r="3" fill="var(--illu-accent)"/>
     </svg>
   }
 }

@@ -5,6 +5,7 @@
 
 use chrono::Utc;
 use serde::Serialize;
+use serde_json::Value;
 use sqlx::Row;
 use stellar_macros::app_impl;
 
@@ -206,6 +207,74 @@ impl<DB: AppDb> AiSessionStore<DB> {
             });
         }
         Ok(out)
+    }
+
+    /// Load the uncompressed chat tail after a checkpoint, without tool trace
+    /// JSON. The existing `(session_id, id)` index keeps this bounded after
+    /// the first compaction.
+    pub async fn load_chat_history_after(
+        &self,
+        session_id: i64,
+        after_message_id: i64,
+    ) -> Result<Vec<MessageRecord>, String> {
+        let rows = db_query::query(
+            "SELECT id, role, content FROM ai_messages \
+             WHERE session_id = ? AND id > ? ORDER BY id",
+        )
+        .bind(session_id)
+        .bind(after_message_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| e.to_string())?;
+        let mut out = Vec::with_capacity(rows.len());
+        for r in &rows {
+            out.push(MessageRecord {
+                id: r.get("id"),
+                role: r.get("role"),
+                content: r.get("content"),
+                steps: Vec::new(),
+                feedback: None,
+            });
+        }
+        Ok(out)
+    }
+
+    /// Load the latest internal context checkpoint. This reuses the existing
+    /// context_json column so compaction does not require a schema migration.
+    pub async fn load_latest_context(&self, session_id: i64) -> Result<Option<String>, String> {
+        let row = db_query::query(
+            "SELECT context_json FROM ai_messages \
+             WHERE session_id = ? AND context_json IS NOT NULL \
+             ORDER BY id DESC LIMIT 1",
+        )
+        .bind(session_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| e.to_string())?;
+        Ok(row.and_then(|r| r.get::<Option<String>, _>("context_json")))
+    }
+
+    /// Attach internal, non-user-visible context metadata to an existing message.
+    pub async fn update_message_context(
+        &self,
+        session_id: i64,
+        message_id: i64,
+        context: &Value,
+    ) -> Result<(), String> {
+        let context_json = serde_json::to_string(context).map_err(|e| e.to_string())?;
+        let updated = db_query::query(
+            "UPDATE ai_messages SET context_json = ? WHERE session_id = ? AND id = ?",
+        )
+        .bind(context_json)
+        .bind(session_id)
+        .bind(message_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| e.to_string())?;
+        if updated.rows_affected() != 1 {
+            return Err("会话消息不存在".to_string());
+        }
+        Ok(())
     }
 
     /// 会话重命名（归属校验由调用方先做）。

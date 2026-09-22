@@ -97,6 +97,12 @@
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .advanced-panel {
+    animation: none;
+  }
+}
+
 .active-filters {
   display: flex;
   flex-wrap: wrap;
