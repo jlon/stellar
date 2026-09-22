@@ -64,6 +64,11 @@
           </nb-list-item>
         }
       </nb-list>
+      @if (!loadingSessions && filteredSessions().length > 0) {
+        <div class="sessions-rail-art" aria-hidden="true">
+          <ngx-ai-illustration kind="sessions"></ngx-ai-illustration>
+        </div>
+      }
       @if (!loadingSessions && sessions.length === 0) {
         <div class="sessions-empty">
           <ngx-ai-illustration kind="sessions" class="sessions-empty-art"></ngx-ai-illustration>
@@ -76,6 +81,17 @@
         </div>
       }
     </nb-card-body>
+    <nb-card-footer class="sessions-footer">
+      <div class="ai-connection-state" [class.configured]="canManageAiConnections && activeAiProvider">
+        <nb-icon [icon]="canManageAiConnections && activeAiProvider ? 'checkmark-circle-2-outline' : 'shield-outline'"></nb-icon>
+        <span>{{ canManageAiConnections ? (activeAiProvider ? activeAiProvider.display_name + ' · ' + activeAiProvider.model_name : ('AI 模型供应商未配置' | translate)) : ('AI 模型供应商由管理员管理' | translate) }}</span>
+      </div>
+      @if (canManageAiConnections) {
+        <button nbButton ghost size="tiny" type="button" (click)="openAiConnections()" [nbTooltip]="'AI 模型供应商' | translate" [attr.aria-label]="'AI 模型供应商' | translate">
+          <nb-icon icon="settings-2-outline"></nb-icon>
+        </button>
+      }
+    </nb-card-footer>
   </nb-card>
 
   <!-- 对话区 -->
@@ -352,14 +368,6 @@
     </nb-card-body>
 
     <nb-card-footer class="chat-input">
-      @if (cluster) {
-        <div id="agent-context" class="chat-context">
-          <nb-icon icon="layers-outline"></nb-icon>
-          <span>{{ '当前上下文' | translate }}：{{ cluster.name }}</span>
-          <span class="context-separator" aria-hidden="true">·</span>
-          <span>{{ cluster.deployment_mode === 'shared_data' ? ('共享数据集群' | translate) : ('本地存储集群' | translate) }}</span>
-        </div>
-      }
       <div class="input-pill">
         <textarea
           class="input-field"
@@ -369,7 +377,6 @@
           (keydown)="onInputKey($event)"
           (input)="autoGrow($event)"
           [disabled]="sending"
-          [attr.aria-describedby]="cluster ? 'agent-context' : null"
         ></textarea>
         @if (!sending) {
           <button class="send-btn" [disabled]="!input.trim()" (click)="send()" [title]="'发送' | translate">

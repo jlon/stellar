@@ -9,7 +9,7 @@ export interface LLMProvider {
   display_name: string;
   api_base: string;
   model_name: string;
-  api_key_masked?: string;  // Masked key for display
+  has_api_key: boolean;
   is_active: boolean;
   enabled: boolean;
   max_tokens: number;

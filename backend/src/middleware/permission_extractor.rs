@@ -51,6 +51,11 @@ pub fn extract_permission(method: &str, uri: &str) -> Option<(String, String)> {
         return Some(("agent".to_string(), extract_agent_action(&segments, method)?));
     }
 
+    // LLM provider configuration is a protected global connection resource.
+    if segments.first() == Some(&"llm") {
+        return Some(("llm".to_string(), extract_llm_action(&segments, method)?));
+    }
+
     // Permission requests are a workflow resource, not an implicit clusters fallback.
     if segments.first() == Some(&"permission-requests") {
         let action =
@@ -185,6 +190,24 @@ fn extract_agent_action(segments: &[&str], method: &str) -> Option<String> {
         (Some("messages"), 4, "POST") if segments.get(3) == Some(&"feedback") => {
             Some("messages:feedback".to_string())
         },
+        _ => None,
+    }
+}
+
+/// Extract action for /api/llm/*.
+fn extract_llm_action(segments: &[&str], method: &str) -> Option<String> {
+    match (segments, method) {
+        (["llm", "status"], "GET") => Some("status".to_string()),
+        (["llm", "providers"], "GET") => Some("providers:list".to_string()),
+        (["llm", "providers"], "POST") => Some("providers:create".to_string()),
+        (["llm", "providers", "active"], "GET") => Some("providers:active".to_string()),
+        (["llm", "providers", _], "GET") => Some("providers:get".to_string()),
+        (["llm", "providers", _], "PUT") => Some("providers:update".to_string()),
+        (["llm", "providers", _], "DELETE") => Some("providers:delete".to_string()),
+        (["llm", "providers", _, "activate"], "POST") => Some("providers:activate".to_string()),
+        (["llm", "providers", _, "deactivate"], "POST") => Some("providers:deactivate".to_string()),
+        (["llm", "providers", _, "test"], "POST") => Some("providers:test".to_string()),
+        (["llm", "analyze", "root-cause"], "POST") => Some("analyze:root-cause".to_string()),
         _ => None,
     }
 }

@@ -117,8 +117,10 @@ impl<DB: AppDb> OpsAgentService<DB> {
         audit_config: AuditLogConfig,
         cluster_service: Arc<ClusterService<DB>>,
         metrics_collector_service: Arc<MetricsCollectorService<DB>>,
+        llm_provider_encryption_key: &str,
     ) -> Self {
-        let provider_repo = LLMRepository::new(pool.clone());
+        let provider_repo =
+            LLMRepository::with_encryption_key(pool.clone(), llm_provider_encryption_key);
         Self {
             pool,
             mysql_pool_manager,
@@ -135,7 +137,7 @@ impl<DB: AppDb> OpsAgentService<DB> {
     /// Whether an enabled LLM provider exists (fail fast with a clear message).
     pub async fn llm_ready(&self) -> bool {
         self.provider_repo
-            .get_active_provider()
+            .get_active_provider_for_use()
             .await
             .map(|p| p.is_some())
             .unwrap_or(false)
@@ -196,11 +198,11 @@ impl<DB: AppDb> OpsAgentService<DB> {
         // 2. Provider + fresh snapshot + tools + agent.
         let provider = self
             .provider_repo
-            .get_active_provider()
+            .get_active_provider_for_use()
             .await
-            .map_err(|e| ApiError::internal_error(format!("读取 LLM Provider 失败: {}", e)))?
+            .map_err(|e| ApiError::internal_error(format!("读取 AI 连接失败: {}", e)))?
             .ok_or_else(|| {
-                ApiError::invalid_data("未配置可用的 LLM Provider（请在系统设置中启用）")
+                ApiError::invalid_data("未配置可用的 AI 连接（请联系管理员在智能助手中配置）")
             })?;
 
         // 3. 首次压缩前读取完整转录；之后只读取 checkpoint 之后的尾部，避免每轮全量读库。
@@ -261,7 +263,7 @@ impl<DB: AppDb> OpsAgentService<DB> {
         sessions: &AiSessionStore<DB>,
         session_id: i64,
         checkpoint_message_id: i64,
-        provider: &crate::services::llm::LLMProvider,
+        provider: &crate::services::llm::ResolvedLLMProvider,
         checkpoint: Option<compaction::CompactionCheckpoint>,
         active_records: Vec<ai::MessageRecord>,
     ) -> Vec<ai::ChatMessage> {
@@ -311,7 +313,7 @@ impl<DB: AppDb> OpsAgentService<DB> {
             },
         ];
         let max_summary_tokens =
-            compaction::SUMMARY_MAX_TOKENS.min(provider.max_tokens.max(1) as u32);
+            compaction::SUMMARY_MAX_TOKENS.min(provider.provider.max_tokens.max(1) as u32);
         let completion = ai::ChatClient::new(provider.clone())
             .chat_with_max_tokens(&summary_messages, None, max_summary_tokens)
             .await;

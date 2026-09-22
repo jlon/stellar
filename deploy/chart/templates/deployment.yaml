@@ -51,6 +51,11 @@ spec:
                 secretKeyRef:
                   name: {{ include "chart.fullname" . }}
                   key: jwt-secret
+            - name: APP_LLM_PROVIDER_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "chart.fullname" . }}
+                  key: llm-provider-encryption-key
           {{- if .Values.livenessProbe.enabled }}
           livenessProbe:
             {{- toYaml (omit .Values.livenessProbe "enabled") | nindent 12 }}

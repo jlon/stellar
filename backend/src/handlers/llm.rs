@@ -4,7 +4,7 @@
 
 use axum::{
     Json,
-    extract::{Path, State},
+    extract::{Extension, Path, State},
     http::StatusCode,
     response::IntoResponse,
 };
@@ -13,6 +13,7 @@ use std::sync::Arc;
 use stellar_macros::app_db;
 
 use crate::AppState;
+use crate::middleware::OrgContext;
 use crate::services::llm::{
     CreateProviderRequest, LLMError, LLMProviderInfo, LLMService, UpdateProviderRequest,
 };
@@ -62,10 +63,13 @@ pub async fn get_active_provider(
 /// POST /api/llm/providers
 pub async fn create_provider(
     State(state): State<Arc<AppState<DB>>>,
+    Extension(org_ctx): Extension<OrgContext>,
     Json(req): Json<CreateProviderRequest>,
 ) -> Result<impl IntoResponse, LLMApiError> {
     let provider = state.llm_service.create_provider(req).await?;
-    Ok((StatusCode::CREATED, Json(LLMProviderInfo::from(&provider))))
+    let provider = LLMProviderInfo::from(&provider);
+    log_provider_audit(&state, &org_ctx, "create", &provider).await;
+    Ok((StatusCode::CREATED, Json(provider)))
 }
 
 #[app_db]
@@ -73,11 +77,14 @@ pub async fn create_provider(
 /// PUT /api/llm/providers/:id
 pub async fn update_provider(
     State(state): State<Arc<AppState<DB>>>,
+    Extension(org_ctx): Extension<OrgContext>,
     Path(id): Path<i64>,
     Json(req): Json<UpdateProviderRequest>,
 ) -> Result<impl IntoResponse, LLMApiError> {
     let provider = state.llm_service.update_provider(id, req).await?;
-    Ok(Json(LLMProviderInfo::from(&provider)))
+    let provider = LLMProviderInfo::from(&provider);
+    log_provider_audit(&state, &org_ctx, "update", &provider).await;
+    Ok(Json(provider))
 }
 
 #[app_db]
@@ -85,9 +92,16 @@ pub async fn update_provider(
 /// DELETE /api/llm/providers/:id
 pub async fn delete_provider(
     State(state): State<Arc<AppState<DB>>>,
+    Extension(org_ctx): Extension<OrgContext>,
     Path(id): Path<i64>,
 ) -> Result<impl IntoResponse, LLMApiError> {
+    let provider = state
+        .llm_service
+        .get_provider(id)
+        .await?
+        .ok_or(LLMError::ProviderNotFound(id.to_string()))?;
     state.llm_service.delete_provider(id).await?;
+    log_provider_audit(&state, &org_ctx, "delete", &provider).await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -96,6 +110,7 @@ pub async fn delete_provider(
 /// POST /api/llm/providers/:id/activate
 pub async fn activate_provider(
     State(state): State<Arc<AppState<DB>>>,
+    Extension(org_ctx): Extension<OrgContext>,
     Path(id): Path<i64>,
 ) -> Result<impl IntoResponse, LLMApiError> {
     state.llm_service.activate_provider(id).await?;
@@ -104,6 +119,7 @@ pub async fn activate_provider(
         .get_provider(id)
         .await?
         .ok_or(LLMError::ProviderNotFound(id.to_string()))?;
+    log_provider_audit(&state, &org_ctx, "activate", &provider).await;
     Ok(Json(provider))
 }
 
@@ -112,6 +128,7 @@ pub async fn activate_provider(
 /// POST /api/llm/providers/:id/deactivate
 pub async fn deactivate_provider(
     State(state): State<Arc<AppState<DB>>>,
+    Extension(org_ctx): Extension<OrgContext>,
     Path(id): Path<i64>,
 ) -> Result<impl IntoResponse, LLMApiError> {
     state.llm_service.deactivate_provider(id).await?;
@@ -120,6 +137,7 @@ pub async fn deactivate_provider(
         .get_provider(id)
         .await?
         .ok_or(LLMError::ProviderNotFound(id.to_string()))?;
+    log_provider_audit(&state, &org_ctx, "deactivate", &provider).await;
     Ok(Json(provider))
 }
 
@@ -128,10 +146,39 @@ pub async fn deactivate_provider(
 /// POST /api/llm/providers/:id/test
 pub async fn test_provider_connection(
     State(state): State<Arc<AppState<DB>>>,
+    Extension(org_ctx): Extension<OrgContext>,
     Path(id): Path<i64>,
 ) -> Result<impl IntoResponse, LLMApiError> {
+    let provider = state
+        .llm_service
+        .get_provider(id)
+        .await?
+        .ok_or(LLMError::ProviderNotFound(id.to_string()))?;
     let result = state.llm_service.test_connection(id).await?;
+    log_provider_audit(&state, &org_ctx, "test_connection", &provider).await;
     Ok(Json(result))
+}
+
+#[app_db]
+async fn log_provider_audit<DB: crate::db::AppDb>(
+    state: &Arc<AppState<DB>>,
+    org_ctx: &OrgContext,
+    action: &'static str,
+    provider: &LLMProviderInfo,
+) {
+    crate::services::op_audit::log_op_best_effort(
+        &state.db,
+        crate::services::op_audit::OpAuditEntry {
+            user_id: org_ctx.user_id,
+            username: &org_ctx.username,
+            organization_id: None,
+            action,
+            target_type: "llm_provider",
+            target_id: Some(provider.id),
+            target_name: &provider.display_name,
+        },
+    )
+    .await;
 }
 
 // ============================================================================
@@ -277,6 +324,9 @@ impl IntoResponse for LLMApiError {
             LLMError::NoProviderConfigured => (StatusCode::SERVICE_UNAVAILABLE, self.0.to_string()),
             LLMError::ProviderNotFound(_) => (StatusCode::NOT_FOUND, self.0.to_string()),
             LLMError::Disabled => (StatusCode::SERVICE_UNAVAILABLE, self.0.to_string()),
+            LLMError::CredentialEncryptionUnavailable => {
+                (StatusCode::SERVICE_UNAVAILABLE, self.0.to_string())
+            },
             LLMError::RateLimited(_) => (StatusCode::TOO_MANY_REQUESTS, self.0.to_string()),
             LLMError::Timeout(_) => (StatusCode::GATEWAY_TIMEOUT, self.0.to_string()),
             LLMError::ApiError(_) => (StatusCode::BAD_GATEWAY, self.0.to_string()),

@@ -8,19 +8,26 @@ use stellar_macros::app_impl;
 use uuid::Uuid;
 
 use super::UpdateProviderRequest;
+use super::credentials::LlmCredentialCipher;
 use super::models::*;
 
 /// Repository for LLM database operations
 /// Some methods are reserved for future use (admin UI, cache management, usage stats)
 pub struct LLMRepository<DB: AppDb> {
     pool: Pool<DB>,
+    credential_cipher: LlmCredentialCipher,
 }
 
 #[allow(dead_code)]
 #[app_impl]
 impl<DB: AppDb> LLMRepository<DB> {
+    pub fn with_encryption_key(pool: Pool<DB>, encryption_key: &str) -> Self {
+        Self { pool, credential_cipher: LlmCredentialCipher::new(encryption_key) }
+    }
+
+    #[cfg(test)]
     pub fn new(pool: Pool<DB>) -> Self {
-        Self { pool }
+        Self::with_encryption_key(pool, "stellar-llm-provider-test-key")
     }
 
     /// Get reference to pool (for testing)
@@ -41,6 +48,17 @@ impl<DB: AppDb> LLMRepository<DB> {
         .map_err(LLMError::from)
     }
 
+    /// Resolve the active provider into request-only credentials. Legacy plaintext
+    /// rows are upgraded in place once a server-side encryption key is configured.
+    pub async fn get_active_provider_for_use(
+        &self,
+    ) -> Result<Option<ResolvedLLMProvider>, LLMError> {
+        let Some(provider) = self.get_active_provider().await? else {
+            return Ok(None);
+        };
+        self.resolve_provider_for_use(provider).await.map(Some)
+    }
+
     /// List all providers
     pub async fn list_providers(&self) -> Result<Vec<LLMProvider>, LLMError> {
         db_query::query_as::<_, LLMProvider>(
@@ -49,6 +67,34 @@ impl<DB: AppDb> LLMRepository<DB> {
         .fetch_all(&self.pool)
         .await
         .map_err(LLMError::from)
+    }
+
+    /// Encrypt every pre-v1 credential before serving requests. This keeps
+    /// startup fail-closed when a legacy plaintext row exists without a key.
+    pub async fn migrate_legacy_credentials(&self) -> Result<usize, LLMError> {
+        let providers = self.list_providers().await?;
+        let mut migrated = 0;
+
+        for provider in providers {
+            let Some(stored) = provider.api_key_encrypted.as_deref() else {
+                continue;
+            };
+            if LlmCredentialCipher::is_encrypted(stored) {
+                continue;
+            }
+
+            let encrypted = self.credential_cipher.encrypt(stored)?;
+            db_query::query(
+                "UPDATE llm_providers SET api_key_encrypted = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            )
+            .bind(encrypted)
+            .bind(provider.id)
+            .execute(&self.pool)
+            .await?;
+            migrated += 1;
+        }
+
+        Ok(migrated)
     }
 
     /// Activate a provider (deactivates all others)
@@ -83,12 +129,26 @@ impl<DB: AppDb> LLMRepository<DB> {
             .map_err(LLMError::from)
     }
 
+    /// Resolve one provider for a server-side test or model invocation.
+    pub async fn get_provider_for_use(
+        &self,
+        id: i64,
+    ) -> Result<Option<ResolvedLLMProvider>, LLMError> {
+        let Some(provider) = self.get_provider(id).await? else {
+            return Ok(None);
+        };
+        self.resolve_provider_for_use(provider).await.map(Some)
+    }
+
     /// Create a new provider
     pub async fn create_provider(
         &self,
         req: CreateProviderRequest,
     ) -> Result<LLMProvider, LLMError> {
-        let api_key_encrypted = Some(req.api_key);
+        if req.api_key.trim().is_empty() {
+            return Err(LLMError::ApiError("API key is required".to_string()));
+        }
+        let api_key_encrypted = Some(self.credential_cipher.encrypt(&req.api_key)?);
 
         let id = db_query::query(
             r#"INSERT INTO llm_providers 
@@ -121,6 +181,13 @@ impl<DB: AppDb> LLMRepository<DB> {
         id: i64,
         req: UpdateProviderRequest,
     ) -> Result<LLMProvider, LLMError> {
+        if req
+            .api_key
+            .as_deref()
+            .is_some_and(|key| key.trim().is_empty())
+        {
+            return Err(LLMError::ApiError("API key cannot be empty".to_string()));
+        }
         let mut sql = String::from("UPDATE llm_providers SET updated_at = CURRENT_TIMESTAMP");
         if req.display_name.is_some() {
             sql.push_str(", display_name = ?");
@@ -149,6 +216,9 @@ impl<DB: AppDb> LLMRepository<DB> {
         if req.enabled.is_some() {
             sql.push_str(", enabled = ?");
         }
+        if req.enabled == Some(false) {
+            sql.push_str(", is_active = FALSE");
+        }
 
         sql.push_str(" WHERE id = ?");
         let mut query = db_query::query(&sql);
@@ -163,7 +233,7 @@ impl<DB: AppDb> LLMRepository<DB> {
             query = query.bind(v);
         }
         if let Some(v) = &req.api_key {
-            query = query.bind(v);
+            query = query.bind(self.credential_cipher.encrypt(v)?);
         }
         if let Some(v) = &req.max_tokens {
             query = query.bind(v);
@@ -274,6 +344,35 @@ impl<DB: AppDb> LLMRepository<DB> {
             .fetch_one(&self.pool)
             .await
             .map_err(LLMError::from)
+    }
+
+    async fn resolve_provider_for_use(
+        &self,
+        mut provider: LLMProvider,
+    ) -> Result<ResolvedLLMProvider, LLMError> {
+        let stored = provider
+            .api_key_encrypted
+            .clone()
+            .ok_or_else(|| LLMError::ApiError("API key not configured".to_string()))?;
+
+        let api_key = if LlmCredentialCipher::is_encrypted(&stored) {
+            self.credential_cipher.decrypt(&stored)?
+        } else {
+            // Records created before credential encryption are upgraded only after
+            // a server key has been supplied; without it, fail closed.
+            let encrypted = self.credential_cipher.encrypt(&stored)?;
+            db_query::query(
+                "UPDATE llm_providers SET api_key_encrypted = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            )
+            .bind(&encrypted)
+            .bind(provider.id)
+            .execute(&self.pool)
+            .await?;
+            provider.api_key_encrypted = Some(encrypted);
+            stored
+        };
+
+        Ok(ResolvedLLMProvider::new(provider, api_key))
     }
 
     /// Create a new analysis session

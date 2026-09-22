@@ -8,6 +8,7 @@ import { TabReuseService } from './tab-reuse.service';
 export interface TabItem {
   id: string;
   title: string;
+  titleKey?: string;
   url: string;
   active: boolean;
   closable: boolean;
@@ -310,6 +311,20 @@ export class TabService {
     }
   }
 
+  relocalizeTabs(titleKeyForUrl: (url: string) => string | null): void {
+    const tabs = this.tabsSubject.value.map(tab => {
+      const titleKey = titleKeyForUrl(tab.url) || tab.titleKey || tab.title;
+      return {
+        ...tab,
+        titleKey,
+        title: this.i18n.instant(titleKey),
+      };
+    });
+
+    this.tabsSubject.next(tabs);
+    this.saveTabs();
+  }
+
   /**
    * 保存Tab状态到localStorage
    */
@@ -318,6 +333,7 @@ export class TabService {
     const tabsToSave = tabs.map(tab => ({
       id: tab.id,
       title: tab.title,
+      titleKey: tab.titleKey,
       url: tab.url,
       pinned: tab.pinned,
       closable: tab.closable,
@@ -345,7 +361,8 @@ export class TabService {
             ...tab,
             url: cleanUrl,
             active: tab.active || false,
-            icon: tab.icon
+            icon: tab.icon,
+            titleKey: typeof tab.titleKey === 'string' ? tab.titleKey : undefined,
           };
         });
         this.tabsSubject.next(tabs);
@@ -368,6 +385,7 @@ export class TabService {
       const homeTab: TabItem = {
         id: 'home',
         title: this.i18n ? this.i18n.instant('集群列表') : '集群列表',
+        titleKey: '集群列表',
         url: '/pages/starrocks/dashboard',
         active: true,
         closable: false,

@@ -25,6 +25,7 @@ RestartSec=3
 LimitNOFILE=65536
 # Optional: environment overrides (priority: CLI > APP_* env > config.toml > defaults)
 # Environment=STELLAR_ROOT_PASSWORD=change-me
+# Environment=APP_LLM_PROVIDER_ENCRYPTION_KEY=generate-with-openssl-rand-base64-32
 
 [Install]
 WantedBy=multi-user.target

@@ -88,9 +88,7 @@ impl OltpDiagnosisAgent {
         progress: Option<ProgressSink>,
     ) -> Result<AgentResult, String> {
         if !self.llm.is_available() {
-            return Err(
-                "LLM provider 未配置或不可用（请在系统设置-LLM 配置中启用 Provider）".to_string()
-            );
+            return Err("AI 连接未配置或不可用（请联系管理员在智能助手中配置 AI 连接）".to_string());
         }
 
         let mut messages = Vec::with_capacity(history.len() + 2);

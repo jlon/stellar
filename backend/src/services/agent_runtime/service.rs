@@ -62,8 +62,12 @@ impl<DB: AppDb> AgentRuntimeService<DB> {
         cluster_service: Arc<ClusterService<DB>>,
         audit_service: Arc<AuditLogService>,
         config: AgentConfig,
+        llm_provider_encryption_key: &str,
     ) -> Self {
-        let provider_repo = crate::services::llm::LLMRepository::new(pool.clone());
+        let provider_repo = crate::services::llm::LLMRepository::with_encryption_key(
+            pool.clone(),
+            llm_provider_encryption_key,
+        );
         Self { pool, mysql_pool_manager, cluster_service, audit_service, provider_repo, config }
     }
 
@@ -921,8 +925,8 @@ impl<DB: AppDb> AgentRuntimeService<DB> {
             .map_err(|e| crate::utils::ApiError::internal_error(format!("OpsAgent: {}", e)))?;
 
         // 护栏：LLM 不可用 → rejected 决策 + 回退规则摘要
-        let provider = match self.provider_repo.get_active_provider().await {
-            Ok(Some(p)) if p.enabled => p,
+        let provider = match self.provider_repo.get_active_provider_for_use().await {
+            Ok(Some(p)) if p.provider.enabled => p,
             _ => {
                 let fallback = llm_diagnosis::fallback_outcome(incident.impact_summary.as_deref());
                 let _ = self
@@ -932,7 +936,7 @@ impl<DB: AppDb> AgentRuntimeService<DB> {
                         "rejected",
                         Some(json!({ "input": "evidence_summary" })),
                         Some(fallback.clone()),
-                        Some("LLM Provider 未配置或不可用".to_string()),
+                        Some("AI 连接未配置或不可用".to_string()),
                     )
                     .await;
                 return Ok(fallback);

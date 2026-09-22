@@ -97,6 +97,9 @@ pub struct SecurityConfig {
     /// AES-256 key material for pending permission-request credentials.
     /// It must be independent from the JWT signing secret.
     pub permission_request_encryption_key: String,
+    /// AES-256 key material for stored LLM provider API keys.
+    /// It must be independent from the JWT signing secret.
+    pub llm_provider_encryption_key: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -265,6 +268,7 @@ impl Config {
     /// - APP_JWT_SECRET: JWT secret key
     /// - APP_JWT_EXPIRES_IN: JWT expiration time (e.g., "24h")
     /// - APP_PERMISSION_REQUEST_ENCRYPTION_KEY: dedicated key for pending database-user passwords
+    /// - APP_LLM_PROVIDER_ENCRYPTION_KEY: dedicated key for LLM provider API keys
     /// - APP_LOG_LEVEL: Logging level (e.g., "info,stellar_backend=debug")
     /// - APP_METRICS_INTERVAL_SECS: Metrics collection interval in seconds (accepts "30s", "5m", "1h")
     /// - APP_METRICS_RETENTION_DAYS: Retention days for metrics (accepts "7d")
@@ -302,6 +306,11 @@ impl Config {
         if let Ok(key) = std::env::var("APP_PERMISSION_REQUEST_ENCRYPTION_KEY") {
             self.security.permission_request_encryption_key = key;
             tracing::info!("Override security.permission_request_encryption_key from env");
+        }
+
+        if let Ok(key) = std::env::var("APP_LLM_PROVIDER_ENCRYPTION_KEY") {
+            self.security.llm_provider_encryption_key = key;
+            tracing::info!("Override security.llm_provider_encryption_key from env");
         }
 
         if let Ok(level) = std::env::var("APP_LOG_LEVEL") {

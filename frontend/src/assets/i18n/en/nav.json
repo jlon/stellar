@@ -9,6 +9,7 @@
  "实时查询": "Real-time queries",
  "审计日志": "Audit Logs",
  "SQL黑名单": "SQL Blacklist",
+ "导入管理": "Load Management",
  "物化视图": "Materialized Views",
  "运维工具": "Operations Tools",
  "功能卡片": "Widgets",

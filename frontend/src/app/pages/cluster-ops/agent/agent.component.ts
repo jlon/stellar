@@ -5,7 +5,7 @@ import { ActivatedRoute } from '@angular/router';
 import { MarkdownModule } from 'ngx-markdown';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { NbCardModule, NbButtonModule, NbIconModule, NbInputModule, NbSpinnerModule, NbListModule, NbTooltipModule, NbToastrService } from '@nebular/theme';
+import { NbCardModule, NbButtonModule, NbDialogService, NbIconModule, NbInputModule, NbSpinnerModule, NbListModule, NbTooltipModule, NbToastrService } from '@nebular/theme';
 
 import {
   AgentService,
@@ -20,7 +20,12 @@ import { ConfirmDialogService } from '../../../@core/services/confirm-dialog.ser
 import { AiIllustrationComponent } from '../../../@theme/components/ai-illustration/ai-illustration.component';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
 import { Cluster } from '../../../@core/data/cluster.service';
+import { LLMProvider, LLMProviderService } from '../../../@core/data/llm-provider.service';
+import { PermissionService } from '../../../@core/data/permission.service';
+import { AuthService } from '../../../@core/data/auth.service';
 import { Subscription } from 'rxjs';
+import { take } from 'rxjs/operators';
+import { AiConnectionsSheetComponent } from './ai-connections-sheet.component';
 
 /** 空态引导的预设问题（OLAP 使用者的高频心智：查得慢 / 跑批卡 / 存储问题 / 导入堵）。 */
 const PRESET_QUESTIONS = [
@@ -113,10 +118,14 @@ export class AgentComponent implements OnInit, OnDestroy {
   private agentService = inject(AgentService);
   private chatService = inject(AgentChatService);
   private confirmDialog = inject(ConfirmDialogService);
+  private dialogService = inject(NbDialogService);
   private cdRef = inject(ChangeDetectorRef);
   private clusterContext = inject(ClusterContextService);
   private toastr = inject(NbToastrService);
   private host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private llmProviderService = inject(LLMProviderService);
+  private permissionService = inject(PermissionService);
+  private authService = inject(AuthService);
 
   cluster: Cluster | null = null;
 
@@ -147,6 +156,10 @@ export class AgentComponent implements OnInit, OnDestroy {
   private actionsRevision = 0;
   private actionLoadId = 0;
   private actionClock: number | null = null;
+  private permissionSub?: Subscription;
+  private pendingAiConnectionsPanel = false;
+  canManageAiConnections = false;
+  activeAiProvider: LLMProvider | null = null;
 
   ngOnInit(): void {
     // 通知直达：/pages/cluster-ops/agent?session=<id> 自动打开对应会话
@@ -155,7 +168,16 @@ export class AgentComponent implements OnInit, OnDestroy {
       if (sid && /^\d+$/.test(sid)) {
         this.openSession(Number(sid));
       }
+      if (q.get('panel') === 'ai-connections') {
+        this.pendingAiConnectionsPanel = true;
+        this.openPendingAiConnectionsPanel();
+      }
     });
+
+    this.permissionSub = this.permissionService.permissions$.subscribe(() => {
+      this.refreshAiConnectionAccess();
+    });
+    this.refreshAiConnectionAccess();
 
     // 前台状态上报（切走页面 → 回合完成后触发铃铛通知）
     this.chatService.setUiFront(true);
@@ -185,6 +207,7 @@ export class AgentComponent implements OnInit, OnDestroy {
     this.chatService.setUiFront(false);
     this.transcriptRequest?.unsubscribe();
     this.turnEventsSub?.unsubscribe();
+    this.permissionSub?.unsubscribe();
     if (this.streamRenderFrame !== null) {
       cancelAnimationFrame(this.streamRenderFrame);
     }
@@ -293,6 +316,58 @@ export class AgentComponent implements OnInit, OnDestroy {
     this.messages = [];
     this.clearActions();
     this.restoreDraft();
+  }
+
+  /** 打开全局 AI 连接配置；Provider 会同时影响助手与 Profile 根因分析。 */
+  openAiConnections(): void {
+    if (!this.canManageAiConnections) {
+      this.toastr.warning('您暂无管理 AI 模型供应商的权限，请联系管理员。', 'AI 模型供应商');
+      return;
+    }
+    this.pendingAiConnectionsPanel = false;
+    const dialogRef = this.dialogService.open(AiConnectionsSheetComponent, {
+      autoFocus: false,
+      backdropClass: 'side-sheet-backdrop',
+      closeOnBackdropClick: false,
+      closeOnEsc: false,
+      dialogClass: 'side-sheet',
+      hasBackdrop: true,
+    });
+    dialogRef.onBackdropClick.pipe(take(1)).subscribe(() => dialogRef.componentRef.instance.close());
+    dialogRef.onClose.subscribe((changed) => {
+      if (changed) {
+        this.loadActiveAiProvider();
+      }
+    });
+  }
+
+  private refreshAiConnectionAccess(): void {
+    this.canManageAiConnections = this.authService.isSuperAdmin()
+      || this.permissionService.hasPermission('api:llm:providers:list');
+    if (this.canManageAiConnections) {
+      this.loadActiveAiProvider();
+      this.openPendingAiConnectionsPanel();
+    }
+  }
+
+  private openPendingAiConnectionsPanel(): void {
+    if (this.pendingAiConnectionsPanel && this.canManageAiConnections) {
+      this.openAiConnections();
+    }
+  }
+
+  private loadActiveAiProvider(): void {
+    this.llmProviderService.listProviders().subscribe({
+      next: (providers) => {
+        this.activeAiProvider = providers.find((provider) => provider.is_active && provider.enabled) ?? null;
+        this.cdRef.detectChanges();
+      },
+      // 助手主界面不因连接状态读取失败而中断；抽屉内会展示具体错误。
+      error: () => {
+        this.activeAiProvider = null;
+        this.cdRef.detectChanges();
+      },
+    });
   }
 
   /** 草稿按会话保留（切换会话不丢已打的字，GPT 同款）。 */

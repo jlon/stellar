@@ -1,0 +1,188 @@
+<nb-card class="ai-connections-sheet" [nbSpinner]="saving" nbSpinnerStatus="primary" nbSpinnerSize="medium">
+  <nb-card-header class="sheet-header">
+    <div>
+      <h2>{{ 'AI 模型供应商' | translate }}</h2>
+      <p>{{ '当前供应商配置同时服务于智能助手和 Profile 根因分析。' | translate }}</p>
+    </div>
+    <button nbButton ghost size="small" type="button" (click)="close()" [nbTooltip]="'关闭' | translate" [attr.aria-label]="'关闭' | translate">
+      <nb-icon icon="close-outline"></nb-icon>
+    </button>
+  </nb-card-header>
+
+  <nb-card-body class="sheet-body">
+    @if (!canList) {
+      <nb-alert status="warning" class="sheet-alert">
+        <nb-icon icon="lock-outline"></nb-icon>
+        <span>{{ '您暂无查看 AI 模型供应商的权限，请联系管理员。' | translate }}</span>
+      </nb-alert>
+    }
+
+    @if (canList) {
+      <section class="connection-section" aria-labelledby="saved-connections-title">
+        <div class="section-heading">
+          <div>
+            <h3 id="saved-connections-title">{{ '已保存供应商' | translate }}</h3>
+            <p>{{ '一次只能启用一个当前供应商。' | translate }}</p>
+          </div>
+          @if (canCreate && !editorMode) {
+            <button nbButton ghost size="small" status="primary" type="button" (click)="beginCreate()" [nbTooltip]="'添加供应商' | translate" [attr.aria-label]="'添加供应商' | translate">
+              <nb-icon icon="plus-outline"></nb-icon>
+            </button>
+          }
+        </div>
+
+        @if (!loading && providers.length === 0) {
+          <div class="empty-connections">
+            <nb-icon icon="cloud-off-outline"></nb-icon>
+            <span>{{ '尚未配置 AI 模型供应商' | translate }}</span>
+            @if (canCreate) {
+              <button nbButton ghost size="small" status="primary" type="button" (click)="beginCreate()">{{ '添加连接' | translate }}</button>
+            }
+          </div>
+        }
+
+        @if (loading) {
+          <div class="connections-loading" role="status">
+            <nb-icon icon="loader-outline" class="spin"></nb-icon>
+            <span>{{ '正在加载 AI 模型供应商…' | translate }}</span>
+          </div>
+        }
+
+        <div class="connection-list">
+          @for (provider of providers; track trackProvider($index, provider)) {
+            <article class="connection-row" [class.current]="provider.is_active && provider.enabled">
+              <div class="connection-mark" [class.current]="provider.is_active && provider.enabled" [class.disabled]="!provider.enabled">
+                <nb-icon [icon]="provider.is_active && provider.enabled ? 'checkmark-circle-2-outline' : provider.enabled ? 'radio-button-off-outline' : 'pause-circle-outline'"></nb-icon>
+              </div>
+              <div class="connection-main">
+                <div class="connection-title">
+                  <strong>{{ provider.display_name }}</strong>
+                  @if (provider.is_active && provider.enabled) {
+                    <span class="current-badge">{{ '当前' | translate }}</span>
+                  }
+                  @if (!provider.enabled) {
+                    <span class="disabled-badge">{{ '已停用' | translate }}</span>
+                  }
+                </div>
+                <span class="connection-model">{{ provider.model_name }}</span>
+                <span class="connection-endpoint">{{ provider.api_base }}</span>
+              </div>
+              <div class="connection-actions" role="toolbar" [attr.aria-label]="provider.display_name">
+                @if (!provider.is_active && provider.enabled && canActivate) {
+                  <button nbButton ghost size="tiny" status="success" type="button" (click)="activate(provider)" [nbTooltip]="'设为当前供应商' | translate" [attr.aria-label]="'设为当前供应商' | translate">
+                    <nb-icon icon="checkmark-circle-2-outline"></nb-icon>
+                  </button>
+                }
+                @if (canTest) {
+                  <button nbButton ghost size="tiny" status="info" type="button" (click)="test(provider)" [disabled]="testingId === provider.id" [nbTooltip]="'测试连接' | translate" [attr.aria-label]="'测试连接' | translate">
+                    <nb-icon [icon]="testingId === provider.id ? 'loader-outline' : 'flash-outline'" [class.spin]="testingId === provider.id"></nb-icon>
+                  </button>
+                }
+                @if (canUpdate) {
+                  <button nbButton ghost size="tiny" type="button" (click)="toggleEnabled(provider)" [status]="provider.enabled ? 'warning' : 'success'" [nbTooltip]="provider.enabled ? ('停用' | translate) : ('启用' | translate)" [attr.aria-label]="provider.enabled ? ('停用' | translate) : ('启用' | translate)">
+                    <nb-icon [icon]="provider.enabled ? 'pause-circle-outline' : 'play-circle-outline'"></nb-icon>
+                  </button>
+                  <button nbButton ghost size="tiny" status="primary" type="button" (click)="beginEdit(provider)" [nbTooltip]="'编辑' | translate" [attr.aria-label]="'编辑' | translate">
+                    <nb-icon icon="edit-2-outline"></nb-icon>
+                  </button>
+                }
+                @if (canDelete) {
+                  <button nbButton ghost size="tiny" status="danger" type="button" (click)="remove(provider)" [disabled]="provider.is_active" [nbTooltip]="provider.is_active ? ('当前供应商不能删除' | translate) : ('删除' | translate)" [attr.aria-label]="'删除' | translate">
+                    <nb-icon icon="trash-2-outline"></nb-icon>
+                  </button>
+                }
+              </div>
+            </article>
+          }
+        </div>
+      </section>
+
+      @if (editorMode) {
+        <section class="editor-section" aria-labelledby="connection-editor-title">
+          <div class="section-heading">
+            <div>
+              <h3 id="connection-editor-title">{{ (editorMode === 'create' ? '添加供应商' : '编辑供应商') | translate }}</h3>
+              <p>{{ '供应商使用 OpenAI 兼容 API。密钥仅保存在服务端。' | translate }}</p>
+            </div>
+            <button nbButton ghost size="small" type="button" (click)="cancelEditor()" [nbTooltip]="'取消编辑' | translate" [attr.aria-label]="'取消编辑' | translate">
+              <nb-icon icon="close-outline"></nb-icon>
+            </button>
+          </div>
+
+          <form [formGroup]="form" (ngSubmit)="save()" novalidate>
+            @if (editorMode === 'create') {
+              <div class="form-group full">
+                <label class="label">{{ '快速选择' | translate }}</label>
+                <nb-select size="small" fullWidth [placeholder]="'选择预设模板' | translate" (selectedChange)="applyPreset($event)">
+                  @for (preset of presets; track preset.name) {
+                    <nb-option [value]="preset">{{ preset.display_name }}</nb-option>
+                  }
+                </nb-select>
+              </div>
+            }
+
+            <div class="form-grid">
+              <div class="form-group">
+                <label class="label">{{ '标识名称' | translate }} *</label>
+                <input nbInput fieldSize="small" fullWidth formControlName="name" placeholder="deepseek" />
+              </div>
+              <div class="form-group">
+                <label class="label">{{ '显示名称' | translate }} *</label>
+                <input nbInput fieldSize="small" fullWidth formControlName="display_name" placeholder="DeepSeek" />
+              </div>
+              <div class="form-group full">
+                <label class="label">{{ 'OpenAI 兼容 API 地址' | translate }} *</label>
+                <input nbInput fieldSize="small" fullWidth formControlName="api_base" placeholder="https://api.example.com/v1" />
+              </div>
+              <div class="form-group">
+                <label class="label">{{ '模型名称' | translate }} *</label>
+                <input nbInput fieldSize="small" fullWidth formControlName="model_name" placeholder="deepseek-chat" />
+              </div>
+              <div class="form-group">
+                <label class="label">API Key {{ editorMode === 'create' ? '*' : ('(留空不改)' | translate) }}</label>
+                <nb-form-field>
+                  <input nbInput fieldSize="small" fullWidth [type]="showApiKey ? 'text' : 'password'" formControlName="api_key" autocomplete="new-password" />
+                  <button nbSuffix nbButton ghost size="small" type="button" (click)="showApiKey = !showApiKey" [attr.aria-label]="showApiKey ? ('隐藏 API Key' | translate) : ('显示 API Key' | translate)">
+                    <nb-icon [icon]="showApiKey ? 'eye-off-outline' : 'eye-outline'"></nb-icon>
+                  </button>
+                </nb-form-field>
+                @if (editorMode === 'edit' && editingProvider?.has_api_key) {
+                  <span class="field-hint">{{ '已保存密钥；留空表示不修改。' | translate }}</span>
+                }
+              </div>
+            </div>
+
+            <nb-accordion>
+              <nb-accordion-item>
+                <nb-accordion-item-header>{{ '高级设置' | translate }}</nb-accordion-item-header>
+                <nb-accordion-item-body>
+                  <div class="form-grid">
+                    <div class="form-group">
+                      <label class="label">{{ '最大 Token' | translate }}</label>
+                      <input nbInput fieldSize="small" fullWidth type="number" formControlName="max_tokens" />
+                    </div>
+                    <div class="form-group">
+                      <label class="label">{{ '温度' | translate }}</label>
+                      <input nbInput fieldSize="small" fullWidth type="number" step="0.1" formControlName="temperature" />
+                    </div>
+                    <div class="form-group">
+                      <label class="label">{{ '超时（秒）' | translate }}</label>
+                      <input nbInput fieldSize="small" fullWidth type="number" formControlName="timeout_seconds" />
+                    </div>
+                  </div>
+                </nb-accordion-item-body>
+              </nb-accordion-item>
+            </nb-accordion>
+
+            <div class="editor-actions">
+              <button nbButton ghost size="small" type="button" (click)="cancelEditor()">{{ '取消' | translate }}</button>
+              <button nbButton size="small" status="primary" type="submit" [disabled]="form.invalid || saving">
+                <nb-icon icon="checkmark-outline"></nb-icon>{{ '保存' | translate }}
+              </button>
+            </div>
+          </form>
+        </section>
+      }
+    }
+  </nb-card-body>
+</nb-card>

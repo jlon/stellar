@@ -43,7 +43,7 @@ impl LLMScenario {
 // ============================================================================
 
 /// LLM Provider configuration from database
-#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+#[derive(Clone, FromRow, Serialize, Deserialize)]
 pub struct LLMProvider {
     pub id: i64,
     pub name: String,
@@ -62,6 +62,24 @@ pub struct LLMProvider {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Provider settings paired with a decrypted API key for one in-process request.
+/// This type is never serialized or persisted.
+#[derive(Clone)]
+pub struct ResolvedLLMProvider {
+    pub provider: LLMProvider,
+    api_key: String,
+}
+
+impl ResolvedLLMProvider {
+    pub(crate) fn new(provider: LLMProvider, api_key: String) -> Self {
+        Self { provider, api_key }
+    }
+
+    pub(crate) fn api_key(&self) -> &str {
+        &self.api_key
+    }
+}
+
 /// Provider info for external display (without sensitive data)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LLMProviderInfo {
@@ -70,8 +88,7 @@ pub struct LLMProviderInfo {
     pub display_name: String,
     pub api_base: String,
     pub model_name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub api_key_masked: Option<String>,
+    pub has_api_key: bool,
     pub is_active: bool,
     pub enabled: bool,
     pub max_tokens: i32,
@@ -85,21 +102,13 @@ pub struct LLMProviderInfo {
 
 impl From<&LLMProvider> for LLMProviderInfo {
     fn from(p: &LLMProvider) -> Self {
-        let api_key_masked = p.api_key_encrypted.as_ref().map(|key| {
-            if key.len() > 8 {
-                format!("{}...{}", &key[..4], &key[key.len() - 4..])
-            } else {
-                "****".to_string()
-            }
-        });
-
         Self {
             id: p.id,
             name: p.name.clone(),
             display_name: p.display_name.clone(),
             api_base: p.api_base.clone(),
             model_name: p.model_name.clone(),
-            api_key_masked,
+            has_api_key: p.api_key_encrypted.is_some(),
             is_active: p.is_active,
             enabled: p.enabled,
             max_tokens: p.max_tokens,
@@ -113,7 +122,7 @@ impl From<&LLMProvider> for LLMProviderInfo {
 }
 
 /// Request to create a provider
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct CreateProviderRequest {
     pub name: String,
     pub display_name: String,
@@ -131,7 +140,7 @@ pub struct CreateProviderRequest {
 }
 
 /// Request to update a provider
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct UpdateProviderRequest {
     pub display_name: Option<String>,
     pub api_base: Option<String>,
@@ -331,6 +340,9 @@ pub enum LLMError {
 
     #[error("LLM service disabled")]
     Disabled,
+
+    #[error("AI 连接密钥不可用，请设置 APP_LLM_PROVIDER_ENCRYPTION_KEY")]
+    CredentialEncryptionUnavailable,
 }
 
 impl LLMError {

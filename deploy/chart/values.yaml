@@ -205,6 +205,10 @@ configuration: |-
     jwt_secret = "will-be-overridden"
     jwt_expires_in = "24h"
 
+    [security]
+    # Prefer llmProviderEncryptionKey instead of writing this value here.
+    llm_provider_encryption_key = ""
+
     [logging]
     level = "info,stellar=info"
     # Log file path (relative to working directory /app)
@@ -224,3 +228,7 @@ configuration: |-
 # If not set, a random secret will be generated
 # For production, use a strong secret generated with: openssl rand -base64 32
 jwtSecret: ""
+
+# Required before saving or using an AI connection. Keep it stable while
+# existing provider keys need to remain decryptable.
+llmProviderEncryptionKey: ""

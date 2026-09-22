@@ -46,6 +46,8 @@
 }
 
 .sessions-body {
+  flex: 1;
+  min-height: 0;
   padding: 0 0.6rem 0.75rem;
   overflow-y: auto;
   display: flex;
@@ -126,6 +128,51 @@
   display: block;
   margin: 0 auto 0.8rem;
   max-width: 150px;
+}
+
+.sessions-rail-art {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  min-height: 8rem;
+  padding: 1rem 0.4rem;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.sessions-rail-art ngx-ai-illustration {
+  width: min(100%, 10.5rem);
+}
+
+.sessions-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  min-height: 2.8rem;
+  padding: 0.5rem 0.65rem;
+  border-top: 1px solid var(--border-basic-color-3);
+  background: var(--card-background-color);
+  border-radius: 0 0 0 1.25rem;
+}
+
+.ai-connection-state {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-hint-color);
+  font-size: 0.7rem;
+}
+
+.ai-connection-state.configured nb-icon {
+  color: var(--color-success-default);
+}
+
+.ai-connection-state > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ================= 右：聊天区 ================= */
@@ -706,32 +753,6 @@
 .chat-input {
   padding: 0.85rem 1.4rem 1.1rem;
   background: transparent;
-}
-
-.chat-context {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  min-width: 0;
-  margin: 0 0 0.45rem 0.7rem;
-  color: var(--text-hint-color);
-  font-size: 0.68rem;
-}
-
-.chat-context nb-icon {
-  flex-shrink: 0;
-  color: var(--color-primary-500);
-  font-size: 0.8rem;
-}
-
-.chat-context span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.context-separator {
-  flex-shrink: 0;
 }
 
 .input-pill {
@@ -1380,6 +1401,10 @@
 
   .sessions-body {
     max-height: 6rem;
+  }
+
+  .sessions-rail-art {
+    display: none;
   }
 
   .agent-chat-card {

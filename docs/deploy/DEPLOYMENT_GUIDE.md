@@ -253,6 +253,11 @@ url = "sqlite:///var/lib/stellar/stellar.db"
 jwt_secret = "请替换为至少 32 位随机密钥"
 jwt_expires_in = "24h"    # 登录有效期
 
+[security]
+# AI 连接的 API Key 使用此密钥加密保存。生产环境优先使用
+# APP_LLM_PROVIDER_ENCRYPTION_KEY，勿与 jwt_secret 复用。
+llm_provider_encryption_key = "请替换为至少 32 位随机密钥"
+
 [logging]
 level = "info,stellar_backend=info"  # 日志级别
 file = "/var/lib/stellar/logs/stellar.log"  # 日志文件；删除此行则只输出到控制台
@@ -281,10 +286,13 @@ table = "starrocks_audit_tbl__"
 | 监听端口 | `APP_SERVER_PORT` |
 | 数据库 | `APP_DATABASE_URL` |
 | JWT 密钥 | `APP_JWT_SECRET` |
+| AI 连接密钥 | `APP_LLM_PROVIDER_ENCRYPTION_KEY` |
 | 日志级别 | `APP_LOG_LEVEL` |
 | 采集开关 | `APP_METRICS_ENABLED=true/false` |
 | StarRocks 审计库 | `APP_AUDIT_DATABASE` |
 | StarRocks 审计表 | `APP_AUDIT_TABLE` |
+
+> AI 连接密钥一旦用于保存 Provider，必须稳定保留；当前版本不支持在线轮换，更换或遗失后旧配置将无法解密。旧版本的明文 Provider 会在首次配置此变量后的启动期间自动升级；若旧库仍有明文但未配置此变量，服务会拒绝启动。建议通过 Secret 或受限环境变量注入，不要提交到配置仓库。
 
 ---
 

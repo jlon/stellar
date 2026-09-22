@@ -49,6 +49,9 @@ stringData:
   # IMPORTANT: Change this in production!
   # Generate secure random string: openssl rand -base64 32
   jwt-secret: "CHANGE-THIS-IN-PRODUCTION-USE-openssl-rand-base64-32"
+  # Required before saving or using an AI connection. Keep this stable while
+  # existing provider keys need to remain decryptable.
+  llm-provider-encryption-key: "CHANGE-THIS-IN-PRODUCTION-USE-openssl-rand-base64-32"
   
   # Add other secrets as needed
   # database-password: "your-db-password"
@@ -106,6 +109,11 @@ spec:
             secretKeyRef:
               name: stellar-secret
               key: jwt-secret
+        - name: APP_LLM_PROVIDER_ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: stellar-secret
+              key: llm-provider-encryption-key
         - name: APP_LOG_LEVEL
           value: "info,stellar=info"
         - name: APP_METRICS_ENABLED
@@ -184,4 +192,3 @@ spec:
             name: stellar
             port:
               number: 9527
-

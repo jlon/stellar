@@ -51,6 +51,7 @@ export class PagesComponent implements OnInit {
     // 语言切换时重建菜单
     this.i18n.lang$.subscribe(() => {
       this.menu = this.localize(this.menuFilterService.filterMenuItems(MENU_ITEMS));
+      this.tabService.relocalizeTabs(url => this.resolveTabTitleKey(url));
     });
     // Filter menu items based on permissions
     this.permissionService.permissions$.subscribe(() => {
@@ -104,6 +105,26 @@ export class PagesComponent implements OnInit {
       return;
     }
 
+    const titleKey = this.resolveTabTitleKey(url);
+
+    // 如果获得了标题，添加 Tab
+    if (titleKey) {
+      const tabId = this.generateTabId(titleKey);
+      const icon = this.getIconForUrl(url);
+      // 路由变化时不再触发导航（因为已经在目标路由了）
+      this.tabService.addTab({
+        id: tabId,
+        title: this.i18n.instant(titleKey),
+        titleKey,
+        url: url,
+        closable: true,
+        pinned: false,
+        icon: icon  // Add icon to tab
+      }, false);
+    }
+  }
+
+  private resolveTabTitleKey(url: string): string | null {
     // 对于带查询参数的 system 路由，优先使用 inferTitleFromUrl 获取更具体的标题
     let title: string | null = null;
     if (url.includes('/starrocks/system') && url.includes('?')) {
@@ -123,20 +144,7 @@ export class PagesComponent implements OnInit {
       title = this.inferTitleFromUrl(url);
     }
 
-    // 如果获得了标题，添加 Tab
-    if (title) {
-      const tabId = this.generateTabId(title);
-      const icon = this.getIconForUrl(url);
-      // 路由变化时不再触发导航（因为已经在目标路由了）
-      this.tabService.addTab({
-        id: tabId,
-        title: this.i18n.instant(title),
-        url: url,
-        closable: true,
-        pinned: false,
-        icon: icon  // Add icon to tab
-      }, false);
-    }
+    return title;
   }
 
   /**
@@ -252,6 +260,7 @@ export class PagesComponent implements OnInit {
       const titleMap: { [key: string]: string } = {
         'dashboard': '集群列表',
         'overview': '集群概览',
+        'cluster-overview': '集群概览',
         'frontends': 'Frontend 节点',
         'backends': 'Backend 节点',
         'execution': '实时查询',

@@ -41,6 +41,15 @@ async fn insert_legacy_admin(pool: &SqlitePool) {
 async fn fresh_migrations_provision_secure_permission_requests_and_new_feature_access() {
     let pool = fresh_pool().await;
 
+    let max_disk_usage_column: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM pragma_table_info('metrics_snapshots') \
+         WHERE name = 'max_disk_usage_pct'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(max_disk_usage_column, 1);
+
     let encrypted_password_column: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM pragma_table_info('permission_requests') \
          WHERE name = 'new_user_password_encrypted'",

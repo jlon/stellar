@@ -181,6 +181,148 @@ mod repository_tests {
     }
 
     #[tokio::test]
+    async fn test_create_provider_encrypts_api_key_and_resolves_it_for_use() {
+        let pool = setup_test_db().await;
+        let repo = LLMRepository::new(pool);
+
+        let provider = repo
+            .create_provider(create_test_provider_request("encrypted-openai"))
+            .await
+            .expect("create provider");
+        let stored = provider
+            .api_key_encrypted
+            .as_deref()
+            .expect("stored credential");
+
+        assert_ne!(stored, "sk-test-key-12345");
+        assert!(stored.starts_with("v1:"));
+        let resolved = repo
+            .get_provider_for_use(provider.id)
+            .await
+            .expect("resolve provider")
+            .expect("provider exists");
+        assert_eq!(resolved.api_key(), "sk-test-key-12345");
+    }
+
+    #[tokio::test]
+    async fn test_resolving_legacy_plaintext_upgrades_it_to_encrypted_storage() {
+        let pool = setup_test_db().await;
+        let repo = LLMRepository::new(pool);
+        let provider_id = sqlx::query(
+            "INSERT INTO llm_providers (name, display_name, api_base, model_name, api_key_encrypted) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind("legacy-openai")
+        .bind("Legacy OpenAI")
+        .bind("https://api.test.com/v1")
+        .bind("gpt-4")
+        .bind("sk-legacy-key")
+        .execute(repo.pool())
+        .await
+        .expect("insert legacy provider")
+        .last_insert_rowid();
+
+        let resolved = repo
+            .get_provider_for_use(provider_id)
+            .await
+            .expect("resolve provider")
+            .expect("provider exists");
+        assert_eq!(resolved.api_key(), "sk-legacy-key");
+
+        let stored: String =
+            sqlx::query_scalar("SELECT api_key_encrypted FROM llm_providers WHERE id = ?")
+                .bind(provider_id)
+                .fetch_one(repo.pool())
+                .await
+                .expect("read upgraded credential");
+        assert_ne!(stored, "sk-legacy-key");
+        assert!(stored.starts_with("v1:"));
+    }
+
+    #[tokio::test]
+    async fn test_startup_migrates_every_legacy_plaintext_credential() {
+        let pool = setup_test_db().await;
+        let repo = LLMRepository::new(pool);
+        for name in ["legacy-openai-a", "legacy-openai-b"] {
+            sqlx::query(
+                "INSERT INTO llm_providers (name, display_name, api_base, model_name, api_key_encrypted) VALUES (?, ?, ?, ?, ?)",
+            )
+            .bind(name)
+            .bind(name)
+            .bind("https://api.test.com/v1")
+            .bind("gpt-4")
+            .bind(format!("sk-{name}"))
+            .execute(repo.pool())
+            .await
+            .expect("insert legacy provider");
+        }
+
+        assert_eq!(repo.migrate_legacy_credentials().await.expect("migrate"), 2);
+        let stored: Vec<String> =
+            sqlx::query_scalar("SELECT api_key_encrypted FROM llm_providers ORDER BY name")
+                .fetch_all(repo.pool())
+                .await
+                .expect("read migrated credentials");
+        assert!(
+            stored
+                .iter()
+                .all(|credential| credential.starts_with("v1:"))
+        );
+    }
+
+    #[tokio::test]
+    async fn test_startup_rejects_legacy_plaintext_without_encryption_key() {
+        let pool = setup_test_db().await;
+        let repo = LLMRepository::with_encryption_key(pool, "");
+        sqlx::query(
+            "INSERT INTO llm_providers (name, display_name, api_base, model_name, api_key_encrypted) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind("legacy-without-key")
+        .bind("Legacy without key")
+        .bind("https://api.test.com/v1")
+        .bind("gpt-4")
+        .bind("sk-legacy-key")
+        .execute(repo.pool())
+        .await
+        .expect("insert legacy provider");
+
+        let error = repo
+            .migrate_legacy_credentials()
+            .await
+            .expect_err("legacy plaintext must require an encryption key");
+        assert!(matches!(error, LLMError::CredentialEncryptionUnavailable));
+    }
+
+    #[tokio::test]
+    async fn test_create_provider_rejects_missing_encryption_key() {
+        let pool = setup_test_db().await;
+        let repo = LLMRepository::with_encryption_key(pool, "");
+
+        let error = match repo
+            .create_provider(create_test_provider_request("unprotected-openai"))
+            .await
+        {
+            Err(error) => error,
+            Ok(_) => panic!("provider credentials must not fall back to plaintext"),
+        };
+        assert!(matches!(error, LLMError::CredentialEncryptionUnavailable));
+    }
+
+    #[tokio::test]
+    async fn test_create_provider_rejects_whitespace_encryption_key() {
+        let pool = setup_test_db().await;
+        let repo = LLMRepository::with_encryption_key(pool, " \t ");
+
+        let error = match repo
+            .create_provider(create_test_provider_request("whitespace-key-openai"))
+            .await
+        {
+            Err(error) => error,
+            Ok(_) => panic!("whitespace must not become encryption key material"),
+        };
+        assert!(matches!(error, LLMError::CredentialEncryptionUnavailable));
+    }
+
+    #[tokio::test]
     async fn test_list_providers() {
         let pool = setup_test_db().await;
         let repo = LLMRepository::new(pool);
@@ -260,6 +402,78 @@ mod repository_tests {
         assert_eq!(updated.max_tokens, 8192);
 
         assert_eq!(updated.api_base, "https://api.test.com/v1");
+    }
+
+    #[tokio::test]
+    async fn test_update_provider_deactivates_when_disabled() {
+        let pool = setup_test_db().await;
+        let repo = LLMRepository::new(pool);
+        let provider = repo
+            .create_provider(create_test_provider_request("openai"))
+            .await
+            .expect("create provider");
+        repo.activate_provider(provider.id)
+            .await
+            .expect("activate provider");
+
+        let updated = repo
+            .update_provider(
+                provider.id,
+                UpdateProviderRequest {
+                    display_name: None,
+                    api_base: None,
+                    model_name: None,
+                    api_key: None,
+                    max_tokens: None,
+                    temperature: None,
+                    timeout_seconds: None,
+                    priority: None,
+                    enabled: Some(false),
+                },
+            )
+            .await
+            .expect("disable provider");
+
+        assert!(!updated.enabled);
+        assert!(!updated.is_active);
+        assert!(
+            repo.get_active_provider()
+                .await
+                .expect("load active")
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_provider_writes_reject_empty_api_keys() {
+        let pool = setup_test_db().await;
+        let repo = LLMRepository::new(pool);
+        let mut create = create_test_provider_request("empty-key");
+        create.api_key = "   ".to_string();
+        assert!(repo.create_provider(create).await.is_err());
+
+        let provider = repo
+            .create_provider(create_test_provider_request("openai"))
+            .await
+            .expect("create provider");
+        assert!(
+            repo.update_provider(
+                provider.id,
+                UpdateProviderRequest {
+                    display_name: None,
+                    api_base: None,
+                    model_name: None,
+                    api_key: Some("\t".to_string()),
+                    max_tokens: None,
+                    temperature: None,
+                    timeout_seconds: None,
+                    priority: None,
+                    enabled: None,
+                },
+            )
+            .await
+            .is_err()
+        );
     }
 
     #[tokio::test]
@@ -440,11 +654,7 @@ mod service_tests {
         let providers = service.list_providers().await.expect("Failed to list");
         assert_eq!(providers.len(), 2);
 
-        for p in &providers {
-            if let Some(masked) = &p.api_key_masked {
-                assert!(masked.contains("...") || masked == "****");
-            }
-        }
+        assert!(providers.iter().all(|provider| provider.has_api_key));
     }
 
     #[tokio::test]
@@ -567,7 +777,7 @@ mod model_tests {
     use super::*;
 
     #[test]
-    fn test_provider_info_masks_api_key() {
+    fn test_provider_info_only_reports_api_key_presence() {
         let provider = LLMProvider {
             id: 1,
             name: "test".to_string(),
@@ -587,21 +797,18 @@ mod model_tests {
 
         let info = LLMProviderInfo::from(&provider);
 
-        assert!(info.api_key_masked.is_some());
-        let masked = info.api_key_masked.unwrap();
-        assert!(masked.contains("..."));
-        assert!(!masked.contains("1234567890"));
+        assert!(info.has_api_key);
     }
 
     #[test]
-    fn test_provider_info_short_key_masked() {
+    fn test_provider_info_reports_missing_api_key() {
         let provider = LLMProvider {
             id: 1,
             name: "test".to_string(),
             display_name: "Test".to_string(),
             api_base: "https://api.test.com".to_string(),
             model_name: "gpt-4".to_string(),
-            api_key_encrypted: Some("short".to_string()),
+            api_key_encrypted: None,
             is_active: false,
             max_tokens: 4096,
             temperature: 0.7,
@@ -613,7 +820,7 @@ mod model_tests {
         };
 
         let info = LLMProviderInfo::from(&provider);
-        assert_eq!(info.api_key_masked, Some("****".to_string()));
+        assert!(!info.has_api_key);
     }
 
     #[test]

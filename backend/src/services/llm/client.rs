@@ -37,23 +37,20 @@ impl LLMClient {
     /// Call chat completion API
     pub async fn chat_completion<Req, Resp>(
         &self,
-        provider: &LLMProvider,
+        provider: &ResolvedLLMProvider,
         request: &Req,
     ) -> Result<(Resp, i32, i32), LLMError>
     where
         Req: LLMAnalysisRequestTrait,
         Resp: DeserializeOwned,
     {
-        let api_key = provider
-            .api_key_encrypted
-            .as_ref()
-            .ok_or_else(|| LLMError::ApiError("API key not configured".to_string()))?;
+        let api_key = provider.api_key();
 
         let user_prompt =
             serde_json::to_string_pretty(request).map_err(LLMError::SerializationError)?;
 
         let chat_request = ChatCompletionRequest {
-            model: provider.model_name.clone(),
+            model: provider.provider.model_name.clone(),
             messages: vec![
                 ChatMessage {
                     role: "system".to_string(),
@@ -61,27 +58,27 @@ impl LLMClient {
                 },
                 ChatMessage { role: "user".to_string(), content: user_prompt },
             ],
-            max_tokens: Some(provider.max_tokens as u32),
-            temperature: Some(provider.temperature),
+            max_tokens: Some(provider.provider.max_tokens as u32),
+            temperature: Some(provider.provider.temperature),
             response_format: Some(ResponseFormat { r#type: "json_object".to_string() }),
         };
 
-        let url = format!("{}/chat/completions", provider.api_base.trim_end_matches('/'));
+        let url = format!("{}/chat/completions", provider.provider.api_base.trim_end_matches('/'));
 
-        tracing::debug!("Calling LLM API: {} with model {}", url, provider.model_name);
+        tracing::debug!("Calling LLM API: {} with model {}", url, provider.provider.model_name);
 
         let response = self
             .http_client
             .post(&url)
             .header("Authorization", format!("Bearer {}", api_key))
             .header("Content-Type", "application/json")
-            .timeout(Duration::from_secs(provider.timeout_seconds as u64))
+            .timeout(Duration::from_secs(provider.provider.timeout_seconds as u64))
             .json(&chat_request)
             .send()
             .await
             .map_err(|e| {
                 if e.is_timeout() {
-                    LLMError::Timeout(provider.timeout_seconds as u64)
+                    LLMError::Timeout(provider.provider.timeout_seconds as u64)
                 } else {
                     LLMError::ApiError(e.to_string())
                 }
@@ -139,13 +136,10 @@ impl LLMClient {
     }
 
     /// Test connection to provider (simple models list request)
-    pub async fn test_connection(&self, provider: &LLMProvider) -> Result<(), LLMError> {
-        let api_key = provider
-            .api_key_encrypted
-            .as_ref()
-            .ok_or_else(|| LLMError::ApiError("API key not configured".to_string()))?;
+    pub async fn test_connection(&self, provider: &ResolvedLLMProvider) -> Result<(), LLMError> {
+        let api_key = provider.api_key();
 
-        let url = format!("{}/models", provider.api_base.trim_end_matches('/'));
+        let url = format!("{}/models", provider.provider.api_base.trim_end_matches('/'));
 
         let response = self
             .http_client
@@ -177,16 +171,13 @@ impl LLMClient {
     }
 
     /// Fallback test using minimal chat completion
-    async fn test_with_chat(&self, provider: &LLMProvider) -> Result<(), LLMError> {
-        let api_key = provider
-            .api_key_encrypted
-            .as_ref()
-            .ok_or_else(|| LLMError::ApiError("API key not configured".to_string()))?;
+    async fn test_with_chat(&self, provider: &ResolvedLLMProvider) -> Result<(), LLMError> {
+        let api_key = provider.api_key();
 
-        let url = format!("{}/chat/completions", provider.api_base.trim_end_matches('/'));
+        let url = format!("{}/chat/completions", provider.provider.api_base.trim_end_matches('/'));
 
         let test_request = ChatCompletionRequest {
-            model: provider.model_name.clone(),
+            model: provider.provider.model_name.clone(),
             messages: vec![ChatMessage { role: "user".to_string(), content: "Hi".to_string() }],
             max_tokens: Some(1),
             temperature: Some(0.0),

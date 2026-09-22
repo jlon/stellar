@@ -13,6 +13,7 @@ services:
     # Optional: pin the JWT secret or the initial admin password.
     # environment:
     #   APP_JWT_SECRET: change-me-in-production
+    #   APP_LLM_PROVIDER_ENCRYPTION_KEY: generate-with-openssl-rand-base64-32
     #   STELLAR_ROOT_PASSWORD: change-me-too
     volumes:
       - stellar-data:/data

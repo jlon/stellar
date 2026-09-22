@@ -162,6 +162,22 @@ fn permission_request_routes_have_explicit_permission_codes() {
         extract_permission("GET", "/api/clusters/1/db-auth/accounts"),
         Some(("db-auth".to_string(), "accounts:list".to_string()))
     );
+    assert_eq!(
+        extract_permission("GET", "/api/llm/providers"),
+        Some(("llm".to_string(), "providers:list".to_string()))
+    );
+    assert_eq!(
+        extract_permission("POST", "/api/llm/providers/42/activate"),
+        Some(("llm".to_string(), "providers:activate".to_string()))
+    );
+    assert_eq!(
+        extract_permission("POST", "/api/llm/providers/42/test"),
+        Some(("llm".to_string(), "providers:test".to_string()))
+    );
+    assert_eq!(
+        extract_permission("POST", "/api/llm/analyze/root-cause"),
+        Some(("llm".to_string(), "analyze:root-cause".to_string()))
+    );
 }
 
 #[tokio::test]

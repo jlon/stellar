@@ -21,10 +21,6 @@ import { RolesActionsCellComponent } from './roles/table/actions-cell.component'
 import { OrganizationsComponent } from './organizations/organizations.component';
 import { OrganizationsActionsCellComponent } from './organizations/table/actions-cell.component';
 import { OrganizationFormDialogComponent } from './organizations/organization-form/organization-form-dialog.component';
-import { LLMProvidersComponent } from './llm-providers/llm-providers.component';
-import { LLMProvidersActionsCellComponent } from './llm-providers/table/actions-cell.component';
-import { LLMProviderStatusCellComponent } from './llm-providers/table/status-cell.component';
-import { LLMProviderFormDialogComponent } from './llm-providers/llm-provider-form/llm-provider-form-dialog.component';
 
 @NgModule({
     imports: [
@@ -65,11 +61,6 @@ import { LLMProviderFormDialogComponent } from './llm-providers/llm-provider-for
         OrganizationsComponent,
         OrganizationsActionsCellComponent,
         OrganizationFormDialogComponent,
-        LLMProvidersComponent,
-        LLMProvidersActionsCellComponent,
-        LLMProviderStatusCellComponent,
-        LLMProviderFormDialogComponent,
     ],
 })
 export class SystemModule {}
-

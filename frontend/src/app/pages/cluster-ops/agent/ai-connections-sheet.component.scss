@@ -1,0 +1,211 @@
+:host {
+  display: block;
+  height: 100%;
+}
+
+.ai-connections-sheet {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.sheet-header,
+.sheet-body {
+  padding: 1rem clamp(1rem, 2vw, 1.5rem);
+}
+
+.sheet-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.sheet-header h2,
+.section-heading h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.sheet-header p,
+.section-heading p,
+.field-hint,
+.connection-endpoint {
+  color: var(--text-hint-color);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.sheet-header p,
+.section-heading p {
+  margin: 0.25rem 0 0;
+}
+
+.sheet-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.sheet-alert {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  border: 0;
+  border-left: 2px solid var(--color-warning-default);
+}
+
+.connection-section,
+.editor-section {
+  border-top: 1px solid var(--border-basic-color-3);
+  padding-top: 1rem;
+}
+
+.connection-section:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.editor-section {
+  margin-top: 1.25rem;
+}
+
+.section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.connection-list {
+  border-top: 1px solid var(--border-basic-color-3);
+}
+
+.connections-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 4rem;
+  color: var(--text-hint-color);
+  font-size: 0.8125rem;
+}
+
+.connection-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  align-items: center;
+  padding: 0.75rem 0.15rem;
+  border-bottom: 1px solid var(--border-basic-color-3);
+}
+
+.connection-mark {
+  display: grid;
+  place-items: center;
+  color: var(--text-hint-color);
+  font-size: 1rem;
+}
+
+.connection-mark.current { color: var(--color-success-default); }
+.connection-mark.disabled { color: var(--text-hint-color); }
+
+.connection-main { min-width: 0; }
+
+.connection-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  font-size: 0.82rem;
+}
+
+.connection-model {
+  display: block;
+  margin-top: 0.12rem;
+  color: var(--text-basic-color);
+  font-family: var(--font-family-monospace, monospace);
+  font-size: 0.72rem;
+}
+
+.connection-endpoint {
+  display: block;
+  margin-top: 0.12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.current-badge,
+.disabled-badge {
+  padding: 0.08rem 0.35rem;
+  border-radius: 0.3rem;
+  font-size: 0.65rem;
+  line-height: 1.2;
+}
+
+.current-badge { color: var(--color-success-700); background: var(--color-success-transparent-100); }
+.disabled-badge { color: var(--text-hint-color); background: var(--background-basic-color-3); }
+
+.connection-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.05rem;
+}
+
+.empty-connections {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 1rem 0.15rem;
+  color: var(--text-hint-color);
+  font-size: 0.8rem;
+}
+
+.empty-connections nb-icon { font-size: 1.3rem; }
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.form-group { min-width: 0; }
+.form-group.full { grid-column: 1 / -1; }
+
+.label {
+  display: block;
+  margin: 0 0 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.field-hint { display: block; margin-top: 0.25rem; }
+
+nb-accordion { display: block; margin-top: 0.9rem; }
+
+.editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.spin { animation: spin 1s linear infinite; }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 30rem) {
+  .connection-row { grid-template-columns: auto minmax(0, 1fr); }
+  .connection-actions { grid-column: 2; justify-content: flex-start; }
+  .form-grid { grid-template-columns: 1fr; }
+  .form-group.full { grid-column: auto; }
+}

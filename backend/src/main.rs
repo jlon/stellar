@@ -504,7 +504,19 @@ where
 
     let user_service = Arc::new(UserService::new(pool.clone(), Arc::clone(&casbin_service)));
 
-    let llm_service = Arc::new(LLMServiceImpl::new(pool.clone(), true, 24));
+    let llm_service = Arc::new(LLMServiceImpl::with_encryption_key(
+        pool.clone(),
+        true,
+        24,
+        &config.security.llm_provider_encryption_key,
+    ));
+    let migrated_credentials = llm_service
+        .migrate_legacy_credentials()
+        .await
+        .map_err(|e| format!("Failed to secure existing AI connections: {e}"))?;
+    if migrated_credentials > 0 {
+        tracing::info!(migrated_credentials, "Encrypted legacy AI connection credentials");
+    }
     tracing::info!("LLM service initialized");
 
     let db_auth_query_service = Arc::new(DbAuthQueryService::new(
@@ -529,6 +541,7 @@ where
         config.audit.clone(),
         Arc::clone(&cluster_service),
         Arc::clone(&metrics_collector_service),
+        &config.security.llm_provider_encryption_key,
     ));
     tracing::info!("OpsAgentService initialized");
 
@@ -540,6 +553,7 @@ where
         Arc::clone(&cluster_service),
         audit_service,
         config.agent.clone(),
+        &config.security.llm_provider_encryption_key,
     ));
     tracing::info!("AgentRuntimeService initialized");
 

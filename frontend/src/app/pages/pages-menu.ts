@@ -147,12 +147,6 @@ export const MENU_ITEMS: NbMenuItem[] = [
         link: '/pages/system/op-audit',
         data: { permission: 'menu:system:op-audit' },
       } as NbMenuItem & { data?: { permission: string } },
-      {
-        title: 'LLM管理',
-        icon: { icon: 'code-outline', status: 'info' },
-        link: '/pages/system/llm-providers',
-        data: { permission: 'menu:system:llm' },
-      } as NbMenuItem & { data?: { permission: string } },
     ],
   } as NbMenuItem & { data?: { permission: string } },
 ];

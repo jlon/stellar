@@ -127,13 +127,28 @@ pub struct LLMServiceImpl<DB: AppDb> {
 #[app_impl]
 impl<DB: AppDb> LLMServiceImpl<DB> {
     /// Create a new LLM service
-    pub fn new(pool: sqlx::Pool<DB>, enabled: bool, cache_ttl_hours: i64) -> Self {
+    pub fn with_encryption_key(
+        pool: sqlx::Pool<DB>,
+        enabled: bool,
+        cache_ttl_hours: i64,
+        encryption_key: &str,
+    ) -> Self {
         Self {
-            repository: LLMRepository::new(pool),
+            repository: LLMRepository::with_encryption_key(pool, encryption_key),
             client: LLMClient::new(),
             enabled,
             cache_ttl_hours,
         }
+    }
+
+    #[cfg(test)]
+    pub fn new(pool: sqlx::Pool<DB>, enabled: bool, cache_ttl_hours: i64) -> Self {
+        Self::with_encryption_key(pool, enabled, cache_ttl_hours, "stellar-llm-provider-test-key")
+    }
+
+    /// Upgrade legacy plaintext credentials before accepting LLM traffic.
+    pub async fn migrate_legacy_credentials(&self) -> Result<usize, LLMError> {
+        self.repository.migrate_legacy_credentials().await
     }
 
     /// Create with custom client (for testing)
@@ -142,8 +157,14 @@ impl<DB: AppDb> LLMServiceImpl<DB> {
         client: LLMClient,
         enabled: bool,
         cache_ttl_hours: i64,
+        encryption_key: &str,
     ) -> Self {
-        Self { repository: LLMRepository::new(pool), client, enabled, cache_ttl_hours }
+        Self {
+            repository: LLMRepository::with_encryption_key(pool, encryption_key),
+            client,
+            enabled,
+            cache_ttl_hours,
+        }
     }
 }
 
@@ -175,7 +196,7 @@ impl<DB: AppDb> LLMService for LLMServiceImpl<DB> {
 
         let provider = self
             .repository
-            .get_active_provider()
+            .get_active_provider_for_use()
             .await?
             .ok_or(LLMError::NoProviderConfigured)?;
 
@@ -204,7 +225,7 @@ impl<DB: AppDb> LLMService for LLMServiceImpl<DB> {
 
         let session_id = self
             .repository
-            .create_session(query_id, provider.id, cluster_id, request.scenario())
+            .create_session(query_id, provider.provider.id, cluster_id, request.scenario())
             .await?;
 
         let request_json = serde_json::to_string(request)?;
@@ -312,7 +333,7 @@ impl<DB: AppDb> LLMService for LLMServiceImpl<DB> {
     async fn test_connection(&self, provider_id: i64) -> Result<TestConnectionResponse, LLMError> {
         let provider = self
             .repository
-            .get_provider(provider_id)
+            .get_provider_for_use(provider_id)
             .await?
             .ok_or_else(|| LLMError::ProviderNotFound(provider_id.to_string()))?;
 

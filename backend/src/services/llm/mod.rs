@@ -24,6 +24,7 @@
 //! - DDL Optimization (future)
 
 mod client;
+mod credentials;
 mod models;
 mod repository;
 mod scenarios;

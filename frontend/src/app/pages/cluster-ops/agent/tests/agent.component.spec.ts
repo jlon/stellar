@@ -1,7 +1,8 @@
 import { ChangeDetectorRef, ElementRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute } from '@angular/router';
-import { NbToastrService } from '@nebular/theme';
+import { NbDialogService, NbToastrService } from '@nebular/theme';
+import { of, Subject } from 'rxjs';
 
 import { AgentService } from '../../../../@core/data/agent.service';
 import { ClusterContextService } from '../../../../@core/data/cluster-context.service';
@@ -9,6 +10,9 @@ import { Cluster } from '../../../../@core/data/cluster.service';
 import { I18nService } from '../../../../@core/i18n/i18n.service';
 import { AgentChatService } from '../../../../@core/data/agent-chat.service';
 import { ConfirmDialogService } from '../../../../@core/services/confirm-dialog.service';
+import { LLMProviderService } from '../../../../@core/data/llm-provider.service';
+import { PermissionService } from '../../../../@core/data/permission.service';
+import { AuthService } from '../../../../@core/data/auth.service';
 import { AgentComponent } from '../agent.component';
 
 describe('AgentComponent', () => {
@@ -21,11 +25,19 @@ describe('AgentComponent', () => {
     isRunning: () => false,
     setActiveSession: jasmine.createSpy('setActiveSession'),
   };
+  const dialogService = {
+    open: jasmine.createSpy('open').and.callFake(() => ({
+      componentRef: { instance: { close: jasmine.createSpy('close') } },
+      onBackdropClick: new Subject<void>(),
+      onClose: of(false),
+    })),
+  };
 
   beforeEach(() => {
     toastr.danger.calls.reset();
     toastr.warning.calls.reset();
     chatService.setActiveSession.calls.reset();
+    dialogService.open.calls.reset();
     TestBed.configureTestingModule({
       providers: [
         { provide: ActivatedRoute, useValue: {} },
@@ -36,6 +48,10 @@ describe('AgentComponent', () => {
         { provide: ClusterContextService, useValue: {} },
         { provide: I18nService, useValue: { instant: (value: string) => value } },
         { provide: NbToastrService, useValue: toastr },
+        { provide: LLMProviderService, useValue: { listProviders: () => of([]) } },
+        { provide: PermissionService, useValue: { permissions$: of([]), hasPermission: () => false } },
+        { provide: AuthService, useValue: { isSuperAdmin: () => false } },
+        { provide: NbDialogService, useValue: dialogService },
         { provide: ElementRef, useValue: new ElementRef(document.createElement('div')) },
       ],
     });
@@ -63,6 +79,20 @@ describe('AgentComponent', () => {
     component.newSession();
 
     expect(chatService.setActiveSession).toHaveBeenCalledWith(null);
+  });
+
+  it('routes backdrop closing through the animated model supplier sheet close', () => {
+    component.canManageAiConnections = true;
+
+    component.openAiConnections();
+
+    const dialogRef = dialogService.open.calls.mostRecent().returnValue;
+    const config = dialogService.open.calls.mostRecent().args[1] as { closeOnBackdropClick: boolean; closeOnEsc: boolean };
+    (dialogRef.onBackdropClick as Subject<void>).next();
+
+    expect(config.closeOnBackdropClick).toBeFalse();
+    expect(config.closeOnEsc).toBeFalse();
+    expect(dialogRef.componentRef.instance.close).toHaveBeenCalled();
   });
 
   it('keeps structured tools while hiding legacy freeform reasoning from diagnostic activity', () => {

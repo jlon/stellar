@@ -1,7 +1,7 @@
 //! OpenAI-compatible chat completions client (non-streaming + streaming).
 //!
 //! Shared by ops agent and (future) ask-data. Provider settings come from the
-//! active `llm_providers` row (id/api_base/model_name/api_key_encrypted).
+//! active `llm_providers` row with a request-only decrypted credential.
 //! Streaming follows OpenAI SSE (`data:` line per chunk, `[DONE]` terminator),
 //! mirroring Flink AiChatStreamHandler + pi-from-scratch token streaming.
 
@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 use tokio_stream::StreamExt;
 
 use super::types::{ChatCompletion, ChatMessage, ToolCallDelta};
-use crate::services::llm::LLMProvider;
+use crate::services::llm::ResolvedLLMProvider;
 
 /// 流式推送的内容增量（打字机文本）。回合语义由调用方在回合结束时判定
 /// （有 tool_calls 即思考段进 reasoning step，否则为最终答案）——
@@ -107,11 +107,11 @@ struct AccToolCall {
 /// Minimal OpenAI-compatible chat client.
 pub struct ChatClient {
     http: reqwest::Client,
-    provider: LLMProvider,
+    provider: ResolvedLLMProvider,
 }
 
 impl ChatClient {
-    pub fn new(provider: LLMProvider) -> Self {
+    pub fn new(provider: ResolvedLLMProvider) -> Self {
         Self {
             http: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(120))
@@ -127,7 +127,7 @@ impl ChatClient {
 
     /// Whether a usable provider is available.
     pub fn is_available(&self) -> bool {
-        self.provider.enabled && self.provider.api_key_encrypted.is_some()
+        self.provider.provider.enabled && !self.provider.api_key().is_empty()
     }
 
     /// One chat completion round. `tools` is the full OpenAI tools array (or `null`).
@@ -136,7 +136,7 @@ impl ChatClient {
         messages: &[ChatMessage],
         tools: Option<&Value>,
     ) -> Result<ChatCompletion, String> {
-        self.chat_with_max_tokens(messages, tools, self.provider.max_tokens.max(1) as u32)
+        self.chat_with_max_tokens(messages, tools, self.provider.provider.max_tokens.max(1) as u32)
             .await
     }
 
@@ -147,16 +147,12 @@ impl ChatClient {
         tools: Option<&Value>,
         max_tokens: u32,
     ) -> Result<ChatCompletion, String> {
-        let api_key = self
-            .provider
-            .api_key_encrypted
-            .as_deref()
-            .ok_or_else(|| "LLM provider has no API key".to_string())?;
+        let api_key = self.provider.api_key();
 
         let mut body = json!({
-            "model": self.provider.model_name,
+            "model": self.provider.provider.model_name,
             "messages": messages,
-            "temperature": self.provider.temperature,
+            "temperature": self.provider.provider.temperature,
             "max_tokens": max_tokens,
         });
         if let Some(tools) = tools {
@@ -164,14 +160,17 @@ impl ChatClient {
             body["tool_choice"] = json!("auto");
         }
 
-        let url = format!("{}/chat/completions", self.provider.api_base.trim_end_matches('/'));
+        let url =
+            format!("{}/chat/completions", self.provider.provider.api_base.trim_end_matches('/'));
 
         let resp = self
             .http
             .post(&url)
             .header("Authorization", format!("Bearer {}", api_key))
             .header("Content-Type", "application/json")
-            .timeout(std::time::Duration::from_secs(self.provider.timeout_seconds.max(30) as u64))
+            .timeout(std::time::Duration::from_secs(
+                self.provider.provider.timeout_seconds.max(30) as u64
+            ))
             .json(&body)
             .send()
             .await
@@ -228,17 +227,13 @@ impl ChatClient {
         tools: Option<&Value>,
         mut on_delta: impl FnMut(String),
     ) -> Result<ChatCompletion, String> {
-        let api_key = self
-            .provider
-            .api_key_encrypted
-            .as_deref()
-            .ok_or_else(|| "LLM provider has no API key".to_string())?;
+        let api_key = self.provider.api_key();
 
         let mut body = json!({
-            "model": self.provider.model_name,
+            "model": self.provider.provider.model_name,
             "messages": messages,
-            "temperature": self.provider.temperature,
-            "max_tokens": self.provider.max_tokens,
+            "temperature": self.provider.provider.temperature,
+            "max_tokens": self.provider.provider.max_tokens,
             "stream": true,
         });
         if let Some(tools) = tools {
@@ -246,10 +241,11 @@ impl ChatClient {
             body["tool_choice"] = json!("auto");
         }
 
-        let url = format!("{}/chat/completions", self.provider.api_base.trim_end_matches('/'));
+        let url =
+            format!("{}/chat/completions", self.provider.provider.api_base.trim_end_matches('/'));
         tracing::debug!(
             "chat_stream req: model={}, msgs={}, tools_present={}",
-            self.provider.model_name,
+            self.provider.provider.model_name,
             messages.len(),
             tools.is_some()
         );
@@ -258,7 +254,9 @@ impl ChatClient {
             .post(&url)
             .header("Authorization", format!("Bearer {}", api_key))
             .header("Content-Type", "application/json")
-            .timeout(std::time::Duration::from_secs(self.provider.timeout_seconds.max(30) as u64))
+            .timeout(std::time::Duration::from_secs(
+                self.provider.provider.timeout_seconds.max(30) as u64
+            ))
             .json(&body)
             .send()
             .await

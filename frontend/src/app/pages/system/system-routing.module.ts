@@ -5,8 +5,8 @@ import { PermissionGuard } from '../../@core/guards/permission.guard';
 import { UsersComponent } from './users/users.component';
 import { RolesComponent } from './roles/roles.component';
 import { OrganizationsComponent } from './organizations/organizations.component';
-import { LLMProvidersComponent } from './llm-providers/llm-providers.component';
 import { OpAuditComponent } from './op-audit/op-audit.component';
+import { LegacyLlmProvidersRedirectComponent } from './legacy-llm-providers-redirect.component';
 
 const routes: Routes = [
   {
@@ -40,9 +40,7 @@ const routes: Routes = [
   },
   {
     path: 'llm-providers',
-    component: LLMProvidersComponent,
-    data: { permission: 'menu:system:llm' },
-    canActivate: [PermissionGuard],
+    component: LegacyLlmProvidersRedirectComponent,
   },
 ];
 
@@ -51,4 +49,3 @@ const routes: Routes = [
   exports: [RouterModule],
 })
 export class SystemRoutingModule {}
-
