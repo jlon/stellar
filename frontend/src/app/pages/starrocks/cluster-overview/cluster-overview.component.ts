@@ -638,25 +638,59 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
     const tabletFact = tablet?.length
       ? [`Tablet ${Math.round(tablet[tablet.length - 1].value)}`]
       : [];
-    const charts = [
-      { title: '吞吐', options: this.getQpsChartOptions(), hasData: !!this.performanceTrends?.qps?.length },
-      { title: '延迟', options: this.getLatencyChartOptions(), hasData: !!this.performanceTrends?.latency_p99?.length },
-      { title: '错误', options: this.getErrorRateChartOptions(), hasData: !!this.performanceTrends?.error_rate?.length },
+    const charts: Array<{ title: string; options: Record<string, unknown>; hasData: boolean; facts?: string[] }> = [
       {
-        title: '资源',
+        title: '查询吞吐（QPS / RPS）',
+        options: this.getQpsChartOptions(),
+        hasData: !!this.performanceTrends?.qps?.length,
+        facts: ['FE 查询入口指标'],
+      },
+      {
+        title: '查询时延分位（P50 / P95 / P99）',
+        options: this.getLatencyChartOptions(),
+        hasData: !!this.performanceTrends?.latency_p99?.length,
+        facts: ['单位：ms；P99 表示最慢 1% 查询'],
+      },
+      {
+        title: '查询错误率',
+        options: this.getErrorRateChartOptions(),
+        hasData: !!this.performanceTrends?.error_rate?.length,
+        facts: ['查询执行失败 / 总查询（FE query_err）；不与超时率合并'],
+      },
+      {
+        title: '查询超时率',
+        options: this.getTimeoutRateChartOptions(),
+        hasData: !!this.performanceTrends?.timeout_rate?.length,
+        facts: ['超过超时限制的查询 / 总查询（FE query_timeout）；与错误率独立观察'],
+      },
+      {
+        title: `BE/CN 计算资源（${this.isSharedData ? '平均与缓存' : '平均与容量'}）`,
         options: this.getResourceChartOptions(),
         hasData: !!this.resourceTrends?.cpu_usage?.length,
-        facts: tabletFact,
+        facts: [
+          'CPU、内存：在线 BE/CN 平均',
+          this.isSharedData ? '数据缓存：集群加权使用率' : '磁盘：集群加权使用率',
+          ...tabletFact,
+        ],
       },
-      { title: 'JVM', options: this.getJvmHeapChartOptions(), hasData: !!this.resourceTrends?.jvm_heap_usage?.length },
-      { title: 'Score', options: this.getCompactionScoreTrendOptions(), hasData: !!this.resourceTrends?.compaction_score?.length },
+      {
+        title: 'FE JVM 运行时（接入 FE）',
+        options: this.getJvmHeapChartOptions(),
+        hasData: !!this.resourceTrends?.jvm_heap_usage?.length,
+        facts: ['JVM 堆使用率与线程数；非全部 FE 聚合'],
+      },
+      {
+        title: 'Compaction 积压分（最高值）',
+        options: this.getCompactionScoreTrendOptions(),
+        hasData: !!this.resourceTrends?.compaction_score?.length,
+        facts: ['超过 50 需关注；超过 100 为严重积压'],
+      },
     ];
     if (this.isSharedData) {
       return [
         ...charts,
-        { title: '超时', options: this.getTimeoutRateChartOptions(), hasData: !!this.performanceTrends?.timeout_rate?.length },
         {
-          title: '事务',
+          title: '事务完成量（每采集周期）',
           options: this.getTxnChartOptions(),
           hasData: !!(this.resourceTrends?.txn_success?.length || this.resourceTrends?.txn_failed?.length),
         },
@@ -664,8 +698,8 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
     }
     return [
       ...charts,
-      { title: '网络', options: this.getNetworkChartOptions(), hasData: !!this.resourceTrends?.network_tx?.length },
-      { title: 'IO', options: this.getIoChartOptions(), hasData: !!this.resourceTrends?.io_read?.length },
+      { title: 'BE/CN 网络速率（发送 / 接收）', options: this.getNetworkChartOptions(), hasData: !!this.resourceTrends?.network_tx?.length },
+      { title: 'BE/CN 磁盘 I/O（读 / 写）', options: this.getIoChartOptions(), hasData: !!this.resourceTrends?.io_read?.length },
     ];
   }
 
@@ -1010,13 +1044,13 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
       ...this.getBaseChartOptions(color),
       legend: {
         ...this.getBaseChartOptions(color).legend,
-        data: ['错误率'],
+        data: ['查询错误率'],
       },
       tooltip: {
         ...this.getBaseChartOptions(color).tooltip,
         formatter: (params: any) => {
           const point = params[0];
-          return `${point.axisValue}<br/>${point.marker} 错误率: ${point.value.toFixed(2)}%`;
+          return `${point.axisValue}<br/>${point.marker} 查询错误率: ${point.value.toFixed(2)}%`;
         },
       },
       xAxis: {
@@ -1031,7 +1065,7 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
         },
       },
       series: [
-        this.getLineSeries('错误率', points.map(d => d.value), color),
+        this.getLineSeries('查询错误率', points.map(d => d.value), color),
       ],
     };
   }
@@ -1046,13 +1080,13 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
       ...this.getBaseChartOptions(color),
       legend: {
         ...this.getBaseChartOptions(color).legend,
-        data: ['超时率'],
+        data: ['查询超时率'],
       },
       tooltip: {
         ...this.getBaseChartOptions(color).tooltip,
         formatter: (params: any) => {
           const point = params[0];
-          return `${point.axisValue}<br/>${point.marker} 超时率: ${point.value.toFixed(2)}%`;
+          return `${point.axisValue}<br/>${point.marker} 查询超时率: ${point.value.toFixed(2)}%`;
         },
       },
       xAxis: {
@@ -1067,7 +1101,7 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
         },
       },
       series: [
-        this.getLineSeries('超时率', points.map(d => d.value), color),
+        this.getLineSeries('查询超时率', points.map(d => d.value), color),
       ],
     };
   }
@@ -1114,18 +1148,18 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
       return {};
     }
     const color = this.chartColors.warning || '#ffaa00';
-    const series = this.getLineSeries('Score', points.map(d => d.value), color);
+    const series = this.getLineSeries('最高 Compaction 积压分', points.map(d => d.value), color);
     return {
       ...this.getBaseChartOptions(color),
       legend: {
         ...this.getBaseChartOptions(color).legend,
-        data: ['Score'],
+        data: ['最高 Compaction 积压分'],
       },
       tooltip: {
         ...this.getBaseChartOptions(color).tooltip,
         formatter: (params: any) => {
           const point = params[0];
-          return `${point.axisValue}<br/>${point.marker} Score: ${point.value.toFixed(1)}`;
+          return `${point.axisValue}<br/>${point.marker} 最高 Compaction 积压分: ${point.value.toFixed(1)}`;
         },
       },
       xAxis: {
@@ -1138,8 +1172,18 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
           markLine: {
             silent: true,
             symbol: 'none',
-            lineStyle: { color: this.chartColors.danger, type: 'dashed', width: 1 },
-            data: [{ yAxis: 100, label: { formatter: '100', color: this.chartColors.danger } }],
+            data: [
+              {
+                yAxis: 50,
+                label: { formatter: '关注 50', color: this.chartColors.warning },
+                lineStyle: { color: this.chartColors.warning, type: 'dashed', width: 1 },
+              },
+              {
+                yAxis: 100,
+                label: { formatter: '严重 100', color: this.chartColors.danger },
+                lineStyle: { color: this.chartColors.danger, type: 'dashed', width: 1 },
+              },
+            ],
           },
         },
       ],
@@ -1335,10 +1379,10 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
     const color = this.chartColors.info || '#0095ff';
     const threadColor = this.chartColors.warning || '#ffaa00';
     const threads = this.resourceTrends.jvm_thread_count || [];
-    const series = this.getLineSeries('JVM', values, color, true);
+    const series = this.getLineSeries('FE 堆使用率', values, color, true);
     const threadSeries = threads.length
       ? {
-          ...this.getLineSeries('线程', threads.map(point => point.value), threadColor, false),
+          ...this.getLineSeries('FE JVM 线程数', threads.map(point => point.value), threadColor, false),
           yAxisIndex: 1,
         }
       : null;
@@ -1347,15 +1391,16 @@ export class ClusterOverviewComponent implements OnInit, OnDestroy, AfterViewIni
       ...this.getBaseChartOptions(color),
       legend: {
         ...this.getBaseChartOptions(color).legend,
-        data: threadSeries ? ['JVM', '线程'] : ['JVM'],
+        data: threadSeries ? ['FE 堆使用率', 'FE JVM 线程数'] : ['FE 堆使用率'],
       },
       tooltip: {
         ...this.getBaseChartOptions(color).tooltip,
         formatter: (params: any) => {
           let result = `${params[0].axisValue}<br/>`;
           params.forEach((param: any) => {
-            const suffix = param.seriesName === 'JVM' ? '%' : '';
-            result += `${param.marker} ${param.seriesName}: ${Number(param.value).toFixed(1)}${suffix}<br/>`;
+            const isHeap = param.seriesName === 'FE 堆使用率';
+            const value = isHeap ? Number(param.value).toFixed(1) : Math.round(Number(param.value));
+            result += `${param.marker} ${param.seriesName}: ${value}${isHeap ? '%' : ''}<br/>`;
           });
           return result;
         },

@@ -280,6 +280,7 @@ export class AgentComponent implements OnInit, OnDestroy {
     }
     this.saveDraft();
     this.activeSessionId = sessionId;
+    this.chatService.setActiveSession(sessionId);
     this.clearActions();
     this.restoreDraft();
     this.loadTranscript(sessionId);
@@ -288,6 +289,7 @@ export class AgentComponent implements OnInit, OnDestroy {
   newSession(): void {
     this.saveDraft();
     this.activeSessionId = null;
+    this.chatService.setActiveSession(null);
     this.messages = [];
     this.clearActions();
     this.restoreDraft();
@@ -346,7 +348,7 @@ export class AgentComponent implements OnInit, OnDestroy {
         this.renamingId = null;
         this.cdRef.detectChanges();
       },
-      error: (e) => this.toastr.danger(e?.error?.message ?? '重命名失败', '智能运维助手'),
+      error: (e) => this.toastr.danger(e?.error?.message ?? '重命名失败', '智能助手'),
     });
   }
 
@@ -370,7 +372,7 @@ export class AgentComponent implements OnInit, OnDestroy {
     if (!this.messages.length) {
       return;
     }
-    const title = this.sessions.find((s) => s.id === this.activeSessionId)?.title || '智能运维会话';
+    const title = this.sessions.find((s) => s.id === this.activeSessionId)?.title || '智能助手会话';
     const lines: string[] = [`# ${title}`, ''];
     for (const m of this.messages) {
       if (m.role === 'user') {
@@ -417,7 +419,7 @@ export class AgentComponent implements OnInit, OnDestroy {
       error: (err) => {
         // 展示后端具体原因（如"会话不存在"= 陈旧列表项），并强制刷新列表消除陈旧项
         const msg = err?.error?.message ?? err?.message ?? '请求失败';
-        this.toastr.danger(`删除会话失败：${msg}`, '智能运维助手');
+        this.toastr.danger(`删除会话失败：${msg}`, '智能助手');
         this.reloadSessions();
       },
     });
@@ -511,6 +513,7 @@ export class AgentComponent implements OnInit, OnDestroy {
       const visibleTurn = this.messages.includes(assistant);
       if (visibleTurn) {
         this.activeSessionId = ev.session_id ?? this.activeSessionId;
+        this.chatService.setActiveSession(this.activeSessionId);
       }
       assistant.doneReceived = true;
       if (!assistant.answerTarget) {
@@ -526,7 +529,7 @@ export class AgentComponent implements OnInit, OnDestroy {
       assistant.streaming = false;
       this.sending = false;
       this.turnMessage = null;
-      this.toastr.danger(message, this.i18n.instant('智能运维助手'));
+      this.toastr.danger(message, this.i18n.instant('智能助手'));
       this.renderNow();
     }
   }
@@ -589,7 +592,7 @@ export class AgentComponent implements OnInit, OnDestroy {
     if (this.chatService.isRunning()) {
       this.toastr.warning(
         this.i18n.instant('正在处理上一条消息，请等待完成或停止当前诊断'),
-        this.i18n.instant('智能运维助手'),
+        this.i18n.instant('智能助手'),
       );
       return;
     }
@@ -1231,7 +1234,7 @@ export class AgentComponent implements OnInit, OnDestroy {
         }
         this.cdRef.detectChanges();
       },
-      error: (e) => this.toastr.danger(e?.error?.message ?? '评价失败', '智能运维助手'),
+      error: (e) => this.toastr.danger(e?.error?.message ?? '评价失败', '智能助手'),
     });
   }
 

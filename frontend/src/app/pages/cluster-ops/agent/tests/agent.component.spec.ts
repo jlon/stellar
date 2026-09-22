@@ -19,11 +19,13 @@ describe('AgentComponent', () => {
   };
   const chatService = {
     isRunning: () => false,
+    setActiveSession: jasmine.createSpy('setActiveSession'),
   };
 
   beforeEach(() => {
     toastr.danger.calls.reset();
     toastr.warning.calls.reset();
+    chatService.setActiveSession.calls.reset();
     TestBed.configureTestingModule({
       providers: [
         { provide: ActivatedRoute, useValue: {} },
@@ -53,6 +55,14 @@ describe('AgentComponent', () => {
 
     expect(component.presets[2]).toBe('磁盘快满了吗，还能撑多久？');
     expect(component.emptyStateHint).toContain('磁盘告急');
+  });
+
+  it('clears the shared session when starting a new conversation', () => {
+    component.activeSessionId = 11;
+
+    component.newSession();
+
+    expect(chatService.setActiveSession).toHaveBeenCalledWith(null);
   });
 
   it('keeps structured tools while hiding legacy freeform reasoning from diagnostic activity', () => {
@@ -188,7 +198,7 @@ describe('AgentComponent', () => {
 
     component.send();
 
-    expect(toastr.warning).toHaveBeenCalledWith('正在处理上一条消息，请等待完成或停止当前诊断', '智能运维助手');
+    expect(toastr.warning).toHaveBeenCalledWith('正在处理上一条消息，请等待完成或停止当前诊断', '智能助手');
   });
 
   it('shows an error notification and ends the assistant placeholder on stream failure', () => {
@@ -201,6 +211,6 @@ describe('AgentComponent', () => {
     expect(assistant.content).toBe('⚠️ 模型服务暂时不可用（HTTP 503）');
     expect(assistant.streaming).toBeFalse();
     expect(component.sending).toBeFalse();
-    expect(toastr.danger).toHaveBeenCalledWith('模型服务暂时不可用（HTTP 503）', '智能运维助手');
+    expect(toastr.danger).toHaveBeenCalledWith('模型服务暂时不可用（HTTP 503）', '智能助手');
   });
 });

@@ -1,32 +1,37 @@
-<ng-container *ngIf="visible && !dismissed">
-  <!-- 收起态：右下角气泡（hover 时右上角出现轻微八叉可关闭入口） -->
-  <div *ngIf="!open" class="chat-fab-wrap">
-    <button
-      class="chat-fab-dismiss"
-      (click)="dismiss()"
-      [nbTooltip]="'关闭浮动入口（仍可从左侧「智能运维」使用）' | translate"
-      nbTooltipPlacement="left"
-    >
-      <nb-icon icon="close-outline"></nb-icon>
-    </button>
-    <button class="chat-fab" (click)="toggle()" [nbTooltip]="'智能运维助手' | translate" nbTooltipPlacement="left">
-      <nb-icon icon="activity-outline"></nb-icon>
-    </button>
-  </div>
+<ng-container *ngIf="!drawer && visible">
+  <button
+    class="chat-fab"
+    type="button"
+    (click)="openDrawer()"
+    [nbTooltip]="'打开智能助手' | translate"
+    [attr.aria-label]="'打开智能助手' | translate"
+    [title]="'打开智能助手' | translate"
+    nbTooltipPlacement="left"
+  >
+    <span class="chat-fab__ring" aria-hidden="true"></span>
+    <span class="chat-fab__core" aria-hidden="true">
+      <nb-icon icon="message-circle-outline"></nb-icon>
+    </span>
+    <span class="chat-fab__spark" aria-hidden="true">
+      <nb-icon icon="flash-outline"></nb-icon>
+    </span>
+  </button>
+</ng-container>
 
-  <!-- 展开态：迷你聊天窗 -->
-  <div *ngIf="open" class="chat-float-panel">
+<ng-container *ngIf="drawer && open">
+  <!-- 右侧 Nebular 抽屉内容 -->
+  <div class="chat-float-panel">
     <header class="chat-float-header">
       <div class="float-title">
         <nb-icon icon="activity-outline"></nb-icon>
-        <span>{{  '智能运维助手' | translate }}</span>
+        <span>{{  '智能助手' | translate }}</span>
         <span class="float-cluster" *ngIf="clusterName">· {{ clusterName }}</span>
       </div>
-      <div class="float-actions">
-        <button nbButton ghost size="tiny" (click)="open = false" [nbTooltip]="'最小化' | translate">
+      <div class="float-header-actions">
+        <button nbButton ghost size="tiny" type="button" (click)="closeDrawer()" [nbTooltip]="'最小化' | translate" [attr.aria-label]="'最小化' | translate">
           <nb-icon icon="chevron-down-outline"></nb-icon>
         </button>
-        <button nbButton ghost size="tiny" (click)="visible = false" [nbTooltip]="'关闭' | translate">
+        <button nbButton ghost size="tiny" type="button" (click)="closeDrawer()" [nbTooltip]="'关闭' | translate" [attr.aria-label]="'关闭' | translate">
           <nb-icon icon="close-outline"></nb-icon>
         </button>
       </div>

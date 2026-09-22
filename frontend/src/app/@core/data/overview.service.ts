@@ -38,9 +38,11 @@ export interface PerformanceTrends {
 }
 
 export interface ResourceTrends {
+  // BE/CN 在线节点的平均使用率；磁盘/数据缓存为集群加权使用率。
   cpu_usage: TimeSeriesPoint[];
   memory_usage: TimeSeriesPoint[];
   disk_usage: TimeSeriesPoint[];
+  // 集群接入 FE 的 JVM 运行时指标，不代表全部 FE 的聚合资源。
   jvm_heap_usage: TimeSeriesPoint[];
   network_tx: TimeSeriesPoint[];
   network_rx: TimeSeriesPoint[];
@@ -389,13 +391,14 @@ export class OverviewService {
         : 'success';
     return [
       {
-        title: this.i18n.instant('状态'),
+        title: this.i18n.instant('健康分'),
         value: Math.round(overview.health.score).toString(),
         status: healthStatus,
+        description: this.i18n.instant('0-100 分；综合节点可用性、Compaction、磁盘或缓存与 CPU 风险'),
         cardId: 'health',
       },
       {
-        title: 'FE',
+        title: 'FE 在线',
         value: `${overview.health.fe_nodes_online}/${overview.health.fe_nodes_total}`,
         status: this.nodePairStatus(overview.health.fe_nodes_online, overview.health.fe_nodes_total),
         navigateTo: '/pages/starrocks/frontends',
@@ -403,7 +406,7 @@ export class OverviewService {
         cardId: 'fe',
       },
       {
-        title: sharedData ? 'CN' : 'BE',
+        title: sharedData ? 'CN 在线' : 'BE 在线',
         value: `${overview.health.be_nodes_online}/${overview.health.be_nodes_total}`,
         status: this.nodePairStatus(overview.health.be_nodes_online, overview.health.be_nodes_total),
         navigateTo: '/pages/starrocks/backends',
@@ -411,10 +414,14 @@ export class OverviewService {
         cardId: 'be',
       },
       {
-        title: 'Score',
+        title: '压缩积压分',
         value: Math.round(overview.resources.compaction_score).toString(),
-        status: overview.resources.compaction_score > 100 ? 'warning' : 'success',
-        description: '查看 Compaction 任务',
+        status: overview.resources.compaction_score > 100
+          ? 'danger'
+          : overview.resources.compaction_score > 50
+            ? 'warning'
+            : 'success',
+        description: '最高 Compaction Score；超过 50 需关注，超过 100 为严重积压',
         cardId: 'compaction_score',
       },
       {
@@ -428,12 +435,12 @@ export class OverviewService {
         cardId: 'p99',
       },
       {
-        title: this.i18n.instant('错误率'),
+        title: this.i18n.instant('查询错误率'),
         value: (overview.kpi.error_rate || 0).toFixed(1),
         unit: '%',
         status: overview.kpi.error_rate > 5 ? 'warning' : 'success',
         navigateTo: '/pages/starrocks/queries/audit-logs',
-        description: this.i18n.instant('查看查询审计日志与执行状态'),
+        description: this.i18n.instant('查询执行失败 / 总查询（FE query_err）；与查询超时率分开统计，不合并'),
         cardId: 'error_rate',
       },
       {

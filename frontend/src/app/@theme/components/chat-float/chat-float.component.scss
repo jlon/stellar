@@ -1,66 +1,104 @@
-/* 全局浮动聊天（Intercom 式）：右下角气泡 → 迷你聊天窗 */
+/* 智能助手：离开全量页后由右下角入口调起 Nebular 右侧抽屉。 */
 :host {
+  display: block;
+}
+
+:host(.launcher-mode) {
   position: fixed;
-  right: 1.4rem;
-  bottom: 1.4rem;
+  right: max(1.25rem, env(safe-area-inset-right));
+  bottom: max(1.25rem, env(safe-area-inset-bottom));
   z-index: 1200;
 }
 
-.chat-fab-wrap {
-  position: relative;
-  display: inline-block;
-}
-
-.chat-fab-dismiss {
-  position: absolute;
-  top: -0.15rem;
-  right: -0.15rem;
-  width: 1.15rem;
-  height: 1.15rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 50%;
-  background: var(--background-basic-color-3);
-  color: var(--text-hint-color);
-  font-size: 0.62rem;
-  cursor: pointer;
-  opacity: 0;
-  transform: scale(0.75);
-  transition: opacity 0.18s ease, transform 0.18s ease, background-color 0.18s ease, color 0.18s ease;
-  z-index: 2;
-
-  &:hover {
-    background: var(--color-danger-500);
-    color: var(--text-control-color);
-  }
-}
-
-.chat-fab-wrap:hover .chat-fab-dismiss {
-  opacity: 1;
-  transform: scale(1);
+:host(.drawer-mode) {
+  height: 100%;
+  min-height: 0;
 }
 
 .chat-fab {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 3.4rem;
-  height: 3.4rem;
-  border: none;
+  width: 3.75rem;
+  height: 3.75rem;
+  padding: 0;
+  border: 1px solid var(--border-basic-color-3);
   border-radius: 50%;
-  background: var(--color-primary-500);
+  background: var(--card-background-color);
   color: var(--text-control-color);
-  font-size: 1.5rem;
   cursor: pointer;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.18);
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
   animation: fab-in 0.3s ease;
 
   &:hover {
-    transform: scale(1.06);
-    box-shadow: 0 8px 26px rgba(0, 0, 0, 0.24);
+    transform: translateY(-0.125rem);
+    border-color: var(--color-primary-400);
+    box-shadow: 0 0.75rem 1.75rem rgba(0, 0, 0, 0.22);
+
+    .chat-fab__core {
+      transform: scale(1.04);
+    }
+
+    .chat-fab__ring {
+      border-color: var(--color-primary-400);
+      opacity: 0.9;
+    }
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 0.25rem var(--color-primary-transparent-200), 0 0.75rem 1.75rem rgba(0, 0, 0, 0.22);
+  }
+}
+
+.chat-fab__ring {
+  position: absolute;
+  inset: 0.25rem;
+  border: 1px solid var(--border-basic-color-4);
+  border-radius: inherit;
+  opacity: 0.7;
+  pointer-events: none;
+  transition: border-color 180ms ease, opacity 180ms ease;
+}
+
+.chat-fab__core {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: var(--color-primary-500);
+  box-shadow: inset 0 1px 0 var(--color-primary-400);
+  transition: transform 180ms ease;
+
+  nb-icon {
+    font-size: 1.35rem;
+  }
+}
+
+.chat-fab__spark {
+  position: absolute;
+  z-index: 2;
+  top: 0.15rem;
+  right: 0.15rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  border: 1px solid var(--border-basic-color-3);
+  border-radius: 50%;
+  background: var(--card-background-color);
+  color: var(--color-primary-500);
+  box-shadow: 0 0.125rem 0.375rem rgba(0, 0, 0, 0.16);
+
+  nb-icon {
+    font-size: 0.7rem;
   }
 }
 
@@ -76,25 +114,19 @@
 }
 
 .chat-float-panel {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 22rem;
-  max-height: 70vh;
+  height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background: var(--card-background-color);
-  border: 1px solid var(--border-basic-color-3);
-  border-radius: 1.1rem;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.22);
   overflow: hidden;
-  animation: panel-in 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: drawer-content-in 180ms ease;
 }
 
-@keyframes panel-in {
+@keyframes drawer-content-in {
   from {
     opacity: 0;
-    transform: translateY(14px) scale(0.97);
+    transform: translateX(0.5rem);
   }
   to {
     opacity: 1;
@@ -130,7 +162,7 @@
   font-weight: 400;
 }
 
-.float-actions {
+.float-header-actions {
   display: flex;
   gap: 0.1rem;
 }
@@ -143,13 +175,12 @@
 /* messages */
 .chat-float-messages {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
   padding: 0.8rem;
-  min-height: 10rem;
-  max-height: calc(70vh - 10.5rem);
 }
 
 .float-empty {

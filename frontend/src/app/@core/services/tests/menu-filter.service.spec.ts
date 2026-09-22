@@ -39,4 +39,15 @@ describe('MenuFilterService', () => {
   it('hides a grouping item when none of its children are authorized', () => {
     expect(service.filterMenuItems(clusterOperations)).toEqual([]);
   });
+
+  it('places the assistant directly after cluster overview', () => {
+    const overviewIndex = MENU_ITEMS.findIndex((item) => item.title === '集群概览');
+    const assistant = MENU_ITEMS[overviewIndex + 1];
+
+    expect(assistant).toEqual(jasmine.objectContaining({
+      title: '智能助手',
+      link: '/pages/cluster-ops/agent',
+    }));
+    expect((assistant as any).data.permission).toBe('menu:agent');
+  });
 });

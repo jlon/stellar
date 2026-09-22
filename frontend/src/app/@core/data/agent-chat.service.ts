@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable, Subject, Subscription } from 'rxjs';
+import { BehaviorSubject, Observable, Subject, Subscription } from 'rxjs';
 import { AgentService, ChatRequest, ChatStreamEvent } from './agent.service';
 import { NotificationService } from './notification.service';
 
@@ -20,6 +20,9 @@ export class AgentChatService {
 
   private turn$ = new Subject<ChatStreamEvent>();
   private turnSub: Subscription | null = null;
+  private activeSessionSubject = new BehaviorSubject<number | null>(null);
+  /** 全量页与右侧抽屉共享的当前会话。 */
+  readonly activeSession$ = this.activeSessionSubject.asObservable();
   /** 任何会话 UI（全量页面 / 展开的浮窗）是否在前台。 */
   private uiFront = false;
   private running = false;
@@ -36,6 +39,16 @@ export class AgentChatService {
   /** 会话 UI 显隐（全量页面 / 浮窗展开）由组件上报。 */
   setUiFront(front: boolean): void {
     this.uiFront = front;
+  }
+
+  setActiveSession(sessionId: number | null): void {
+    if (this.activeSessionSubject.value !== sessionId) {
+      this.activeSessionSubject.next(sessionId);
+    }
+  }
+
+  getActiveSession(): number | null {
+    return this.activeSessionSubject.value;
   }
 
   isRunning(): boolean {
@@ -69,6 +82,7 @@ export class AgentChatService {
         }
         this.turn$.next(ev);
         if (ev.type === 'done') {
+          this.setActiveSession(ev.session_id ?? this.getActiveSession());
           this.running = false;
           this.turnSub = null;
           // 完成时才通知：用户若仍在前台（页面/浮窗展开）正在看答案，不打扰
@@ -79,7 +93,7 @@ export class AgentChatService {
                 : this.lastAnswer;
             const link = `/pages/cluster-ops/agent?session=${ev.session_id ?? ''}`;
             this.notificationService
-              .create('agent_chat_done', '智能运维诊断完成', body, link)
+              .create('agent_chat_done', '智能助手诊断完成', body, link)
               .subscribe({ error: () => {} });
           }
         }
@@ -106,7 +120,7 @@ export class AgentChatService {
       this.notificationService
         .create(
           'agent_chat_error',
-          '智能运维诊断失败',
+          '智能助手诊断失败',
           message.length > 120 ? message.slice(0, 120) + '…' : message,
           '/pages/cluster-ops/agent',
           'critical',

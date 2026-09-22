@@ -61,4 +61,24 @@ describe('AgentChatService', () => {
 
     expect(service.isRunning()).toBeFalse();
   });
+
+  it('retains the active session across assistant surfaces', () => {
+    const selected: Array<number | null> = [];
+    service.activeSession$.subscribe((sessionId) => selected.push(sessionId));
+
+    service.setActiveSession(42);
+    service.setActiveSession(42);
+    service.setActiveSession(null);
+
+    expect(selected).toEqual([null, 42, null]);
+    expect(service.getActiveSession()).toBeNull();
+  });
+
+  it('records a newly created session when a turn finishes off the assistant page', () => {
+    service.start({ cluster_id: 1, message: '检查集群' });
+
+    stream.next({ type: 'done', session_id: 42 });
+
+    expect(service.getActiveSession()).toBe(42);
+  });
 });

@@ -15,6 +15,12 @@ export const MENU_ITEMS: NbMenuItem[] = [
     data: { permission: 'menu:overview' },
   } as NbMenuItem & { data?: { permission: string } },
   {
+    title: '智能助手',
+    icon: { icon: 'activity-outline', status: 'basic' },
+    link: '/pages/cluster-ops/agent',
+    data: { permission: 'menu:agent' },
+  } as NbMenuItem & { data?: { permission: string } },
+  {
     title: '节点管理',
     icon: { icon: 'hard-drive-outline', status: 'warning' },
     data: { permission: 'menu:nodes' },
@@ -109,19 +115,6 @@ export const MENU_ITEMS: NbMenuItem[] = [
         icon: { icon: 'funnel-outline', status: 'danger' },
         link: '/pages/cluster-ops/resource-groups',
         data: { permission: 'menu:cluster-ops:resource-groups' },
-      } as NbMenuItem & { data?: { permission: string } },
-    ],
-  } as NbMenuItem & { data?: { permission: string } },
-  {
-    title: '智能运维',
-    icon: { icon: 'flash-outline', status: 'primary' },
-    data: { permission: 'menu:agent' },
-    children: [
-      {
-        title: '智能运维助手',
-        icon: { icon: 'radio-outline', status: 'primary' },
-        link: '/pages/cluster-ops/agent',
-        data: { permission: 'menu:agent' },
       } as NbMenuItem & { data?: { permission: string } },
     ],
   } as NbMenuItem & { data?: { permission: string } },

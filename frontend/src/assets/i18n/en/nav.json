@@ -1,6 +1,7 @@
 {
  "集群列表": "Clusters",
  "集群概览": "Cluster Overview",
+ "智能助手": "AI Assistant",
  "节点管理": "Nodes",
  "Frontend 节点": "Frontend Nodes",
  "Backend 节点": "Backend Nodes",
@@ -17,8 +18,6 @@
  "集群运维": "Cluster Ops",
  "权限管理": "Permissions",
  "资源组管理": "Resource Groups",
- "智能运维": "AI Ops",
- "智能运维助手": "AI Ops Assistant",
  "系统管理": "System Management",
  "用户管理": "Users",
  "角色管理": "Roles",

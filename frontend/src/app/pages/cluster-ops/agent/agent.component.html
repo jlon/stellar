@@ -72,7 +72,7 @@
   <!-- 对话区 -->
   <nb-card class="agent-chat-card">
     <nb-card-header class="chat-header">
-      <span class="chat-title">{{  '智能运维助手' | translate }}<span *ngIf="cluster" class="chat-subtitle">· {{ cluster.name }}</span></span>
+      <span class="chat-title">{{  '智能助手' | translate }}<span *ngIf="cluster" class="chat-subtitle">· {{ cluster.name }}</span></span>
       <button
         *ngIf="messages.length > 0"
         nbButton
@@ -93,7 +93,7 @@
       aria-live="polite"
       aria-relevant="additions text"
       [attr.aria-busy]="sending"
-      [attr.aria-label]="'智能运维助手' | translate"
+      [attr.aria-label]="'智能助手' | translate"
       (scroll)="onMessagesScroll()">
       <div class="transcript" [class.dimmed]="loadingTranscript && messages.length > 0">
 
@@ -108,7 +108,7 @@
 
       <div *ngFor="let m of messages; trackBy: trackMessage" class="msg-row" [class.user]="m.role === 'user'">
         <ng-container *ngIf="m.role === 'assistant'">
-          <div class="msg-avatar msg-avatar-ai" [title]="('智能运维助手' | translate)">
+          <div class="msg-avatar msg-avatar-ai" [title]="('智能助手' | translate)">
             <svg viewBox="0 0 48 48" width="30" height="30" fill="none" xmlns="http://www.w3.org/2000/svg">
               <circle cx="24" cy="24" r="22" fill="var(--color-primary-500)"/>
               <ellipse cx="24" cy="24" rx="15" ry="7" transform="rotate(-20 24 24)" stroke="#fff" stroke-opacity="0.35" stroke-width="1.6"/>
