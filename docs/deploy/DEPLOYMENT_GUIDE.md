@@ -2,7 +2,7 @@
 
 > 面向业务运维人员的部署手册。所有安装包均从 [GitHub Releases](https://github.com/jlon/stellar/releases) 下载，无需源码、无需编译环境。
 >
-> 以下命令中的 `1.0.0` 请替换为实际要安装的版本号（可在 [Releases 页面](https://github.com/jlon/stellar/releases) 查看最新版本）。
+> 以下命令中的 `1.0.1` 请替换为实际要安装的版本号（可在 [Releases 页面](https://github.com/jlon/stellar/releases) 查看最新版本）。
 
 ---
 
@@ -28,15 +28,15 @@
 
 | 安装包 | 文件名 | 适用场景 |
 |-------|--------|---------|
-| DEB 包 | `stellar-server-1.0.0-amd64.deb` | Debian / Ubuntu 服务器，**推荐**：自动注册 systemd 服务 |
-| 压缩包 | `stellar-1.0.0-linux-amd64-musl.tar.gz` | 任意 Linux（含 CentOS / 麒麟等），解压即用 |
-| Docker 镜像 | `ghcr.io/jlon/stellar:1.0.0` | 已有 Docker / Kubernetes 环境 |
-| npm 包 | `stellar-server-1.0.0.tgz` | 已有 Node.js 环境，仅作分发通道（运行不依赖 Node） |
+| DEB 包 | `stellar-server-1.0.1-amd64.deb` | Debian / Ubuntu 服务器，**推荐**：自动注册 systemd 服务 |
+| 压缩包 | `stellar-1.0.1-linux-amd64-musl.tar.gz` | 任意 Linux（含 CentOS / 麒麟等），解压即用 |
+| Docker 镜像 | `ghcr.io/jlon/stellar:1.0.1` | 已有 Docker / Kubernetes 环境 |
+| npm 包 | `stellar-server-1.0.1.tgz` | 已有 Node.js 环境，仅作分发通道（运行不依赖 Node） |
 
 > 所有 Linux 安装包均为全静态编译（musl），无任何运行时依赖，CentOS 7 等老系统可直接运行。
 >
 > 每个安装包均附带 `.sha256` 校验文件，安全要求高的环境请先校验：
-> `sha256sum -c stellar-server-1.0.0-amd64.deb.sha256`
+> `sha256sum -c stellar-server-1.0.1-amd64.deb.sha256`
 
 ---
 
@@ -87,10 +87,10 @@ Stellar 采用 **MinIO 风格的一次性密码**机制，所有安装方式通�
 
 ```bash
 # 1. 下载
-wget https://github.com/jlon/stellar/releases/download/v1.0.0/stellar-server-1.0.0-amd64.deb
+wget https://github.com/jlon/stellar/releases/download/v1.0.1/stellar-server-1.0.1-amd64.deb
 
 # 2. 安装（自动创建 stellar 系统用户并注册 systemd 服务）
-sudo apt install ./stellar-server-1.0.0-amd64.deb
+sudo apt install ./stellar-server-1.0.1-amd64.deb
 sudo systemctl start stellar
 
 # 3. 查看一次性管理员密码
@@ -122,9 +122,9 @@ sudo journalctl -u stellar -f     # 跟踪日志
 
 ```bash
 # 1. 下载并解压
-wget https://github.com/jlon/stellar/releases/download/v1.0.0/stellar-1.0.0-linux-amd64-musl.tar.gz
-tar xzf stellar-1.0.0-linux-amd64-musl.tar.gz
-cd stellar
+wget https://github.com/jlon/stellar/releases/download/v1.0.1/stellar-1.0.1-linux-amd64-musl.tar.gz
+tar xzf stellar-1.0.1-linux-amd64-musl.tar.gz
+cd stellar-1.0.1
 
 # 2. 启动（使用随包 conf/config.toml；数据和日志保存在 ./data）
 ./bin/stellar.sh start
@@ -136,7 +136,7 @@ grep 'password:' data/logs/console.log
 访问 http://<服务器IP>:9527。
 
 > 上面用 `nohup` 是为了快速体验；**生产环境请务必用 systemd 托管**（进程崩溃自动拉起、开机自启）。
-> 参考服务文件已在压缩包外的仓库中提供：[deploy/systemd/stellar.service](https://github.com/jlon/stellar/blob/main/deploy/systemd/stellar.service)。
+> 压缩包内已提供 `deploy/systemd/stellar.service`，无需额外克隆仓库。
 >
 > 升级：停止进程 → 用新版压缩包中的 `bin/stellar` 替换旧文件 → 重新启动。数据目录不动。
 
@@ -153,7 +153,7 @@ docker run -d \
   -p 9527:9527 \
   -v $(pwd)/data:/data \
   --restart unless-stopped \
-  ghcr.io/jlon/stellar:1.0.0
+  ghcr.io/jlon/stellar:1.0.1
 
 # 2. 查看一次性管理员密码
 docker logs stellar 2>&1 | grep 'password:'
@@ -168,7 +168,7 @@ docker logs stellar 2>&1 | grep 'password:'
 ```yaml
 services:
   stellar:
-    image: ghcr.io/jlon/stellar:1.0.0
+    image: ghcr.io/jlon/stellar:1.0.1
     container_name: stellar
     ports:
       - "9527:9527"
@@ -198,8 +198,8 @@ npm 仅作为下载通道，Stellar 运行本身**不依赖 Node.js**。
 
 ```bash
 # 1. 从 Release 下载并全局安装
-wget https://github.com/jlon/stellar/releases/download/v1.0.0/stellar-server-1.0.0.tgz
-sudo npm install -g ./stellar-server-1.0.0.tgz
+wget https://github.com/jlon/stellar/releases/download/v1.0.1/stellar-server-1.0.1.tgz
+sudo npm install -g ./stellar-server-1.0.1.tgz
 
 # 2. 启动（数据目录 /var/lib/stellar）
 sudo mkdir -p /var/lib/stellar

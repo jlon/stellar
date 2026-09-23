@@ -208,7 +208,7 @@ footer a:hover{color:var(--gold)}
       Stellar
     </a>
     <span class="crumb">/ <span>部署指南</span></span>
-    <span class="ver">v1.0.0</span>
+    <span class="ver">v1.0.1</span>
     <div class="right">
       <a class="ghost" href="https://github.com/jlon/stellar/releases">下载</a>
       <a class="solid" href="../"><span class="long">返回首页</span><span class="short">首页</span></a>
@@ -258,18 +258,18 @@ footer a:hover{color:var(--gold)}
   <main>
     <h1>部署指南</h1>
     <p class="lede">Stellar 是一个静态链接的单二进制服务：Web 控制台、数据库迁移和内置数据库都在二进制里。本文覆盖物理机（二进制 / systemd / deb / npm）与 Kubernetes（Helm / 原生 YAML）两种场景，以及全部参数、目录结构和排错方法。</p>
-    <div class="note">本文所有命令都以 <code>admin</code> 或 <code>root</code> 在 Linux x86_64 上执行；把 <code>1.0.0</code> 替换成你要安装的版本号。</div>
+    <div class="note">本文所有命令都以 <code>admin</code> 或 <code>root</code> 在 Linux x86_64 上执行；把 <code>1.0.1</code> 替换成你要安装的版本号。</div>
 
     <!-- ============ 开始之前 ============ -->
 
     <h2 id="quick">5 分钟快速开始<a class="anchor" href="#quick">#</a></h2>
     <p>手里已经有安装包，或者只想先把服务跑起来看一眼？物理机三步就够。安装包在 <a href="https://github.com/jlon/stellar/releases">Releases 页面</a>，命令里的版本号请替换为 Releases 页展示的最新版本。</p>
     <div class="codewrap"><pre><span class="c"># 1. 下载并解压（目录名带版本号，升级时互不覆盖）</span>
-<span class="p">$</span> wget https://github.com/jlon/stellar/releases/download/v1.0.0/stellar-1.0.0-linux-amd64-musl.tar.gz
-<span class="p">$</span> tar xzf stellar-1.0.0-linux-amd64-musl.tar.gz
+<span class="p">$</span> wget https://github.com/jlon/stellar/releases/download/v1.0.1/stellar-1.0.1-linux-amd64-musl.tar.gz
+<span class="p">$</span> tar xzf stellar-1.0.1-linux-amd64-musl.tar.gz
 
 <span class="c"># 2. 启动（数据目录不存在会自动创建）</span>
-<span class="p">$</span> cd stellar-1.0.0 &amp;&amp; ./bin/stellar server ./data
+<span class="p">$</span> cd stellar-1.0.1 &amp;&amp; ./bin/stellar server ./data
 <span class="c"># ↳ 控制台会打印一次性管理员密码，记下来</span>
 
 <span class="c"># 3. 打开浏览器，用 admin + 上面的密码登录</span>
@@ -344,9 +344,9 @@ This is shown once. Change it after first login.</pre></div>
     <p>最直接的方式：下载、解压、指定数据目录启动。</p>
 
     <div class="codewrap"><pre><span class="p"># 1.</span> 下载并解压（新版本解压到 stellar-&lt;版本号&gt;/ 目录，互不覆盖）
-<span class="p">$</span> wget https://github.com/jlon/stellar/releases/download/v1.0.0/stellar-1.0.0-linux-amd64-musl.tar.gz
-<span class="p">$</span> tar xzf stellar-1.0.0-linux-amd64-musl.tar.gz
-<span class="p">$</span> cd stellar-1.0.0
+<span class="p">$</span> wget https://github.com/jlon/stellar/releases/download/v1.0.1/stellar-1.0.1-linux-amd64-musl.tar.gz
+<span class="p">$</span> tar xzf stellar-1.0.1-linux-amd64-musl.tar.gz
+<span class="p">$</span> cd stellar-1.0.1
 
 <span class="p"># 2.</span> 准备数据目录（目录不存在时会自动创建，但父目录权限要对）
 <span class="p">$</span> sudo mkdir -p /var/lib/stellar
@@ -391,7 +391,7 @@ OK</pre><button class="copy">复制</button></div>
     <p>推荐的生产做法：专用系统用户 + 固定数据目录 + 崩溃自动重启。</p>
 
     <div class="codewrap"><pre><span class="p"># 1.</span> 安装二进制到 /usr/local/bin
-<span class="p">$</span> sudo install -m755 stellar/bin/stellar /usr/local/bin/stellar
+<span class="p">$</span> sudo install -m755 bin/stellar /usr/local/bin/stellar
 
 <span class="p"># 2.</span> 建专用用户与数据目录
 <span class="p">$</span> sudo useradd --system --home /var/lib/stellar --shell /usr/sbin/nologin stellar
@@ -432,8 +432,8 @@ WantedBy=multi-user.target</pre><button class="copy">复制</button></div>
     <h2 id="deb">物理机部署：Debian / Ubuntu（.deb）<a class="anchor" href="#deb">#</a></h2>
     <p>一条命令完成安装、建用户、注册并启用 systemd 服务。</p>
 
-    <div class="codewrap"><pre><span class="p">$</span> wget https://github.com/jlon/stellar/releases/download/v1.0.0/stellar-server-1.0.0-amd64.deb
-<span class="p">$</span> sudo apt install ./stellar-server-1.0.0-amd64.deb
+    <div class="codewrap"><pre><span class="p">$</span> wget https://github.com/jlon/stellar/releases/download/v1.0.1/stellar-server-1.0.1-amd64.deb
+<span class="p">$</span> sudo apt install ./stellar-server-1.0.1-amd64.deb
 <span class="p">$</span> sudo systemctl start stellar
 
 <span class="c"># 查看一次性管理员密码</span>
@@ -454,8 +454,8 @@ WantedBy=multi-user.target</pre><button class="copy">复制</button></div>
     <h2 id="npm">物理机部署：npm 分发<a class="anchor" href="#npm">#</a></h2>
     <p>适合机器上已有 Node 环境的情况。<strong>npm 只是分发通道，服务端本身不依赖 Node</strong>。</p>
 
-    <div class="codewrap"><pre><span class="p">$</span> wget https://github.com/jlon/stellar/releases/download/v1.0.0/stellar-server-1.0.0.tgz
-<span class="p">$</span> sudo npm install -g ./stellar-server-1.0.0.tgz
+    <div class="codewrap"><pre><span class="p">$</span> wget https://github.com/jlon/stellar/releases/download/v1.0.1/stellar-server-1.0.1.tgz
+<span class="p">$</span> sudo npm install -g ./stellar-server-1.0.1.tgz
 <span class="p">$</span> stellar --version
 
 <span class="c"># 启动（数据目录模式）</span>
@@ -496,14 +496,14 @@ WantedBy=multi-user.target</pre><button class="copy">复制</button></div>
     <h2 id="offline">物理机部署：完全离线环境<a class="anchor" href="#offline">#</a></h2>
     <p>Stellar 运行时没有任何外呼，离线安装只需把文件搬进去。</p>
     <div class="codewrap"><pre><span class="c"># 在有网的机器上下载（连同校验文件）</span>
-<span class="p">$</span> wget https://github.com/jlon/stellar/releases/download/v1.0.0/stellar-1.0.0-linux-amd64-musl.tar.gz
-<span class="p">$</span> wget https://github.com/jlon/stellar/releases/download/v1.0.0/SHA256SUMS
+<span class="p">$</span> wget https://github.com/jlon/stellar/releases/download/v1.0.1/stellar-1.0.1-linux-amd64-musl.tar.gz
+<span class="p">$</span> wget https://github.com/jlon/stellar/releases/download/v1.0.1/SHA256SUMS
 
 <span class="c"># 拷进内网机器，先校验</span>
 <span class="p">$</span> sha256sum -c SHA256SUMS --ignore-missing
 
 <span class="c"># 解压启动，流程同上</span>
-<span class="p">$</span> tar xzf stellar-1.0.0-linux-amd64-musl.tar.gz &amp;&amp; cd stellar-1.0.0
+<span class="p">$</span> tar xzf stellar-1.0.1-linux-amd64-musl.tar.gz &amp;&amp; cd stellar-1.0.1
 <span class="p">$</span> ./bin/stellar server /var/lib/stellar</pre><button class="copy">复制</button></div>
     <div class="note">AI 助手是可选能力：<strong>不配置模型端点就不会发起任何外部请求</strong>，其余功能完全离线可用。</div>
 
@@ -517,7 +517,7 @@ WantedBy=multi-user.target</pre><button class="copy">复制</button></div>
     -p 9527:9527 \
     -v $(pwd)/data:/data \
     --restart unless-stopped \
-    ghcr.io/jlon/stellar:1.0.0
+    ghcr.io/jlon/stellar:1.0.1
 
 <span class="c"># 2. 取一次性管理员密码</span>
 <span class="p">$</span> docker logs stellar 2&gt;&amp;1 | grep 'password:'
@@ -528,7 +528,7 @@ WantedBy=multi-user.target</pre><button class="copy">复制</button></div>
     <h3 id="docker-compose">docker compose<a class="anchor" href="#docker-compose">#</a></h3>
     <div class="codewrap"><pre>services:
   stellar:
-    image: ghcr.io/jlon/stellar:1.0.0   # 或 :latest
+    image: ghcr.io/jlon/stellar:1.0.1   # 或 :latest
     container_name: stellar
     ports:
       - "9527:9527"
@@ -553,14 +553,14 @@ WantedBy=multi-user.target</pre><button class="copy">复制</button></div>
     </table></div>
 
     <h3 id="升级与清理">升级与清理<a class="anchor" href="#升级与清理">#</a></h3>
-    <div class="codewrap"><pre><span class="p">$</span> docker pull ghcr.io/jlon/stellar:1.0.0
+    <div class="codewrap"><pre><span class="p">$</span> docker pull ghcr.io/jlon/stellar:1.0.1
 <span class="p">$</span> docker rm -f stellar
-<span class="p">$</span> docker run -d --name stellar -p 9527:9527 -v $(pwd)/data:/data ghcr.io/jlon/stellar:1.0.0
+<span class="p">$</span> docker run -d --name stellar -p 9527:9527 -v $(pwd)/data:/data ghcr.io/jlon/stellar:1.0.1
 <span class="c"># 数据卷不动，升级就是重建容器</span>
 
 <span class="c"># 确认不再需要后再删数据</span>
 <span class="p">$</span> rm -rf ./data</pre><button class="copy">复制</button></div>
-    <div class="note">镜像发布在 GitHub Container Registry，稳定版本会打 <code>1.0.0</code> / <code>1.0</code> / <code>1</code> / <code>latest</code> 四个标签。<br>
+    <div class="note">镜像发布在 GitHub Container Registry，稳定版本会打 <code>1.0.1</code> / <code>1.0</code> / <code>1</code> / <code>latest</code> 四个标签。<br>
     私有化环境可先 <code>docker save</code> 导出 tar，拷进内网后 <code>docker load</code>。</div>
 
     <h2 id="helm">Kubernetes 部署：Helm（推荐）<a class="anchor" href="#helm">#</a></h2>
@@ -571,7 +571,7 @@ WantedBy=multi-user.target</pre><button class="copy">复制</button></div>
 <span class="p">$</span> helm install stellar deploy/chart --namespace stellar --create-namespace
 
 <span class="c"># 或使用发布出来的 chart 包</span>
-<span class="p">$</span> helm install stellar https://github.com/jlon/stellar/releases/download/v1.0.0/stellar-1.0.0.tgz \
+<span class="p">$</span> helm install stellar https://github.com/jlon/stellar/releases/download/v1.0.1/stellar-1.0.1.tgz \
     --namespace stellar --create-namespace
 
 <span class="c"># 取一次性管理员密码</span>
@@ -594,7 +594,7 @@ WantedBy=multi-user.target</pre><button class="copy">复制</button></div>
     <div class="codewrap"><pre><span class="c"># 生产常用：指定镜像、加大存储、开 Ingress，并把 secrets 放 values 文件</span>
 <span class="p">$</span> cat &gt; stellar-values.yaml &lt;&lt;'EOF'
 image:
-  tag: "1.0.0"
+  tag: "1.0.1"
 persistence:
   size: 50Gi
 ingress:
