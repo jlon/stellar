@@ -6,10 +6,10 @@ description: A Helm chart for deploying Stellar on Kubernetes
 type: application
 
 # Chart version - follows SemVer (https://semver.org/)
-version: 1.0.0
+version: 1.0.1
 
 # Application version deployed by this chart
-appVersion: "1.0.0"
+appVersion: "1.0.1"
 
 # Minimum Kubernetes version required
 kubeVersion: ">=1.16.0-0"
