@@ -2225,11 +2225,28 @@
 
                                                           <!-- Tab 2: Profile 原始文本 -->
                                                           <nb-tab
+                                                            class="profile-detail-tab"
                                                             [tabTitle]="'Profile详情' | translate"
                                                             tabIcon="file-text-outline"
                                                             >
-                                                            <nb-card accent="basic" class="m-0">
-                                                              <nb-card-body class="profile-scroll-container position-relative">
+                                                            <nb-card accent="basic" class="m-0 profile-detail-card">
+                                                              <nb-card-header class="profile-detail-toolbar">
+                                                                <button
+                                                                  nbButton
+                                                                  ghost
+                                                                  status="basic"
+                                                                  size="small"
+                                                                  class="profile-copy-button"
+                                                                  (click)="copyProfileToClipboard()"
+                                                                  [disabled]="!currentProfileDetail"
+                                                                  [nbTooltip]="'复制到剪贴板' | translate"
+                                                                  nbTooltipPlacement="left"
+                                                                  [attr.aria-label]="'复制到剪贴板' | translate"
+                                                                  >
+                                                                  <nb-icon icon="copy-outline"></nb-icon>
+                                                                </button>
+                                                              </nb-card-header>
+                                                              <nb-card-body class="profile-scroll-container">
                                                                 @if (profileDetailLoading) {
                                                                   <div class="text-center py-4">
                                                                     <nb-spinner status="primary" size="large"></nb-spinner>
@@ -2240,53 +2257,27 @@
                                                                 }
 
                                                                 @if (!profileDetailLoading) {
-                                                                  <div
-                                                                    class="profile-copy-overlay"
-                style="
-                  position: absolute;
-                  top: 0.5rem;
-                  right: 0.5rem;
-                  left: auto;
-                  z-index: 10;
-                "
-                                                                    >
-                                                                    <button
-                                                                      nbButton
-                                                                      status="basic"
-                                                                      size="small"
-                                                                      (click)="copyProfileToClipboard()"
-                                                                      [disabled]="!currentProfileDetail"
-                                                                      [nbTooltip]="'复制到剪贴板' | translate"
-                                                                      nbTooltipPlacement="left"
+                                                                  @if (
+                                                                    !currentProfileDetail || currentProfileDetail.trim() === ''
+                                                                    ) {
+                                                                    <div
+                                                                      class="text-center py-4 text-hint"
                                                                       >
-                                                                      <nb-icon icon="copy-outline"></nb-icon>
-                                                                    </button>
-                                                                  </div>
-                                                                }
-                                                                @if (!profileDetailLoading) {
-                                                                  <div class="profile-pre-wrapper">
-                                                                    @if (
-                                                                      !currentProfileDetail || currentProfileDetail.trim() === ''
-                                                                      ) {
-                                                                      <div
-                                                                        class="text-center py-4 text-hint"
-                                                                        >
-                                                                        <nb-icon
-                                                                          icon="file-text-outline"
-                                                                          status="basic"
-                                                                          class="mb-2"
-                                                                        ></nb-icon>
-                                                                        <p>{{ "暂无 Profile 数据" | translate }}</p>
-                                                                      </div>
-                                                                    }
-                                                                    @if (
-                                                                      currentProfileDetail && currentProfileDetail.trim() !== ''
-                                                                      ) {
-                                                                      <pre
-                                                                        class="profile-content-text"
-                                                                      >{{ currentProfileDetail }}</pre>
-                                                                    }
-                                                                  </div>
+                                                                      <nb-icon
+                                                                        icon="file-text-outline"
+                                                                        status="basic"
+                                                                        class="mb-2"
+                                                                      ></nb-icon>
+                                                                      <p>{{ "暂无 Profile 数据" | translate }}</p>
+                                                                    </div>
+                                                                  }
+                                                                  @if (
+                                                                    currentProfileDetail && currentProfileDetail.trim() !== ''
+                                                                    ) {
+                                                                    <pre
+                                                                      class="profile-content-text"
+                                                                    >{{ currentProfileDetail }}</pre>
+                                                                  }
                                                                 }
                                                               </nb-card-body>
                                                             </nb-card>

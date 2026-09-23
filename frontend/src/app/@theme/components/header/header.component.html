@@ -1,11 +1,14 @@
 <div class="header-container">
   <div class="logo-container">
-    <a (click)="toggleSidebar()" href="#" class="sidebar-toggle">
-      <nb-icon icon="menu-2-outline"></nb-icon>
-    </a>
     <a class="logo" href="#" (click)="navigateHome()">
       <img class="logo-img" src="assets/images/stellar-logo.svg" alt="Stellar">
-      <span class="logo-text">Stellar</span>
+      <span class="logo-copy">
+        <span class="logo-name">Stellar</span>
+        <span class="logo-subtitle">OLAP Operations</span>
+      </span>
+    </a>
+    <a (click)="toggleSidebar()" href="#" class="sidebar-toggle">
+      <nb-icon icon="menu-2-outline"></nb-icon>
     </a>
   </div>
   <ngx-cluster-selector></ngx-cluster-selector>

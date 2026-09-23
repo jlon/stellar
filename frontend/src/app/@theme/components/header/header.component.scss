@@ -27,36 +27,56 @@
     width: auto;
 
     .sidebar-toggle {
-      @include nb-ltr(padding-right, 1.25rem);
-      @include nb-rtl(padding-left, 1.25rem);
+      @include nb-ltr(padding-left, 1rem);
+      @include nb-rtl(padding-right, 1rem);
+      @include nb-ltr(padding-right, 1rem);
+      @include nb-rtl(padding-left, 1rem);
+      @include nb-ltr(border-left, 1px solid nb-theme(divider-color));
+      @include nb-rtl(border-right, 1px solid nb-theme(divider-color));
       text-decoration: none;
       color: nb-theme(text-hint-color);
       nb-icon {
-        font-size: 1.75rem;
+        font-size: 1.5rem;
       }
     }
 
     .logo {
       display: inline-flex;
       align-items: center;
-      gap: 0.5rem;
-      padding: 0 1.25rem;
-      font-size: 1.5rem;
-      font-weight: 600;
-      @include nb-ltr(border-left, 1px solid nb-theme(divider-color));
-      @include nb-rtl(border-right, 1px solid nb-theme(divider-color));
+      gap: 0.625rem;
+      min-width: 0;
+      padding: 0 1rem 0 0.25rem;
       white-space: nowrap;
       text-decoration: none;
       color: nb-theme(text-basic-color);
 
       .logo-img {
-        width: 1.75rem;
-        height: 1.75rem;
+        width: 1.25rem;
+        height: 1.25rem;
+        flex: 0 0 auto;
         display: block;
       }
 
-      .logo-text {
-        letter-spacing: 0.02em;
+      .logo-copy {
+        display: flex;
+        flex-direction: column;
+        gap: 0.0625rem;
+        min-width: 0;
+        line-height: 1.1;
+      }
+
+      .logo-name {
+        color: nb-theme(text-basic-color);
+        font-size: 0.875rem;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+      }
+
+      .logo-subtitle {
+        color: nb-theme(text-hint-color);
+        font-size: 0.625rem;
+        font-weight: 500;
+        letter-spacing: 0.01em;
       }
     }
 

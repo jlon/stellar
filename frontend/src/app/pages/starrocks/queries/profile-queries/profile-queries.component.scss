@@ -73,38 +73,59 @@
 // DAG Visualization Styles
 // ============================================
 
-// Profile scroll container
+// Profile 原文详情：工具栏固定，只有正文参与滚动。
+nb-tab.profile-detail-tab.content-active {
+  display: flex !important;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+.profile-detail-card {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.profile-detail-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.5rem !important;
+}
+
+.profile-copy-button {
+  flex: 0 0 auto;
+}
+
 .profile-scroll-container {
-  max-height: 70vh;
-  overflow-y: auto;
-  position: relative;
-
-  .profile-pre-wrapper {
-    position: relative;
-    display: block;
-    width: 100%;
-  }
-
-  .profile-copy-overlay {
-    position: absolute;
-    top: 0.5rem;
-    right: 0.5rem !important;
-    left: auto !important;
-    z-index: 10;
-  }
+  display: block;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+  padding: 0 !important;
 
   .profile-content-text {
-    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-    font-size: 12px;
-    line-height: 1.4;
-    white-space: pre-wrap;
-    word-break: break-all;
+    min-width: 100%;
     margin: 0;
     padding: 1rem;
-    padding-top: 2rem;
-    background-color: var(--background-basic-color-2);
+    box-sizing: border-box;
+    overflow-wrap: anywhere;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
     color: var(--text-basic-color);
-    border-radius: 4px;
+    background-color: var(--background-basic-color-2);
   }
 }
 
