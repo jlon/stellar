@@ -45,6 +45,7 @@ export class ResourceGroupFormComponent implements OnInit, OnDestroy {
   @ViewChild('tabset') tabset: NbTabsetComponent;
   
   private destroy$ = new Subject<void>();
+  private originalClassifierIds = new Set<number>();
 
   form: FormGroup;
   loading = false;
@@ -83,7 +84,7 @@ export class ResourceGroupFormComponent implements OnInit, OnDestroy {
       name: ['', [Validators.required, Validators.pattern(/^[a-zA-Z0-9_]+$/)]],
       cpu_weight: [null, [Validators.min(1)]],
       exclusive_cpu_cores: [null, [Validators.min(0)]],
-      mem_limit: [''],
+      mem_limit: ['', Validators.required],
       big_query_cpu_second_limit: [null, [Validators.min(0)]],
       big_query_scan_rows_limit: [null, [Validators.min(0)]],
       big_query_mem_limit: [''],
@@ -120,10 +121,11 @@ export class ResourceGroupFormComponent implements OnInit, OnDestroy {
   }
 
   private populateForm(group: ResourceGroup): void {
+    this.originalClassifierIds = new Set(group.classifiers.map((classifier) => classifier.id));
     this.form.patchValue({
       name: group.name,
-      cpu_weight: group.cpu_weight,
-      exclusive_cpu_cores: group.exclusive_cpu_cores,
+      cpu_weight: group.cpu_weight || null,
+      exclusive_cpu_cores: group.exclusive_cpu_cores || null,
       mem_limit: group.mem_limit,
       big_query_cpu_second_limit: group.big_query_cpu_second_limit,
       big_query_scan_rows_limit: group.big_query_scan_rows_limit,
@@ -141,6 +143,7 @@ export class ResourceGroupFormComponent implements OnInit, OnDestroy {
     group.classifiers.forEach((classifier) => {
       this.classifiers.push(
         this.fb.group({
+          id: [classifier.id],
           user: [classifier.user || ''],
           role: [classifier.role || ''],
           query_type: [classifier.query_type ? classifier.query_type.split(',') : []],
@@ -154,6 +157,7 @@ export class ResourceGroupFormComponent implements OnInit, OnDestroy {
   addClassifier(): void {
     this.classifiers.push(
       this.fb.group({
+        id: [null],
         user: [''],
         role: [''],
         query_type: [[]],
@@ -177,22 +181,15 @@ export class ResourceGroupFormComponent implements OnInit, OnDestroy {
 
     const formValue = this.form.value;
     
-    const hasResourceLimit = 
-      formValue.cpu_weight || 
-      formValue.exclusive_cpu_cores || 
-      formValue.mem_limit || 
-      formValue.concurrency_limit;
-    
-    if (!hasResourceLimit) {
-      this.toastrService.warning(this.i18n.instant('请至少配置一个资源限制（CPU 权重、独占 CPU 核数、内存限制或并发限制）'), this.i18n.instant('配置不完整'));
+    const configuredCpuModes = Number(formValue.cpu_weight > 0) + Number(formValue.exclusive_cpu_cores > 0);
+    if (configuredCpuModes !== 1) {
+      this.toastrService.warning(this.i18n.instant('必须且只能配置一个 CPU 调度模式'), this.i18n.instant('配置不完整'));
       this.tabset.selectTab(this.tabset.tabs.toArray()[1]);
       return;
     }
-    
-    const hasClassifier = formValue.classifiers && formValue.classifiers.length > 0;
-    
-    if (!hasClassifier) {
-      this.toastrService.warning(this.i18n.instant('请至少添加一个分类器，否则查询无法分配到此资源组'), this.i18n.instant('配置不完整'));
+
+    if (!this.isEditMode && this.buildClassifiers(formValue.classifiers).length === 0) {
+      this.toastrService.warning(this.i18n.instant('创建资源组时必须至少添加一个分类器'), this.i18n.instant('配置不完整'));
       this.tabset.selectTab(this.tabset.tabs.last);
       return;
     }
@@ -247,15 +244,15 @@ export class ResourceGroupFormComponent implements OnInit, OnDestroy {
 
   private updateResourceGroup(formValue: any): void {
     const request: UpdateResourceGroupRequest = {
-      cpu_weight: formValue.cpu_weight || undefined,
-      exclusive_cpu_cores: formValue.exclusive_cpu_cores || undefined,
+      cpu_weight: formValue.cpu_weight ?? 0,
+      exclusive_cpu_cores: formValue.exclusive_cpu_cores ?? 0,
       mem_limit: formValue.mem_limit || undefined,
       big_query_cpu_second_limit: formValue.big_query_cpu_second_limit || undefined,
       big_query_scan_rows_limit: formValue.big_query_scan_rows_limit || undefined,
       big_query_mem_limit: formValue.big_query_mem_limit || undefined,
       concurrency_limit: formValue.concurrency_limit || undefined,
       spill_mem_limit_threshold: formValue.spill_mem_limit_threshold || undefined,
-      add_classifiers: this.buildClassifiers(formValue.classifiers),
+      ...this.buildClassifierChanges(),
     };
 
     this.resourceGroupService
@@ -284,6 +281,36 @@ export class ResourceGroupFormComponent implements OnInit, OnDestroy {
         source_ip: c.source_ip || undefined,
         db: c.db || undefined,
       }));
+  }
+
+  private buildClassifierChanges(): Pick<UpdateResourceGroupRequest, 'add_classifiers' | 'drop_classifier_ids'> {
+    const addClassifiers: ClassifierRequest[] = [];
+    const dropClassifierIds: number[] = [];
+    const currentClassifierIds = new Set<number>();
+
+    this.classifiers.controls.forEach((classifier) => {
+      const value = classifier.value;
+      if (Number.isInteger(value.id)) {
+        currentClassifierIds.add(value.id);
+        if (classifier.dirty) {
+          dropClassifierIds.push(value.id);
+          addClassifiers.push(...this.buildClassifiers([value]));
+        }
+      } else {
+        addClassifiers.push(...this.buildClassifiers([value]));
+      }
+    });
+
+    this.originalClassifierIds.forEach((id) => {
+      if (!currentClassifierIds.has(id)) {
+        dropClassifierIds.push(id);
+      }
+    });
+
+    return {
+      add_classifiers: addClassifiers.length ? addClassifiers : undefined,
+      drop_classifier_ids: dropClassifierIds.length ? dropClassifierIds : undefined,
+    };
   }
 
   private markFormGroupTouched(formGroup: FormGroup): void {

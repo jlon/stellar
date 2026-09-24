@@ -8,12 +8,7 @@ import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
 import { ResourceGroupService } from '../resource-group.service';
-import {
-  ResourceUsageAnalysis,
-  UserCpuUsage,
-  UserMemoryUsage,
-  UserConcurrency,
-} from '../models/resource-group.model';
+import { ResourceUsageAnalysis } from '../models/resource-group.model';
 
 
 @Component({
@@ -73,14 +68,6 @@ export class ResourceGroupAnalysisComponent implements OnInit, OnDestroy {
         type: 'number',
         valuePrepareFunction: (value: number) => value.toFixed(2) + '%',
       },
-      suggested_cpu_weight: {
-        title: this.i18n.instant('建议 CPU 权重'),
-        type: 'number',
-      },
-      suggested_exclusive_cores: {
-        title: this.i18n.instant('建议独占核数'),
-        type: 'number',
-      },
     },
   };
 
@@ -96,14 +83,6 @@ export class ResourceGroupAnalysisComponent implements OnInit, OnDestroy {
         type: 'number',
         valuePrepareFunction: (value: number) => value.toFixed(2),
       },
-      suggested_mem_limit: {
-        title: this.i18n.instant('建议内存限制'),
-        type: 'string',
-      },
-      suggested_big_query_mem_limit: {
-        title: this.i18n.instant('建议大查询内存限制'),
-        type: 'string',
-      },
     },
   };
 
@@ -118,10 +97,6 @@ export class ResourceGroupAnalysisComponent implements OnInit, OnDestroy {
         title: this.i18n.instant('最大并发 (每秒)'),
         type: 'number',
         valuePrepareFunction: (value: number) => value.toFixed(2),
-      },
-      suggested_concurrency_limit: {
-        title: this.i18n.instant('建议并发限制'),
-        type: 'number',
       },
     },
   };
@@ -158,42 +133,6 @@ export class ResourceGroupAnalysisComponent implements OnInit, OnDestroy {
 
   onDaysChange(): void {
     this.loadAnalysis();
-  }
-
-  generateResourceGroupSQL(user: string): void {
-    if (!this.analysisData) return;
-
-    const cpuData = this.analysisData.cpu_analysis.find((c) => c.user === user);
-    const memoryData = this.analysisData.memory_analysis.find((m) => m.user === user);
-    const concurrencyData = this.analysisData.concurrency_analysis.find((c) => c.user === user);
-
-    let sql = `CREATE RESOURCE GROUP ${user}_group\nTO (\n  user='${user}'\n)\nWITH (\n`;
-
-    const withClauses = [];
-
-    if (cpuData) {
-      if (cpuData.suggested_exclusive_cores > 0) {
-        withClauses.push(`  'exclusive_cpu_cores' = '${cpuData.suggested_exclusive_cores}'`);
-      } else {
-        withClauses.push(`  'cpu_weight' = '${cpuData.suggested_cpu_weight}'`);
-      }
-    }
-
-    if (memoryData) {
-      withClauses.push(`  'mem_limit' = '${memoryData.suggested_mem_limit}'`);
-      withClauses.push(`  'big_query_mem_limit' = '${memoryData.suggested_big_query_mem_limit}'`);
-    }
-
-    if (concurrencyData) {
-      withClauses.push(`  'concurrency_limit' = '${concurrencyData.suggested_concurrency_limit}'`);
-    }
-
-    sql += withClauses.join(',\n') + '\n);';
-
-    // 复制到剪贴板
-    navigator.clipboard.writeText(sql).then(() => {
-      this.toastrService.success(`用户 ${user} 的资源组 SQL 已复制到剪贴板`, '成功');
-    });
   }
 
   goBack(): void {

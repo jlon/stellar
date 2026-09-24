@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use mysql_async::Pool;
 
 use crate::config::AuditLogConfig;
@@ -95,6 +95,8 @@ impl ResourceGroupService {
     }
 
     pub async fn create_resource_group(pool: &Pool, req: CreateResourceGroupRequest) -> Result<()> {
+        Self::validate_create_request(&req).map_err(anyhow::Error::msg)?;
+
         let mysql_client = MySQLClient::from_pool(pool.clone());
         let mut session = mysql_client.create_session().await?;
 
@@ -108,11 +110,25 @@ impl ResourceGroupService {
         name: &str,
         req: UpdateResourceGroupRequest,
     ) -> Result<()> {
+        Self::validate_update_request(&req).map_err(anyhow::Error::msg)?;
+
         let mysql_client = MySQLClient::from_pool(pool.clone());
         let mut session = mysql_client.create_session().await?;
 
-        let sql = Self::build_alter_sql(name, &req)?;
-        session.execute(&sql).await?;
+        let statements = Self::build_alter_sqls(name, &req)?;
+        for (index, sql) in statements.iter().enumerate() {
+            session.execute(sql).await.with_context(|| {
+                if index == 0 {
+                    format!("resource group update failed at statement {}/{}", index + 1, statements.len())
+                } else {
+                    format!(
+                        "resource group update failed at statement {}/{}; earlier statements may already be applied",
+                        index + 1,
+                        statements.len()
+                    )
+                }
+            })?;
+        }
         Ok(())
     }
 
@@ -329,16 +345,14 @@ impl ResourceGroupService {
     fn build_create_sql(req: &CreateResourceGroupRequest) -> Result<String> {
         let mut sql = format!("CREATE RESOURCE GROUP {}", Self::quote_identifier(&req.name));
 
-        if !req.classifiers.is_empty() {
-            sql.push_str("\nTO (");
-            let classifiers: Vec<String> = req
-                .classifiers
-                .iter()
-                .map(Self::build_classifier_clause)
-                .collect();
-            sql.push_str(&classifiers.join(", "));
-            sql.push(')');
-        }
+        sql.push_str("\nTO (");
+        let classifiers: Vec<String> = req
+            .classifiers
+            .iter()
+            .map(Self::build_classifier_clause)
+            .collect();
+        sql.push_str(&classifiers.join(", "));
+        sql.push(')');
 
         let mut with_clauses = Vec::new();
 
@@ -349,7 +363,7 @@ impl ResourceGroupService {
             with_clauses.push(format!("'exclusive_cpu_cores' = '{}'", exclusive_cpu_cores));
         }
         if let Some(ref mem_limit) = req.mem_limit {
-            with_clauses.push(format!("'mem_limit' = '{}'", mem_limit));
+            with_clauses.push(format!("'mem_limit' = {}", Self::quote_literal(mem_limit)));
         }
         if let Some(big_query_cpu_second_limit) = req.big_query_cpu_second_limit {
             with_clauses
@@ -360,14 +374,19 @@ impl ResourceGroupService {
                 .push(format!("'big_query_scan_rows_limit' = '{}'", big_query_scan_rows_limit));
         }
         if let Some(ref big_query_mem_limit) = req.big_query_mem_limit {
-            with_clauses.push(format!("'big_query_mem_limit' = '{}'", big_query_mem_limit));
+            with_clauses.push(format!(
+                "'big_query_mem_limit' = {}",
+                Self::quote_literal(big_query_mem_limit)
+            ));
         }
         if let Some(concurrency_limit) = req.concurrency_limit {
             with_clauses.push(format!("'concurrency_limit' = '{}'", concurrency_limit));
         }
         if let Some(ref spill_mem_limit_threshold) = req.spill_mem_limit_threshold {
-            with_clauses
-                .push(format!("'spill_mem_limit_threshold' = '{}'", spill_mem_limit_threshold));
+            with_clauses.push(format!(
+                "'spill_mem_limit_threshold' = {}",
+                Self::quote_literal(spill_mem_limit_threshold)
+            ));
         }
 
         if !with_clauses.is_empty() {
@@ -379,9 +398,122 @@ impl ResourceGroupService {
         Ok(sql)
     }
 
-    fn build_alter_sql(name: &str, req: &UpdateResourceGroupRequest) -> Result<String> {
-        let mut sql = format!("ALTER RESOURCE GROUP {}", Self::quote_identifier(name));
+    pub(crate) fn validate_create_request(
+        req: &CreateResourceGroupRequest,
+    ) -> std::result::Result<(), &'static str> {
+        if req
+            .mem_limit
+            .as_deref()
+            .is_none_or(|value| value.trim().is_empty())
+        {
+            return Err("mem_limit is required");
+        }
 
+        let configured_cpu_modes = usize::from(req.cpu_weight.is_some_and(|value| value > 0))
+            + usize::from(req.exclusive_cpu_cores.is_some_and(|value| value > 0));
+        if configured_cpu_modes == 0 {
+            return Err("exactly one CPU mode must be positive");
+        }
+        if configured_cpu_modes > 1 {
+            return Err("cpu_weight and exclusive_cpu_cores cannot both be positive");
+        }
+
+        Self::validate_classifier_requests(&req.classifiers, true)
+    }
+
+    pub(crate) fn validate_update_request(
+        req: &UpdateResourceGroupRequest,
+    ) -> std::result::Result<(), &'static str> {
+        if req.cpu_weight.is_some() && req.exclusive_cpu_cores.is_some() {
+            let configured_cpu_modes = usize::from(req.cpu_weight.is_some_and(|value| value > 0))
+                + usize::from(req.exclusive_cpu_cores.is_some_and(|value| value > 0));
+            if configured_cpu_modes != 1 {
+                return Err("exactly one CPU mode must be positive when both modes are updated");
+            }
+        }
+
+        if req
+            .mem_limit
+            .as_deref()
+            .is_some_and(|value| value.trim().is_empty())
+        {
+            return Err("mem_limit cannot be empty");
+        }
+
+        if let Some(classifiers) = &req.add_classifiers {
+            Self::validate_classifier_requests(classifiers, false)?;
+        }
+
+        let has_property_change = req.cpu_weight.is_some()
+            || req.exclusive_cpu_cores.is_some()
+            || req.mem_limit.is_some()
+            || req.big_query_cpu_second_limit.is_some()
+            || req.big_query_scan_rows_limit.is_some()
+            || req.big_query_mem_limit.is_some()
+            || req.concurrency_limit.is_some()
+            || req.spill_mem_limit_threshold.is_some();
+        let has_classifier_change = req
+            .add_classifiers
+            .as_ref()
+            .is_some_and(|items| !items.is_empty())
+            || req
+                .drop_classifier_ids
+                .as_ref()
+                .is_some_and(|ids| !ids.is_empty());
+        if !has_property_change && !has_classifier_change {
+            return Err("at least one resource group update is required");
+        }
+
+        Ok(())
+    }
+
+    fn validate_classifier_requests(
+        classifiers: &[ClassifierRequest],
+        require_classifier: bool,
+    ) -> std::result::Result<(), &'static str> {
+        if require_classifier && classifiers.is_empty() {
+            return Err("at least one classifier is required");
+        }
+
+        for classifier in classifiers {
+            if !Self::classifier_has_condition(classifier) {
+                return Err("each classifier must define at least one condition");
+            }
+            if classifier.query_type.as_ref().is_some_and(|query_types| {
+                query_types.iter().any(|query_type| {
+                    !query_type.eq_ignore_ascii_case("SELECT")
+                        && !query_type.eq_ignore_ascii_case("INSERT")
+                })
+            }) {
+                return Err("query_type must contain only SELECT or INSERT");
+            }
+        }
+
+        Ok(())
+    }
+
+    fn classifier_has_condition(classifier: &ClassifierRequest) -> bool {
+        [
+            classifier.user.as_deref(),
+            classifier.role.as_deref(),
+            classifier.source_ip.as_deref(),
+            classifier.db.as_deref(),
+        ]
+        .into_iter()
+        .any(|value| value.is_some_and(|value| !value.trim().is_empty()))
+            || classifier
+                .query_type
+                .as_ref()
+                .is_some_and(|query_types| query_types.iter().any(|value| !value.trim().is_empty()))
+    }
+
+    pub(crate) fn build_alter_sqls(
+        name: &str,
+        req: &UpdateResourceGroupRequest,
+    ) -> Result<Vec<String>> {
+        Self::validate_update_request(req).map_err(anyhow::Error::msg)?;
+
+        let resource_group = format!("ALTER RESOURCE GROUP {}", Self::quote_identifier(name));
         let mut set_clauses = Vec::new();
 
         if let Some(cpu_weight) = req.cpu_weight {
@@ -391,7 +523,7 @@ impl ResourceGroupService {
             set_clauses.push(format!("'exclusive_cpu_cores' = '{}'", exclusive_cpu_cores));
         }
         if let Some(ref mem_limit) = req.mem_limit {
-            set_clauses.push(format!("'mem_limit' = '{}'", mem_limit));
+            set_clauses.push(format!("'mem_limit' = {}", Self::quote_literal(mem_limit)));
         }
         if let Some(big_query_cpu_second_limit) = req.big_query_cpu_second_limit {
             set_clauses
@@ -402,66 +534,68 @@ impl ResourceGroupService {
                 .push(format!("'big_query_scan_rows_limit' = '{}'", big_query_scan_rows_limit));
         }
         if let Some(ref big_query_mem_limit) = req.big_query_mem_limit {
-            set_clauses.push(format!("'big_query_mem_limit' = '{}'", big_query_mem_limit));
+            set_clauses.push(format!(
+                "'big_query_mem_limit' = {}",
+                Self::quote_literal(big_query_mem_limit)
+            ));
         }
         if let Some(concurrency_limit) = req.concurrency_limit {
             set_clauses.push(format!("'concurrency_limit' = '{}'", concurrency_limit));
         }
         if let Some(ref spill_mem_limit_threshold) = req.spill_mem_limit_threshold {
-            set_clauses
-                .push(format!("'spill_mem_limit_threshold' = '{}'", spill_mem_limit_threshold));
+            set_clauses.push(format!(
+                "'spill_mem_limit_threshold' = {}",
+                Self::quote_literal(spill_mem_limit_threshold)
+            ));
         }
 
-        if !set_clauses.is_empty() {
-            sql.push_str(" SET (");
-            sql.push_str(&set_clauses.join(", "));
-            sql.push(')');
-        }
-
+        let mut statements = Vec::new();
+        // Add before dropping replacements so invalid additions preserve the existing classifier.
         if let Some(ref add_classifiers) = req.add_classifiers {
             if !add_classifiers.is_empty() {
-                sql.push_str(" ADD (");
                 let classifiers: Vec<String> = add_classifiers
                     .iter()
                     .map(Self::build_classifier_clause)
                     .collect();
-                sql.push_str(&classifiers.join(", "));
-                sql.push(')');
+                statements.push(format!("{} ADD ({})", resource_group, classifiers.join(", ")));
             }
+        }
+
+        if !set_clauses.is_empty() {
+            statements.push(format!("{} WITH ({})", resource_group, set_clauses.join(", ")));
         }
 
         if let Some(ref drop_ids) = req.drop_classifier_ids {
             if !drop_ids.is_empty() {
-                sql.push_str(" DROP (");
                 let ids: Vec<String> = drop_ids.iter().map(|id| id.to_string()).collect();
-                sql.push_str(&ids.join(", "));
-                sql.push(')');
+                statements.push(format!("{} DROP ({})", resource_group, ids.join(", ")));
             }
         }
 
-        Ok(sql)
+        Ok(statements)
     }
 
     fn build_classifier_clause(classifier: &ClassifierRequest) -> String {
         let mut conditions = Vec::new();
 
         if let Some(ref user) = classifier.user {
-            conditions.push(format!("user='{}'", user));
+            conditions.push(format!("user={}", Self::quote_literal(user)));
         }
         if let Some(ref role) = classifier.role {
-            conditions.push(format!("role='{}'", role));
+            conditions.push(format!("role={}", Self::quote_literal(role)));
         }
         if let Some(ref query_types) = classifier.query_type {
             if !query_types.is_empty() {
-                let types: Vec<String> = query_types.iter().map(|t| format!("'{}'", t)).collect();
+                let types: Vec<String> =
+                    query_types.iter().map(|t| Self::quote_literal(t)).collect();
                 conditions.push(format!("query_type IN ({})", types.join(", ")));
             }
         }
         if let Some(ref source_ip) = classifier.source_ip {
-            conditions.push(format!("source_ip='{}'", source_ip));
+            conditions.push(format!("source_ip={}", Self::quote_literal(source_ip)));
         }
         if let Some(ref db) = classifier.db {
-            conditions.push(format!("db='{}'", db));
+            conditions.push(format!("db={}", Self::quote_literal(db)));
         }
 
         conditions.join(", ")
@@ -480,6 +614,10 @@ impl ResourceGroupService {
 
     fn quote_identifier(name: &str) -> String {
         format!("`{}`", name.replace('`', "``"))
+    }
+
+    fn quote_literal(value: &str) -> String {
+        format!("'{}'", value.replace('\\', "\\\\").replace('\'', "''"))
     }
 
     pub(crate) fn audit_table(audit_config: &AuditLogConfig) -> String {

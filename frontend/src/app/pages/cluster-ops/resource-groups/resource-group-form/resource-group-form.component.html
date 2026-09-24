@@ -50,11 +50,15 @@
               <nb-tab [tabTitle]="'CPU 配置' | translate">
                 <div class="tab-required-hint">
                   <nb-icon icon="alert-circle-outline"></nb-icon>
-                  <span>{{  '请至少配置一个资源限制' | translate }}</span>
+                  <span>{{  '必须配置一个 CPU 调度模式' | translate }}</span>
                 </div>
                 <nb-alert status="info" class="mb-3">
                   <nb-icon icon="info-outline"></nb-icon>
                   {{ 'CPU 权重与独占 CPU 核数只能有一个为正数。CPU 权重为共享调度份额；独占核会预留并限制该资源组。' | translate }}
+                </nb-alert>
+                <nb-alert status="warning" class="mb-3">
+                  <nb-icon icon="alert-triangle-outline"></nb-icon>
+                  {{ '默认开启 enable_resource_group_cpu_borrowing 时，Shared 资源组可在 Exclusive 资源组空闲时借用其 CPU 核。需要严格隔离时，应先评估并关闭该 BE 配置。' | translate }}
                 </nb-alert>
                 <div class="row">
                   <div class="col-md-6">
@@ -110,17 +114,20 @@
                 <div class="row">
                   <div class="col-md-6">
                     <div class="form-group">
-                      <label for="mem_limit" class="label">{{  '内存限制' | translate }}</label>
+                      <label for="mem_limit" class="label">{{  '内存限制 *' | translate }}</label>
                       <input fieldSize="small"
                         nbInput
                         fullWidth
                         type="text"
                         id="mem_limit"
                         formControlName="mem_limit"
-                        [placeholder]="'如: 50% 或 10GB' | translate"
-                        status="basic"
+                        [placeholder]="'如: 50%' | translate"
+                        [status]="form.get('mem_limit')?.invalid && form.get('mem_limit')?.touched ? 'danger' : 'basic'"
                         />
-                      <small class="form-text text-hint">{{  '支持百分比或绝对值，如: 50% 或 10GB' | translate }}</small>
+                      <small class="form-text text-hint">{{  '资源组在每个 BE 查询内存池中的占比，必须设置。' | translate }}</small>
+                      @if (form.get('mem_limit')?.invalid && form.get('mem_limit')?.touched) {
+                        <small class="form-text text-danger">{{ '内存限制不能为空' | translate }}</small>
+                      }
                     </div>
                   </div>
                   <div class="col-md-6">
@@ -139,9 +146,17 @@
                     </div>
                   </div>
                 </div>
+                <nb-alert status="info" class="mb-0">
+                  <nb-icon icon="info-outline"></nb-icon>
+                  {{ '自动落盘仅在系统变量 spill_mode=auto 时生效；此阈值触发中间结果落盘，不是硬内存上限。' | translate }}
+                </nb-alert>
               </nb-tab>
               <!-- 并发控制 -->
               <nb-tab [tabTitle]="'并发控制' | translate">
+                <nb-alert status="info" class="mb-3">
+                  <nb-icon icon="info-outline"></nb-icon>
+                  {{ '资源组并发阈值用于 Query Queue v1；需同时启用相应全局查询队列和 enable_group_level_query_queue。Query Queue v2 使用逻辑 slot 调度，请先确认当前模式。' | translate }}
+                </nb-alert>
                 <div class="row">
                   <div class="col-md-6">
                     <div class="form-group">
@@ -170,6 +185,10 @@
               </nb-tab>
               <!-- 大查询限制 -->
               <nb-tab [tabTitle]="'大查询限制' | translate">
+                <nb-alert status="warning" class="mb-3">
+                  <nb-icon icon="alert-triangle-outline"></nb-icon>
+                  {{ '大查询限制仅在值大于 0 时生效，按每个 BE 计算；任一限制被超过时，查询会终止并返回错误。' | translate }}
+                </nb-alert>
                 <div class="row">
                   <div class="col-md-4">
                     <div class="form-group">
@@ -205,32 +224,34 @@
                   </div>
                   <div class="col-md-4">
                     <div class="form-group">
-                      <label for="big_query_mem_limit" class="label">{{  '内存上限' | translate }}</label>
+                      <label for="big_query_mem_limit" class="label">{{  '每 BE 内存上限' | translate }}</label>
                       <input fieldSize="small"
                         nbInput
                         fullWidth
                         type="text"
                         id="big_query_mem_limit"
                         formControlName="big_query_mem_limit"
-                        [placeholder]="'如: 10GB' | translate"
+                        [placeholder]="'如: 10737418240' | translate"
                         status="basic"
                         />
-                      <small class="form-text text-hint">{{  '单个查询的最大内存使用' | translate }}</small>
+                      <small class="form-text text-hint">{{  '大查询在每个 BE 上可使用的内存上限，单位为字节。' | translate }}</small>
                     </div>
                   </div>
                 </div>
               </nb-tab>
               <!-- 分类器配置 -->
               <nb-tab [tabTitle]="'分类器配置' | translate">
-                <div class="tab-required-hint">
-                  <nb-icon icon="alert-circle-outline"></nb-icon>
-                  <span>{{  '至少添加一个分类器（必填）' | translate }}</span>
-                </div>
+                @if (!isEditMode) {
+                  <div class="tab-required-hint">
+                    <nb-icon icon="alert-circle-outline"></nb-icon>
+                    <span>{{  '创建时至少添加一个分类器' | translate }}</span>
+                  </div>
+                }
                 <div class="classifier-intro">
                   <nb-icon icon="info-outline" class="info-icon"></nb-icon>
                   <div class="intro-content">
                     <p class="intro-title">{{  '关于分类器' | translate }}</p>
-                    <p class="intro-text">{{  '分类器用于自动将查询分配到此资源组。您可以根据用户名、角色名、查询类型、来源 IP 或数据库名等条件进行配置。' | translate }}</p>
+                    <p class="intro-text">{{  '创建普通资源组时必须至少配置一个分类器。创建后仍可在会话中使用 SET resource_group 指定该资源组。' | translate }}</p>
                   </div>
                 </div>
                 <nb-alert status="info" class="mb-3">

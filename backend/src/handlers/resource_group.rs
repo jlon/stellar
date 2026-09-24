@@ -16,7 +16,7 @@ use crate::{
         UpdateResourceGroupRequest,
     },
     services::ResourceGroupService,
-    utils::ApiResult,
+    utils::{ApiError, ApiResult},
 };
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -107,6 +107,8 @@ pub async fn create_resource_group(
     Extension(org_ctx): Extension<OrgContext>,
     Json(req): Json<CreateResourceGroupRequest>,
 ) -> ApiResult<StatusCode> {
+    ResourceGroupService::validate_create_request(&req).map_err(ApiError::validation_error)?;
+
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -131,6 +133,7 @@ pub async fn create_resource_group(
     request_body = UpdateResourceGroupRequest,
     responses(
         (status = 200, description = "Resource group updated"),
+        (status = 400, description = "Invalid request"),
         (status = 404, description = "Resource group not found"),
         (status = 500, description = "Internal server error")
     )
@@ -142,6 +145,8 @@ pub async fn update_resource_group(
     Path(name): Path<String>,
     Json(req): Json<UpdateResourceGroupRequest>,
 ) -> ApiResult<StatusCode> {
+    ResourceGroupService::validate_update_request(&req).map_err(ApiError::validation_error)?;
+
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
