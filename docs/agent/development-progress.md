@@ -166,9 +166,9 @@
 6. `cargo clippy --deny warnings` + 326 单测全绿 ✅
 
 #### Task C5: 工作台前端 ✅ 已完成
-- [x] `AgentIncidentService`（@core/data/agent-incident.service.ts）+ 懒加载路由 `agent-incidents` + 菜单「运维事件中心」
+- [x] 旧版独立 Incident 工作台（后续已下线）
 - [x] Incidents 列表（状态筛选）→ 行展开详情：规则诊断卡（置信度徽标+动作建议）、LLM 假设卡（含校验拒绝原因）、证据板（payload 折叠查看）、决策链、关联事件时间线
-- [x] 事件中心页签（收敛后事件列表 + 状态筛选）
+- [x] 旧版工作台页签（收敛后事件列表 + 状态筛选）
 - [x] 操作：重新取证 / LLM 根因分析（确认弹窗）/ 关闭（提示 30 天复开语义）；`ng build` 全绿
 
 ## 第四阶段：LLM 根因推理（原 M1 子集） ✅ 已完成（2026-09-11）
@@ -364,7 +364,7 @@ permit/guard 生命周期、退避边界、裁剪与 Incident 30 天窗口的语
 - 动效：消息进入 fade+translateY(5px) 0.25s、滚动 smooth、hover/按钮 transition 统一 0.18-0.2s
 - 空态 & 头部：极简（title + 集群小字），thinking 气泡去虚线边框改浅灰卡
 
-事件中心（agent-incidents）：卡片 1rem 圆角 + hover 边框微亮 + 展开主色柔光阴影；筛选 select 圆角。
+旧版独立 Incident 工作台：卡片 1rem 圆角 + hover 边框微亮 + 展开主色柔光阴影；筛选 select 圆角。
 
 构建全绿。
 
@@ -562,9 +562,9 @@ query_profile_diagnostics ×5 → query_variables，最后输出 **1739 字符 M
 - 加固：`filteredSessions` 用 `String(...)` 防御（合成事件曾把 ngModel 污染成 Event 对象，
   真实点击/输入无此问题）。
 
-## 运维事件中心前端下线（2026-09-14，用户决策）
+## 独立 Incident 工作台下线（2026-09-14，用户决策）
 
-- 删除菜单「运维事件中心」+ 路由 + `agent-incidents/` 页面（4 文件）+ `agent-incident.service.ts`。
+- 删除菜单、路由、旧独立页面和配套服务。
 - 后端 Incident/事件闭环能力（agent_runtime、表、通知）保留 dormant，不动；git 可恢复。
 - 构建全绿，零残留引用。
 

@@ -8,24 +8,23 @@
 | 环节 | 现状 | 状态 |
 |---|---|---|
 | 发现 | 30s 采集 → 收敛 → Incident 升级（规则确定性优先） | ✅ 已闭环 |
-| 通知 | Incident 产生**无任何触达**，用户只能主动打开工作台 | ❌ **断点 1** |
+| 通知 | Incident / 动作状态变化直达助手工作面，按组织隔离接收者 | ✅ 已闭环 |
 | 诊断 | 规则剧本 + 证据板 + LLM 根因假设（证据 ID 校验护栏） | ✅ 已闭环 |
 | 处置 | 两阶段确认动作（kill_query / update_variable，UUID/TTL/单次执行） | ⚠️ 可用但摩擦高：建议是自然语言，动作需人工建表单；无移动端入口 |
-| 验证 | 动作执行后**无人跟进**：kill 后慢查询消失了吗？变量生效了吗？ | ❌ **断点 2** |
-| 复盘 | 无周报、无 LLM 假设命中率回填 → 飞轮不转 | ❌ **断点 3** |
+| 验证 | 事件全部消退后 Incident 自动标记 `resolved`；用户可在助手中重新取证 | ✅ 已闭环 |
+| 复盘 | 取证、诊断、恢复验证、人工关闭均保留决策记录；周报仍属后续运营能力 | ✅ 基础闭环 |
 
 ## 二、下一步 TODO（按用户价值排序）
 
 ### P0 — 闭环最后一公里（做完才能叫"闭环产品"）
 
-1. **Incident 升级通知触达**（断点 1）
-   - Incident 新建/升级 critical → 飞书 Webhook 推送（标题/影响/置信度/工作台链接）
-   - 配置开关 + 目标 URL（按集群可配置）
-   - 验收：真实磁盘临界 → 飞书收到消息 → 点击链接直达 Incident 详情
-2. **动作验证闭环**（断点 2）
-   - 确认执行后后台验证器轮询恢复指标：kill_query → 目标 query 不再出现；update_variable → 变量值生效
-   - 验证结果写入 action.result_json（verified/failed_to_verify）；Incident 提供「验证并关闭」
-   - 验收：真实执行动作后留档验证结论；假动作（指向不存在 query）诚实标 failed
+1. **通知深链与恢复收口**（已完成）
+   - Incident 新建、复开、待确认动作、动作结果和已恢复状态都直达现存助手页的 Incident 上下文。
+   - 接收者限定为资源所属组织的 admin 与全局 super_admin，避免跨组织泄露标题、证据或动作元数据。
+   - 所有关联事件消退时，运行时写入 `recovery_validation` 决策并标记 `resolved`；不会自动关闭。
+   - 用户可重新执行只读取证；仅 `resolved` Incident 允许人工关闭，复发后会在 30 天窗口内自动复开。
+2. **动作效果专项验证**（后续增强）
+   - 当前恢复验证以事件采集口径为准；后续可为 `kill_query`、变量更新增加动作类型专用断言，并写入同一 Incident 决策链。
 3. **结构化动作建议**（处置摩擦，接驳回动）
    - 诊断 actions 从自然语言升级为结构化 {kind, params 建议值, risk}（kill_query 直接带证据中的 query_id）
    - Incident 页「一键创建待确认动作」→ 人工只做确认
@@ -83,10 +82,11 @@ notifications(
 |---|---|---|---|---|
 | agent_chat_done | 对话回合成功完成（用户不在前台） | 答案摘要 ≤120 | 会话页?session= | info |
 | agent_chat_error | 回合失败/异常（用户不在前台） | 错误摘要 | 会话页 | critical |
-| incident_created | 新 Incident（含 critical 事件） | 标题/根因摘要/置信度 | 事件中心?incident= | critical |
-| incident_reopened | 30 天内复开 | 同上 | 同上 | warning |
-| action_pending | 运维动作创建待确认 | 动作类型/参数摘要/有效期 | 事件中心?incident= | warning |
-| action_result | 动作确认执行后 | 成功/失败 + 结果摘要 | 事件中心?incident= | success→info / failed→critical |
+| incident_created | 新 Incident（含 critical 事件） | 标题/根因摘要/置信度 | 助手页?incident= | critical |
+| incident_reopened | 30 天内复开 | 同上 | 助手页?incident= | warning |
+| incident_resolved | 关联事件全部消退 | 恢复验证与人工关闭提示 | 助手页?incident= | info |
+| action_pending | 运维动作创建待确认 | 动作类型/参数摘要/有效期 | 助手页?incident= | warning |
+| action_result | 动作确认执行后 | 成功/失败 + 结果摘要 | 助手页?incident= | success→info / failed→critical |
 | system | 平台消息（预留） | 任意 | 可选 | info |
 
 ### 通知策略（免打扰）
