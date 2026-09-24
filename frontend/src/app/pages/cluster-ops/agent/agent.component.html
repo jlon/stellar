@@ -125,6 +125,47 @@
       (scroll)="onMessagesScroll()">
       <div class="transcript" [class.dimmed]="loadingTranscript && messages.length > 0">
 
+        @if (incidentLoading || incident || incidentError) {
+          <section class="incident-context" [class.error]="!!incidentError" aria-live="polite">
+            @if (incidentLoading) {
+              <nb-icon icon="loader-outline" class="spin"></nb-icon>
+              <span>{{ '正在打开 Incident' | translate }}</span>
+            }
+            @if (incidentError) {
+              <nb-icon icon="alert-circle-outline"></nb-icon>
+              <span>{{ incidentError }}</span>
+            }
+            @if (incident) {
+              <div class="incident-context-main">
+                <div class="incident-context-title">
+                  <nb-icon icon="activity-outline"></nb-icon>
+                  <span>{{ 'Incident' | translate }} #{{ incident.incident.id }}</span>
+                  <span class="incident-status" [class]="'status-' + incident.incident.status">{{ incidentStatusLabel() | translate }}</span>
+                </div>
+                <strong>{{ incident.incident.title }}</strong>
+                <div class="incident-context-meta">
+                  <span>{{ incident.events.length }} {{ '个关联事件' | translate }}</span>
+                  <span>{{ incident.evidences.length }} {{ '项证据' | translate }}</span>
+                  <span>{{ incident.decisions.length }} {{ '条决策记录' | translate }}</span>
+                </div>
+              </div>
+              <div class="incident-context-actions">
+                @if (canInvestigateIncidents && incident.incident.status !== 'closed') {
+                  <button nbButton size="tiny" ghost type="button" [disabled]="incidentReviewing" (click)="reviewIncident()">
+                    <nb-icon [icon]="incidentReviewing ? 'loader-outline' : 'refresh-outline'" [class.spin]="incidentReviewing"></nb-icon>
+                    {{ incidentReviewing ? ('正在取证复查' | translate) : ('复查证据' | translate) }}
+                  </button>
+                }
+                @if (incident.incident.status === 'resolved') {
+                  <button nbButton size="tiny" status="success" type="button" [disabled]="!canCloseIncident()" (click)="closeIncident()">
+                    <nb-icon icon="checkmark-outline"></nb-icon>{{ '关闭事件' | translate }}
+                  </button>
+                }
+              </div>
+            }
+          </section>
+        }
+
         @if (messages.length === 0 && !loadingTranscript) {
           <div class="chat-empty">
             <ngx-ai-illustration kind="chat"></ngx-ai-illustration>

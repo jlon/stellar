@@ -116,5 +116,16 @@
  "回到直播位置": "Back to live output",
  "已复制": "Copied",
  "回答操作": "Response actions",
- "项证据": "sources"
+ "项证据": "sources",
+ "正在打开 Incident": "Opening incident",
+ "Incident": "Incident",
+ "已发现，等待取证": "Detected, awaiting evidence",
+ "正在诊断": "Investigating",
+ "已恢复，等待人工关闭": "Recovered, awaiting manual closure",
+ "已关闭": "Closed",
+ "个关联事件": "related events",
+ "条决策记录": "decision records",
+ "正在取证复查": "Rechecking evidence",
+ "复查证据": "Recheck evidence",
+ "关闭事件": "Close incident"
 }

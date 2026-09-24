@@ -9,6 +9,7 @@ import { NbCardModule, NbButtonModule, NbDialogService, NbIconModule, NbInputMod
 
 import {
   AgentService,
+  AgentIncidentDetail,
   AgentSession,
   AgentMessage,
   ChatStreamEvent,
@@ -160,13 +161,30 @@ export class AgentComponent implements OnInit, OnDestroy {
   private pendingAiConnectionsPanel = false;
   canManageAiConnections = false;
   activeAiProvider: LLMProvider | null = null;
+  incident: AgentIncidentDetail | null = null;
+  incidentLoading = false;
+  incidentReviewing = false;
+  incidentClosing = false;
+  incidentError = '';
+  private incidentLoadId = 0;
+  canInvestigateIncidents = false;
+  canCloseIncidents = false;
 
   ngOnInit(): void {
-    // 通知直达：/pages/cluster-ops/agent?session=<id> 自动打开对应会话
+    // 通知直达：打开会话或将 Incident 放入当前助手工作面。
     this.route.queryParamMap.subscribe((q) => {
       const sid = q.get('session');
       if (sid && /^\d+$/.test(sid)) {
         this.openSession(Number(sid));
+      }
+      const incidentId = q.get('incident');
+      if (incidentId && /^\d+$/.test(incidentId)) {
+        this.loadIncident(Number(incidentId));
+      } else {
+        this.incidentLoadId++;
+        this.incident = null;
+        this.incidentLoading = false;
+        this.incidentError = '';
       }
       if (q.get('panel') === 'ai-connections') {
         this.pendingAiConnectionsPanel = true;
@@ -348,6 +366,99 @@ export class AgentComponent implements OnInit, OnDestroy {
       this.loadActiveAiProvider();
       this.openPendingAiConnectionsPanel();
     }
+    this.canInvestigateIncidents = this.permissionService.hasPermission('api:agent:incidents:investigate');
+    this.canCloseIncidents = this.permissionService.hasPermission('api:agent:incidents:close');
+  }
+
+  private loadIncident(incidentId: number): void {
+    const loadId = ++this.incidentLoadId;
+    this.incidentLoading = true;
+    this.incident = null;
+    this.incidentError = '';
+    this.agentService.getIncident(incidentId).subscribe({
+      next: (detail) => {
+        if (loadId !== this.incidentLoadId) {
+          return;
+        }
+        this.incident = detail;
+        this.incidentLoading = false;
+        this.cdRef.detectChanges();
+      },
+      error: (error) => {
+        if (loadId !== this.incidentLoadId) {
+          return;
+        }
+        this.incident = null;
+        this.incidentLoading = false;
+        this.incidentError = error?.error?.message ?? error?.message ?? '加载 Incident 失败';
+        this.cdRef.detectChanges();
+      },
+    });
+  }
+
+  reviewIncident(): void {
+    const incidentId = this.incident?.incident.id;
+    if (!incidentId || this.incidentReviewing || !this.canInvestigateIncidents) {
+      return;
+    }
+    this.incidentReviewing = true;
+    this.agentService.investigateIncident(incidentId).subscribe({
+      next: () => {
+        this.incidentReviewing = false;
+        this.loadIncident(incidentId);
+        this.toastr.success('已完成复查取证', 'Incident');
+      },
+      error: (error) => {
+        this.incidentReviewing = false;
+        this.toastr.danger(error?.error?.message ?? error?.message ?? '复查失败', 'Incident');
+        this.cdRef.detectChanges();
+      },
+    });
+  }
+
+  closeIncident(): void {
+    const incidentId = this.incident?.incident.id;
+    if (!incidentId || !this.canCloseIncident()) {
+      return;
+    }
+    this.confirmDialog
+      .confirm('关闭 Incident', '关联事件已消退。关闭后若同一问题复发，系统会自动重新打开该 Incident。', '关闭', '取消', 'success')
+      .subscribe((confirmed) => {
+        if (!confirmed) {
+          return;
+        }
+        this.incidentClosing = true;
+        this.agentService.closeIncident(incidentId).subscribe({
+          next: () => {
+            this.incidentClosing = false;
+            this.loadIncident(incidentId);
+            this.toastr.success('Incident 已关闭并保留审计记录', 'Incident');
+          },
+          error: (error) => {
+            this.incidentClosing = false;
+            this.toastr.danger(error?.error?.message ?? error?.message ?? '关闭 Incident 失败', 'Incident');
+            this.cdRef.detectChanges();
+          },
+        });
+      });
+  }
+
+  incidentStatusLabel(): string {
+    const status = this.incident?.incident.status;
+    const labels: Record<string, string> = {
+      open: '已发现，等待取证',
+      investigating: '正在诊断',
+      resolved: '已恢复，等待人工关闭',
+      closed: '已关闭',
+    };
+    return status ? labels[status] ?? status : '';
+  }
+
+  canCloseIncident(): boolean {
+    return !!this.incident
+      && this.incident.incident.status === 'resolved'
+      && this.canCloseIncidents
+      && !this.incidentClosing;
   }
 
   private openPendingAiConnectionsPanel(): void {

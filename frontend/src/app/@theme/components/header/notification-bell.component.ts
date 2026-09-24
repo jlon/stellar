@@ -81,6 +81,7 @@ export class NotificationBellComponent implements OnInit, OnDestroy {
       agent_chat_error: 'alert-circle-outline',
       incident_created: 'alert-triangle-outline',
       incident_reopened: 'refresh-outline',
+      incident_resolved: 'checkmark-circle-2-outline',
       action_pending: 'flash-outline',
       action_result: 'shield-checkmark-outline',
     };
@@ -93,6 +94,7 @@ export class NotificationBellComponent implements OnInit, OnDestroy {
       agent_chat_error: '诊断失败',
       incident_created: '新 Incident',
       incident_reopened: 'Incident 复开',
+      incident_resolved: 'Incident 已恢复',
       action_pending: '动作待确认',
       action_result: '动作结果',
       system: '系统',

@@ -216,6 +216,76 @@
   padding: 1.6rem 1.5rem;
 }
 
+.incident-context {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: 46rem;
+  margin: 0 auto 1rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--color-primary-300);
+  border-left: 3px solid var(--color-primary-500);
+  border-radius: 0.5rem;
+  background: var(--color-primary-transparent-100);
+  color: var(--text-basic-color);
+}
+
+.incident-context.error {
+  border-color: var(--color-danger-400);
+  border-left-color: var(--color-danger-default);
+  color: var(--color-danger-default);
+}
+
+.incident-context-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.incident-context-title,
+.incident-context-meta,
+.incident-context-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.incident-context-title {
+  margin-bottom: 0.15rem;
+  color: var(--text-hint-color);
+  font-size: 0.72rem;
+}
+
+.incident-context-main > strong {
+  display: block;
+  overflow: hidden;
+  font-size: 0.84rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.incident-status {
+  padding: 0.08rem 0.35rem;
+  border-radius: 0.3rem;
+  background: var(--background-basic-color-3);
+  color: var(--text-hint-color);
+}
+
+.incident-status.status-resolved,
+.incident-status.status-closed {
+  color: var(--color-success-default);
+}
+
+.incident-context-meta {
+  flex-wrap: wrap;
+  margin-top: 0.3rem;
+  color: var(--text-hint-color);
+  font-size: 0.7rem;
+}
+
+.incident-context-actions {
+  flex-shrink: 0;
+}
+
 /* 空态 */
 .chat-empty {
   margin: auto;
@@ -1364,6 +1434,10 @@
     padding: 1rem 0.75rem;
   }
 
+  .incident-context {
+    margin-bottom: 0.75rem;
+  }
+
   .chat-input {
     padding: 0.65rem 0.75rem 0.8rem;
   }
@@ -1430,6 +1504,16 @@
 
   .bubble {
     max-width: 100%;
+  }
+
+  .incident-context {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .incident-context-actions {
+    width: 100%;
+    justify-content: flex-end;
   }
 }
 

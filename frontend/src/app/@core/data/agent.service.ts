@@ -45,6 +45,23 @@ export interface AgentMessage {
   feedback?: string | null;
 }
 
+/** Incident 的只读闭环视图；详情由后端按组织边界授权。 */
+export interface AgentIncident {
+  id: number;
+  cluster_id: number;
+  title: string;
+  status: 'open' | 'investigating' | 'resolved' | 'closed';
+  created_at: string;
+  resolved_at?: string | null;
+}
+
+export interface AgentIncidentDetail {
+  incident: AgentIncident;
+  events: unknown[];
+  evidences: unknown[];
+  decisions: unknown[];
+}
+
 export interface ChatRequest {
   session_id?: number;
   cluster_id?: number;
@@ -160,6 +177,21 @@ export class AgentService {
     return this.api
       .get<{ items: AgentMessage[] }>(`${this.basePath}/sessions/${sessionId}`)
       .pipe(map((v) => v.items));
+  }
+
+  /** 通知深链的 Incident 证据与状态。 */
+  getIncident(incidentId: number): Observable<AgentIncidentDetail> {
+    return this.api.get<AgentIncidentDetail>(`${this.basePath}/incidents/${incidentId}`);
+  }
+
+  /** 按 Incident 归属集群重新执行既有只读取证与规则诊断。 */
+  investigateIncident(incidentId: number): Observable<unknown> {
+    return this.api.post(`${this.basePath}/incidents/${incidentId}/investigate`, {});
+  }
+
+  /** 仅当后台已确认关联事件恢复后，允许人工关闭。 */
+  closeIncident(incidentId: number): Observable<{ message: string }> {
+    return this.api.post<{ message: string }>(`${this.basePath}/incidents/${incidentId}/close`, {});
   }
 
   /** 确认对话内动作（单次执行；结果回填会话）。 */

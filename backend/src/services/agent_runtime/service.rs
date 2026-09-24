@@ -37,6 +37,10 @@ const MAX_INVESTIGATE_PER_TICK: usize = 3;
 /// 单次取证总超时
 const INVESTIGATE_TIMEOUT: Duration = Duration::from_secs(60);
 
+fn incident_link(incident_id: i64) -> String {
+    format!("/pages/cluster-ops/agent?incident={incident_id}")
+}
+
 /// 证据紧凑摘要（供 LLM 推理，避免全量 payload 进上下文）
 #[derive(Debug, Clone)]
 pub struct EvidenceSummary {
@@ -128,13 +132,14 @@ impl<DB: AppDb> AgentRuntimeService<DB> {
 
         // 待确认通知（产品语义：需要确认时肯定要通知）
         self.notify_ops(
+            cluster.organization_id,
             crate::services::notification_service::NewNotification::new(
                 "action_pending",
                 format!("运维动作待确认：{}", view.kind),
             )
             .severity("warning")
             .body(format!("「{}」（15 分钟内有效，单次执行）", view.title))
-            .link(format!("/pages/cluster-ops/agent-incidents?incident={}", incident_id))
+            .link(incident_link(incident_id))
             .meta(serde_json::json!({ "action_id": view.id, "incident_id": incident_id, "cluster_id": cluster.id })),
         )
         .await;
@@ -252,13 +257,14 @@ impl<DB: AppDb> AgentRuntimeService<DB> {
             ("critical", format!("动作执行失败：{}", view.kind))
         };
         self.notify_ops(
+            cluster.organization_id,
             crate::services::notification_service::NewNotification::new(
                 "action_result",
                 title_txt,
             )
             .severity(sev)
             .body(crate::utils::string_ext::truncate(&result_json, 120))
-            .link(format!("/pages/cluster-ops/agent-incidents?incident={}", incident_id))
+            .link(incident_link(incident_id))
             .meta(serde_json::json!({ "action_id": action_id, "incident_id": incident_id, "cluster_id": cluster.id })),
         )
         .await;
@@ -336,8 +342,12 @@ impl<DB: AppDb> AgentRuntimeService<DB> {
         .await;
         let active_events = converge_events(cluster, &self.pool, &outcome).await;
 
-        // 升级/复开
+        // 先收敛当前仍活跃的事件，避免阈值同轮仍超标时把 Incident 误标恢复后又复开。
         let incidents = self.escalate(cluster, &active_events).await?;
+
+        // 采集已确认全部关联事件消退后，Incident 才进入「已恢复」。
+        // 此处不自动关闭，仍需人工审阅恢复证据并确认归档。
+        self.resolve_recovered_incidents(cluster).await?;
 
         // 自动取证 + 规则诊断：
         // - 本 tick 新建/复开的 Incident 立即取证；
@@ -404,14 +414,26 @@ impl<DB: AppDb> AgentRuntimeService<DB> {
         Ok(row.get("cluster_id"))
     }
 
-    /// 站内通知所有运维角色（admin / super_admin）。Incident/动作类通知的接收方。
-    async fn notify_ops(&self, n: crate::services::notification_service::NewNotification) {
+    /// 通知同组织运维角色和全局超级管理员，不能向其他组织泄露 Incident 元数据。
+    async fn notify_ops(
+        &self,
+        organization_id: Option<i64>,
+        n: crate::services::notification_service::NewNotification,
+    ) {
         let rows = match db_query::query(
             "SELECT DISTINCT u.id FROM users u \
              JOIN user_roles ur ON ur.user_id = u.id \
              JOIN roles r ON r.id = ur.role_id \
-             WHERE r.code IN ('admin', 'super_admin')",
+             WHERE r.code = 'super_admin' OR (r.code = 'admin' AND (\
+                 (? IS NULL AND NULLIF(u.organization_id, 0) IS NULL) \
+                 OR NULLIF(u.organization_id, 0) = ? \
+                 OR EXISTS (SELECT 1 FROM user_organizations uo \
+                            WHERE uo.user_id = u.id AND uo.organization_id = ?)\
+             ))",
         )
+        .bind(organization_id)
+        .bind(organization_id)
+        .bind(organization_id)
         .fetch_all(&self.pool)
         .await
         {
@@ -503,13 +525,14 @@ impl<DB: AppDb> AgentRuntimeService<DB> {
                             );
                             // 复开站内通知
                             self.notify_ops(
+                                cluster.organization_id,
                                 crate::services::notification_service::NewNotification::new(
                                     "incident_reopened",
                                     format!("Incident 复开：{}", title),
                                 )
                                 .severity("warning")
                                 .body(format!("根因线索再次出现，已自动重新调查（dedupe={}）", dedupe_key))
-                                .link(format!("/pages/cluster-ops/agent-incidents?incident={}", id))
+                                .link(incident_link(id))
                                 .meta(serde_json::json!({ "incident_id": id, "cluster_id": cluster.id })),
                             )
                             .await;
@@ -531,13 +554,14 @@ impl<DB: AppDb> AgentRuntimeService<DB> {
                                 "warning"
                             };
                             self.notify_ops(
+                                cluster.organization_id,
                                 crate::services::notification_service::NewNotification::new(
                                     "incident_created",
                                     format!("新 Incident：{}", title),
                                 )
                                 .severity(severity)
                                 .body(format!("触发事件 {} 个（{}），已开始自动取证与诊断", events.len(), primary.title))
-                                .link(format!("/pages/cluster-ops/agent-incidents?incident={}", id))
+                                .link(incident_link(id))
                                 .meta(serde_json::json!({ "incident_id": id, "cluster_id": cluster.id })),
                             )
                             .await;
@@ -673,6 +697,68 @@ impl<DB: AppDb> AgentRuntimeService<DB> {
         .await
         .map_err(|e| e.to_string())?;
         Ok(row.map(|r| row_to_incident::<DB>(&r)))
+    }
+
+    /// 将关联事件全部消退的活跃 Incident 标记为已恢复；关闭仍由人工确认。
+    async fn resolve_recovered_incidents(&self, cluster: &Cluster) -> Result<(), String> {
+        let rows = db_query::query(
+            "SELECT i.id, i.title FROM agent_incidents i \
+             WHERE i.cluster_id = ? AND i.status IN ('open', 'investigating') \
+               AND EXISTS (SELECT 1 FROM agent_incident_events ie WHERE ie.incident_id = i.id) \
+               AND NOT EXISTS (\
+                   SELECT 1 FROM agent_incident_events ie \
+                   JOIN agent_events e ON e.id = ie.event_id \
+                   WHERE ie.incident_id = i.id AND e.state IN ('open', 'aggregated', 'suppressed')\
+               )",
+        )
+        .bind(cluster.id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        for row in rows {
+            let incident_id: i64 = row.get("id");
+            let title: String = row.get("title");
+            let updated = db_query::query(
+                "UPDATE agent_incidents SET status = 'resolved', resolved_at = ? \
+                 WHERE id = ? AND status IN ('open', 'investigating')",
+            )
+            .bind(chrono::Utc::now())
+            .bind(incident_id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| e.to_string())?;
+            if updated.rows_affected() == 0 {
+                continue;
+            }
+            self.record_decision(DecisionRecord {
+                incident_id,
+                stage: "recovery_validation",
+                status: "completed",
+                input_json: Some(json!({ "source": "event_recovery" })),
+                output_json: Some(json!({
+                    "verified": true,
+                    "active_event_count": 0,
+                    "next_step": "manual_close",
+                })),
+                error: None,
+                telemetry: None,
+            })
+            .await?;
+            self.notify_ops(
+                cluster.organization_id,
+                crate::services::notification_service::NewNotification::new(
+                    "incident_resolved",
+                    format!("Incident 已恢复：{}", title),
+                )
+                .severity("info")
+                .body("关联事件已消退，请复查证据后人工关闭")
+                .link(incident_link(incident_id))
+                .meta(serde_json::json!({ "incident_id": incident_id, "cluster_id": cluster.id })),
+            )
+            .await;
+        }
+        Ok(())
     }
 
     /// 取证流水线（固定阶段）：metrics → nodes → queries → audit。
@@ -1075,15 +1161,20 @@ impl<DB: AppDb> AgentRuntimeService<DB> {
             .map_err(|e| crate::utils::ApiError::internal_error(format!("OpsAgent: {}", e)))
     }
 
-    /// 关闭 Incident（人工确认恢复）。
+    /// 关闭 Incident：只允许关闭已由采集证据确认恢复的事件。
     pub async fn close_incident(&self, incident_id: i64) -> Result<(), String> {
-        let _ = db_query::query(
-            "UPDATE agent_incidents SET status = 'closed', resolved_at = ? WHERE id = ? AND status IN ('open','investigating','resolved')",
+        let updated = db_query::query(
+            "UPDATE agent_incidents SET status = 'closed', resolved_at = ? \
+             WHERE id = ? AND status = 'resolved'",
         )
         .bind(chrono::Utc::now())
         .bind(incident_id)
         .execute(&self.pool)
-        .await;
+        .await
+        .map_err(|e| e.to_string())?;
+        if updated.rows_affected() == 0 {
+            return Err("Incident 当前不是已恢复状态，不能关闭".to_string());
+        }
         self.record_decision(DecisionRecord {
             incident_id,
             stage: "close",

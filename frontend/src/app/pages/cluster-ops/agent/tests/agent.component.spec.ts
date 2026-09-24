@@ -205,6 +205,23 @@ describe('AgentComponent', () => {
     expect(component.actionPreview(action)).toBe('SET GLOBAL query_timeout = 10');
   });
 
+  it('only allows manual closure after recovery has been verified', () => {
+    component.canCloseIncidents = true;
+    component.incident = {
+      incident: { id: 7, cluster_id: 1, title: '节点恢复', status: 'investigating', created_at: '2026-09-20 00:00:00' },
+      events: [],
+      evidences: [],
+      decisions: [],
+    };
+
+    expect(component.canCloseIncident()).toBeFalse();
+
+    component.incident.incident.status = 'resolved';
+
+    expect(component.canCloseIncident()).toBeTrue();
+    expect(component.incidentStatusLabel()).toBe('已恢复，等待人工关闭');
+  });
+
   it('opens the next session when navigating the session list with ArrowDown', () => {
     component.sessions = [
       { id: 11, title: 'first', last_active_at: '2026-09-20 00:00:00' },

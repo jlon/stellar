@@ -76,6 +76,23 @@ pub async fn collect_cluster_events<DB: AppDb>(
     let be_total = latest.get::<i32, _>("backend_total");
     let load_running = latest.get::<i32, _>("load_running");
 
+    // 节点全部恢复时没有 node_down 候选，必须显式消退历史节点事件；否则关联
+    // Incident 会永久停在 investigating，无法进入人工关闭环节。
+    if be_total > 0 && be_alive >= be_total {
+        if let Ok(rows) = db_query::query(
+            "SELECT fingerprint FROM agent_events WHERE cluster_id = ? \
+             AND kind = 'node_down' AND state IN ('open', 'aggregated', 'suppressed')",
+        )
+        .bind(cluster.id)
+        .fetch_all(pool)
+        .await
+        {
+            outcome
+                .cleared_fingerprints
+                .extend(rows.iter().map(|row| row.get::<String, _>("fingerprint")));
+        }
+    }
+
     // 1a) 磁盘水位（shared-data 集群本地盘只是数据缓存配额，写满是 LRU 淘汰的稳态，不得报磁盘事故）
     if !cluster.is_shared_data() {
         push_breach(
@@ -238,20 +255,21 @@ struct BreachSpec<'a> {
 
 /// 阈值事件：active=true 入候选（按 severity），false 仅标记消退指纹。
 fn push_breach(outcome: &mut CollectOutcome, spec: BreachSpec<'_>) {
-    outcome
-        .cleared_fingerprints
-        .push(fingerprint(spec.kind, spec.object_type, spec.object_id));
-    if spec.active {
-        outcome.candidates.push(make_candidate(
-            spec.kind,
-            spec.severity,
-            spec.object_type,
-            spec.object_id,
-            spec.title,
-            spec.summary,
-            spec.metrics,
-        ));
+    if !spec.active {
+        outcome
+            .cleared_fingerprints
+            .push(fingerprint(spec.kind, spec.object_type, spec.object_id));
+        return;
     }
+    outcome.candidates.push(make_candidate(
+        spec.kind,
+        spec.severity,
+        spec.object_type,
+        spec.object_id,
+        spec.title,
+        spec.summary,
+        spec.metrics,
+    ));
 }
 
 fn make_candidate(
@@ -314,7 +332,7 @@ pub async fn converge_events<DB: AppDb>(
     for fp in &outcome.cleared_fingerprints {
         let _ = db_query::query(
             "UPDATE agent_events SET state = 'resolved' \
-             WHERE cluster_id = ? AND fingerprint = ? AND state IN ('open','aggregated')",
+             WHERE cluster_id = ? AND fingerprint = ? AND state IN ('open', 'aggregated', 'suppressed')",
         )
         .bind(cluster.id)
         .bind(fp)
@@ -448,6 +466,34 @@ pub async fn converge_events<DB: AppDb>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::cluster::{Cluster, ClusterType, DeploymentMode};
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    fn test_cluster() -> Cluster {
+        Cluster {
+            id: 1,
+            name: "test".to_string(),
+            description: None,
+            fe_host: "fe.example".to_string(),
+            fe_http_port: 8030,
+            fe_query_port: 9030,
+            username: "root".to_string(),
+            password_encrypted: String::new(),
+            enable_ssl: false,
+            connection_timeout: 10,
+            tags: None,
+            catalog: "default_catalog".to_string(),
+            is_active: true,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            created_by: None,
+            organization_id: Some(1),
+            deployment_mode: DeploymentMode::SharedNothing,
+            cluster_type: ClusterType::StarRocks,
+            admin_user: None,
+            admin_password_encrypted: None,
+        }
+    }
 
     #[test]
     fn fingerprint_shape() {
@@ -480,7 +526,7 @@ mod tests {
                 metrics: json!({}),
             },
         );
-        // 未超阈 → 只标消退（并测试同名指纹去重语义由 converge 处理）
+        // 未超阈 → 只标消退。
         push_breach(
             &mut out,
             BreachSpec {
@@ -497,6 +543,10 @@ mod tests {
         assert_eq!(out.candidates.len(), 1);
         assert_eq!(out.candidates[0].kind, EventKind::DiskPressure);
         assert_eq!(out.candidates[0].severity, EventSeverity::Critical);
+        assert!(
+            !out.cleared_fingerprints
+                .contains(&"disk_pressure:cluster:1".to_string())
+        );
         assert!(
             out.cleared_fingerprints
                 .contains(&"compaction:cluster:1".to_string())
@@ -519,5 +569,54 @@ mod tests {
             cleared: false,
         });
         assert_eq!(out.candidates[0].object_id.as_deref(), Some("q1"));
+    }
+
+    #[tokio::test]
+    async fn fully_recovered_nodes_clear_existing_node_down_events() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("test db");
+        sqlx::query(
+            "CREATE TABLE metrics_snapshots (\
+             cluster_id INTEGER, collected_at TEXT, backend_alive INTEGER, backend_total INTEGER, disk_usage_pct REAL, \
+             max_compaction_score REAL, txn_failed_total INTEGER, load_running INTEGER, \
+             query_error INTEGER, query_timeout INTEGER, qps REAL)",
+        )
+        .execute(&pool)
+        .await
+        .expect("metrics table");
+        sqlx::query(
+            "CREATE TABLE agent_events (\
+             id INTEGER PRIMARY KEY, cluster_id INTEGER, fingerprint TEXT, kind TEXT, state TEXT, \
+             occurrence_count INTEGER, metrics_json TEXT, last_seen_at TEXT)",
+        )
+        .execute(&pool)
+        .await
+        .expect("events table");
+        sqlx::query(
+            "INSERT INTO metrics_snapshots VALUES \
+             (1, '2026-09-20 00:00:00', 2, 2, 0, 0, 0, 0, 0, 0, 0)",
+        )
+        .execute(&pool)
+        .await
+        .expect("metrics row");
+        sqlx::query(
+            "INSERT INTO agent_events \
+             (cluster_id, fingerprint, kind, state) \
+             VALUES (1, 'node_down:be:be-1', 'node_down', 'aggregated')",
+        )
+        .execute(&pool)
+        .await
+        .expect("event row");
+
+        let outcome = collect_cluster_events(&test_cluster(), &pool, None, None).await;
+
+        assert!(
+            outcome
+                .cleared_fingerprints
+                .contains(&"node_down:be:be-1".to_string())
+        );
     }
 }
