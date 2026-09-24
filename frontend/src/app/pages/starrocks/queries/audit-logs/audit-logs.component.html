@@ -10,6 +10,13 @@
           </div>
         </div>
 
+        @if (activeCluster?.cluster_type === 'starrocks') {
+          <div class="audit-operational-note" role="note">
+            <nb-icon icon="info-outline"></nb-icon>
+            <small>{{ 'StarRocks 原生审计记录保存在 fe/log/fe.audit.log；本页读取配置的审计表。请先通过 AuditLoader 导入记录，否则列表为空或不可用。' | translate }}</small>
+          </div>
+        }
+
         <!-- Search Filters: 紧凑单行，搜索按钮右对齐 -->
         <div class="search-filters">
           <div class="filter-row">

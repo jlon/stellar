@@ -70,6 +70,10 @@ mod backend_diagnostic_test;
 mod query_parser_test;
 
 #[cfg(test)]
+#[path = "tests/query_history_test.rs"]
+mod query_history_test;
+
+#[cfg(test)]
 #[path = "tests/profile_retest_test.rs"]
 mod profile_retest_test;
 

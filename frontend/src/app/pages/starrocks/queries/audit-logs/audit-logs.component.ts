@@ -60,7 +60,7 @@ export class AuditLogsComponent implements OnInit, OnDestroy {
   private readonly durationThresholds: MetricThresholds = { warn: 3000, danger: 10000 };
 
   // Profile dialog
-  currentProfile: any = null;
+  currentProfile: AuditProfile | null = null;
   @ViewChild('profileDialog') profileDialogTemplate: TemplateRef<any>;
 
   // History search filters
@@ -234,20 +234,23 @@ export class AuditLogsComponent implements OnInit, OnDestroy {
   }
 
   // Handle edit action (View Profile)
-  onEditProfile(event: any): void {
-    const query: QueryHistoryItem = event.data;
-    this.viewProfile(query.query_id);
+  onEditProfile(event: { data: QueryHistoryItem }): void {
+    this.viewProfile(event.data);
   }
 
   // View query profile
-  viewProfile(queryId: string): void {
-    this.nodeService.getQueryProfile(queryId).subscribe({
+  viewProfile(query: QueryHistoryItem): void {
+    this.nodeService.getProfile(query.query_id).subscribe({
       next: (profile) => {
-        this.currentProfile = profile;
+        this.currentProfile = {
+          ...query,
+          ...profile,
+          sql: query.sql_statement,
+          execution_time_ms: query.total_ms,
+          status: query.query_state,
+        };
         // Open profile dialog
-        this.dialogService.open(this.profileDialogTemplate, {
-          context: { profile },
-        });
+        this.dialogService.open(this.profileDialogTemplate);
       },
       error: (error) => {
         this.toastrService.danger(ErrorHandler.extractErrorMessage(error), '加载失败');
@@ -295,3 +298,10 @@ export class AuditLogsComponent implements OnInit, OnDestroy {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
 }
+
+type AuditProfile = QueryHistoryItem & {
+  profile_content: string;
+  sql: string;
+  execution_time_ms: number;
+  status: string;
+};

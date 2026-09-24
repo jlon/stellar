@@ -23,7 +23,6 @@ import { sql, MySQL, type SQLNamespace } from '@codemirror/lang-sql';
 import { oneDarkHighlightStyle } from '@codemirror/theme-one-dark';
 import { format } from 'sql-formatter';
 import { trigger, transition, style, animate, state } from '@angular/animations';
-import { renderMetricBadge, MetricThresholds } from '../../../../@core/utils/metric-badge';
 import { assignTableRows } from '../../../../@core/utils/table-rows';
 import { renderLongText } from '../../../../@core/utils/text-truncate';
 import { TablePaginationComponent } from '../../../../@theme/components/table-pagination/table-pagination.component';
@@ -251,9 +250,8 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   private readonly themeCompartment = new Compartment();
   private readonly highlightCompartment = new Compartment();
   private readonly sqlConfigCompartment = new Compartment();
-  // Slow query thresholds: 5min(300000ms)=blue, 10min(600000ms)=yellow, 30min(1800000ms)=red
-  private readonly runningDurationThresholds: MetricThresholds = { warn: 300000, danger: 600000 };
-  private readonly slowQueryRedThreshold = 1800000; // 30 minutes
+  private readonly longRunningQueryThresholdMs = 5 * 60 * 1000;
+  private readonly largeScanQueryThresholdBytes = 1024 ** 3;
 
   // Table schema dialog state
   schemaDialogTitle: string = '';
@@ -316,7 +314,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   tableStatsCatalogName: string | undefined = undefined;
   
   // Bucket analysis dialog state
-  bucketAnalysisCurrentTab: 'skew' | 'distribution' | 'sortkey' | 'adjust' = 'skew';
+  bucketAnalysisCurrentTab: 'skew' | 'distribution' | 'sortkey' = 'skew';
   bucketAnalysisSkewData: any[] = [];
   bucketAnalysisDistributionData: any[] = [];
   bucketAnalysisSortKeyData: any[] = [];
@@ -324,23 +322,19 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     skew: boolean;
     distribution: boolean;
     sortkey: boolean;
-    adjust: boolean;
   } = {
     skew: false,
     distribution: false,
     sortkey: false,
-    adjust: false,
   };
   bucketAnalysisLoadingState: {
     skew: boolean;
     distribution: boolean;
     sortkey: boolean;
-    adjust: boolean;
   } = {
     skew: false,
     distribution: false,
     sortkey: false,
-    adjust: false,
   };
   bucketAnalysisDatabaseName: string = '';
   bucketAnalysisTableName: string = '';
@@ -350,9 +344,6 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   bucketAnalysisColumns: any = {};
   bucketAnalysisTableType: string | null = null; // Store table type (NORMAL, CLOUD_NATIVE, etc.)
   bucketAnalysisNode: NavTreeNode | null = null; // Store node reference for updating storage type
-  // Bucket adjustment state
-  bucketAdjustmentNewBuckets: number | null = null;
-  bucketAdjustmentAdjusting: boolean = false;
   // Cache for cardinality analysis: key = "database.table.field"
   private cardinalityCache: Map<string, { cardinality: number; timestamp: number }> = new Map();
   private readonly CARDINALITY_CACHE_TTL = 3600000; // 1 hour in milliseconds
@@ -550,10 +541,10 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       },
       ExecTime: {
         title: this.i18n.instant('执行时间'),
-        type: 'html',
-        sanitizer: { bypassHtml: true },
+        type: 'string',
         width: '10%',
-        valuePrepareFunction: (value: string | number, row: any) => this.renderSlowQueryBadge(value),
+        valuePrepareFunction: (value: string | number) =>
+          this.formatExecTime(this.parseExecTime(value)),
       },
       ScanBytes: {
         title: this.i18n.instant('扫描数据量'),
@@ -586,9 +577,8 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
   // Filter state for running queries
   runningQueryFilter: {
-    state?: string;
-    slowQueryOnly?: boolean;
-    highCostOnly?: boolean;
+    longRunningOnly?: boolean;
+    largeScanOnly?: boolean;
   } = {};
 
   // Query detail dialog state
@@ -2962,8 +2952,6 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     this.bucketAnalysisCurrentBuckets = 0;
     this.bucketAnalysisTableType = null;
     this.bucketAnalysisNode = node; // Store node reference for updating storage type
-    this.bucketAdjustmentNewBuckets = null;
-    this.bucketAdjustmentAdjusting = false;
 
     // Reset state
     this.bucketAnalysisCurrentTab = 'skew';
@@ -2974,13 +2962,11 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       skew: false,
       distribution: false,
       sortkey: false,
-      adjust: false,
     };
     this.bucketAnalysisLoadingState = {
       skew: false,
       distribution: false,
       sortkey: false,
-      adjust: false,
     };
 
     // Open dialog
@@ -3200,7 +3186,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       });
   }
 
-  switchBucketAnalysisTab(tab: 'skew' | 'distribution' | 'sortkey' | 'adjust'): void {
+  switchBucketAnalysisTab(tab: 'skew' | 'distribution' | 'sortkey'): void {
     this.bucketAnalysisCurrentTab = tab;
     
     // Load data if not loaded yet
@@ -3212,7 +3198,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     }
   }
 
-  private loadBucketAnalysisTabData(tab: 'skew' | 'distribution' | 'sortkey' | 'adjust'): void {
+  private loadBucketAnalysisTabData(tab: 'skew' | 'distribution' | 'sortkey'): void {
     this.bucketAnalysisLoadingState[tab] = true;
     this.infoDialogPageLoading = true;
     this.infoDialogError = null;
@@ -3226,13 +3212,6 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         break;
       case 'sortkey':
         this.loadSortKeyAnalysis();
-        break;
-      case 'adjust':
-        // Adjust tab doesn't need data loading, just show current info
-        this.bucketAnalysisLoadingState[tab] = false;
-        this.infoDialogPageLoading = false;
-        this.bucketAnalysisDataLoaded[tab] = true;
-        this.updateBucketAnalysisTabDisplay(tab);
         break;
     }
   }
@@ -3727,7 +3706,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     return 'danger';
   }
 
-  private updateBucketAnalysisTabDisplay(tab: 'skew' | 'distribution' | 'sortkey' | 'adjust'): void {
+  private updateBucketAnalysisTabDisplay(tab: 'skew' | 'distribution' | 'sortkey'): void {
     let data: any[] = [];
     let columns: any = {};
 
@@ -3876,16 +3855,6 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
           FROM_CACHE: { title: this.i18n.instant('缓存'), type: 'string', width: '6%' },
         };
         break;
-      case 'adjust':
-        // Adjust tab - disable table display, will use custom form in template
-        data = [];
-        columns = {};
-        // Disable pager for adjust tab
-        this.infoDialogSettings = {
-          ...this.infoDialogSettings,
-          pager: { display: false },
-        };
-        break;
     }
 
     this.infoDialogData = data;
@@ -3895,113 +3864,6 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       columns,
     };
     this.cdr.markForCheck();
-  }
-
-  private calculateRecommendedBuckets(): number {
-    // Simple recommendation: based on data size
-    // This is a placeholder - can be enhanced with more sophisticated logic
-    if (this.bucketAnalysisSkewData.length > 0) {
-      const summary = this.bucketAnalysisSkewData.find((d: any) => d.BUCKET_ID === '汇总');
-      if (summary) {
-        const totalSize = Number(summary.TOTAL_SIZE) || 0;
-        // Recommend 1 bucket per 10GB (rough estimate)
-        const recommended = Math.max(1, Math.min(128, Math.ceil(totalSize / (10 * 1024 * 1024 * 1024))));
-        return recommended;
-      }
-    }
-    return this.bucketAnalysisCurrentBuckets || 3;
-  }
-
-  // Bucket adjustment methods
-  getBucketAdjustmentRecommendedBuckets(): number {
-    return this.calculateRecommendedBuckets();
-  }
-
-  onBucketAdjustmentInputChange(value: number): void {
-    this.bucketAdjustmentNewBuckets = value;
-    this.cdr.markForCheck();
-  }
-
-  useRecommendedBuckets(): void {
-    this.bucketAdjustmentNewBuckets = this.getBucketAdjustmentRecommendedBuckets();
-    this.cdr.markForCheck();
-  }
-
-  previewBucketAdjustment(): void {
-    if (!this.bucketAdjustmentNewBuckets || this.bucketAdjustmentNewBuckets <= 0) {
-      this.toastrService.warning(this.i18n.instant('请输入有效的分桶数'), this.i18n.instant('提示'));
-      return;
-    }
-
-    if (this.bucketAdjustmentNewBuckets === this.bucketAnalysisCurrentBuckets) {
-      this.toastrService.info(this.i18n.instant('新分桶数与当前分桶数相同，无需调整'), this.i18n.instant('提示'));
-      return;
-    }
-
-    // Show preview of adjustment SQL
-    const qualifiedTableName = this.buildQualifiedTableName(
-      this.bucketAnalysisCatalogName || '',
-      this.bucketAnalysisDatabaseName,
-      this.bucketAnalysisTableName
-    );
-
-    // Note: StarRocks doesn't support direct ALTER TABLE to change buckets
-    // This requires table rebuild. Show warning and SQL preview
-    const previewMessage = `分桶调整需要重建表，这将执行以下操作：
-1. 创建新表（分桶数为 ${this.bucketAdjustmentNewBuckets}）
-2. 迁移数据
-3. 重命名表
-
-此操作需要 ALTER TABLE 权限，且会锁定表一段时间。
-
-是否继续？`;
-
-    this.confirmDialogService.confirm(
-      '预览分桶调整',
-      previewMessage,
-      '继续',
-      '取消',
-      'warning'
-    ).subscribe(confirmed => {
-      if (confirmed) {
-        this.executeBucketAdjustment();
-      }
-    });
-  }
-
-  executeBucketAdjustment(): void {
-    if (!this.bucketAdjustmentNewBuckets || this.bucketAdjustmentNewBuckets <= 0) {
-      this.toastrService.warning(this.i18n.instant('请输入有效的分桶数'), this.i18n.instant('提示'));
-      return;
-    }
-
-    if (this.bucketAdjustmentNewBuckets === this.bucketAnalysisCurrentBuckets) {
-      this.toastrService.info(this.i18n.instant('新分桶数与当前分桶数相同，无需调整'), this.i18n.instant('提示'));
-      return;
-    }
-
-    // Note: StarRocks doesn't support direct ALTER TABLE to change buckets
-    // This is a placeholder - actual implementation would require:
-    // 1. CREATE TABLE with new bucket count
-    // 2. INSERT INTO new_table SELECT * FROM old_table
-    // 3. RENAME TABLE
-    // 4. DROP old table
-    // 
-    // This is a complex operation that should be done carefully
-    // For now, we'll show a message that this feature requires manual SQL execution
-
-    this.toastrService.warning(
-      '分桶调整功能需要重建表，这是一个复杂操作。请使用以下SQL手动执行：\n' +
-      `-- 1. 创建新表（分桶数为 ${this.bucketAdjustmentNewBuckets}）\n` +
-      `-- 2. 迁移数据：INSERT INTO new_table SELECT * FROM ${this.bucketAnalysisTableName}\n` +
-      `-- 3. 重命名表：ALTER TABLE ${this.bucketAnalysisTableName} RENAME old_table; ALTER TABLE new_table RENAME ${this.bucketAnalysisTableName}\n` +
-      `-- 4. 删除旧表：DROP TABLE old_table`,
-      '提示',
-      { duration: 10000 }
-    );
-
-    // TODO: Implement actual bucket adjustment when backend API is ready
-    // For now, we provide SQL guidance to users
   }
 
   private viewTableTransactions(node: NavTreeNode): void {
@@ -4316,8 +4178,11 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     // Check storage type - CLOUD_NATIVE tables may have different compaction behavior
     const storageType = node.data?.storageType;
     if (storageType === 'CLOUD_NATIVE') {
-      // CLOUD_NATIVE tables support compaction, but show a note
-      this.toastrService.info('CLOUD_NATIVE表（存算分离）的Compaction行为可能与普通表不同', '提示', { duration: 3000 });
+      this.toastrService.info(
+        this.i18n.instant('存算分离集群自 StarRocks 3.3.0 起支持手动 Compaction。'),
+        this.i18n.instant('提示'),
+        { duration: 3000 },
+      );
     }
 
     this.compactionTriggerTable = tableName;
@@ -4413,7 +4278,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     this.confirmDialogService
       .confirm(
         '确认触发Compaction',
-        `确定要${actionDesc}吗？\n\nCompaction任务会在后台执行，不会阻塞当前操作。`,
+        `确定要${actionDesc}吗？\n\n该操作需要目标表的 ALTER 权限；SQL 成功仅表示提交成功，请继续查看 Compaction 信息。`,
         '确认触发',
         '取消',
         'primary'
@@ -4989,24 +4854,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   loadRunningQueriesSilently(): void {
     this.nodeService.listQueries().subscribe({
       next: (queries) => {
-        // Apply filters
-        let filteredQueries = queries;
-        
-        if (this.runningQueryFilter.slowQueryOnly) {
-          filteredQueries = filteredQueries.filter(q => {
-            const execTime = this.parseExecTime(q.ExecTime);
-            return execTime >= 300000; // 5 minutes
-          });
-        }
-        
-        if (this.runningQueryFilter.highCostOnly) {
-          filteredQueries = filteredQueries.filter(q => {
-            const scanBytes = this.parseBytes(q.ScanBytes);
-            return scanBytes >= 1073741824; // 1GB
-          });
-        }
-        
-        this.runningSource.load(filteredQueries);
+        this.runningSource.load(this.filterRunningQueries(queries));
         this.selectedRunningQueries = [];
         this.cdr.markForCheck();
       },
@@ -5023,21 +4871,8 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     this.cdr.markForCheck();
     this.nodeService.listQueries().subscribe({
       next: (queries) => {
-        let filteredQueries = queries;
-        if (this.runningQueryFilter.slowQueryOnly) {
-          filteredQueries = filteredQueries.filter(q => {
-            const execTime = this.parseExecTime(q.ExecTime);
-            return execTime >= 300000;
-          });
-        }
-        if (this.runningQueryFilter.highCostOnly) {
-          filteredQueries = filteredQueries.filter(q => {
-            const scanBytes = this.parseBytes(q.ScanBytes);
-            return scanBytes >= 1073741824;
-          });
-        }
         this.selectedRunningQueries = [];
-        assignTableRows(this.runningSource, filteredQueries).then(() => {
+        assignTableRows(this.runningSource, this.filterRunningQueries(queries)).then(() => {
           this.loading = false;
           this.cdr.markForCheck();
         });
@@ -5050,26 +4885,6 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         });
       },
     });
-  }
-
-  // Render slow query badge with color coding: 5min=blue, 10min=yellow, 30min=red
-  renderSlowQueryBadge(value: string | number): string {
-    const execTime = typeof value === 'number' ? value : this.parseExecTime(value);
-    const timeStr = this.formatExecTime(execTime);
-    
-    if (execTime >= this.slowQueryRedThreshold) {
-      // 30 minutes or more - red
-      return `<span class="metric-badge metric-badge--alert">${timeStr}</span>`;
-    } else if (execTime >= this.runningDurationThresholds.danger) {
-      // 10 minutes or more - yellow
-      return `<span class="metric-badge metric-badge--warn">${timeStr}</span>`;
-    } else if (execTime >= this.runningDurationThresholds.warn) {
-      // 5 minutes or more - blue (info)
-      return `<span class="metric-badge metric-badge--info">${timeStr}</span>`;
-    } else {
-      // Less than 5 minutes - normal
-      return `<span class="metric-badge metric-badge--good">${timeStr}</span>`;
-    }
   }
 
   // Format execution time
@@ -5090,8 +4905,30 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     if (typeof value === 'number') {
       return value;
     }
-    const num = parseFloat(value.toString().replace(/[^0-9.-]/g, ''));
-    return isNaN(num) ? 0 : num;
+    const match = value
+      .trim()
+      .match(/^(-?(?:\d+(?:\.\d*)?|\.\d+))\s*(ns|us|ms|s|m|h)?$/i);
+    if (!match) {
+      return 0;
+    }
+    const multipliers: Record<string, number> = {
+      ns: 1e-6,
+      us: 1e-3,
+      ms: 1,
+      s: 1000,
+      m: 60_000,
+      h: 3_600_000,
+    };
+    return Number(match[1]) * (multipliers[match[2]?.toLowerCase() || 'ms'] || 1);
+  }
+
+  private filterRunningQueries(queries: Query[]): Query[] {
+    return queries.filter((query) =>
+      (!this.runningQueryFilter.longRunningOnly ||
+        this.parseExecTime(query.ExecTime) >= this.longRunningQueryThresholdMs) &&
+      (!this.runningQueryFilter.largeScanOnly ||
+        this.parseBytes(query.ScanBytes) >= this.largeScanQueryThresholdBytes),
+    );
   }
 
   // Format bytes

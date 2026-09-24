@@ -231,15 +231,6 @@ export interface QueryHistoryResponse {
   page_size: number;
 }
 
-export interface QueryProfile {
-  query_id: string;
-  sql: string;
-  profile_content: string;
-  execution_time_ms: number;
-  status: string;
-  fragments: any[];
-}
-
 export interface QueryExecuteRequest {
   sql: string;
   limit?: number;
@@ -569,11 +560,6 @@ export class NodeService {
       `/clusters/queries/history`,
       params,
     );
-  }
-
-  // Query Profile API
-  getQueryProfile(queryId: string): Observable<QueryProfile> {
-    return this.api.get<QueryProfile>(`/clusters/queries/${queryId}/profile`);
   }
 
   // Get catalogs list

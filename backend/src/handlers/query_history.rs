@@ -1,5 +1,6 @@
 use crate::AppState;
 use axum::{Json, extract::State};
+use chrono::NaiveDateTime;
 use serde::Deserialize;
 use std::sync::Arc;
 use stellar_macros::app_db;
@@ -8,7 +9,7 @@ use crate::models::cluster::ClusterType;
 use crate::models::starrocks::{QueryHistoryItem, QueryHistoryResponse};
 use crate::services::cluster_timeout;
 use crate::services::mysql_client::MySQLClient;
-use crate::utils::error::ApiResult;
+use crate::utils::error::{ApiError, ApiResult};
 
 struct AuditHistoryColumns {
     audit_table: String,
@@ -107,6 +108,29 @@ fn default_offset() -> i64 {
     0
 }
 
+pub(crate) fn normalize_history_pagination(limit: i64, offset: i64) -> (i64, i64) {
+    (limit.clamp(1, 100), offset.max(0))
+}
+
+/// Normalize the date-time format emitted by the UI before interpolating it in SQL.
+pub(crate) fn normalize_audit_timestamp(value: Option<&str>) -> ApiResult<Option<String>> {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+
+    let timestamp = ["%Y-%m-%dT%H:%M", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S"]
+        .iter()
+        .find_map(|format| NaiveDateTime::parse_from_str(value, format).ok())
+        .ok_or_else(|| ApiError::invalid_data("时间格式无效"))?;
+
+    Ok(Some(timestamp.format("%Y-%m-%d %H:%M:%S").to_string()))
+}
+
+/// Quote untrusted values used in the audit-table query.
+pub(crate) fn quote_sql_literal(value: &str) -> String {
+    format!("'{}'", value.replace('\\', "\\\\").replace('\'', "''"))
+}
+
 #[utoipa::path(
     get,
     path = "/api/clusters/queries/history",
@@ -132,11 +156,10 @@ pub async fn list_query_history(
     let pool = state.mysql_pool_manager.get_pool(&cluster).await?;
     let mysql = MySQLClient::from_pool(pool).with_timeout(cluster_timeout(&cluster));
 
-    let limit = params.limit;
-    let offset = params.offset;
-    let keyword = params.keyword.as_deref().unwrap_or("");
-    let start_time = params.start_time.as_deref();
-    let end_time = params.end_time.as_deref();
+    let (limit, offset) = normalize_history_pagination(params.limit, params.offset);
+    let keyword = params.keyword.as_deref().map(str::trim).unwrap_or("");
+    let start_time = normalize_audit_timestamp(params.start_time.as_deref())?;
+    let end_time = normalize_audit_timestamp(params.end_time.as_deref())?;
 
     let columns = audit_history_columns(cluster.cluster_type, state.audit_config.full_table_name());
 
@@ -146,18 +169,18 @@ pub async fn list_query_history(
     ];
 
     if !keyword.is_empty() {
-        let escaped = keyword.replace('\'', "''");
+        let pattern = quote_sql_literal(&format!("%{keyword}%"));
         where_conditions.push(format!(
-            "(`{}` LIKE '%{}%' OR `stmt` LIKE '%{}%' OR `user` LIKE '%{}%')",
-            columns.query_id_field, escaped, escaped, escaped
+            "(`{}` LIKE {} OR `stmt` LIKE {} OR `user` LIKE {})",
+            columns.query_id_field, pattern, pattern, pattern
         ));
     }
 
-    if let Some(start) = start_time {
-        where_conditions.push(format!("`{}` >= '{}'", columns.time_field, start));
+    if let Some(start) = start_time.as_deref() {
+        where_conditions.push(format!("`{}` >= {}", columns.time_field, quote_sql_literal(start)));
     }
-    if let Some(end) = end_time {
-        where_conditions.push(format!("`{}` <= '{}'", columns.time_field, end));
+    if let Some(end) = end_time.as_deref() {
+        where_conditions.push(format!("`{}` <= {}", columns.time_field, quote_sql_literal(end)));
     }
 
     let where_clause = where_conditions.join(" AND ");

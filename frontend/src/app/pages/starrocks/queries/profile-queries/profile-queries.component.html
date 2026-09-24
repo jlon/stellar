@@ -23,6 +23,11 @@
           </div>
         </div>
 
+        <div class="profile-operational-note" role="note">
+          <nb-icon icon="info-outline"></nb-icon>
+          <small>{{ 'Query Profile 需启用 enable_profile。生产环境不建议长期全局启用；可设置大于 0 的 big_query_profile_threshold，仅采集超过该时长的查询。无记录也可能是采集未启用或没有查询超过该阈值。' | translate }}</small>
+        </div>
+
         <div class="profile-container">
           <angular2-smart-table
             [settings]="profileSettings"

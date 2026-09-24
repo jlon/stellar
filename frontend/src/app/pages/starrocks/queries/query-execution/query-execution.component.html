@@ -686,18 +686,18 @@
                   <div class="filter-content">
                     <div class="filter-options">
                       <nb-checkbox
-                        [(ngModel)]="runningQueryFilter.slowQueryOnly"
+                        [(ngModel)]="runningQueryFilter.longRunningOnly"
                         (checkedChange)="applyRunningQueryFilter()"
                         class="filter-checkbox">
-                        <span class="text-hint">{{  '仅显示慢查询（≥5分钟）' | translate }}</span>
+                        <span class="text-hint">{{  '仅显示执行时间 ≥5分钟' | translate }}</span>
                       </nb-checkbox>
                       <nb-checkbox
-                        [(ngModel)]="runningQueryFilter.highCostOnly"
+                        [(ngModel)]="runningQueryFilter.largeScanOnly"
                         (checkedChange)="applyRunningQueryFilter()"
                         class="filter-checkbox">
-                        <span class="text-hint">{{  '仅显示高消耗查询（≥1GB）' | translate }}</span>
+                        <span class="text-hint">{{  '仅显示扫描数据 ≥1GB' | translate }}</span>
                       </nb-checkbox>
-                      @if (runningQueryFilter.slowQueryOnly || runningQueryFilter.highCostOnly) {
+                      @if (runningQueryFilter.longRunningOnly || runningQueryFilter.largeScanOnly) {
                         <button
                           nbButton
                           ghost
@@ -913,85 +913,11 @@
           </nb-tab>
           <nb-tab [tabTitle]="'排序键基数分析' | translate" tabId="sortkey" [active]="bucketAnalysisCurrentTab === 'sortkey'">
           </nb-tab>
-          <nb-tab [tabTitle]="'分桶调整' | translate" tabId="adjust" [active]="bucketAnalysisCurrentTab === 'adjust'">
-          </nb-tab>
         </nb-tabset>
       }
 
-      <!-- Bucket adjustment form (only for bucketAnalysis type, adjust tab) -->
-      @if (infoDialogType === 'bucketAnalysis' && bucketAnalysisCurrentTab === 'adjust' && !infoDialogError) {
-        <div class="bucket-adjustment-form">
-          <div class="form-group">
-            <label class="label">{{  '当前分桶数' | translate }}</label>
-            <div class="form-control-static">
-              <strong>{{ bucketAnalysisCurrentBuckets }}</strong>
-            </div>
-          </div>
-          <div class="form-group mt-3">
-            <label class="label">{{  '推荐分桶数' | translate }}</label>
-            <div class="form-control-static">
-              <strong>{{ getBucketAdjustmentRecommendedBuckets() }}</strong>
-              <button
-                nbButton
-                size="tiny"
-                status="basic"
-                class="ml-2"
-                (click)="useRecommendedBuckets()">
-                {{ '使用推荐值' | translate }}
-              </button>
-            </div>
-            <small class="form-text text-muted">
-              {{ '推荐值基于数据大小计算（每10GB约1个分桶）' | translate }}
-            </small>
-          </div>
-          <div class="form-group mt-3">
-            <label class="label">{{  '新分桶数' | translate }}<span class="text-danger">*</span></label>
-            <input
-              type="number"
-              nbInput
-              [(ngModel)]="bucketAdjustmentNewBuckets"
-              (ngModelChange)="onBucketAdjustmentInputChange($event)"
-              [min]="1"
-              [max]="128"
-              [placeholder]="'请输入新的分桶数（1-128）' | translate"
-              [disabled]="bucketAdjustmentAdjusting">
-            <small class="form-text text-muted">
-              {{ '分桶数范围：1-128。建议使用推荐值或根据数据量调整' | translate }}
-            </small>
-          </div>
-          <nb-alert status="warning" closable="false" class="mt-3">
-            <strong>{{  '警告：' | translate }}</strong>
-            <ul class="mb-0 mt-2">
-              <li>{{  '分桶调整需要重建表，这是一个耗时操作' | translate }}</li>
-              <li>{{  '重建表期间，表将被锁定，无法进行读写操作' | translate }}</li>
-              <li>{{  '请确保有足够的存储空间用于数据迁移' | translate }}</li>
-              <li>{{  '建议在业务低峰期执行此操作' | translate }}</li>
-              <li>{{  '此操作需要 ALTER TABLE 和 CREATE TABLE 权限' | translate }}</li>
-            </ul>
-          </nb-alert>
-          <div class="d-flex justify-content-end mt-4">
-            <button
-              nbButton
-              status="basic"
-              class="mr-2"
-              (click)="previewBucketAdjustment()"
-              [disabled]="!bucketAdjustmentNewBuckets || bucketAdjustmentNewBuckets <= 0 || bucketAdjustmentAdjusting">
-              {{ '预览调整' | translate }}
-            </button>
-            <button
-              nbButton
-              status="danger"
-              (click)="executeBucketAdjustment()"
-              [disabled]="!bucketAdjustmentNewBuckets || bucketAdjustmentNewBuckets <= 0 || bucketAdjustmentAdjusting || bucketAdjustmentNewBuckets === bucketAnalysisCurrentBuckets">
-              <nb-icon icon="flash-outline"></nb-icon>
-              {{  bucketAdjustmentAdjusting ? ('调整中...' | translate) : ('执行调整' | translate)  }}
-            </button>
-          </div>
-        </div>
-      }
-
       <!-- Regular table display for other tabs -->
-      @if (!infoDialogError && !(infoDialogType === 'bucketAnalysis' && bucketAnalysisCurrentTab === 'adjust')) {
+      @if (!infoDialogError) {
         <angular2-smart-table
           [settings]="infoDialogSettings"
           [source]="infoDialogSource">
@@ -1048,14 +974,14 @@
         </div>
       }
 
-      <nb-alert status="info" closable="false" class="mt-3">
-        <strong>{{  '提示：' | translate }}</strong>
-        <ul class="mb-0 mt-2">
-          <li>{{  'Compaction任务会在后台执行，不会阻塞当前操作' | translate }}</li>
-          <li>{{  '可以通过"查看Compaction信息"查看任务执行状态' | translate }}</li>
-          <li>{{  '如果表或分区正在执行Compaction，新的任务会排队等待' | translate }}</li>
-        </ul>
-      </nb-alert>
+        <div class="compaction-operational-note" role="note">
+          <nb-icon icon="info-outline"></nb-icon>
+          <ul>
+            <li>{{  '手动 Compaction 需要目标表的 ALTER 权限，用于合并已加载数据的多个版本。' | translate }}</li>
+            <li>{{  '可对整表或所选分区提交 Compaction；提交成功不表示已完成。' | translate }}</li>
+            <li>{{  'information_schema.be_compactions 提供 BE 级别的运行和等待任务计数，不能单独确认某个表或分区的结果。' | translate }}</li>
+          </ul>
+        </div>
     </nb-card-body>
     <nb-card-footer>
       <div class="d-flex justify-content-end gap-2">
@@ -1111,7 +1037,7 @@
           </div>
           <div class="detail-row">
             <label class="detail-label">{{  '执行时间:' | translate }}</label>
-            <span class="detail-value" [innerHTML]="renderSlowQueryBadge(currentQueryDetail.ExecTime)"></span>
+            <span class="detail-value">{{ formatExecTime(parseExecTime(currentQueryDetail.ExecTime)) }}</span>
           </div>
           <div class="detail-row">
             <label class="detail-label">{{  '扫描数据量:' | translate }}</label>
