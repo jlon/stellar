@@ -103,6 +103,63 @@ describe("LoadManagementComponent", () => {
     );
   });
 
+  it("scopes the summary to fetched rows while more cursor pages remain", () => {
+    component.nextCursor = "2026-01-01 00:00:00:2";
+    component.summary = { running: 0, queued: 0, failed: 0, finished: 200 };
+
+    expect(component.summaryMessage()).toBe(
+      "已加载任务中，当前没有待处理任务，200 个任务已完成",
+    );
+  });
+
+  it("loads the next cursor page without inventing numbered pages", () => {
+    component.activeCluster = { cluster_type: "starrocks" } as NonNullable<
+      typeof component.activeCluster
+    >;
+    component.jobs = [
+      {
+        job_id: "2",
+        state: "FINISHED",
+        load_type: "INSERT",
+        stage_timeline: [],
+      },
+    ];
+    component.nextCursor = "2026-01-01 00:00:00:2";
+    loadService.list.and.returnValue(
+      of({
+        items: [
+          {
+            job_id: "1",
+            state: "LOADING",
+            load_type: "STREAM_LOAD",
+            stage_timeline: [],
+          },
+        ],
+        summary: { running: 1, queued: 0, failed: 0, finished: 0 },
+        total: 1,
+        has_more: false,
+        source: "information_schema.loads",
+      }),
+    );
+
+    component.loadMoreJobs();
+
+    expect(loadService.list).toHaveBeenCalledWith(
+      jasmine.objectContaining({ cursor: "2026-01-01 00:00:00:2" }),
+    );
+    expect(component.jobs.map((job) => job.job_id)).toEqual(["1", "2"]);
+    expect(component.summary).toEqual({
+      running: 1,
+      queued: 0,
+      failed: 0,
+      finished: 1,
+    });
+    expect(component.settings.pager).toEqual({
+      display: false,
+      perPage: Number.MAX_SAFE_INTEGER,
+    });
+  });
+
   it("opens the single import dialog once as a side sheet", () => {
     dialogService.open.and.returnValue({
       close: jasmine.createSpy("close"),
@@ -443,7 +500,7 @@ describe("LoadManagementComponent", () => {
     expect(openDetails).toHaveBeenCalledWith(job, 4);
   });
 
-  it("focuses the visible row when a paged selection has a global index", () => {
+  it("focuses the selected row without local table pagination", () => {
     const table = document.createElement("angular2-smart-table");
     table.innerHTML = "<table><tbody><tr></tr><tr></tr></tbody></table>";
     document.body.append(table);
@@ -452,9 +509,11 @@ describe("LoadManagementComponent", () => {
       component as unknown as {
         captureDetailTrigger: (rowIndex: number) => void;
       }
-    ).captureDetailTrigger(20);
+    ).captureDetailTrigger(1);
 
-    expect(document.activeElement).toBe(table.querySelector("tr"));
+    expect(document.activeElement).toBe(
+      table.querySelectorAll("tr").item(1),
+    );
     table.remove();
   });
 

@@ -128,6 +128,7 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
   private detailTrigger?: HTMLElement;
   private readonly detailRequest$ = new Subject<void>();
   private sheetClosing = false;
+  private loadRequestId = 0;
 
   @ViewChild("detailDialog") private detailDialog?: TemplateRef<unknown>;
   @ViewChild("importDialog") private importDialog?: TemplateRef<unknown>;
@@ -139,6 +140,8 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
   selectedJob: LoadJob | null = null;
   loading = false;
   errorMessage = "";
+  nextCursor: string | null = null;
+  loadSource = "";
   lastUpdated: Date | null = null;
   detailLoading = false;
   targetTables: TableInfo[] = [];
@@ -197,9 +200,10 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
     noDataMessage: "暂无导入任务",
     actions: false,
     selectMode: "single",
+    // Cursor pagination is owned by the API. Keep all fetched rows in one table page.
     pager: {
-      display: true,
-      perPage: 20,
+      display: false,
+      perPage: Number.MAX_SAFE_INTEGER,
     },
     columns: {
       task: {
@@ -267,6 +271,8 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
           this.jobs = [];
           this.selectedJob = null;
           this.summary = { running: 0, queued: 0, failed: 0, finished: 0 };
+          this.nextCursor = null;
+          this.loadSource = "";
           void assignTableRows(this.source, []);
           this.cdr.markForCheck();
           return;
@@ -680,12 +686,18 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
     this.loadJobs();
   }
 
-  loadJobs(): void {
+  loadJobs(cursor?: string): void {
     if (!this.activeCluster) {
       return;
     }
+    const requestId = ++this.loadRequestId;
+    const isAppending = Boolean(cursor);
     this.loading = true;
-    this.errorMessage = "";
+    if (!isAppending) {
+      this.errorMessage = "";
+      this.nextCursor = null;
+      this.loadSource = "";
+    }
     this.cdr.markForCheck();
 
     this.loadService
@@ -696,19 +708,33 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
         search: this.filters.search || undefined,
         range: this.filters.range,
         limit: 200,
+        cursor,
       })
       .pipe(
         take(1),
         timeout(20_000),
         finalize(() => {
-          this.loading = false;
-          this.cdr.markForCheck();
+          if (requestId === this.loadRequestId) {
+            this.loading = false;
+            this.cdr.markForCheck();
+          }
         }),
       )
       .subscribe({
         next: (response) => {
-          this.jobs = this.sortJobs(response.items);
-          this.summary = response.summary;
+          if (requestId !== this.loadRequestId) {
+            return;
+          }
+          this.jobs = this.sortJobs(
+            isAppending
+              ? this.mergeJobs(this.jobs, response.items)
+              : response.items,
+          );
+          this.summary = isAppending
+            ? this.summarizeJobs(this.jobs)
+            : response.summary;
+          this.nextCursor = response.next_cursor || null;
+          this.loadSource = response.source;
           this.lastUpdated = new Date();
           this.maxDurationMs = this.jobs.reduce(
             (max, job) => Math.max(max, this.jobDurationMs(job) ?? 0),
@@ -726,14 +752,28 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
           this.cdr.markForCheck();
         },
         error: (error) => {
+          if (requestId !== this.loadRequestId) {
+            return;
+          }
           this.errorMessage = ErrorHandler.handleClusterError(error);
-          this.jobs = [];
-          this.selectedJob = null;
-          this.summary = { running: 0, queued: 0, failed: 0, finished: 0 };
-          void assignTableRows(this.source, []);
+          if (!isAppending) {
+            this.jobs = [];
+            this.selectedJob = null;
+            this.summary = { running: 0, queued: 0, failed: 0, finished: 0 };
+            this.nextCursor = null;
+            this.loadSource = "";
+            void assignTableRows(this.source, []);
+          }
           this.cdr.markForCheck();
         },
       });
+  }
+
+  loadMoreJobs(): void {
+    if (this.loading || !this.nextCursor) {
+      return;
+    }
+    this.loadJobs(this.nextCursor);
   }
 
   applyFilters(): void {
@@ -859,20 +899,21 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
   }
 
   summaryMessage(): string {
+    const scope = this.nextCursor ? "已加载任务中，" : "";
     if (this.summary.failed > 0) {
       const active = this.activeSummary();
       return active
-        ? `${this.summary.failed} 个导入任务失败，请优先排查失败任务；${active}`
-        : `${this.summary.failed} 个导入任务失败，请优先排查失败任务`;
+        ? `${scope}${this.summary.failed} 个导入任务失败，请优先排查失败任务；${active}`
+        : `${scope}${this.summary.failed} 个导入任务失败，请优先排查失败任务`;
     }
     const active = this.summary.running + this.summary.queued;
     if (active > 0) {
-      return `${active} 个导入任务仍在处理：${this.activeSummary()}`;
+      return `${scope}${active} 个导入任务仍在处理：${this.activeSummary()}`;
     }
     if (this.summary.finished > 0) {
-      return `当前没有待处理任务，${this.summary.finished} 个任务已完成`;
+      return `${scope}当前没有待处理任务，${this.summary.finished} 个任务已完成`;
     }
-    return "当前筛选范围内没有导入任务";
+    return `${scope}当前筛选范围内没有导入任务`;
   }
 
   private activeSummary(): string {
@@ -888,12 +929,7 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
     const rows = this.document.querySelectorAll<HTMLElement>(
       "angular2-smart-table tbody tr",
     );
-    const visibleRowIndex =
-      rowIndex === undefined
-        ? undefined
-        : rowIndex % this.settings.pager.perPage;
-    const row =
-      visibleRowIndex === undefined ? undefined : rows.item(visibleRowIndex);
+    const row = rowIndex === undefined ? undefined : rows.item(rowIndex);
     if (row) {
       row.tabIndex = -1;
       row.focus();
@@ -1175,6 +1211,52 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
       (left, right) =>
         priority(left.state) - priority(right.state) ||
         (right.create_time || "").localeCompare(left.create_time || ""),
+    );
+  }
+
+  private mergeJobs(current: LoadJob[], incoming: LoadJob[]): LoadJob[] {
+    const keys = new Set(
+      current.map((job) => this.jobKey(job)).filter(Boolean),
+    );
+    return [
+      ...current,
+      ...incoming.filter((job) => {
+        const key = this.jobKey(job);
+        if (!key || !keys.has(key)) {
+          keys.add(key);
+          return true;
+        }
+        return false;
+      }),
+    ];
+  }
+
+  private summarizeJobs(jobs: LoadJob[]): typeof this.summary {
+    return jobs.reduce(
+      (summary, job) => {
+        const state = job.state.toLowerCase();
+        if (
+          state.includes("cancel") ||
+          state.includes("fail") ||
+          state.includes("error")
+        ) {
+          summary.failed += 1;
+        } else if (
+          ["finished", "committed", "commited", "success", "succeed"].includes(
+            state,
+          )
+        ) {
+          summary.finished += 1;
+        } else if (
+          ["pending", "queueing", "before_load", "queued"].includes(state)
+        ) {
+          summary.queued += 1;
+        } else {
+          summary.running += 1;
+        }
+        return summary;
+      },
+      { running: 0, queued: 0, failed: 0, finished: 0 },
     );
   }
 

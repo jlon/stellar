@@ -76,6 +76,13 @@
           </nb-alert>
         }
 
+        @if (loadSource === "SHOW LOAD") {
+          <div class="load-source-note" role="note">
+            <nb-icon icon="info-outline"></nb-icon>
+            <small>当前回退到 <code>SHOW LOAD</code>，结果最多 200 条；未选择数据库时最多检查 50 个用户库。StarRocks 仅通过该语句返回 Broker Load、INSERT 和 Spark Load；Stream Load 不在其中，Routine Load 请通过 <code>SHOW ROUTINE LOAD</code> 查看。</small>
+          </div>
+        }
+
         @if (activeCluster && !errorMessage) {
           @if (summary.failed === 0 && (summary.running || summary.queued)) {
             <div class="d-flex align-items-center gap-2 text-hint mb-3">
@@ -182,6 +189,21 @@
           (userRowSelect)="onRowSelect($event)"
         >
         </angular2-smart-table>
+
+        @if (nextCursor) {
+          <div class="d-flex justify-content-center mt-3">
+            <button
+              nbButton
+              size="small"
+              status="basic"
+              [disabled]="loading"
+              (click)="loadMoreJobs()"
+            >
+              <nb-icon icon="arrow-downward-outline"></nb-icon>
+              加载更多
+            </button>
+          </div>
+        }
       </nb-card-body>
     </nb-card>
   </div>
