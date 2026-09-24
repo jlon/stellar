@@ -17,16 +17,20 @@
   --line:#1a1f2b; --line2:#262c3a;
   --fg:#eef1f7; --fg2:#98a0b3; --fg3:#7f8695;
   /* 品牌金：来自产品主题 stellar-auth-accent */
-  --gold:#fabf00; --gold-dim:rgba(250,191,0,.55); --gold-soft:rgba(250,191,0,.10); --gold-line:rgba(250,191,0,.28);
+  --gold:#fabf00; --gold-dim:rgba(250,191,0,.7); --gold-soft:rgba(250,191,0,.10); --gold-line:rgba(250,191,0,.28);
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth;scrollbar-color:#262c3a var(--bg);scrollbar-width:thin}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+section[id],main[id]{scroll-margin-top:80px}
 ::-webkit-scrollbar{width:10px;height:10px}
 ::-webkit-scrollbar-track{background:var(--bg)}
 ::-webkit-scrollbar-thumb{background:#262c3a;border-radius:99px;border:2px solid var(--bg)}
 ::-webkit-scrollbar-thumb:hover{background:#39404f}
 ::selection{background:rgba(250,191,0,.28)}
 :focus-visible{outline:2px solid var(--gold);outline-offset:3px;border-radius:6px}
+.skip-link{position:fixed;top:12px;inset-inline-start:-999px;z-index:100;background:var(--surface2);color:var(--fg);padding:8px 14px;border-radius:6px}
+.skip-link:focus-visible{inset-inline-start:16px}
 body{
   background:var(--bg); color:var(--fg);
   font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
@@ -72,12 +76,13 @@ nav .wrap{display:flex;align-items:center;gap:34px;height:64px}
 .logo{display:flex;align-items:center;gap:10px;font-weight:600;font-size:17.5px;letter-spacing:-.01em;
   text-decoration:none;color:var(--fg)}
 .logo svg{width:24px;height:24px;display:block}
+nav .mobile-menu{display:none}
 nav .links{display:flex;gap:26px;margin-left:6px}
 nav .links a{color:var(--fg2);text-decoration:none;font-size:14px;font-weight:450;transition:color .15s}
 nav .links a:hover{color:var(--fg)}
 nav .nav-actions{margin-left:auto;display:flex;align-items:center;gap:10px}
 nav .lang{height:34px;display:inline-flex;align-items:center;background:transparent;border:1px solid var(--line2);
-  color:var(--fg2);font-size:13px;padding:0 14px;border-radius:999px;cursor:pointer;font-family:inherit;transition:all .15s}
+  color:var(--fg2);font-size:13px;padding:0 14px;border-radius:999px;cursor:pointer;font-family:inherit;transition:color .15s,border-color .15s}
 nav .lang:hover{color:var(--fg);border-color:#3a4152}
 nav .cta{display:inline-flex;align-items:center;height:34px;padding:0 16px;border-radius:999px;
   background:#f7f8f8;color:#08090a;font-size:13.5px;font-weight:500;text-decoration:none;transition:background .15s}
@@ -101,8 +106,9 @@ nav .cta{display:inline-flex;align-items:center;height:34px;padding:0 16px;borde
   font-size:12.5px;color:#9fa4ad;overflow-x:auto;white-space:nowrap;scrollbar-width:none}
 .quickstart code .p{color:var(--gold-dim)}
 .quickstart .copy{flex-shrink:0;border:1px solid var(--line2);background:transparent;color:var(--fg2);
-  font-size:12.5px;padding:6px 14px;border-radius:6px;cursor:pointer;font-family:inherit;transition:all .15s}
+  font-size:12.5px;padding:6px 14px;border-radius:6px;cursor:pointer;font-family:inherit;transition:color .15s,border-color .15s}
 .quickstart .copy:hover{color:var(--fg);border-color:#3a4152}
+.copy-status:not(:empty){margin:8px auto 0;color:var(--fg2);font-size:13px}
 
 /* ---------- 事实条 ---------- */
 .facts{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
@@ -213,8 +219,15 @@ html[lang="zh-CN"] .step p,html[lang="zh-CN"] .dep p{line-height:1.85}
   .shots{grid-template-columns:1fr}
   .fgrid{grid-template-columns:1fr 1fr}
 }
-@media(max-width:720px){
+@media(max-width:760px){
+  nav .mobile-menu{display:block}
+  nav .mobile-menu summary{display:flex;align-items:center;height:44px;padding:0 8px;cursor:pointer;color:var(--fg2);font-size:13px;list-style:none}
+  nav .mobile-menu summary::-webkit-details-marker{display:none}
+  nav .mobile-menu[open] summary{color:var(--fg)}
+  nav .lang,nav .cta{height:44px}
   nav .links{display:none}
+  nav .mobile-menu[open] .links{position:absolute;top:calc(100% + 6px);inset-inline:16px;display:flex;flex-direction:column;gap:0;margin:0;padding:6px;background:var(--surface2);border:1px solid var(--line2);border-radius:8px;box-shadow:0 12px 24px rgba(0,0,0,.4)}
+  nav .links a{display:block;padding:10px 12px}
   nav .wrap{gap:12px;padding:0 16px}
   nav .logo{flex-shrink:0;font-size:15px;gap:7px}
   nav .logo svg{width:22px;height:22px}
@@ -225,6 +238,11 @@ html[lang="zh-CN"] .step p,html[lang="zh-CN"] .dep p{line-height:1.85}
   .facts div:nth-child(n+3){border-top:1px solid var(--line)}
   .quickstart{flex-direction:column;align-items:stretch;gap:8px}
   .quickstart code{white-space:normal !important;word-break:break-all;font-size:12px}
+}
+@media(max-width:360px){
+  nav .wrap{gap:6px;padding:0 10px}
+  nav .lang{flex-shrink:0;padding-inline:8px}
+  nav .cta{padding-inline:12px}
 }
 @media(max-width:640px){
   section{padding-top:72px;padding-bottom:72px}
@@ -241,6 +259,7 @@ html[lang="zh-CN"] .step p,html[lang="zh-CN"] .dep p{line-height:1.85}
 </style>
 </head>
 <body>
+<a class="skip-link" href="#main" data-i18n="nav.skip">Skip to content</a>
 <div class="cosmos" aria-hidden="true"></div>
 
 <nav>
@@ -256,13 +275,24 @@ html[lang="zh-CN"] .step p,html[lang="zh-CN"] .dep p{line-height:1.85}
       <a href="#deploy" data-i18n="nav.deploy">Deploy</a>
       <a href="docs/" data-i18n="nav.docs">Docs</a>
     </div>
+    <details class="mobile-menu">
+      <summary data-i18n="nav.menu">Menu</summary>
+      <div class="links">
+        <a href="#how" data-i18n="nav.how">How it works</a>
+        <a href="#diagnosis" data-i18n="nav.diag">Diagnosis</a>
+        <a href="#ai" data-i18n="nav.ai">AI Ops</a>
+        <a href="#deploy" data-i18n="nav.deploy">Deploy</a>
+        <a href="docs/" data-i18n="nav.docs">Docs</a>
+      </div>
+    </details>
     <div class="nav-actions">
-      <button class="lang" id="langBtn" aria-label="Switch language">中文</button>
+      <button class="lang" id="langBtn">中文</button>
       <a class="cta" href="#start" data-i18n="nav.cta">Download</a>
     </div>
   </div>
 </nav>
 
+<main id="main" tabindex="-1">
 <header class="hero wrap">
   <h1 data-i18n-html="hero.h1">Every cluster. <br>Under control.</h1>
   <p class="tag" data-i18n-html="hero.tag">One control plane for <b>StarRocks</b> and <b>Apache&nbsp;Doris</b>: cluster operations, query diagnosis, and AI-assisted troubleshooting — shipped as a single static binary.</p>
@@ -273,8 +303,9 @@ html[lang="zh-CN"] .step p,html[lang="zh-CN"] .dep p{line-height:1.85}
   <p class="meta" data-i18n="hero.meta">No agent to install · Embedded database · Six deployment formats</p>
   <div class="quickstart">
     <code><span class="p">$</span> curl -LO https://github.com/jlon/stellar/releases/download/v1.0.1/stellar-1.0.1-linux-amd64-musl.tar.gz</code>
-    <button class="copy" aria-label="Copy install command" data-i18n="qs.copy">Copy</button>
+    <button class="copy" data-i18n="qs.copy">Copy</button>
   </div>
+  <p class="copy-status" role="status"></p>
 </header>
 
 <section class="wrap" aria-label="Key facts" style="padding-top:0">
@@ -282,7 +313,7 @@ html[lang="zh-CN"] .step p,html[lang="zh-CN"] .dep p{line-height:1.85}
     <div><b>2</b><span data-i18n="facts.1">engines, one console</span></div>
     <div><b>56</b><span data-i18n="facts.2">diagnostic rules</span></div>
     <div><b>59</b><span data-i18n="facts.3">REST endpoints</span></div>
-    <div><b>56&nbsp;MB</b><span data-i18n="facts.4">static binary, no runtime deps</span></div>
+    <div><b>50&nbsp;MB</b><span data-i18n="facts.4">static binary, no runtime deps</span></div>
   </div>
 </section>
 
@@ -469,6 +500,7 @@ html[lang="zh-CN"] .step p,html[lang="zh-CN"] .dep p{line-height:1.85}
     </div>
   </div>
 </section>
+</main>
 
 <footer>
   <div class="wrap">
@@ -514,25 +546,30 @@ html[lang="zh-CN"] .step p,html[lang="zh-CN"] .dep p{line-height:1.85}
 const navEl = document.querySelector('nav');
 const onScroll = () => navEl.classList.toggle('scrolled', window.scrollY > 8);
 onScroll(); addEventListener('scroll', onScroll, { passive: true });
+const menu = document.querySelector('nav .mobile-menu');
+menu.querySelector('.links').addEventListener('click', e => { if (e.target.closest('a')) menu.open = false; });
+menu.addEventListener('keydown', e => { if (e.key === 'Escape') { menu.open = false; menu.querySelector('summary').focus(); } });
 
 // 复制安装命令
 document.querySelector('.quickstart .copy')?.addEventListener('click', async e => {
   const btn = e.target;
+  const status = document.querySelector('.copy-status');
   const cmd = btn.previousElementSibling.textContent.replace(/^\$\s*/, '');
+  status.textContent = '';
   try { await navigator.clipboard.writeText(cmd); btn.textContent = I18N[lang]['qs.copied']; }
-  catch (err) { btn.textContent = I18N[lang]['qs.fail']; }
+  catch { status.textContent = I18N[lang]['qs.fail']; return; }
   setTimeout(() => { btn.textContent = I18N[lang]['qs.copy']; }, 1800);
 });
 
 // ============ i18n ============
 const I18N = {
   en: {
-    'nav.how':'How it works','nav.diag':'Diagnosis','nav.ai':'AI Ops','nav.deploy':'Deploy','nav.docs':'Docs','nav.cta':'Download',
+    'nav.how':'How it works','nav.diag':'Diagnosis','nav.ai':'AI Ops','nav.deploy':'Deploy','nav.docs':'Docs','nav.cta':'Download','nav.menu':'Menu','nav.skip':'Skip to content',
     'hero.h1':'Every cluster. <br>Under control.',
     'hero.tag':'One control plane for <b>StarRocks</b> and <b>Apache&nbsp;Doris</b>: cluster operations, query diagnosis, and AI-assisted troubleshooting — shipped as a single static binary.',
     'hero.cta1':'Download','hero.cta2':'View on GitHub',
     'hero.meta':'No agent to install · Embedded database · Six deployment formats',
-    'qs.copy':'Copy','qs.copied':'Copied','qs.fail':'Failed',
+    'qs.copy':'Copy','qs.copied':'Copied','qs.fail':'Could not copy. Select the command above and copy it manually.',
 
     'facts.1':'engines, one console','facts.2':'diagnostic rules','facts.3':'REST endpoints','facts.4':'static binary, no runtime deps',
 
@@ -604,12 +641,12 @@ const I18N = {
     'foot.legal':'© 2026 Stellar · Apache License 2.0','foot.tech':'StarRocks · Apache Doris · SQLite · MySQL · PostgreSQL',
   },
   zh: {
-    'nav.how':'工作原理','nav.diag':'智能诊断','nav.ai':'AI 运维','nav.deploy':'部署','nav.docs':'文档','nav.cta':'下载',
+    'nav.how':'工作原理','nav.diag':'智能诊断','nav.ai':'AI 运维','nav.deploy':'部署','nav.docs':'文档','nav.cta':'下载','nav.menu':'菜单','nav.skip':'跳转到正文',
     'hero.h1':'每一颗星<span class="zhc">，</span><span class="zhb">尽在掌控</span>',
     'hero.tag':'一个控制台统一管理 <b>StarRocks</b> 与 <b>Apache&nbsp;Doris</b>：集群运维、查询诊断、AI 辅助排障，全部装进一个静态二进制。',
     'hero.cta1':'下载','hero.cta2':'查看 GitHub',
     'hero.meta':'集群侧无需装 Agent · 内置数据库 · 六种部署形态',
-    'qs.copy':'复制','qs.copied':'已复制','qs.fail':'复制失败',
+    'qs.copy':'复制','qs.copied':'已复制','qs.fail':'复制失败，请选中上方命令手动复制。',
 
     'facts.1':'个引擎，一个控制台','facts.2':'条诊断规则','facts.3':'个 REST 接口','facts.4':'静态二进制，零运行时依赖',
 
@@ -693,6 +730,8 @@ function applyLang(l) {
   document.querySelectorAll('[data-i18n]').forEach(el => { const v = d[el.dataset.i18n]; if (v != null) el.textContent = v; });
   document.querySelectorAll('[data-i18n-html]').forEach(el => { const v = d[el.dataset.i18nHtml]; if (v != null) el.innerHTML = v; });
   document.querySelectorAll('[data-i18n-alt]').forEach(el => { const v = d[el.dataset.i18nAlt]; if (v != null) el.alt = v; });
+  const status = document.querySelector('.copy-status');
+  if (status.textContent) status.textContent = d['qs.fail'];
   const btn = document.getElementById('langBtn');
   if (btn) btn.textContent = l === 'zh' ? 'EN' : '中文';
   document.title = l === 'zh'

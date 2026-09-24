@@ -5,7 +5,7 @@
 //! - 每轮刷新集群快照注入上下文（`context.rs`），避免过期事实
 //! - 只读工具注册表（`tools/`），复用 metrics/adapter/audit/profile 规则引擎
 //! - 会话持久化到共享 `services::ai`（`ai_sessions` / `ai_messages`，channel='agent'），步骤级审计
-//! - 本阶段不提供任何写动作（Non-goal：动作闭环在后续阶段）
+//! - 受控写动作只能通过 `propose_action` 创建申请，并在用户确认后执行
 
 pub mod agent;
 pub mod chat_actions;
@@ -18,6 +18,7 @@ pub mod tools;
 use std::sync::Arc;
 
 use stellar_macros::app_impl;
+use tokio_util::sync::CancellationToken;
 
 use crate::config::AuditLogConfig;
 use crate::db::AppDb;
@@ -30,7 +31,7 @@ use crate::services::mysql_pool_manager::MySQLPoolManager;
 use crate::utils::{ApiError, ApiResult};
 
 use self::agent::OltpDiagnosisAgent;
-use self::context::{build_system_message_with_context, render_snapshot};
+use self::context::{PageContext, build_system_message_with_context, render_snapshot};
 use self::tool::ToolContext;
 
 /// AI 会话通道（与智能问数 ask 共享会话存储，见 docs/agent/ai-common-design.md）。
@@ -81,6 +82,15 @@ pub enum ChatStreamEvent {
     Error {
         message: String,
     },
+}
+
+/// User-owned inputs for one chat turn, shared by synchronous and SSE paths.
+pub struct ChatTurnRequest<'a> {
+    pub session_id: Option<i64>,
+    pub user_id: i64,
+    pub created_by: &'a str,
+    pub user_message: &'a str,
+    pub page_context: Option<&'a PageContext>,
 }
 
 /// Pre-resolved turn inputs shared by `chat` and `chat_stream`.
@@ -157,22 +167,19 @@ impl<DB: AppDb> OpsAgentService<DB> {
     async fn prepare_turn(
         &self,
         cluster: &Cluster,
-        session_id: Option<i64>,
-        user_id: i64,
-        created_by: &str,
+        request: &ChatTurnRequest<'_>,
         message_text: &str,
-        page_context: Option<&serde_json::Value>,
     ) -> ApiResult<PreparedTurn> {
         let sessions = AiSessionStore::new(self.pool.clone());
 
         // 1. Session: reuse or create; persist the user message first so a refresh
         //    can never lose the submitted question (Flink assistant policy).
-        let session_id = match session_id {
+        let session_id = match request.session_id {
             Some(id) => {
                 // 归属校验（对齐 Flink assistant session jobId 校验）：会话必须存在、
                 // 属于同一 channel 与集群，否则拒绝，避免跨集群串写历史。
                 let meta = sessions
-                    .get_session(id, Some(user_id))
+                    .get_session(id, Some(request.user_id))
                     .await
                     .map_err(api_err)?
                     .ok_or_else(|| ApiError::not_found("会话不存在"))?;
@@ -185,7 +192,13 @@ impl<DB: AppDb> OpsAgentService<DB> {
                 // 标题截断（首条消息前 30 字符），避免长问题撑爆会话列表
                 let title: String = message_text.chars().take(30).collect();
                 sessions
-                    .create_session(SESSION_CHANNEL, cluster.id, None, Some(user_id), &title)
+                    .create_session(
+                        SESSION_CHANNEL,
+                        cluster.id,
+                        None,
+                        Some(request.user_id),
+                        &title,
+                    )
                     .await
                     .map_err(api_err)?
             },
@@ -245,11 +258,11 @@ impl<DB: AppDb> OpsAgentService<DB> {
             mysql_pool_manager: Arc::clone(&self.mysql_pool_manager),
             audit_config: self.audit_config.clone(),
             session_id,
-            user_id,
-            username: created_by.to_string(),
+            user_id: request.user_id,
+            username: request.created_by.to_string(),
         });
         let tools = tools::create_tools(tool_ctx);
-        let system = build_system_message_with_context(&snapshot, &tools, page_context);
+        let system = build_system_message_with_context(&snapshot, &tools, request.page_context);
         let agent =
             OltpDiagnosisAgent::new(ai::llm::ChatClient::new(provider), tools, self.max_tool_calls);
 
@@ -399,20 +412,16 @@ impl<DB: AppDb> OpsAgentService<DB> {
     pub async fn chat(
         &self,
         cluster: &Cluster,
-        session_id: Option<i64>,
-        user_id: i64,
-        created_by: &str,
-        user_message: &str,
-        page_context: Option<&serde_json::Value>,
+        request: &ChatTurnRequest<'_>,
     ) -> ApiResult<ChatOutcome> {
-        let message_text = user_message.trim();
+        let message_text = request.user_message.trim();
         if message_text.is_empty() {
             return Err(ApiError::invalid_data("消息不能为空"));
         }
         self.maybe_cleanup_sessions().await;
         let sessions = AiSessionStore::new(self.pool.clone());
         // 整轮串行化（含 user 消息落库）：已有 session_id 时先取 permit 再 prepare。
-        let pre_permit = match session_id {
+        let pre_permit = match request.session_id {
             Some(id) => Some(
                 self.session_guard(id)
                     .acquire_owned()
@@ -421,9 +430,7 @@ impl<DB: AppDb> OpsAgentService<DB> {
             ),
             None => None,
         };
-        let prepared = self
-            .prepare_turn(cluster, session_id, user_id, created_by, message_text, page_context)
-            .await?;
+        let prepared = self.prepare_turn(cluster, request, message_text).await?;
         // 新建会话：创建后立即取 permit（此时无其他竞争者，不会乱序）。
         let _permit = match pre_permit {
             Some(p) => p,
@@ -456,26 +463,21 @@ impl<DB: AppDb> OpsAgentService<DB> {
 
     /// Streaming variant of `chat`: identical semantics, but every step is
     /// pushed to the returned receiver as it happens. The turn runs in a
-    /// spawned task; when the consumer stops reading (client disconnect), the
-    /// agent loop notices the closed sink at the next round boundary and
-    /// aborts instead of burning LLM calls (Flink lesson: cancellation must
-    /// release in-flight work).
+    /// spawned task; client disconnect cancels the active model or tool
+    /// future instead of waiting for a loop boundary.
     pub async fn chat_stream(
         &self,
         cluster: &Cluster,
-        session_id: Option<i64>,
-        user_id: i64,
-        created_by: &str,
-        user_message: &str,
-        page_context: Option<&serde_json::Value>,
+        request: &ChatTurnRequest<'_>,
+        cancellation: CancellationToken,
     ) -> ApiResult<tokio::sync::mpsc::UnboundedReceiver<ChatStreamEvent>> {
-        let message_text = user_message.trim();
+        let message_text = request.user_message.trim();
         if message_text.is_empty() {
             return Err(ApiError::invalid_data("消息不能为空"));
         }
         self.maybe_cleanup_sessions().await;
         let sessions = AiSessionStore::new(self.pool.clone());
-        let pre_permit = match session_id {
+        let pre_permit = match request.session_id {
             Some(id) => Some(
                 self.session_guard(id)
                     .acquire_owned()
@@ -484,9 +486,7 @@ impl<DB: AppDb> OpsAgentService<DB> {
             ),
             None => None,
         };
-        let prepared = self
-            .prepare_turn(cluster, session_id, user_id, created_by, message_text, page_context)
-            .await?;
+        let prepared = self.prepare_turn(cluster, request, message_text).await?;
 
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<ChatStreamEvent>();
         let session_id = prepared.session_id;
@@ -504,9 +504,10 @@ impl<DB: AppDb> OpsAgentService<DB> {
             let _permit = permit;
             let (progress_tx, progress_rx) =
                 tokio::sync::mpsc::unbounded_channel::<agent::ProgressEvent>();
-            // Re-emit steps as stream events; stops as soon as the outer sink
-            // is gone (which in turn unblocks the agent loop via is_closed).
+            // Re-emit steps as stream events. A failed send means the HTTP
+            // response is gone, so cancel the in-flight model/tool future too.
             let out = tx.clone();
+            let forwarder_cancellation = cancellation.clone();
             let forwarder = tokio::spawn(async move {
                 let mut progress_rx = progress_rx;
                 while let Some(ev) = progress_rx.recv().await {
@@ -529,6 +530,7 @@ impl<DB: AppDb> OpsAgentService<DB> {
                         },
                     };
                     if sent.is_err() {
+                        forwarder_cancellation.cancel();
                         break;
                     }
                 }
@@ -540,6 +542,7 @@ impl<DB: AppDb> OpsAgentService<DB> {
                     prepared.history,
                     &message_text,
                     Some(progress_tx),
+                    Some(cancellation),
                 )
                 .await
             {

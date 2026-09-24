@@ -205,7 +205,20 @@ export class ChatFloatComponent implements OnInit, OnDestroy {
     if (!open) {
       return;
     }
-    if (!this.sessions.length) {
+    const handoff = this.chatService.takeMemoryProfile();
+    if (handoff) {
+      if (handoff.clusterId !== this.currentCluster?.id) {
+        this.toastr.warning('活动集群已切换，请重新打开该 Profile', '智能助手');
+      } else if (this.chatService.isRunning()) {
+        this.toastr.warning('智能助手正在处理上一条消息，请稍后重试', '智能助手');
+      } else {
+        this.newSession();
+        this.input = handoff.message;
+        this.send();
+        return;
+      }
+    }
+    if (!this.sessions.length && !this.sending) {
       this.reloadSessions();
     }
     if (this.activeSessionId) {
@@ -448,10 +461,10 @@ export class ChatFloatComponent implements OnInit, OnDestroy {
 
     // 回合交全局通道：浮窗收起后回合继续并触发铃铛通知；
     // 附带当前页面上下文（sxdevops 页面 Copilot）。
-    const pageCtx = {
-      page: this.router.url,
-      params: {},
-    };
+    const route = this.router.url.split(/[?#]/, 1)[0];
+    const pageCtx = route.startsWith('/pages/')
+      ? { page: 'current_route' as const, params: { route } }
+      : undefined;
     this.chatService.start({
       session_id: this.activeSessionId ?? undefined,
       cluster_id: clusterId,

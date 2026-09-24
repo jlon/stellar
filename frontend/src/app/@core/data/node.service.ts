@@ -48,6 +48,73 @@ export interface Backend {
   WarehouseName: string; // Warehouse name
 }
 
+export interface BackendDiagnosticRequest {
+  cluster_id: number;
+  backend_id: string;
+  host: string;
+  heartbeat_port: string;
+  http_port: string;
+  include?: 'blocking_drivers' | 'compaction';
+}
+
+export interface DiagnosticProbe<T> {
+  data: T | null;
+  error: string | null;
+}
+
+export interface BackendMemoryTracker {
+  name: string;
+  bytes: number;
+  percent_of_process: number;
+}
+
+export interface BackendMemorySummary {
+  process_bytes: number;
+  metadata_bytes: number | null;
+  update_bytes: number | null;
+  top_trackers: BackendMemoryTracker[];
+}
+
+export interface BackendDataCacheSummary {
+  block_hit_rate: number | null;
+  block_hit_rate_last_minute: number | null;
+  page_hit_rate: number | null;
+  page_hit_rate_last_minute: number | null;
+}
+
+export interface BlockingDriver {
+  query_id: string;
+  fragment_id: string;
+  driver_id: number;
+  state: string;
+  fragment_status: string;
+}
+
+export interface BlockingDriversSummary {
+  query_count: number;
+  fragment_count: number;
+  driver_count: number;
+  drivers: BlockingDriver[];
+}
+
+export interface CompactionSummary {
+  max_task_num: number;
+  running_task_num: number;
+  base_task_num: number;
+  cumulative_task_num: number;
+  candidate_num: number;
+  tablet_num: number;
+}
+
+export interface BackendDiagnosticResponse {
+  deployment_mode: 'shared_nothing' | 'shared_data';
+  captured_at: string;
+  memory: DiagnosticProbe<BackendMemorySummary>;
+  data_cache: DiagnosticProbe<BackendDataCacheSummary>;
+  blocking_drivers: DiagnosticProbe<BlockingDriversSummary> | null;
+  compaction: DiagnosticProbe<CompactionSummary> | null;
+}
+
 export interface Frontend {
   Id?: string; // Optional field added in StarRocks 3.5.2
   Name: string;
@@ -67,6 +134,19 @@ export interface Frontend {
   ErrMsg: string;
   StartTime?: string; // Optional field added in StarRocks 3.5.2
   Version: string;
+}
+
+export interface FrontendProfileRequest {
+  cluster_id: number;
+  name: string;
+  host: string;
+  http_port: string;
+  theme?: 'default' | 'dark' | 'cosmic' | 'corporate';
+}
+
+export interface FrontendProfile {
+  filename: string;
+  captured_at: string;
 }
 
 export interface Query {
@@ -367,8 +447,20 @@ export class NodeService {
     return this.api.delete<any>(`/clusters/backends/${host}/${port}`);
   }
 
-  listFrontends(): Observable<Frontend[]> {
-    return this.api.get<Frontend[]>(`/clusters/frontends`);
+  getBackendDiagnostics(request: BackendDiagnosticRequest): Observable<BackendDiagnosticResponse> {
+    return this.api.get<BackendDiagnosticResponse>(`/clusters/backends/diagnostics`, request);
+  }
+
+  listFrontends(clusterId: number): Observable<Frontend[]> {
+    return this.api.get<Frontend[]>(`/clusters/frontends`, { cluster_id: clusterId });
+  }
+
+  listFrontendProfiles(request: FrontendProfileRequest): Observable<FrontendProfile[]> {
+    return this.api.get<FrontendProfile[]>(`/clusters/frontends/profiles`, request);
+  }
+
+  getFrontendProfile(request: FrontendProfileRequest, filename: string): Observable<Blob> {
+    return this.api.getBlob(`/clusters/frontends/profiles/file`, { ...request, filename });
   }
 
   listQueries(): Observable<Query[]> {

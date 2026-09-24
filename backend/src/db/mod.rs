@@ -21,7 +21,7 @@ mod sqlite;
 
 use std::future::Future;
 
-use sqlx::{Database, Pool};
+use sqlx::{Database, Pool, migrate::Migrate};
 
 pub use dialect::{RowsAffected, SqlDialect};
 pub use query::{query, query_as, query_scalar};
@@ -61,6 +61,14 @@ pub trait AppDb:
 
     /// 该后端编译期嵌入的迁移集（`sqlx::migrate!("./migrations/<backend>")`）。
     fn migrations() -> &'static sqlx::migrate::Migrator;
+
+    /// 已发布初始 schema 的校验和白名单。
+    ///
+    /// Stellar 将版本 0 的 schema 收敛为单一文件；已知旧版数据库在启动时仅允许
+    /// 将这里列出的 checksum 升级为当前 checksum，其他不匹配仍由 SQLx 拒绝。
+    fn initial_schema_compatibility_checksums() -> &'static [&'static [u8]] {
+        &[]
+    }
 }
 
 /// 支持的数据库后端，由连接串协议在启动时决定。
@@ -107,6 +115,7 @@ where
     for<'q> bool: sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB> + sqlx::Type<DB>,
     for<'q> String: sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB> + sqlx::Type<DB>,
     for<'q> &'q str: sqlx::Encode<'q, DB> + sqlx::Type<DB>,
+    for<'q> Vec<u8>: sqlx::Encode<'q, DB> + sqlx::Type<DB>,
     for<'q> chrono::DateTime<chrono::Utc>:
         sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB> + sqlx::Type<DB>,
     for<'q> chrono::NaiveDateTime: sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB> + sqlx::Type<DB>,
@@ -119,6 +128,7 @@ where
         e
     })?;
 
+    reconcile_initial_schema_checksum::<DB>(&pool).await?;
     tracing::debug!("Running database migrations...");
     DB::migrations().run(&pool).await.map_err(|e| {
         let hint = migration_hint(&e);
@@ -131,6 +141,46 @@ where
 
     tracing::info!("Database pool created and migrations applied successfully");
     Ok(pool)
+}
+
+/// 仅为版本 0 的已知收敛前 checksum 更新迁移记录。
+///
+/// 版本 0 的 DDL 被有意收敛为单文件，不能通过新增迁移修复已存在数据库的权限种子。
+/// 这里严格按每方言白名单匹配历史 checksum；未知变更继续由 SQLx 的
+/// `VersionMismatch` 拦截，避免静默接受任意 schema 漂移。
+async fn reconcile_initial_schema_checksum<DB: AppDb>(pool: &Pool<DB>) -> anyhow::Result<()>
+where
+    for<'c> &'c mut <DB as Database>::Connection: sqlx::Executor<'c, Database = DB>,
+    for<'q> Vec<u8>: sqlx::Encode<'q, DB> + sqlx::Type<DB>,
+    for<'q> i64: sqlx::Encode<'q, DB> + sqlx::Type<DB>,
+{
+    let Some(initial_migration) = DB::migrations()
+        .iter()
+        .find(|migration| migration.version == 0)
+    else {
+        return Ok(());
+    };
+
+    // SQLx creates this table lazily inside `Migrator::run`; create it first so fresh
+    // databases still take the normal migration path after the no-op update below.
+    let mut connection = pool.acquire().await?;
+    connection.ensure_migrations_table().await?;
+    for legacy_checksum in DB::initial_schema_compatibility_checksums() {
+        let result = query::<DB>(
+            "UPDATE _sqlx_migrations SET checksum = ? \
+             WHERE version = 0 AND checksum = ?",
+        )
+        .bind(initial_migration.checksum.to_vec())
+        .bind(legacy_checksum.to_vec())
+        .execute(&mut *connection)
+        .await?;
+        if result.rows_affected() > 0 {
+            tracing::warn!(
+                "Reconciled known version 0 schema checksum before running consolidated migrations"
+            );
+        }
+    }
+    Ok(())
 }
 
 /// 迁移失败时给出可操作的提示。

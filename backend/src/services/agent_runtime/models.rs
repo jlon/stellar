@@ -2,7 +2,35 @@
 //! DB 存字符串枚举值（跨 sqlite/mysql/postgres 兼容）。
 
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{Value, json};
+
+/// Bump when the output contract in `llm_diagnosis::build_messages` changes.
+pub(crate) const LLM_HYPOTHESIS_PROMPT_VERSION: &str = "v1";
+
+/// Runtime metadata for one LLM-backed decision. Credentials and provider URLs
+/// are intentionally excluded from the audit trail.
+#[derive(Debug, Clone)]
+pub(crate) struct LlmDecisionTelemetry {
+    pub provider: String,
+    pub model: String,
+    pub tokens: Option<i64>,
+    pub latency_ms: i64,
+}
+
+pub(crate) fn with_llm_trace(input: Option<Value>, telemetry: &LlmDecisionTelemetry) -> Value {
+    let trace = json!({
+        "prompt_version": LLM_HYPOTHESIS_PROMPT_VERSION,
+        "latency_ms": telemetry.latency_ms,
+    });
+    match input {
+        Some(Value::Object(mut object)) => {
+            object.insert("llm_trace".to_string(), trace);
+            Value::Object(object)
+        },
+        Some(input) => json!({ "input": input, "llm_trace": trace }),
+        None => json!({ "llm_trace": trace }),
+    }
+}
 
 /// 事件种类（DB: agent_events.kind）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]

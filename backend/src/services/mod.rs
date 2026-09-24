@@ -9,6 +9,7 @@ pub mod cluster_adapter;
 pub mod cluster_service;
 pub mod data_statistics_service;
 pub mod db_auth_query_service;
+pub mod frontend_profile_audit;
 pub mod llm;
 pub mod load_service;
 pub mod materialized_view_service;

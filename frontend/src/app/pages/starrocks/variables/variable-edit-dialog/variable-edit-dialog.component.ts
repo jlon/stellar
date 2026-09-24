@@ -1,7 +1,7 @@
 import { TranslatePipe } from '@ngx-translate/core';
 import { Component, Input, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { NbDialogRef, NbCardModule, NbButtonModule, NbTooltipModule, NbIconModule, NbInputModule } from '@nebular/theme';
+import { NbAlertModule, NbDialogRef, NbCardModule, NbButtonModule, NbTooltipModule, NbIconModule, NbInputModule } from '@nebular/theme';
 
 /** 变量修改弹窗（替代原生 prompt，Nebular 原生组件）。 */
 @Component({
@@ -9,7 +9,7 @@ import { NbDialogRef, NbCardModule, NbButtonModule, NbTooltipModule, NbIconModul
   templateUrl: './variable-edit-dialog.component.html',
   standalone: true,
   imports: [
-    TranslatePipe,FormsModule, NbCardModule, NbButtonModule, NbIconModule, NbInputModule,
+    TranslatePipe,FormsModule, NbCardModule, NbButtonModule, NbIconModule, NbInputModule, NbAlertModule,
     NbTooltipModule,],
   styles: [
     `
@@ -52,6 +52,11 @@ import { NbDialogRef, NbCardModule, NbButtonModule, NbTooltipModule, NbIconModul
         font-size: 0.8rem;
         line-height: 1.45;
         overflow-wrap: anywhere;
+      }
+      .guidance-alert {
+        margin-bottom: 1rem;
+        font-size: 0.8rem;
+        line-height: 1.45;
       }
       .field-label {
         display: block;

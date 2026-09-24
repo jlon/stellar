@@ -4,21 +4,167 @@
       <nb-card-body>
         <div class="card-toolbar">
           <div class="d-flex align-items-center gap-2">
-            <button nbButton
-              ghost
-              status="basic"
-              size="small"
-              (click)="loadBackends()"
-              [disabled]="loading"
-              [nbTooltip]="'刷新' | translate"
-              [title]="'刷新' | translate">
+            @if (clusterName) {
+              <small class="text-hint">{{ clusterName }} · {{ pageTitle }}</small>
+            }
+            <button nbButton ghost status="basic" size="small" (click)="loadBackends()" [disabled]="loading"
+              [nbTooltip]="'刷新' | translate" [attr.aria-label]="'刷新' | translate">
               <nb-icon icon="refresh-outline"></nb-icon>
             </button>
           </div>
         </div>
 
-        <angular2-smart-table [settings]="settings" [source]="source" (deleteConfirm)="onDeleteConfirm($event)"></angular2-smart-table>
+        <angular2-smart-table [settings]="settings" [source]="source"></angular2-smart-table>
       </nb-card-body>
     </nb-card>
   </div>
 </div>
+
+<ng-template #detailDialog>
+  <nb-card class="backend-detail-sheet" tabindex="-1" role="dialog" aria-labelledby="backend-detail-title">
+    <nb-card-header>
+      <div class="d-flex align-items-start justify-content-between gap-3">
+        <div class="min-w-0">
+          <h5 id="backend-detail-title" class="mb-1">{{ nodeType }} {{ '节点诊断' | translate }}</h5>
+          @if (selectedBackend; as backend) {
+            <small class="text-hint">{{ backend.BackendId }} · {{ backend.IP }}:{{ backend.HttpPort }}</small>
+          }
+        </div>
+        <button nbButton ghost status="basic" size="small" (click)="closeDetails()"
+          [nbTooltip]="'关闭' | translate" [attr.aria-label]="'关闭' | translate">
+          <nb-icon icon="close-outline"></nb-icon>
+        </button>
+      </div>
+    </nb-card-header>
+
+    <nb-card-body>
+      @if (selectedBackend; as backend) {
+        <section class="backend-diagnostic-section">
+          <div class="backend-section-heading">
+            <div>
+              <h6>{{ '节点状态' | translate }}</h6>
+              <small class="text-hint">{{ isSharedData ? ('存算分离：仅呈现计算节点证据' | translate) : ('存算一体：同时呈现计算与本地存储证据' | translate) }}</small>
+            </div>
+            <span class="badge" [class.badge-success]="backend.Alive === 'true'" [class.badge-danger]="backend.Alive !== 'true'">
+              {{ backend.Alive === 'true' ? ('在线' | translate) : ('离线' | translate) }}
+            </span>
+          </div>
+          <dl class="backend-diagnostic-grid">
+            <dt>{{ '节点角色' | translate }}</dt><dd>{{ nodeType }}</dd>
+            <dt>{{ '运行查询' | translate }}</dt><dd>{{ showValue(backend.NumRunningQueries) }}</dd>
+            <dt>{{ 'CPU 使用率' | translate }}</dt><dd>{{ showValue(backend.CpuUsedPct) }}</dd>
+            <dt>{{ '内存使用率' | translate }}</dt><dd>{{ showValue(backend.MemUsedPct) }}</dd>
+            <dt>{{ storageLabel }}</dt><dd>{{ showValue(backend.DataUsedCapacity) }} / {{ showValue(backend.TotalCapacity) }}</dd>
+            <dt>{{ isSharedData ? ('缓存使用率' | translate) : ('本地容量使用率' | translate) }}</dt><dd>{{ showValue(backend.UsedPct) }}</dd>
+            <dt>{{ '最后心跳' | translate }}</dt><dd>{{ showValue(backend.LastHeartbeat) }}</dd>
+            <dt>{{ '版本' | translate }}</dt><dd>{{ showValue(backend.Version) }}</dd>
+          </dl>
+          @if (backend.ErrMsg) {
+            <nb-alert status="warning" class="mt-3 mb-0"><div class="backend-node-error">{{ backend.ErrMsg }}</div></nb-alert>
+          }
+        </section>
+
+        <section class="backend-diagnostic-section">
+          <div class="backend-section-heading">
+            <div>
+              <h6>{{ '实时节点证据' | translate }}</h6>
+              <small class="text-hint">{{ '经 FE 重新核验节点身份后读取，数据不写入集群。' | translate }}</small>
+            </div>
+            <button nbButton ghost status="basic" size="small" type="button" (click)="loadDiagnostics()" [disabled]="diagnosticLoading"
+              [nbTooltip]="'刷新诊断' | translate" [attr.aria-label]="'刷新诊断' | translate">
+              <nb-icon icon="refresh-outline"></nb-icon>
+            </button>
+          </div>
+
+          @if (diagnosticLoading) {
+            <div class="backend-diagnostic-loading" role="status"><nb-spinner size="small" status="primary"></nb-spinner><span>{{ '正在读取节点诊断' | translate }}</span></div>
+          } @else if (diagnosticError) {
+            <nb-alert status="warning" class="mb-0">{{ diagnosticError }}</nb-alert>
+          } @else if (diagnostic; as result) {
+            <small class="backend-captured-at text-hint">{{ '采集时间' | translate }} · {{ result.captured_at | date:'yyyy-MM-dd HH:mm:ss' }}</small>
+            <div class="backend-evidence-cards">
+              <article class="backend-evidence-card" [class.backend-evidence-card--unavailable]="!result.memory.data">
+                <small>{{ '进程内存' | translate }}</small>
+                <strong>{{ formatBytes(result.memory.data?.process_bytes) }}</strong>
+                <span>{{ result.memory.error || ('MemTracker 树' | translate) }}</span>
+              </article>
+              <article class="backend-evidence-card" [class.backend-evidence-card--unavailable]="!result.data_cache.data">
+                <small>{{ 'Block Cache 命中率' | translate }}</small>
+                <strong>{{ formatRate(result.data_cache.data?.block_hit_rate_last_minute ?? result.data_cache.data?.block_hit_rate) }}</strong>
+                <span>{{ result.data_cache.error || ('优先显示最近一分钟' | translate) }}</span>
+              </article>
+              <article class="backend-evidence-card" [class.backend-evidence-card--unavailable]="!result.data_cache.data">
+                <small>{{ 'Page Cache 命中率' | translate }}</small>
+                <strong>{{ formatRate(result.data_cache.data?.page_hit_rate_last_minute ?? result.data_cache.data?.page_hit_rate) }}</strong>
+                <span>{{ result.data_cache.error || ('优先显示最近一分钟' | translate) }}</span>
+              </article>
+            </div>
+
+            @if (result.memory.data; as memory) {
+              <div class="backend-evidence-list">
+                <div class="backend-evidence-list-header"><h6>{{ '内存热点' | translate }}</h6><small>{{ '按当前进程占用排序' | translate }}</small></div>
+                @if (memoryTrackers.length) {
+                  @for (tracker of memoryTrackers; track tracker.name) {
+                    <div class="backend-tracker-row">
+                      <span [nbTooltip]="tracker.name" nbTooltipPlacement="top">{{ tracker.name }}</span>
+                      <small>{{ formatBytes(tracker.bytes) }} · {{ tracker.percent_of_process | number:'1.1-1' }}%</small>
+                    </div>
+                  }
+                } @else {
+                  <small class="text-hint">{{ '当前节点没有可展开的 MemTracker。' | translate }}</small>
+                }
+              </div>
+            }
+
+            <div class="backend-detail-action-row">
+              <button nbButton outline status="basic" size="small" type="button" (click)="loadDiagnostics('blocking_drivers')" [disabled]="diagnosticLoading"
+                [nbTooltip]="'按需读取正在阻塞的 Pipeline Driver' | translate">
+                <nb-icon icon="pause-circle-outline"></nb-icon>{{ '查看阻塞执行' | translate }}
+              </button>
+              @if (!isSharedData) {
+                <button nbButton outline status="basic" size="small" type="button" (click)="loadDiagnostics('compaction')" [disabled]="diagnosticLoading"
+                  [nbTooltip]="'仅适用于存算一体 BE 的本地 Compaction' | translate">
+                  <nb-icon icon="layers-outline"></nb-icon>{{ '查看 Compaction' | translate }}
+                </button>
+              }
+            </div>
+
+            @if (result.blocking_drivers; as blocking) {
+              <div class="backend-evidence-list">
+                <div class="backend-evidence-list-header"><h6>{{ '阻塞执行' | translate }}</h6><small>{{ blocking.data ? blocking.data.driver_count + (' 个 Driver' | translate) : blocking.error }}</small></div>
+                @if (blocking.data; as summary) {
+                  @if (blockingDrivers.length) {
+                    @for (driver of blockingDrivers; track driver.query_id + driver.fragment_id + driver.driver_id) {
+                      <div class="backend-driver-row">
+                        <span [nbTooltip]="driver.query_id" nbTooltipPlacement="top">{{ driver.query_id }}</span>
+                        <small>{{ driver.state }} · {{ driver.fragment_id }} · #{{ driver.driver_id }}</small>
+                      </div>
+                    }
+                  } @else {
+                    <small class="text-hint">{{ '当前没有阻塞的 Pipeline Driver。' | translate }}</small>
+                  }
+                }
+              </div>
+            }
+
+            @if (result.compaction; as compaction) {
+              <div class="backend-evidence-list">
+                <div class="backend-evidence-list-header"><h6>Compaction</h6><small>{{ compaction.data ? ('本地 BE 任务状态' | translate) : compaction.error }}</small></div>
+                @if (compaction.data; as summary) {
+                  <div class="backend-compaction-grid">
+                    <div><small>{{ '运行任务' | translate }}</small><strong>{{ summary.running_task_num }}</strong></div>
+                    <div><small>{{ '候选任务' | translate }}</small><strong>{{ summary.candidate_num }}</strong></div>
+                    <div><small>Base</small><strong>{{ summary.base_task_num }}</strong></div>
+                    <div><small>Cumulative</small><strong>{{ summary.cumulative_task_num }}</strong></div>
+                  </div>
+                }
+              </div>
+            }
+          } @else {
+            <div class="backend-diagnostic-empty">{{ '点击刷新读取当前节点的只读诊断证据。' | translate }}</div>
+          }
+        </section>
+      }
+    </nb-card-body>
+  </nb-card>
+</ng-template>

@@ -25,7 +25,6 @@ import {
   NbWindowModule,
 } from '@nebular/theme';
 import { JwtInterceptor } from './@core/interceptors/jwt.interceptor';
-import { AuthModule } from './auth/auth.module';
 import { TabRouteReuseStrategy } from './@core/routing/tab-route-reuse.strategy';
 
 @NgModule({
@@ -34,7 +33,6 @@ import { TabRouteReuseStrategy } from './@core/routing/tab-route-reuse.strategy'
     BrowserAnimationsModule,
     HttpClientModule,
     MarkdownModule.forRoot(),
-    AuthModule,
     AppRoutingModule,
     NbSidebarModule.forRoot(),
     NbMenuModule.forRoot(),

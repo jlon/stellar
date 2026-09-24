@@ -326,7 +326,7 @@ impl AuditLogService {
                 unique_users: users.len() as i32,
             })
             .collect();
-        tables.sort_by(|a, b| b.access_count.cmp(&a.access_count));
+        tables.sort_by_key(|table| std::cmp::Reverse(table.access_count));
         tables.truncate(limit);
 
         tracing::info!("Found {} top tables by access ({}h window)", tables.len(), hours);

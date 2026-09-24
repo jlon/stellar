@@ -17,4 +17,5 @@ if (environment.production) {
 
 bootstrapApplication(AppComponent, {
   providers: [importProvidersFrom(AppModule)],
-}).catch(err => console.error(err));
+}).then(() => document.getElementById('nb-global-spinner')?.remove())
+  .catch(err => console.error(err));

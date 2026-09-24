@@ -117,5 +117,9 @@
  "CPU 使用核数": "CPU cores in use",
  "内存使用量": "Memory Usage",
  "运行中查询数": "Running queries",
- "加载资源组使用情况失败": "Failed to load resource usage analysis"
+ "加载资源组使用情况失败": "Failed to load resource usage analysis",
+ "CPU 权重": "CPU Weight",
+ "CPU 权重上限由集群平均 BE CPU 核数决定；保存时由集群校验。": "The CPU-weight ceiling is the average BE CPU core count and is validated by the cluster when saved.",
+ "CPU 权重与独占 CPU 核数只能有一个为正数。CPU 权重为共享调度份额；独占核会预留并限制该资源组。": "Only one of CPU weight and exclusive CPU cores can be positive. CPU weight is a shared scheduling share; exclusive cores are reserved for and limit this resource group.",
+ "仅支持 SELECT 和 INSERT；INSERT 同时覆盖 INSERT INTO 和 Broker Load 的计算资源隔离。多个分类器命中时，匹配度最高者生效；同分时系统可能随机选择。": "Only SELECT and INSERT are supported. INSERT covers compute isolation for both INSERT INTO and Broker Load. When multiple classifiers match, the highest match score wins; ties may be chosen at random."
 }

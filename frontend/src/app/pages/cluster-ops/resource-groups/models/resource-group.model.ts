@@ -54,7 +54,6 @@ export interface ClassifierRequest {
   query_type?: string[];
   source_ip?: string;
   db?: string;
-  weight: number;
 }
 
 export interface ResourceGroupUsage {

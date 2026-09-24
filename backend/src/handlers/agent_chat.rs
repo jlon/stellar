@@ -10,12 +10,20 @@ use serde_json::json;
 use std::convert::Infallible;
 use std::sync::Arc;
 use stellar_macros::app_db;
-use tokio_stream::wrappers::UnboundedReceiverStream;
+use tokio_util::sync::CancellationToken;
 
 use crate::AppState;
 use crate::db::AppDb;
 use crate::middleware::OrgContext;
-use crate::utils::{ApiError, ApiResult};
+use crate::utils::{ApiError, ApiResult, check_org_access};
+
+struct CancelOnDrop(CancellationToken);
+
+impl Drop for CancelOnDrop {
+    fn drop(&mut self) {
+        self.0.cancel();
+    }
+}
 
 #[derive(Deserialize)]
 pub struct ChatRequest {
@@ -24,10 +32,9 @@ pub struct ChatRequest {
     /// Explicit cluster id; when absent the org's active cluster is used.
     pub cluster_id: Option<i64>,
     pub message: String,
-    /// 页面上下文（借鉴 sxdevops 页面 Copilot）：前端携带当前页面/参数，
-    /// 注入 prompt 让模型感知"用户正在哪个场景下提问"。
+    /// 受限页面上下文，仅支持已定义的页面类型和参数。
     #[serde(default)]
-    pub context: Option<serde_json::Value>,
+    pub context: Option<crate::services::ops_agent::context::PageContext>,
 }
 
 #[derive(Deserialize)]
@@ -42,6 +49,9 @@ async fn resolve_chat_cluster<DB: AppDb>(
     org_ctx: &OrgContext,
     req: &ChatRequest,
 ) -> ApiResult<crate::models::cluster::Cluster> {
+    if let Some(context) = req.context.as_ref() {
+        context.validate().map_err(ApiError::validation_error)?;
+    }
     // Non-super-admin resolves strictly within their organization.
     let cluster = if org_ctx.is_super_admin {
         state
@@ -59,7 +69,15 @@ async fn resolve_chat_cluster<DB: AppDb>(
             },
         }
     };
+    validate_chat_cluster_access(&cluster, org_ctx)?;
     Ok(cluster)
+}
+
+pub(crate) fn validate_chat_cluster_access(
+    cluster: &crate::models::cluster::Cluster,
+    org_ctx: &OrgContext,
+) -> ApiResult<()> {
+    check_org_access(org_ctx, cluster.organization_id, "use the AI assistant")
 }
 
 /// POST /api/agent/chat
@@ -70,18 +88,15 @@ pub async fn chat<DB: AppDb>(
     Json(req): Json<ChatRequest>,
 ) -> ApiResult<Json<serde_json::Value>> {
     let cluster = resolve_chat_cluster(&state, &org_ctx, &req).await?;
+    let turn = crate::services::ops_agent::ChatTurnRequest {
+        session_id: req.session_id,
+        user_id: org_ctx.user_id,
+        created_by: &org_ctx.username,
+        user_message: &req.message,
+        page_context: req.context.as_ref(),
+    };
 
-    let outcome = state
-        .ops_agent_service
-        .chat(
-            &cluster,
-            req.session_id,
-            org_ctx.user_id,
-            &org_ctx.username,
-            &req.message,
-            req.context.as_ref(),
-        )
-        .await?;
+    let outcome = state.ops_agent_service.chat(&cluster, &turn).await?;
     Ok(Json(json!({
         "session_id": outcome.session_id,
         "cluster_id": outcome.cluster_id,
@@ -100,19 +115,22 @@ pub async fn stream_chat<DB: AppDb>(
     Json(req): Json<ChatRequest>,
 ) -> ApiResult<Response> {
     let cluster = resolve_chat_cluster(&state, &org_ctx, &req).await?;
+    let cancellation = CancellationToken::new();
+    let cancel_on_drop = CancelOnDrop(cancellation.clone());
+    let turn = crate::services::ops_agent::ChatTurnRequest {
+        session_id: req.session_id,
+        user_id: org_ctx.user_id,
+        created_by: &org_ctx.username,
+        user_message: &req.message,
+        page_context: req.context.as_ref(),
+    };
     let mut rx = state
         .ops_agent_service
-        .chat_stream(
-            &cluster,
-            req.session_id,
-            org_ctx.user_id,
-            &org_ctx.username,
-            &req.message,
-            req.context.as_ref(),
-        )
+        .chat_stream(&cluster, &turn, cancellation.clone())
         .await?;
 
     let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel::<Result<Event, Infallible>>();
+    let forwarder_cancellation = cancellation.clone();
     tokio::spawn(async move {
         while let Some(ev) = rx.recv().await {
             let (name, data) = match ev {
@@ -141,7 +159,8 @@ pub async fn stream_chat<DB: AppDb>(
                 .send(Ok(Event::default().event(name).data(data)))
                 .is_err()
             {
-                break; // client disconnected; drop everything
+                forwarder_cancellation.cancel();
+                break;
             }
         }
     });
@@ -149,7 +168,13 @@ pub async fn stream_chat<DB: AppDb>(
     // Flink's AiChatStreamHandler explicitly sets this header. Without it,
     // Nginx/Ingress may buffer token frames until the whole response completes,
     // making a correct SSE backend appear non-streaming in the browser.
-    let mut response = Sse::new(UnboundedReceiverStream::new(event_rx))
+    let event_stream = futures::stream::unfold(
+        (event_rx, cancel_on_drop),
+        |(mut rx, cancel_on_drop)| async move {
+            rx.recv().await.map(|event| (event, (rx, cancel_on_drop)))
+        },
+    );
+    let mut response = Sse::new(event_stream)
         .keep_alive(
             KeepAlive::new()
                 .interval(std::time::Duration::from_secs(30))

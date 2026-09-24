@@ -6,7 +6,7 @@
 //! Incident，单次取证 60s 超时）。
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 use sqlx::Row;
@@ -26,7 +26,9 @@ use crate::utils::ApiResult;
 use super::collectors::{collect_cluster_events, converge_events};
 use super::diagnoser::{diagnose, digest_of, outcome_json};
 use super::llm_diagnosis;
-use super::models::{DiagnosisOutcome, EventKind, EventRow, EventState, IncidentRow};
+use super::models::{
+    DiagnosisOutcome, EventKind, EventRow, EventState, IncidentRow, LlmDecisionTelemetry,
+};
 
 /// Incident 复开窗口（resolved/closed 后 N 天内同 dedupe_key 复开）
 const REOPEN_WINDOW_DAYS: i64 = 30;
@@ -43,6 +45,16 @@ pub struct EvidenceSummary {
     pub collector: String,
     pub quality: String,
     pub summary: String,
+}
+
+struct DecisionRecord<'a> {
+    incident_id: i64,
+    stage: &'a str,
+    status: &'a str,
+    input_json: Option<Value>,
+    output_json: Option<Value>,
+    error: Option<String>,
+    telemetry: Option<&'a LlmDecisionTelemetry>,
 }
 
 pub struct AgentRuntimeService<DB: AppDb> {
@@ -615,14 +627,15 @@ impl<DB: AppDb> AgentRuntimeService<DB> {
         self.link_events(id, events).await?;
 
         // intake 决策审计
-        self.record_decision(
-            id,
-            "intake",
-            "completed",
-            Some(json!({ "event_count": events.len(), "kinds": events.iter().map(|e| e.kind.as_str()).collect::<Vec<_>>() })),
-            None,
-            None,
-        )
+        self.record_decision(DecisionRecord {
+            incident_id: id,
+            stage: "intake",
+            status: "completed",
+            input_json: Some(json!({ "event_count": events.len(), "kinds": events.iter().map(|e| e.kind.as_str()).collect::<Vec<_>>() })),
+            output_json: None,
+            error: None,
+            telemetry: None,
+        })
         .await?;
         Ok(id)
     }
@@ -818,14 +831,15 @@ impl<DB: AppDb> AgentRuntimeService<DB> {
         }
 
         // evidence 决策留档
-        self.record_decision(
+        self.record_decision(DecisionRecord {
             incident_id,
-            "evidence",
-            "completed",
-            Some(json!({ "collectors": ["metrics", "nodes", "queries", "audit"], "evidence_ids": evidence_ids })),
-            None,
-            None,
-        )
+            stage: "evidence",
+            status: "completed",
+            input_json: Some(json!({ "collectors": ["metrics", "nodes", "queries", "audit"], "evidence_ids": evidence_ids })),
+            output_json: None,
+            error: None,
+            telemetry: None,
+        })
         .await?;
         Ok(())
     }
@@ -881,18 +895,19 @@ impl<DB: AppDb> AgentRuntimeService<DB> {
         .execute(&self.pool)
         .await;
 
-        self.record_decision(
+        self.record_decision(DecisionRecord {
             incident_id,
-            "rule_diagnosis",
-            "completed",
-            Some(json!({
+            stage: "rule_diagnosis",
+            status: "completed",
+            input_json: Some(json!({
                 "event_ids": events.iter().map(|e| e.id).collect::<Vec<_>>(),
                 "rule": "playbook_match",
                 "confidence": outcome.confidence,
             })),
-            Some(json!(outcome)),
-            None,
-        )
+            output_json: Some(json!(outcome)),
+            error: None,
+            telemetry: None,
+        })
         .await?;
         Ok(outcome)
     }
@@ -930,14 +945,15 @@ impl<DB: AppDb> AgentRuntimeService<DB> {
             _ => {
                 let fallback = llm_diagnosis::fallback_outcome(incident.impact_summary.as_deref());
                 let _ = self
-                    .record_decision(
+                    .record_decision(DecisionRecord {
                         incident_id,
-                        "llm_hypothesis",
-                        "rejected",
-                        Some(json!({ "input": "evidence_summary" })),
-                        Some(fallback.clone()),
-                        Some("AI 连接未配置或不可用".to_string()),
-                    )
+                        stage: "llm_hypothesis",
+                        status: "rejected",
+                        input_json: Some(json!({ "input": "evidence_summary" })),
+                        output_json: Some(fallback.clone()),
+                        error: Some("AI 连接未配置或不可用".to_string()),
+                        telemetry: None,
+                    })
                     .await;
                 return Ok(fallback);
             },
@@ -949,24 +965,35 @@ impl<DB: AppDb> AgentRuntimeService<DB> {
             &events,
             &summaries,
         );
+        let mut telemetry = LlmDecisionTelemetry {
+            provider: provider.provider.name.clone(),
+            model: provider.provider.model_name.clone(),
+            tokens: None,
+            latency_ms: 0,
+        };
         let client = crate::services::ai::llm::ChatClient::new(provider);
+        let call_started = Instant::now();
         let completion = match client.chat(&messages, None).await {
             Ok(c) => c,
             Err(e) => {
+                telemetry.latency_ms = call_started.elapsed().as_millis() as i64;
                 let fallback = llm_diagnosis::fallback_outcome(incident.impact_summary.as_deref());
                 let _ = self
-                    .record_decision(
+                    .record_decision(DecisionRecord {
                         incident_id,
-                        "llm_hypothesis",
-                        "rejected",
-                        None,
-                        Some(fallback.clone()),
-                        Some(format!("LLM 调用失败: {}", e)),
-                    )
+                        stage: "llm_hypothesis",
+                        status: "rejected",
+                        input_json: None,
+                        output_json: Some(fallback.clone()),
+                        error: Some(format!("LLM 调用失败: {}", e)),
+                        telemetry: Some(&telemetry),
+                    })
                     .await;
                 return Ok(fallback);
             },
         };
+        telemetry.latency_ms = call_started.elapsed().as_millis() as i64;
+        telemetry.tokens = Some(completion.usage_tokens);
 
         // 解析 + 校验（证据 ID 必须存在且属于本 Incident）
         let raw = llm_diagnosis::parse_hypotheses(completion.content.as_deref().unwrap_or(""));
@@ -981,14 +1008,15 @@ impl<DB: AppDb> AgentRuntimeService<DB> {
             "rule_diagnosis": incident.impact_summary,
         });
         let _ = self
-            .record_decision(
+            .record_decision(DecisionRecord {
                 incident_id,
-                "llm_hypothesis",
+                stage: "llm_hypothesis",
                 status,
-                Some(json!({ "evidence_ids": valid_ids.iter().collect::<Vec<_>>() })),
-                Some(output.clone()),
-                None,
-            )
+                input_json: Some(json!({ "evidence_ids": valid_ids.iter().collect::<Vec<_>>() })),
+                output_json: Some(output.clone()),
+                error: None,
+                telemetry: Some(&telemetry),
+            })
             .await;
 
         // 校验未全拒时，把假设合并进 incident.output_json
@@ -1056,8 +1084,16 @@ impl<DB: AppDb> AgentRuntimeService<DB> {
         .bind(incident_id)
         .execute(&self.pool)
         .await;
-        self.record_decision(incident_id, "close", "completed", Some(json!({})), None, None)
-            .await?;
+        self.record_decision(DecisionRecord {
+            incident_id,
+            stage: "close",
+            status: "completed",
+            input_json: Some(json!({})),
+            output_json: None,
+            error: None,
+            telemetry: None,
+        })
+        .await?;
         Ok(())
     }
 
@@ -1184,24 +1220,33 @@ impl<DB: AppDb> AgentRuntimeService<DB> {
         .map_err(|e| e.to_string())
     }
 
-    async fn record_decision(
-        &self,
-        incident_id: i64,
-        stage: &str,
-        status: &str,
-        input_json: Option<Value>,
-        output_json: Option<Value>,
-        error: Option<String>,
-    ) -> Result<(), String> {
+    async fn record_decision(&self, record: DecisionRecord<'_>) -> Result<(), String> {
+        let DecisionRecord {
+            incident_id,
+            stage,
+            status,
+            input_json,
+            output_json,
+            error,
+            telemetry,
+        } = record;
+        let input_json = match telemetry {
+            Some(telemetry) => Some(super::models::with_llm_trace(input_json, telemetry)),
+            None => input_json,
+        };
         db_query::query(
-            "INSERT INTO agent_decisions (incident_id, stage, status, input_json, output_json, error) \
-             VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO agent_decisions \
+             (incident_id, stage, status, input_json, output_json, llm_provider, llm_model, llm_tokens, error) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(incident_id)
         .bind(stage)
         .bind(status)
         .bind(input_json.map(|v| v.to_string()))
         .bind(output_json.map(|v| v.to_string()))
+        .bind(telemetry.map(|telemetry| telemetry.provider.as_str()))
+        .bind(telemetry.map(|telemetry| telemetry.model.as_str()))
+        .bind(telemetry.and_then(|telemetry| telemetry.tokens))
         .bind(error)
         .execute(&self.pool)
         .await
@@ -1273,7 +1318,7 @@ impl<DB: AppDb> AgentRuntimeService<DB> {
 
     async fn decisions_of_incident(&self, incident_id: i64) -> Result<Vec<Value>, String> {
         let rows = db_query::query(
-            "SELECT id, stage, status, input_json, output_json, error, created_at \
+            "SELECT id, stage, status, input_json, output_json, llm_provider, llm_model, llm_tokens, error, created_at \
              FROM agent_decisions WHERE incident_id = ? ORDER BY id",
         )
         .bind(incident_id)
@@ -1283,12 +1328,25 @@ impl<DB: AppDb> AgentRuntimeService<DB> {
         Ok(rows
             .iter()
             .map(|r| {
+                let input = r
+                    .get::<Option<String>, _>("input_json")
+                    .and_then(|s| serde_json::from_str::<Value>(&s).ok());
+                let llm_trace = input
+                    .as_ref()
+                    .and_then(|input| input.get("llm_trace"))
+                    .cloned();
                 json!({
                     "id": r.get::<i64,_>("id"),
                     "stage": r.get::<String,_>("stage"),
                     "status": r.get::<String,_>("status"),
-                    "input": r.get::<Option<String>,_>("input_json").and_then(|s| serde_json::from_str::<Value>(&s).ok()),
+                    "input": input,
                     "output": r.get::<Option<String>,_>("output_json").and_then(|s| serde_json::from_str::<Value>(&s).ok()),
+                    "llm": {
+                        "provider": r.get::<Option<String>,_>("llm_provider"),
+                        "model": r.get::<Option<String>,_>("llm_model"),
+                        "tokens": r.get::<Option<i64>,_>("llm_tokens"),
+                        "trace": llm_trace,
+                    },
                     "error": r.get::<Option<String>,_>("error"),
                     "created_at": r.get::<chrono::DateTime<chrono::Utc>,_>("created_at").to_rfc3339(),
                 })

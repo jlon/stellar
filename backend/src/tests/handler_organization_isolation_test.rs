@@ -68,7 +68,6 @@ async fn test_get_active_cluster_by_org_isolation() {
         .await
         .expect("Should create org2 cluster");
 
-
     let org1_active = cluster_service
         .get_active_cluster_by_org(Some(test_data.org1_id))
         .await
@@ -411,7 +410,7 @@ async fn test_switching_active_cluster_isolation() {
 
 
     cluster_service
-        .set_active_cluster(org1_cluster2.id)
+        .set_active_cluster(org1_cluster2.id, false)
         .await
         .expect("Should switch org1 active cluster");
 

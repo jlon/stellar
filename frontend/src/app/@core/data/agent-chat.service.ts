@@ -27,6 +27,17 @@ export class AgentChatService {
   private uiFront = false;
   private running = false;
   private lastAnswer = '';
+  private pendingMemoryProfile: { clusterId: number; message: string } | null = null;
+
+  queueMemoryProfile(clusterId: number, message: string): void {
+    this.pendingMemoryProfile = { clusterId, message };
+  }
+
+  takeMemoryProfile(): { clusterId: number; message: string } | null {
+    const pending = this.pendingMemoryProfile;
+    this.pendingMemoryProfile = null;
+    return pending;
+  }
 
   events(): Observable<ChatStreamEvent> {
     return this.turn$.asObservable();

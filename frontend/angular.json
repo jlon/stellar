@@ -22,7 +22,7 @@
                 "glob": "**/*",
                 "input": "src/assets",
                 "output": "/assets",
-                "ignore": ["i18n/work/**"]
+                "ignore": ["i18n/work/**", "fonts/**"]
               },
               "src/favicon.svg",
               "src/favicon.ico",
@@ -31,8 +31,6 @@
             ],
             "styles": [
               "node_modules/bootstrap/dist/css/bootstrap.css",
-              "node_modules/roboto-fontface/css/roboto/roboto-fontface.css",
-              "node_modules/@fortawesome/fontawesome-free/css/all.css",
               "node_modules/nebular-icons/scss/nebular-icons.scss",
               "src/app/@theme/styles/styles.scss"
             ],
@@ -127,7 +125,6 @@
             ],
             "styles": [
               "node_modules/bootstrap/dist/css/bootstrap.css",
-              "node_modules/roboto-fontface/css/roboto/roboto-fontface.css",
               "node_modules/nebular-icons/scss/nebular-icons.scss",
               "src/app/@theme/styles/styles.scss"
             ],
@@ -136,7 +133,7 @@
                 "glob": "**/*",
                 "input": "src/assets",
                 "output": "/assets",
-                "ignore": ["i18n/work/**"]
+                "ignore": ["i18n/work/**", "fonts/**"]
               },
               "src/favicon.svg",
               "src/favicon.ico",

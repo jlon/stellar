@@ -1,3 +1,217 @@
 :host {
   display: block;
 }
+
+.backend-actions-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+}
+
+.backend-diagnostic-section + .backend-diagnostic-section {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border-basic-color-3);
+}
+
+.backend-section-heading,
+.backend-evidence-list-header,
+.backend-detail-action-row,
+.backend-diagnostic-loading {
+  display: flex;
+  align-items: center;
+}
+
+.backend-section-heading {
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.backend-section-heading h6,
+.backend-evidence-list-header h6 {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 650;
+}
+
+.backend-diagnostic-grid {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.7fr) minmax(0, 1.5fr);
+  gap: 0.5rem 1rem;
+  margin: 1rem 0 0;
+  font-size: 0.8125rem;
+}
+
+.backend-diagnostic-grid dt {
+  color: var(--text-hint-color);
+  font-weight: 500;
+}
+
+.backend-diagnostic-grid dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.backend-node-error {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.backend-diagnostic-loading {
+  min-height: 8rem;
+  justify-content: center;
+  gap: 0.5rem;
+  color: var(--text-hint-color);
+  font-size: 0.8125rem;
+}
+
+.backend-captured-at {
+  display: block;
+  margin: 0.75rem 0 0;
+  font-size: 0.6875rem;
+}
+
+.backend-evidence-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.625rem;
+}
+
+.backend-evidence-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.625rem;
+  border: 1px solid var(--border-basic-color-3);
+  border-radius: 0.375rem;
+}
+
+.backend-evidence-card small,
+.backend-evidence-card span,
+.backend-evidence-list-header small,
+.backend-tracker-row small,
+.backend-driver-row small,
+.backend-compaction-grid small {
+  color: var(--text-hint-color);
+  font-size: 0.6875rem;
+}
+
+.backend-evidence-card strong {
+  overflow: hidden;
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backend-evidence-card span {
+  min-height: 2.1em;
+  overflow-wrap: anywhere;
+}
+
+.backend-evidence-card--unavailable {
+  border-style: dashed;
+}
+
+.backend-evidence-list {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-basic-color-3);
+}
+
+.backend-evidence-list-header {
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.backend-tracker-row,
+.backend-driver-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  padding: 0.375rem 0;
+  border-bottom: 1px solid var(--separator-basic-color);
+}
+
+.backend-tracker-row span,
+.backend-driver-row span {
+  overflow: hidden;
+  font-family: var(--font-family-monospace);
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backend-tracker-row small,
+.backend-driver-row small {
+  align-self: center;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.backend-detail-action-row {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.backend-detail-action-row nb-icon {
+  margin-right: 0.25rem;
+}
+
+.backend-compaction-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.backend-compaction-grid div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.backend-compaction-grid strong {
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.backend-diagnostic-empty {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px dashed var(--border-basic-color-3);
+  border-radius: 0.5rem;
+  color: var(--text-hint-color);
+  font-size: 0.8125rem;
+  text-align: center;
+}
+
+@media (max-width: 40rem) {
+  .backend-evidence-cards,
+  .backend-compaction-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 30rem) {
+  .backend-evidence-cards,
+  .backend-compaction-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .backend-tracker-row,
+  .backend-driver-row {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
+
+  .backend-tracker-row small,
+  .backend-driver-row small {
+    text-align: left;
+  }
+}

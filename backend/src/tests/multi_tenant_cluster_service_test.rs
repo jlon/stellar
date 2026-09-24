@@ -254,7 +254,7 @@ async fn test_active_cluster_per_organization() {
 
 
     cluster_service
-        .set_active_cluster(cluster2.id)
+        .set_active_cluster(cluster2.id, false)
         .await
         .expect("Should activate second cluster");
 
@@ -398,7 +398,7 @@ async fn test_active_cluster_organization_isolation() {
 
 
     cluster_service
-        .set_active_cluster(org1_cluster2.id)
+        .set_active_cluster(org1_cluster2.id, false)
         .await
         .expect("Should activate second org1 cluster");
 
@@ -696,7 +696,7 @@ async fn test_cluster_activation_concurrency() {
 
 
     cluster_service
-        .set_active_cluster(*cluster_ids.last().unwrap())
+        .set_active_cluster(*cluster_ids.last().unwrap(), false)
         .await
         .expect("Should activate last cluster");
 

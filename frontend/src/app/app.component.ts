@@ -5,6 +5,8 @@
  */
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
+import { NbThemeService } from '@nebular/theme';
+import { Subscription } from 'rxjs';
 import { SeoService } from './@core/utils/seo.service';
 
 /**
@@ -70,17 +72,24 @@ const SMART_TABLE_TITLE_OBSERVER = (root: Document | HTMLElement): MutationObser
   imports: [RouterOutlet],
   selector: 'ngx-app',
   template: '<router-outlet></router-outlet>',
+  host: { '[class]': 'themeClass' },
 })
 export class AppComponent implements OnInit, OnDestroy {
   private seoService = inject(SeoService);
+  private themeService = inject(NbThemeService);
   private titleObserver?: MutationObserver;
+  private themeSubscription?: Subscription;
+  themeClass = `nb-theme-${this.themeService.currentTheme}`;
 
   ngOnInit(): void {
     this.seoService.trackCanonicalChanges();
+    this.themeSubscription = this.themeService.onThemeChange()
+      .subscribe(({ name }) => this.themeClass = `nb-theme-${name}`);
     this.titleObserver = SMART_TABLE_TITLE_OBSERVER(document.body);
   }
 
   ngOnDestroy(): void {
+    this.themeSubscription?.unsubscribe();
     this.titleObserver?.disconnect();
   }
 }

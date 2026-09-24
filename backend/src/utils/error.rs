@@ -27,6 +27,9 @@ pub enum ApiError {
     #[error("Failed to connect to cluster: {message}")]
     ClusterConnectionFailed { message: String },
 
+    #[error("Upstream service failed: {0}")]
+    BadGateway(String),
+
     #[error("Cluster operation timeout")]
     ClusterTimeout,
 
@@ -95,6 +98,11 @@ impl ApiError {
         Self::ClusterConnectionFailed { message: message.into() }
     }
 
+    /// Helper for a failed upstream HTTP request
+    pub fn bad_gateway(message: impl Into<String>) -> Self {
+        Self::BadGateway(message.into())
+    }
+
     /// Helper to create invalid credentials error
     pub fn invalid_credentials() -> Self {
         Self::InvalidCredentials
@@ -161,6 +169,7 @@ impl ApiError {
             Self::ClusterConnectionFailed { .. } => 2002,
             Self::ClusterTimeout => 2003,
             Self::ClusterAuthFailed => 2004,
+            Self::BadGateway(_) => 5003,
 
             Self::ResourceNotFound(_) => 3000,
             Self::QueryNotFound { .. } => 3001,
@@ -208,6 +217,7 @@ impl IntoResponse for ApiError {
             2001..=2999 => StatusCode::BAD_REQUEST,
             3000..=3999 => StatusCode::NOT_FOUND,
             4001..=4999 => StatusCode::BAD_REQUEST,
+            5003 => StatusCode::BAD_GATEWAY,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
 

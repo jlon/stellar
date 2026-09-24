@@ -218,7 +218,10 @@ pub async fn activate_cluster(
     let target = state.cluster_service.get_cluster(id).await?;
     check_org_access(&org_ctx, target.organization_id, "activate clusters")?;
 
-    let cluster = state.cluster_service.set_active_cluster(id).await?;
+    let cluster = state
+        .cluster_service
+        .set_active_cluster(id, org_ctx.is_super_admin)
+        .await?;
 
     tracing::info!(
         "Cluster activated successfully: {} (ID: {}) by user {}",

@@ -5,23 +5,11 @@ import { NbEvaIconsModule } from '@nebular/eva-icons';
 import { NbSecurityModule } from '@nebular/security';
 
 import {
-  FooterComponent,
   HeaderComponent,
 } from './components';
 import { ClusterSelectorComponent } from './components/cluster-selector/cluster-selector.component';
 import { TabBarComponent } from './components/tab-bar/tab-bar.component';
-import {
-  CapitalizePipe,
-  PluralPipe,
-  RoundPipe,
-  TimingPipe,
-  NumberWithCommasPipe,
-} from './pipes';
-import {
-  OneColumnLayoutComponent,
-  ThreeColumnsLayoutComponent,
-  TwoColumnsLayoutComponent,
-} from './layouts';
+import { OneColumnLayoutComponent } from './layouts/one-column/one-column.layout';
 import { DEFAULT_THEME } from './styles/theme.default';
 import { COSMIC_THEME } from './styles/theme.cosmic';
 import { CORPORATE_THEME } from './styles/theme.corporate';
@@ -45,24 +33,14 @@ const NB_MODULES = [
 ];
 const COMPONENTS = [
   HeaderComponent,
-  FooterComponent,
   ClusterSelectorComponent,
   TabBarComponent,
   OneColumnLayoutComponent,
-  ThreeColumnsLayoutComponent,
-  TwoColumnsLayoutComponent,
-];
-const PIPES = [
-  CapitalizePipe,
-  PluralPipe,
-  RoundPipe,
-  TimingPipe,
-  NumberWithCommasPipe,
 ];
 
 @NgModule({
-    imports: [CommonModule, ...NB_MODULES, ...COMPONENTS, ...PIPES],
-    exports: [CommonModule, ...PIPES, ...COMPONENTS, ...NB_MODULES],
+    imports: [CommonModule, ...NB_MODULES, ...COMPONENTS],
+    exports: [CommonModule, ...COMPONENTS, ...NB_MODULES],
 })
 export class ThemeModule {
   static forRoot(): ModuleWithProviders<ThemeModule> {

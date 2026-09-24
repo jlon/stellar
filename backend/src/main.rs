@@ -53,7 +53,10 @@ use stellar::{AppState, handlers, middleware, services};
         handlers::cluster::get_cluster_health,
 
         handlers::backend::list_backends,
+        handlers::backend::get_backend_diagnostics,
         handlers::frontend::list_frontends,
+        handlers::frontend::list_frontend_profiles,
+        handlers::frontend::get_frontend_profile,
 
         handlers::materialized_view::list_materialized_views,
         handlers::materialized_view::get_materialized_view,
@@ -170,6 +173,7 @@ use stellar::{AppState, handlers, middleware, services};
             models::HealthCheck,
             models::Backend,
             models::Frontend,
+            models::FrontendProfile,
             models::MaterializedView,
             models::CreateMaterializedViewRequest,
             models::RefreshMaterializedViewRequest,
@@ -402,6 +406,7 @@ where
     for<'q> f64: sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB> + sqlx::Type<DB>,
     for<'q> bool: sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB> + sqlx::Type<DB>,
     for<'q> String: sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB> + sqlx::Type<DB>,
+    for<'q> Vec<u8>: sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB> + sqlx::Type<DB>,
     for<'q> &'q str: sqlx::Encode<'q, DB> + sqlx::Type<DB>,
     for<'q> DateTime<Utc>: sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB> + sqlx::Type<DB>,
     for<'q> NaiveDateTime: sqlx::Encode<'q, DB> + sqlx::Decode<'q, DB> + sqlx::Type<DB>,
@@ -437,6 +442,9 @@ where
     {
         tracing::info!(runtime_mode = ?config.runtime_mode, "Initial admin credential initialized");
     }
+    db::bootstrap::ensure_backend_diagnostic_permission::<DB>(&pool)
+        .await
+        .map_err(|error| format!("Failed to backfill backend diagnostic permission: {error}"))?;
 
     let jwt_util = Arc::new(JwtUtil::new(&config.auth.jwt_secret, &config.auth.jwt_expires_in));
     let mysql_pool_manager = Arc::new(MySQLPoolManager::new());
@@ -650,8 +658,17 @@ where
         .route("/api/clusters/active", get(handlers::cluster::get_active_cluster))
         .route("/api/clusters/health/test", post(handlers::cluster::test_cluster_connection))
         .route("/api/clusters/backends", get(handlers::backend::list_backends))
+        .route(
+            "/api/clusters/backends/diagnostics",
+            get(handlers::backend::get_backend_diagnostics),
+        )
         .route("/api/clusters/backends/:host/:port", delete(handlers::backend::delete_backend))
         .route("/api/clusters/frontends", get(handlers::frontend::list_frontends))
+        .route("/api/clusters/frontends/profiles", get(handlers::frontend::list_frontend_profiles))
+        .route(
+            "/api/clusters/frontends/profiles/file",
+            get(handlers::frontend::get_frontend_profile),
+        )
         .route("/api/clusters/catalogs", get(handlers::query::list_catalogs))
         .route("/api/clusters/databases", get(handlers::query::list_databases))
         .route("/api/clusters/tables", get(handlers::query::list_tables))

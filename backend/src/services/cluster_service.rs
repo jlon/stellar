@@ -8,7 +8,10 @@ use crate::services::{MySQLPoolManager, create_adapter};
 use crate::utils::{ApiError, ApiResult};
 use chrono::Utc;
 use sqlx::Pool;
-use std::sync::{Arc, RwLock};
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+};
 use stellar_macros::app_impl;
 
 #[derive(Clone)]
@@ -16,6 +19,7 @@ pub struct ClusterService<DB: AppDb> {
     pool: Pool<DB>,
     mysql_pool_manager: Arc<MySQLPoolManager>,
     active_cluster: Arc<RwLock<Option<Cluster>>>,
+    active_clusters_by_org: Arc<RwLock<HashMap<i64, Cluster>>>,
 }
 
 /// Convert raw error messages into user-friendly messages for health checks
@@ -59,7 +63,12 @@ fn simplify_health_check_error(error: &str) -> String {
 #[app_impl]
 impl<DB: AppDb> ClusterService<DB> {
     pub fn new(pool: Pool<DB>, mysql_pool_manager: Arc<MySQLPoolManager>) -> Self {
-        Self { pool, mysql_pool_manager, active_cluster: Arc::new(RwLock::new(None)) }
+        Self {
+            pool,
+            mysql_pool_manager,
+            active_cluster: Arc::new(RwLock::new(None)),
+            active_clusters_by_org: Arc::new(RwLock::new(HashMap::new())),
+        }
     }
 
     pub fn cached_active_cluster(&self) -> Option<Cluster> {
@@ -69,6 +78,34 @@ impl<DB: AppDb> ClusterService<DB> {
     fn remember_active(&self, cluster: &Cluster) {
         if let Ok(mut guard) = self.active_cluster.write() {
             *guard = Some(cluster.clone());
+        }
+    }
+
+    fn cached_active_cluster_by_org(&self, org_id: i64) -> Option<Cluster> {
+        self.active_clusters_by_org
+            .read()
+            .ok()?
+            .get(&org_id)
+            .cloned()
+    }
+
+    fn remember_active_by_org(&self, cluster: &Cluster) {
+        if let (Some(org_id), Ok(mut guard)) =
+            (cluster.organization_id, self.active_clusters_by_org.write())
+        {
+            guard.insert(org_id, cluster.clone());
+        }
+    }
+
+    fn remove_cached_cluster(&self, cluster_id: i64) {
+        if let Ok(mut guard) = self.active_clusters_by_org.write() {
+            guard.retain(|_, cluster| cluster.id != cluster_id);
+        }
+        if self
+            .cached_active_cluster()
+            .is_some_and(|cluster| cluster.id == cluster_id)
+        {
+            self.clear_active();
         }
     }
 
@@ -228,8 +265,8 @@ impl<DB: AppDb> ClusterService<DB> {
     }
 
     pub async fn get_active_cluster_by_org(&self, org_id: Option<i64>) -> ApiResult<Cluster> {
-        if let Some(cluster) = self.cached_active_cluster() {
-            if org_id.is_some() && cluster.organization_id == org_id {
+        if let Some(org_id) = org_id {
+            if let Some(cluster) = self.cached_active_cluster_by_org(org_id) {
                 return Ok(cluster);
             }
         }
@@ -249,13 +286,21 @@ impl<DB: AppDb> ClusterService<DB> {
                 "No active cluster found for your organization. Please activate a cluster first.",
             )
         })?;
-        self.remember_active(&cluster);
+        self.remember_active_by_org(&cluster);
         Ok(cluster)
     }
 
-    pub async fn set_active_cluster(&self, cluster_id: i64) -> ApiResult<Cluster> {
+    pub async fn set_active_cluster(
+        &self,
+        cluster_id: i64,
+        is_super_admin: bool,
+    ) -> ApiResult<Cluster> {
         let cluster = self.get_cluster(cluster_id).await?;
         let org_id = cluster.organization_id;
+        let update_global_cache = is_super_admin
+            || self
+                .cached_active_cluster()
+                .is_some_and(|cached| cached.organization_id == org_id);
 
         let mut tx = self.pool.begin().await?;
 
@@ -282,7 +327,14 @@ impl<DB: AppDb> ClusterService<DB> {
         tracing::info!("Cluster activated: ID {} (org: {:?})", cluster_id, org_id);
 
         let cluster = self.get_cluster(cluster_id).await?;
-        self.remember_active(&cluster);
+        if let (Some(org_id), Ok(mut guard)) =
+            (cluster.organization_id, self.active_clusters_by_org.write())
+        {
+            guard.insert(org_id, cluster.clone());
+        }
+        if update_global_cache {
+            self.remember_active(&cluster);
+        }
         Ok(cluster)
     }
 
@@ -383,10 +435,16 @@ impl<DB: AppDb> ClusterService<DB> {
 
         let updated = self.get_cluster(cluster_id).await?;
 
-        // Keep the active-cluster cache coherent: deployment_mode / connection
-        // changes must take effect immediately (feature cards, node management).
+        if let Ok(mut guard) = self.active_clusters_by_org.write() {
+            guard.retain(|_, cluster| cluster.id != cluster_id);
+            if updated.is_active {
+                if let Some(org_id) = updated.organization_id {
+                    guard.insert(org_id, updated.clone());
+                }
+            }
+        }
         if let Ok(mut guard) = self.active_cluster.write() {
-            if guard.as_ref().map(|c| c.id) == Some(cluster_id) {
+            if guard.as_ref().map(|cluster| cluster.id) == Some(cluster_id) {
                 *guard = Some(updated.clone());
             }
         }
@@ -421,15 +479,10 @@ impl<DB: AppDb> ClusterService<DB> {
 
         tracing::info!("Cluster deleted: ID {}", cluster_id);
 
-        let cached_is_deleted = self
-            .active_cluster
-            .read()
-            .ok()
-            .and_then(|guard| guard.as_ref().map(|cluster| cluster.id == cluster_id))
-            .unwrap_or(false);
-        if cached_is_deleted {
-            self.clear_active();
-        }
+        let global_selection_deleted = self
+            .cached_active_cluster()
+            .is_some_and(|cluster| cluster.id == cluster_id);
+        self.remove_cached_cluster(cluster_id);
 
         if is_active {
             let next_cluster: Option<(i64,)> = if let Some(org_id) = cluster_org_id {
@@ -454,7 +507,10 @@ impl<DB: AppDb> ClusterService<DB> {
                     .await?;
                 tracing::info!("Automatically activated cluster ID {} after deletion", next_id);
                 let next = self.get_cluster(next_id).await?;
-                self.remember_active(&next);
+                self.remember_active_by_org(&next);
+                if global_selection_deleted {
+                    self.remember_active(&next);
+                }
             }
         }
 

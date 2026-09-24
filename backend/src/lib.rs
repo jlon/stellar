@@ -38,6 +38,10 @@ mod log_archive_test;
 mod bootstrap_test;
 
 #[cfg(test)]
+#[path = "tests/migration_compatibility_test.rs"]
+mod migration_compatibility_test;
+
+#[cfg(test)]
 #[path = "tests/config_test.rs"]
 mod config_test;
 
@@ -58,6 +62,10 @@ mod stream_load_test;
 mod backend_capacity_test;
 
 #[cfg(test)]
+#[path = "tests/backend_diagnostic_test.rs"]
+mod backend_diagnostic_test;
+
+#[cfg(test)]
 #[path = "tests/query_parser_test.rs"]
 mod query_parser_test;
 
@@ -68,6 +76,14 @@ mod profile_retest_test;
 #[cfg(test)]
 #[path = "tests/overview_disk_pressure_test.rs"]
 mod overview_disk_pressure_test;
+
+#[cfg(test)]
+#[path = "tests/frontend_profile_test.rs"]
+mod frontend_profile_test;
+
+#[cfg(test)]
+#[path = "tests/agent_chat_test.rs"]
+mod agent_chat_test;
 
 use crate::services::NotificationService;
 use crate::services::profile_analyzer::ProfileAnalysisCache;

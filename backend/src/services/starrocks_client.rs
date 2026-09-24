@@ -110,11 +110,17 @@ impl StarRocksClient {
             return self.get_compute_nodes().await;
         }
 
-        tracing::debug!(
-            "Cluster {} is in shared-nothing mode, fetching backends",
-            self.cluster.name
-        );
-        self.show_proc_entities::<Backend>("/backends").await
+        match self.query_sql_entities::<Backend>("SHOW BACKENDS").await {
+            Ok(nodes) => Ok(nodes),
+            Err(error) => {
+                tracing::warn!(
+                    "SHOW BACKENDS failed for cluster {}: {}. Falling back to SHOW PROC /backends",
+                    self.cluster.name,
+                    error
+                );
+                self.show_proc_entities::<Backend>("/backends").await
+            },
+        }
     }
 
     async fn get_compute_nodes(&self) -> ApiResult<Vec<Backend>> {

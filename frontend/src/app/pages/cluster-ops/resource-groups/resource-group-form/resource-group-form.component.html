@@ -52,10 +52,14 @@
                   <nb-icon icon="alert-circle-outline"></nb-icon>
                   <span>{{  '请至少配置一个资源限制' | translate }}</span>
                 </div>
+                <nb-alert status="info" class="mb-3">
+                  <nb-icon icon="info-outline"></nb-icon>
+                  {{ 'CPU 权重与独占 CPU 核数只能有一个为正数。CPU 权重为共享调度份额；独占核会预留并限制该资源组。' | translate }}
+                </nb-alert>
                 <div class="row">
                   <div class="col-md-6">
                     <div class="form-group">
-                      <label for="cpu_weight" class="label">{{  'CPU 权重 (1-100)' | translate }}</label>
+                      <label for="cpu_weight" class="label">{{  'CPU 权重' | translate }}</label>
                       <input fieldSize="small"
                         nbInput
                         fullWidth
@@ -64,17 +68,13 @@
                         formControlName="cpu_weight"
                         [placeholder]="'请输入 CPU 权重' | translate"
                         min="1"
-                        max="100"
                         [status]="form.get('cpu_weight')?.invalid && form.get('cpu_weight')?.touched ? 'danger' : 'basic'"
                         />
-                      <small class="form-text text-hint">{{  '相对权重，数值越大获得的 CPU 时间越多' | translate }}</small>
+                      <small class="form-text text-hint">{{  'CPU 权重上限由集群平均 BE CPU 核数决定；保存时由集群校验。' | translate }}</small>
                       @if (form.get('cpu_weight')?.invalid && form.get('cpu_weight')?.touched) {
                         <small class="form-text text-danger">
                           @if (form.get('cpu_weight')?.errors?.['min']) {
                             <span>{{  'CPU 权重最小值为 1' | translate }}</span>
-                          }
-                          @if (form.get('cpu_weight')?.errors?.['max']) {
-                            <span>{{  'CPU 权重最大值为 100' | translate }}</span>
                           }
                         </small>
                       }
@@ -233,6 +233,10 @@
                     <p class="intro-text">{{  '分类器用于自动将查询分配到此资源组。您可以根据用户名、角色名、查询类型、来源 IP 或数据库名等条件进行配置。' | translate }}</p>
                   </div>
                 </div>
+                <nb-alert status="info" class="mb-3">
+                  <nb-icon icon="info-outline"></nb-icon>
+                  {{ '仅支持 SELECT 和 INSERT；INSERT 同时覆盖 INSERT INTO 和 Broker Load 的计算资源隔离。多个分类器命中时，匹配度最高者生效；同分时系统可能随机选择。' | translate }}
+                </nb-alert>
                 <div class="mb-3">
                   <button
                     type="button"
@@ -265,7 +269,7 @@
                       </nb-card-header>
                       <nb-card-body [formGroupName]="i">
                         <div class="row">
-                          <div class="col-md-4">
+                          <div class="col-md-6">
                             <div class="form-group">
                               <label [for]="'user_' + i" class="label">{{  '用户名' | translate }}</label>
                               <input fieldSize="small"
@@ -279,7 +283,7 @@
                                 />
                             </div>
                           </div>
-                          <div class="col-md-4">
+                          <div class="col-md-6">
                             <div class="form-group">
                               <label [for]="'role_' + i" class="label">{{  '角色名' | translate }}</label>
                               <input fieldSize="small"
@@ -346,21 +350,6 @@
                                 />
                             </div>
                           </div>
-                          <div class="col-md-4">
-                            <div class="form-group">
-                              <label [for]="'weight_' + i" class="label">{{  '权重' | translate }}</label>
-                              <input fieldSize="small"
-                                nbInput
-                                fullWidth
-                                type="number"
-                                [id]="'weight_' + i"
-                                formControlName="weight"
-                                [placeholder]="'请输入权重' | translate"
-                                min="1"
-                                status="basic"
-                                />
-                            </div>
-                          </div>
                         </div>
                       </nb-card-body>
                     </nb-card>
@@ -382,8 +371,7 @@
       <nb-card-footer class="d-flex justify-content-end">
         <button type="button" class="icon-btn" (click)="cancel()" [disabled]="loading"
            [nbTooltip]="'取消' | translate" nbTooltipPlacement="top" [aria-label]="'取消' | translate"><nb-icon icon="close-outline"></nb-icon></button>
-        <button type="submit" class="icon-btn is-primary" (click)="onSubmit()" 
-          (click)="onSubmit()"
+        <button type="submit" class="icon-btn is-primary" (click)="onSubmit()"
           [disabled]="loading || form.invalid"
            [nbTooltip]="'保存' | translate" nbTooltipPlacement="top" [aria-label]="'保存' | translate"><nb-icon icon="checkmark-outline"></nb-icon></button>
       </nb-card-footer>

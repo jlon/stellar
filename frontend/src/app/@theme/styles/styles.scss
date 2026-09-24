@@ -148,7 +148,6 @@
 @import 'themes';
 
 @import '@nebular/theme/styles/globals';
-@import '@nebular/auth/styles/globals';
 
 @import 'bootstrap/scss/functions';
 @import 'bootstrap/scss/variables';
@@ -160,7 +159,6 @@
 
 @include nb-install() {
   @include nb-theme-global();
-  @include nb-auth-global();
 
   @include ngx-layout();
   @include nb-overrides();

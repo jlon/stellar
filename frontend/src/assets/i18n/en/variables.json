@@ -27,5 +27,8 @@
  "变量“X”已更新": "Variable \"X\" updated",
  "变量更新超时或失败": "Variable update timed out or failed",
  "更新失败": "Update failed",
- "修改变量 ": "Modify variable"
+ "修改变量 ": "Modify variable",
+ "生产环境不建议长期全局开启 enable_profile；可将 big_query_profile_threshold 设为大于 0 的时长，仅采集慢查询 Profile。": "Do not leave enable_profile enabled globally in production. Set big_query_profile_threshold to a positive duration to collect profiles only for slow queries.",
+ "设为大于 0 的时长时，仅为超过阈值的查询采集 Profile；0s 不会筛选慢查询。": "A positive duration collects profiles only for queries exceeding the threshold; 0s does not filter for slow queries.",
+ "该参数仅适用于 Query Queue v1；启用 Query Queue v2 后，v1 的并发、内存和 CPU 阈值不生效。": "This setting applies only to Query Queue v1. Its concurrency, memory, and CPU thresholds do not apply when Query Queue v2 is enabled."
 }

@@ -118,6 +118,22 @@ pub fn extract_permission(method: &str, uri: &str) -> Option<(String, String)> {
         return Some(("resource-groups".to_string(), action));
     }
 
+    if segments.first() == Some(&"clusters")
+        && segments.get(1) == Some(&"frontends")
+        && segments.get(2) == Some(&"profiles")
+    {
+        return if method == "GET" && matches!(segments.len(), 3 | 4) {
+            Some(("clusters".to_string(), "frontends:diagnose".to_string()))
+        } else {
+            None
+        };
+    }
+
+    if segments.as_slice() == ["clusters", "backends", "diagnostics"] {
+        return (method == "GET")
+            .then(|| ("clusters".to_string(), "backends:diagnose".to_string()));
+    }
+
     let resource = match *(segments.first()?) {
         "roles" => "roles",
         "permissions" => "permissions",

@@ -4,6 +4,9 @@
       <nb-card-body>
         <div class="card-toolbar">
           <div class="d-flex align-items-center gap-2">
+            @if (clusterName) {
+              <small class="text-hint">{{ clusterName }}</small>
+            }
             <button nbButton
               ghost
               status="basic"
@@ -11,7 +14,8 @@
               (click)="loadFrontends()"
               [disabled]="loading"
               [nbTooltip]="'刷新' | translate"
-              [title]="'刷新' | translate">
+              [title]="'刷新' | translate"
+              [attr.aria-label]="'刷新' | translate">
               <nb-icon icon="refresh-outline"></nb-icon>
             </button>
           </div>
@@ -21,3 +25,259 @@
     </nb-card>
   </div>
 </div>
+
+<ng-template #detailDialog>
+  <nb-card class="frontend-detail-sheet" tabindex="-1" role="dialog" aria-labelledby="frontend-detail-title">
+    <nb-card-header>
+      <div class="d-flex align-items-start justify-content-between gap-3">
+        <div class="min-w-0">
+          <h5 id="frontend-detail-title" class="mb-1">{{ 'Frontend 节点诊断' | translate }}</h5>
+          @if (selectedFrontend) {
+            <small class="text-hint">{{ selectedFrontend.Name }} · {{ selectedFrontend.IP }}:{{ selectedFrontend.HttpPort }}</small>
+          }
+        </div>
+        <button nbButton ghost status="basic" size="small" (click)="closeDetails()"
+          [nbTooltip]="'关闭' | translate" [attr.aria-label]="'关闭' | translate">
+          <nb-icon icon="close-outline"></nb-icon>
+        </button>
+      </div>
+    </nb-card-header>
+
+    <nb-card-body>
+      @if (selectedFrontend; as frontend) {
+        <section class="frontend-diagnostic-section">
+          <h6>{{ '节点状态' | translate }}</h6>
+          <dl class="frontend-diagnostic-grid">
+            <dt>{{ '角色' | translate }}</dt><dd>{{ showValue(frontend.Role) }}{{ frontend.IsMaster === 'true' ? ' · ' + ('主节点' | translate) : '' }}</dd>
+            <dt>{{ '状态' | translate }}</dt><dd>{{ frontend.Alive === 'true' ? ('在线' | translate) : ('离线' | translate) }}</dd>
+            <dt>{{ '日志回放进度' | translate }}</dt><dd>{{ showValue(frontend.ReplayedJournalId) }}</dd>
+            <dt>{{ '最后心跳' | translate }}</dt><dd>{{ showValue(frontend.LastHeartbeat) }}</dd>
+            <dt>{{ '启动时间' | translate }}</dt><dd>{{ showValue(frontend.StartTime) }}</dd>
+            <dt>{{ '版本' | translate }}</dt><dd>{{ showValue(frontend.Version) }}</dd>
+          </dl>
+          @if (frontend.ErrMsg) {
+            <nb-alert status="warning" class="mt-3 mb-0">
+              <strong>{{ '节点错误信息' | translate }}</strong>
+              <div class="frontend-node-error">{{ frontend.ErrMsg }}</div>
+            </nb-alert>
+          }
+        </section>
+
+        <section class="frontend-diagnostic-section">
+          <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+            <div>
+              <h6 class="mb-1">{{ 'Memory Profile' | translate }}</h6>
+              <small class="text-hint">{{ '只读查看 StarRocks FE 已采集的内存快照' | translate }}</small>
+            </div>
+            @if (isStarRocksCluster) {
+              <button nbButton ghost status="basic" size="small" (click)="loadFrontendProfiles(frontend)"
+                [disabled]="profileListLoading" [nbTooltip]="'刷新 Profile 列表' | translate"
+                [attr.aria-label]="'刷新 Profile 列表' | translate">
+                <nb-icon icon="refresh-outline"></nb-icon>
+              </button>
+            }
+          </div>
+
+          @if (profileError && !profileLoading) {
+            <nb-alert status="warning" class="mt-3">{{ profileError }}</nb-alert>
+          }
+          @if (profileLoading) {
+            <div class="frontend-profile-loading" role="status">
+              <nb-spinner size="small" status="primary"></nb-spinner>
+              <span>{{ '正在加载 Memory Profile' | translate }}</span>
+            </div>
+          }
+          @if (profileFrameUrl) {
+            <section class="frontend-profile-viewer" aria-label="Memory Profile">
+              <div class="frontend-profile-toolbar">
+                <span class="frontend-profile-toolbar-title">{{ selectedProfile?.captured_at }}</span>
+                <div class="frontend-profile-toolbar-actions">
+                  <button nbButton ghost size="small" status="info" type="button" ngxHasPermission="menu:agent"
+                    (click)="sendProfileToAgent()" [disabled]="sendingProfile"
+                    [nbTooltip]="'仅发送内存采样摘要到智能助手' | translate" [attr.aria-label]="'发送智能诊断' | translate">
+                    <nb-icon icon="activity-outline"></nb-icon>
+                    {{ '发送智能诊断' | translate }}
+                  </button>
+                  <button nbButton ghost size="small" status="basic" type="button" class="frontend-profile-compare-trigger" (click)="openProfileComparison()"
+                    [disabled]="!canCompareProfile || comparisonLoading" [nbTooltip]="'以较早的同 FE 快照为基线，比较热点覆盖率变化' | translate" [attr.aria-label]="'对比快照' | translate">
+                    <nb-icon icon="swap-outline"></nb-icon>
+                    <span>{{ '对比快照' | translate }}</span>
+                  </button>
+                  <button nbButton ghost size="tiny" status="basic" type="button" (click)="closeProfile()"
+                    [disabled]="sendingProfile" [nbTooltip]="'收起火焰图' | translate" [attr.aria-label]="'收起火焰图' | translate">
+                    <nb-icon icon="chevron-up-outline"></nb-icon>
+                  </button>
+                  <button nbButton ghost size="tiny" status="basic" type="button" (click)="zoomProfile(-0.25)"
+                    [disabled]="profileZoom <= 1" [nbTooltip]="'缩小火焰图' | translate" [attr.aria-label]="'缩小火焰图' | translate">
+                    <nb-icon icon="minus-outline"></nb-icon>
+                  </button>
+                  <span class="frontend-profile-zoom" aria-live="polite">{{ profileZoom * 100 | number:'1.0-0' }}%</span>
+                  <button nbButton ghost size="tiny" status="basic" type="button" (click)="zoomProfile(0.25)"
+                    [disabled]="profileZoom >= 2" [nbTooltip]="'放大火焰图' | translate" [attr.aria-label]="'放大火焰图' | translate">
+                    <nb-icon icon="plus-outline"></nb-icon>
+                  </button>
+                  <button nbButton ghost size="tiny" status="basic" type="button" (click)="toggleProfileFullscreen()"
+                    [nbTooltip]="'全屏查看' | translate" [attr.aria-label]="'全屏查看' | translate">
+                    <nb-icon icon="expand-outline"></nb-icon>
+                  </button>
+                </div>
+              </div>
+              @if (profileSummary; as summary) {
+                <section class="frontend-profile-evidence" aria-label="Profile 采样摘要">
+                  <div class="frontend-profile-evidence-stats">
+                    <div tabindex="0" [nbTooltip]="'这份快照中最顶层调用链覆盖的采样次数。它反映采样规模，不等于实际内存字节。' | translate" nbTooltipPlacement="top">
+                      <small class="text-hint">{{ '根样本' | translate }}</small><strong>{{ summary.rootSamples | number }}</strong>
+                    </div>
+                    <div tabindex="0" [nbTooltip]="'当前快照实际出现的最大调用层级。层级越深只表示调用链更长，不直接代表问题严重程度。' | translate" nbTooltipPlacement="top">
+                      <small class="text-hint">{{ '栈深度' | translate }}</small><strong>{{ summary.stackDepth }}</strong>
+                    </div>
+                    <div tabindex="0" [nbTooltip]="'从当前已审核快照中解析出的调用帧数量。它用于衡量火焰图的细节规模，不是对象或线程数量。' | translate" nbTooltipPlacement="top">
+                      <small class="text-hint">{{ '已解析帧' | translate }}</small><strong>{{ summary.frameCount | number }}</strong>
+                    </div>
+                  </div>
+                  <div class="frontend-profile-hotspots">
+                    @for (hotspot of summary.hotspots; track hotspot.name) {
+                      <div class="frontend-profile-hotspot" tabindex="0" [nbTooltip]="profileHotspotTooltip(hotspot, summary.rootSamples)" nbTooltipPlacement="top">
+                        <span>{{ hotspot.name }}</span>
+                        <small>{{ hotspot.samples | number }}/{{ summary.rootSamples | number }} · {{ hotspot.percentage | number:'1.1-1' }}%</small>
+                      </div>
+                    }
+                  </div>
+                  <small class="frontend-profile-evidence-note">{{ '比例相对根样本数，不代表内存字节；父子帧不可相加。' | translate }}</small>
+                </section>
+              }
+              @if (comparisonOpen) {
+                <section class="frontend-profile-comparison" aria-label="热点变化对比">
+                  <div class="frontend-profile-comparison-header">
+                    <div>
+                      <h6>{{ '热点变化对比' | translate }}</h6>
+                      <small class="text-hint">{{ '同一 FE 的两份采样快照' | translate }}</small>
+                    </div>
+                    <div class="frontend-profile-comparison-header-actions">
+                      <button nbButton ghost size="tiny" status="basic" type="button"
+                        [nbTooltip]="'仅在两份快照各自前 32 个热点候选中比较覆盖率百分点；不代表内存字节、独占内存或调用链消失。' | translate"
+                        [attr.aria-label]="'比较范围说明' | translate">
+                        <nb-icon icon="question-mark-circle-outline"></nb-icon>
+                      </button>
+                      <button nbButton ghost size="tiny" status="basic" type="button" (click)="closeProfileComparison()"
+                        [nbTooltip]="'关闭热点对比' | translate" [attr.aria-label]="'关闭热点对比' | translate">
+                        <nb-icon icon="close-outline"></nb-icon>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="frontend-profile-comparison-selects">
+                    <label>
+                      <span>{{ '基线（较早）' | translate }}</span>
+                      <nb-select size="small" fullWidth [selected]="comparisonBaselineFilename" (selectedChange)="selectComparisonBaseline($event)"
+                        [optionsListClass]="'frontend-profile-comparison-options'" [disabled]="comparisonLoading || profileLoading" [attr.aria-label]="'选择较早基线快照' | translate">
+                        @for (profile of comparisonBaselineOptions; track profile.filename) {
+                          <nb-option [value]="profile.filename">{{ profile.captured_at }}</nb-option>
+                        }
+                      </nb-select>
+                    </label>
+                    <label>
+                      <span>{{ '对比快照（较晚）' | translate }}</span>
+                      <nb-select size="small" fullWidth [selected]="comparisonProfileFilename" (selectedChange)="selectComparisonProfile($event)"
+                        [optionsListClass]="'frontend-profile-comparison-options'" [disabled]="comparisonLoading || profileLoading" [attr.aria-label]="'选择较晚对比快照' | translate">
+                        @for (profile of comparisonProfileOptions; track profile.filename) {
+                          <nb-option [value]="profile.filename">{{ profile.captured_at }}</nb-option>
+                        }
+                      </nb-select>
+                    </label>
+                  </div>
+                  @if (comparisonLoading) {
+                    <div class="frontend-profile-comparison-loading" role="status">
+                      <nb-spinner size="tiny" status="primary"></nb-spinner>
+                      <span>{{ '正在比较两份快照' | translate }}</span>
+                    </div>
+                  } @else if (comparisonError) {
+                    <nb-alert status="warning" class="mb-0">{{ comparisonError }}</nb-alert>
+                  } @else if (profileComparison; as comparison) {
+                    <div class="frontend-profile-comparison-stats">
+                      <div><small class="text-hint">{{ '根样本' | translate }}</small><strong>{{ comparison.baseline.rootSamples | number }} -> {{ comparison.comparison.rootSamples | number }}</strong></div>
+                      <div><small class="text-hint">{{ '栈深度' | translate }}</small><strong>{{ comparison.baseline.stackDepth }} -> {{ comparison.comparison.stackDepth }}</strong></div>
+                      <div><small class="text-hint">{{ '已解析帧' | translate }}</small><strong>{{ comparison.baseline.frameCount | number }} -> {{ comparison.comparison.frameCount | number }}</strong></div>
+                    </div>
+                    <small class="frontend-profile-comparison-note">{{ '两次快照的根样本量可以不同；变化只按覆盖率百分点比较，不能据此推断内存字节变化。' | translate }}</small>
+                    @if (!comparison.hasCoverageChange) {
+                      <small class="frontend-profile-comparison-note">{{ '前 32 个候选中，没有共同候选的覆盖率变化超过 1pp；下方仅显示近似持平或候选范围变化。' | translate }}</small>
+                    }
+                    <div class="frontend-profile-change-columns" aria-hidden="true">
+                      <span>{{ '热点帧' | translate }}</span><span>{{ '基线 -> 当前' | translate }}</span><span>{{ '变化' | translate }}</span>
+                    </div>
+                    <div class="frontend-profile-change-list">
+                      @for (change of comparison.changes; track change.name) {
+                        <div class="frontend-profile-change" [class.frontend-profile-change--rising]="change.kind === 'rising'"
+                          [class.frontend-profile-change--falling]="change.kind === 'falling'"
+                          [class.frontend-profile-change--candidate]="change.kind === 'new' || change.kind === 'not-ranked'"
+                          [nbTooltip]="change.name" nbTooltipPlacement="top" tabindex="0">
+                          <span>{{ change.name }}</span>
+                          <small>{{ profileComparisonCoverage(change.baselinePercentage) }} -> {{ profileComparisonCoverage(change.comparisonPercentage) }}</small>
+                          <em>{{ profileComparisonChangeLabel(change) }}</em>
+                        </div>
+                      }
+                    </div>
+                  }
+                </section>
+              }
+              <div class="frontend-profile-canvas">
+                <iframe [src]="profileFrameUrl" sandbox="allow-scripts allow-modals" referrerpolicy="no-referrer"
+                  [style.width.%]="100 / profileZoom" [style.height.%]="100 / profileZoom"
+                  [style.transform]="'scale(' + profileZoom + ')'" [title]="'Memory Profile' | translate"></iframe>
+              </div>
+            </section>
+          }
+
+          @if (!isStarRocksCluster) {
+            <nb-alert status="info" class="mb-0">{{ 'FE Memory Profile 目前仅支持 StarRocks 集群' | translate }}</nb-alert>
+          } @else if (profileListLoading) {
+            <div class="frontend-profile-loading" role="status">
+              <nb-spinner size="small" status="primary"></nb-spinner>
+              <span>{{ '正在读取 Profile 列表' | translate }}</span>
+            </div>
+          } @else if (profileListError) {
+            <nb-alert status="warning">
+              {{ profileListError }}
+              <button nbButton ghost size="tiny" status="basic" (click)="loadFrontendProfiles(frontend)"
+                [attr.aria-label]="'重试' | translate">
+                <nb-icon icon="refresh-outline"></nb-icon>
+              </button>
+            </nb-alert>
+          } @else if (profiles.length === 0) {
+            <div class="frontend-profile-empty">{{ '当前 FE 没有可查看的 Memory Profile' | translate }}</div>
+          } @else {
+            <div class="frontend-profile-list" [class.frontend-profile-list--expanded]="profilesExpanded">
+              @for (profile of visibleProfiles; track profile.filename) {
+                <div class="frontend-profile-row">
+                  <div class="frontend-profile-meta">
+                    <strong>{{ profile.captured_at }}</strong>
+                    <small class="text-hint">{{ profile.filename }}</small>
+                  </div>
+                  <button nbButton ghost size="small" status="basic" type="button" (click)="openProfile(profile)"
+                    [disabled]="profileLoading && selectedProfile?.filename === profile.filename"
+                    [attr.aria-label]="'查看 Memory Profile' | translate">
+                    <nb-icon icon="eye-outline"></nb-icon>
+                    {{ '查看' | translate }}
+                  </button>
+                </div>
+              }
+            </div>
+            @if (profiles.length > profilePreviewLimit) {
+              <div class="frontend-profile-list-controls">
+                <small class="text-hint">
+                  {{ profilesExpanded ? ('已显示全部 ' | translate) + profiles.length + (' 条快照' | translate) : ('仅显示最近 ' | translate) + profilePreviewLimit + (' 条快照' | translate) }}
+                </small>
+                <button nbButton ghost size="tiny" status="basic" type="button" (click)="profilesExpanded = !profilesExpanded"
+                  [attr.aria-label]="profilesExpanded ? ('收起 Profile 列表' | translate) : ('查看全部 Profile' | translate)">
+                  <nb-icon [icon]="profilesExpanded ? 'chevron-up-outline' : 'chevron-down-outline'"></nb-icon>
+                  {{ profilesExpanded ? ('收起列表' | translate) : ('查看全部' | translate) }}
+                </button>
+              </div>
+            }
+          }
+        </section>
+
+      }
+    </nb-card-body>
+  </nb-card>
+</ng-template>

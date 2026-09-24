@@ -29,6 +29,7 @@ all = "warn"
 axum = { version = "0.7", features = ["macros", "multipart"] }
 futures = "0.3"
 tokio-stream = { version = "0.1", features = ["sync"] }
+tokio-util = { version = "0.7", features = ["rt"] }
 tower = { version = "0.4", features = ["util"] }
 tower-http = { version = "0.5", features = ["cors", "trace", "fs"] }
 tokio = { version = "1", features = ["full"] }

@@ -15,6 +15,65 @@ use sqlx::Pool;
 
 /// Initial admin username, mirroring the historical seed account name.
 const ROOT_USERNAME: &str = "admin";
+const BACKEND_DIAGNOSTIC_PERMISSION: &str = "api:clusters:backends:diagnose";
+
+/// Backfill the node-diagnostic permission for databases initialized before
+/// the capability existed. This is deliberately limited to system admin roles:
+/// custom roles remain explicit opt-ins through permission management.
+#[app_db]
+pub async fn ensure_backend_diagnostic_permission<DB: AppDb>(
+    pool: &Pool<DB>,
+) -> anyhow::Result<()> {
+    let insert_result = db_query::query(
+        "INSERT INTO permissions (code, name, type, resource, action, description) \
+         SELECT ?, ?, ?, ?, ?, ? \
+         WHERE NOT EXISTS (SELECT 1 FROM permissions WHERE code = ?)",
+    )
+    .bind(BACKEND_DIAGNOSTIC_PERMISSION)
+    .bind("诊断 Backend 或 Compute Node")
+    .bind("api")
+    .bind("clusters")
+    .bind("backends:diagnose")
+    .bind("GET /api/clusters/backends/diagnostics")
+    .bind(BACKEND_DIAGNOSTIC_PERMISSION)
+    .execute(pool)
+    .await;
+    if let Err(error) = insert_result {
+        if !matches!(&error, sqlx::Error::Database(db_error) if db_error.is_unique_violation()) {
+            return Err(error.into());
+        }
+    }
+
+    db_query::query(
+        "UPDATE permissions \
+         SET parent_id = ( \
+             SELECT parent.id FROM ( \
+                 SELECT id FROM permissions WHERE code = 'menu:nodes:backends' \
+             ) AS parent \
+         ) \
+         WHERE code = ?",
+    )
+    .bind(BACKEND_DIAGNOSTIC_PERMISSION)
+    .execute(pool)
+    .await?;
+
+    db_query::query(
+        "INSERT INTO role_permissions (role_id, permission_id) \
+         SELECT r.id, p.id \
+         FROM roles r CROSS JOIN permissions p \
+         WHERE r.code IN ('admin', 'super_admin') \
+           AND p.code = ? \
+           AND NOT EXISTS ( \
+               SELECT 1 FROM role_permissions rp \
+               WHERE rp.role_id = r.id AND rp.permission_id = p.id \
+           )",
+    )
+    .bind(BACKEND_DIAGNOSTIC_PERMISSION)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
 
 /// Reads the persisted JWT secret from `<data_dir>/.jwt-secret`, creating a
 /// random one (0600) on first use. Returns `None` when `data_dir` is unknown

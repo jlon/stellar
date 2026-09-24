@@ -140,5 +140,7 @@
  "请输入属性名称和值": "Please enter both property name and value",
  "请输入ALTER子句": "Enter an ALTER clause",
  "物化视图修改成功": "Materialized view updated successfully",
- "修改失败": "Edit failed"
+ "修改失败": "Edit failed",
+ "创建异步物化视图后默认会立即触发刷新并占用资源。大数据量场景优先使用分区刷新，必要时在 SQL 中使用 REFRESH DEFERRED 推迟首刷。": "Creating an asynchronous materialized view starts a refresh immediately by default and consumes resources. For large data sets, prefer partitioned refreshes and use REFRESH DEFERRED in the SQL when the first refresh must be delayed.",
+ "强制刷新且未指定分区范围时，可能触发全量刷新并耗尽资源；优先限定分区范围。": "A forced refresh without a partition range can trigger a full refresh and exhaust resources; prefer limiting the partition range."
 }

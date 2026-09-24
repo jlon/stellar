@@ -2,7 +2,7 @@ import { I18nService } from '../../../../@core/i18n/i18n.service';
 import { TranslatePipe } from '@ngx-translate/core';
 import { Component, Input, OnInit, OnDestroy, ViewChild, inject } from '@angular/core';
 import { FormBuilder, FormGroup, FormArray, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { NbButtonModule, NbCardModule, NbDialogRef, NbFormFieldModule, NbIconModule, NbInputModule, NbOptionModule, NbSelectModule, NbSpinnerModule, NbTabsetComponent, NbTabsetModule, NbToastrService, NbTooltipModule } from '@nebular/theme';
+import { NbAlertModule, NbButtonModule, NbCardModule, NbDialogRef, NbFormFieldModule, NbIconModule, NbInputModule, NbOptionModule, NbSelectModule, NbSpinnerModule, NbTabsetComponent, NbTabsetModule, NbToastrService, NbTooltipModule } from '@nebular/theme';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
@@ -32,7 +32,8 @@ import {
     NbFormFieldModule,
     NbSelectModule,
     NbOptionModule,
-    NbTooltipModule]
+    NbTooltipModule,
+    NbAlertModule]
 })
 export class ResourceGroupFormComponent implements OnInit, OnDestroy {
   private dialogRef = inject<NbDialogRef<ResourceGroupFormComponent>>(NbDialogRef);
@@ -58,8 +59,6 @@ export class ResourceGroupFormComponent implements OnInit, OnDestroy {
   queryTypeOptions = [
     { value: 'SELECT', label: 'SELECT' },
     { value: 'INSERT', label: 'INSERT' },
-    { value: 'UPDATE', label: 'UPDATE' },
-    { value: 'DELETE', label: 'DELETE' },
   ];
 
   constructor() {
@@ -82,7 +81,7 @@ export class ResourceGroupFormComponent implements OnInit, OnDestroy {
   private initForm(): void {
     this.form = this.fb.group({
       name: ['', [Validators.required, Validators.pattern(/^[a-zA-Z0-9_]+$/)]],
-      cpu_weight: [null, [Validators.min(1), Validators.max(100)]],
+      cpu_weight: [null, [Validators.min(1)]],
       exclusive_cpu_cores: [null, [Validators.min(0)]],
       mem_limit: [''],
       big_query_cpu_second_limit: [null, [Validators.min(0)]],
@@ -147,7 +146,6 @@ export class ResourceGroupFormComponent implements OnInit, OnDestroy {
           query_type: [classifier.query_type ? classifier.query_type.split(',') : []],
           source_ip: [classifier.source_ip || ''],
           db: [classifier.db || ''],
-          weight: [classifier.weight || 1, [Validators.min(1)]],
         }),
       );
     });
@@ -161,7 +159,6 @@ export class ResourceGroupFormComponent implements OnInit, OnDestroy {
         query_type: [[]],
         source_ip: [''],
         db: [''],
-        weight: [1, [Validators.min(1)]],
       }),
     );
   }
@@ -286,7 +283,6 @@ export class ResourceGroupFormComponent implements OnInit, OnDestroy {
         query_type: c.query_type?.length ? c.query_type : undefined,
         source_ip: c.source_ip || undefined,
         db: c.db || undefined,
-        weight: c.weight || 1,
       }));
   }
 

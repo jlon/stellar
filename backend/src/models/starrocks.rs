@@ -203,6 +203,13 @@ pub struct Frontend {
     pub start_time: Option<String>,
 }
 
+/// A StarRocks FE memory profile available for read-only inspection.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct FrontendProfile {
+    pub filename: String,
+    pub captured_at: String,
+}
+
 // Query information
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct Query {

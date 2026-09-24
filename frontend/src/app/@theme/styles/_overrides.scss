@@ -220,7 +220,11 @@
 
   // 详情抽屉需要同时容纳概览与诊断内容；宽屏按视口扩展，窄屏改为全屏。
   // 保留通用 side-sheet 的宽度，避免影响集群编辑等表单型抽屉。
-  .cdk-overlay-pane.side-sheet:has(.load-detail-sheet, .materialized-view-detail-sheet) {
+  .cdk-overlay-pane.side-sheet:has(
+    .load-detail-sheet,
+    .materialized-view-detail-sheet,
+    .frontend-detail-sheet,
+    .backend-detail-sheet) {
     width: clamp(32rem, 60vw, 48rem);
     height: 100vh;
     height: 100dvh;
@@ -231,6 +235,8 @@
 
   .load-detail-sheet,
   .materialized-view-detail-sheet,
+  .frontend-detail-sheet,
+  .backend-detail-sheet,
   .load-import-dialog {
     display: flex !important;
     flex-direction: column;
@@ -244,14 +250,20 @@
   .load-detail-sheet > nb-card-header,
   .load-detail-sheet > nb-card-footer,
   .materialized-view-detail-sheet > nb-card-header,
-  .materialized-view-detail-sheet > nb-card-footer {
+  .materialized-view-detail-sheet > nb-card-footer,
+  .frontend-detail-sheet > nb-card-header,
+  .frontend-detail-sheet > nb-card-footer,
+  .backend-detail-sheet > nb-card-header,
+  .backend-detail-sheet > nb-card-footer {
     display: block;
     flex: 0 0 auto;
     padding: 1rem clamp(1rem, 2vw, 1.5rem);
   }
 
   .load-detail-sheet > nb-card-body,
-  .materialized-view-detail-sheet > nb-card-body {
+  .materialized-view-detail-sheet > nb-card-body,
+  .frontend-detail-sheet > nb-card-body,
+  .backend-detail-sheet > nb-card-body {
     display: block;
     flex: 1 1 auto;
     min-height: 0;
@@ -264,14 +276,18 @@
   .load-detail-sheet nb-card-header > div > :first-child,
   .load-detail-sheet nb-list-item .d-flex > *,
   .materialized-view-detail-sheet nb-card-header > div > :first-child,
-  .materialized-view-detail-sheet nb-list-item .d-flex > * {
+  .materialized-view-detail-sheet nb-list-item .d-flex > *,
+  .frontend-detail-sheet nb-card-header > div > :first-child,
+  .backend-detail-sheet nb-card-header > div > :first-child {
     min-width: 0;
   }
 
   .load-detail-sheet nb-card-header small,
   .load-detail-sheet nb-list-item .d-flex > :last-child,
   .materialized-view-detail-sheet nb-card-header small,
-  .materialized-view-detail-sheet nb-list-item .d-flex > :last-child {
+  .materialized-view-detail-sheet nb-list-item .d-flex > :last-child,
+  .frontend-detail-sheet nb-card-header small,
+  .backend-detail-sheet nb-card-header small {
     overflow-wrap: anywhere;
   }
 
@@ -319,7 +335,11 @@
   }
 
   @media (max-width: 48rem) {
-    .cdk-overlay-pane.side-sheet:has(.load-detail-sheet, .materialized-view-detail-sheet) {
+    .cdk-overlay-pane.side-sheet:has(
+      .load-detail-sheet,
+      .materialized-view-detail-sheet,
+      .frontend-detail-sheet,
+      .backend-detail-sheet) {
       width: 100vw;
     }
   }

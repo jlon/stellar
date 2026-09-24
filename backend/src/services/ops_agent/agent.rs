@@ -4,7 +4,9 @@
 //! Every event is recorded as an `AgentStep` for the frontend invocation chain.
 
 use serde_json::{Value, json};
+use std::collections::HashSet;
 use std::time::Instant;
+use tokio_util::sync::CancellationToken;
 
 use super::tool::{AgentTool, tool_specs};
 use crate::services::ai::llm::ChatClient;
@@ -40,6 +42,33 @@ fn record(steps: &mut Vec<AgentStep>, progress: &Option<ProgressSink>, step: Age
     steps.push(step);
 }
 
+pub(crate) fn tool_call_key(name: &str, args: &Value) -> (String, String) {
+    (name.to_string(), serde_json::to_string(args).expect("JSON value must serialize"))
+}
+
+fn append_tool_exchange(
+    messages: &mut Vec<ChatMessage>,
+    tool_call: &crate::services::ai::types::ToolCallDelta,
+    result: String,
+) {
+    messages.push(ChatMessage {
+        role: "assistant".into(),
+        content: String::new(),
+        tool_calls: Some(vec![crate::services::ai::types::ToolCallDelta {
+            id: tool_call.id.clone(),
+            name: tool_call.name.clone(),
+            arguments: tool_call.arguments.clone(),
+        }]),
+        tool_call_id: None,
+    });
+    messages.push(ChatMessage {
+        role: "tool".into(),
+        content: result,
+        tool_calls: None,
+        tool_call_id: Some(tool_call.id.clone()),
+    });
+}
+
 /// Result of one agent turn.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AgentResult {
@@ -71,21 +100,20 @@ impl OltpDiagnosisAgent {
         history: Vec<ChatMessage>,
         user_message: &str,
     ) -> Result<AgentResult, String> {
-        self.run_with_progress(system, history, user_message, None)
+        self.run_with_progress(system, history, user_message, None, None)
             .await
     }
 
     /// Streaming variant of `run`: pushes every step onto `progress` as it
-    /// happens. When the client disconnects the sink's receive side drops and
-    /// `send`/`is_closed` start failing; the loop then stops at the next round
-    /// boundary instead of burning LLM calls (Flink lesson 9673029ef05 /
-    /// 76594c573b8: cancellation must really release in-flight work).
+    /// happens. A cancellation token interrupts the active model or tool
+    /// future as soon as the HTTP consumer disconnects.
     pub async fn run_with_progress(
         &self,
         system: ChatMessage,
         history: Vec<ChatMessage>,
         user_message: &str,
         progress: Option<ProgressSink>,
+        cancellation: Option<CancellationToken>,
     ) -> Result<AgentResult, String> {
         if !self.llm.is_available() {
             return Err("AI 连接未配置或不可用（请联系管理员在智能助手中配置 AI 连接）".to_string());
@@ -108,7 +136,7 @@ impl OltpDiagnosisAgent {
         // 运行时工具护栏（借鉴 sxdevops/Ongrid 的"工具预算下沉后端"）：
         // 1) 同参重复调用拦截（模型可能重复查同一指标）；
         // 2) 连续空结果计数，达到阈值后提示模型停止空转。
-        let mut call_history: Vec<(String, String)> = Vec::new(); // (name, args_hash)
+        let mut call_history = HashSet::new();
         let mut empty_strikes: usize = 0;
         const MAX_EMPTY_STRIKES: usize = 2;
         // 连续失败计数：换参穷举同一失败工具会烧光轮次（实测 EXPLAIN 连撞 5 次撞上限）。
@@ -116,6 +144,12 @@ impl OltpDiagnosisAgent {
         const MAX_ERROR_STRIKES: usize = 3;
 
         for round in 0..self.max_tool_calls {
+            if cancellation
+                .as_ref()
+                .is_some_and(|token| token.is_cancelled())
+            {
+                return Err("AI 请求已取消".to_string());
+            }
             if let Some(tx) = &progress {
                 if tx.is_closed() {
                     return Err("客户端已断开，本轮取消".to_string());
@@ -126,7 +160,7 @@ impl OltpDiagnosisAgent {
             let completion = {
                 let progress = &progress;
                 self.llm
-                    .chat_stream(&messages, Some(&tools_spec), |text| {
+                    .chat_stream(&messages, Some(&tools_spec), cancellation.clone(), |text| {
                         if let Some(tx) = progress {
                             let _ = tx.send(ProgressEvent::Delta(text));
                         }
@@ -165,8 +199,8 @@ impl OltpDiagnosisAgent {
                 record(&mut steps, &progress, AgentStep::tool(&tc.name, args.clone()));
 
                 // 同参重复调用拦截：相同工具+相同参数不重复执行，返回提示
-                let args_hash = format!("{}:{:?}", tc.name, args);
-                if call_history.iter().any(|(n, _)| n == &args_hash) {
+                let call_key = tool_call_key(&tc.name, &args);
+                if !call_history.insert(call_key) {
                     let note = format!(
                         "工具 {} 已用相同参数查询过（结果未变化），无需重复调用，请基于已有证据继续。",
                         tc.name
@@ -176,17 +210,19 @@ impl OltpDiagnosisAgent {
                         &progress,
                         AgentStep::tool_result(&tc.name, note.clone(), 0),
                     );
-                    messages.push(ChatMessage {
-                        role: "tool".into(),
-                        content: note,
-                        tool_calls: None,
-                        tool_call_id: Some(tc.id.clone()),
-                    });
+                    append_tool_exchange(&mut messages, tc, note);
+                    any_tool = true;
                     continue;
                 }
-                call_history.push((tc.name.clone(), args_hash));
 
-                let result = self.execute_tool(&tc.name, &args).await;
+                let result = if let Some(token) = cancellation.as_ref() {
+                    tokio::select! {
+                        _ = token.cancelled() => return Err("AI 请求已取消".to_string()),
+                        result = self.execute_tool(&tc.name, &args) => result,
+                    }
+                } else {
+                    self.execute_tool(&tc.name, &args).await
+                };
                 let duration_ms = start.elapsed().as_millis() as i64;
                 let (result_text, tool_failed) = match &result {
                     Ok(text) => {
@@ -271,23 +307,7 @@ impl OltpDiagnosisAgent {
                     empty_strikes = 0;
                 }
                 any_tool = true;
-                messages.push(ChatMessage {
-                    role: "assistant".into(),
-                    content: String::new(),
-                    // 序列化时自动转为 OpenAI 嵌套格式（ChatMessage 自定义 Serialize）
-                    tool_calls: Some(vec![crate::services::ai::types::ToolCallDelta {
-                        id: tc.id.clone(),
-                        name: tc.name.clone(),
-                        arguments: tc.arguments.clone(),
-                    }]),
-                    tool_call_id: None,
-                });
-                messages.push(ChatMessage {
-                    role: "tool".into(),
-                    content: result_text,
-                    tool_calls: None,
-                    tool_call_id: Some(tc.id.clone()),
-                });
+                append_tool_exchange(&mut messages, tc, result_text);
             }
 
             if !any_tool {

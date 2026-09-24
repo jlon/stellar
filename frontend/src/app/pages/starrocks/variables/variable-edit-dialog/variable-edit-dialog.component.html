@@ -9,6 +9,24 @@
   <nb-card-body class="dialog-body">
     <span class="variable-name">{{ name }}</span>
     <div class="current-value">{{ '当前值：' | translate }}{{ value || ('(空)' | translate) }}</div>
+    @if (name === 'enable_profile') {
+      <nb-alert class="guidance-alert" status="warning">
+        <nb-icon icon="alert-triangle-outline"></nb-icon>
+        {{ '生产环境不建议长期全局开启 enable_profile；可将 big_query_profile_threshold 设为大于 0 的时长，仅采集慢查询 Profile。' | translate }}
+      </nb-alert>
+    }
+    @if (name === 'big_query_profile_threshold') {
+      <nb-alert class="guidance-alert" status="info">
+        <nb-icon icon="info-outline"></nb-icon>
+        {{ '设为大于 0 的时长时，仅为超过阈值的查询采集 Profile；0s 不会筛选慢查询。' | translate }}
+      </nb-alert>
+    }
+    @if (name === 'query_queue_concurrency_limit' || name === 'query_queue_mem_used_pct_limit' || name === 'query_queue_cpu_used_permille_limit') {
+      <nb-alert class="guidance-alert" status="info">
+        <nb-icon icon="info-outline"></nb-icon>
+        {{ '该参数仅适用于 Query Queue v1；启用 Query Queue v2 后，v1 的并发、内存和 CPU 阈值不生效。' | translate }}
+      </nb-alert>
+    }
     <label class="field-label" for="variable-new-value">{{ '新值' | translate }}</label>
       <input
         id="variable-new-value"

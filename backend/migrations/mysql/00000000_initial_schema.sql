@@ -1857,3 +1857,19 @@ WHERE code IN ('menu:loads', 'api:clusters:loads');
 INSERT IGNORE INTO role_permissions (role_id, permission_id)
 SELECT (SELECT id FROM roles WHERE code = 'super_admin'), id FROM permissions
 WHERE code IN ('menu:loads', 'api:clusters:loads');
+
+-- ---------- 节点诊断权限 ----------
+INSERT IGNORE INTO permissions (code, name, type, resource, action, description) VALUES
+('api:clusters:backends:diagnose', '诊断 Backend 或 Compute Node', 'api', 'clusters', 'backends:diagnose', 'GET /api/clusters/backends/diagnostics');
+
+UPDATE permissions
+SET parent_id = (SELECT _t.id FROM (SELECT id FROM permissions WHERE code = 'menu:nodes:backends') AS _t)
+WHERE code = 'api:clusters:backends:diagnose';
+
+INSERT IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code = 'admin'), id FROM permissions
+WHERE code = 'api:clusters:backends:diagnose';
+
+INSERT IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code = 'super_admin'), id FROM permissions
+WHERE code = 'api:clusters:backends:diagnose';

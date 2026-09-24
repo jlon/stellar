@@ -2,7 +2,9 @@ use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Sqlite, SqlitePool};
 
 use crate::config::RuntimeMode;
-use crate::db::bootstrap::{ensure_jwt_secret, ensure_root_user};
+use crate::db::bootstrap::{
+    ensure_backend_diagnostic_permission, ensure_jwt_secret, ensure_root_user,
+};
 
 /// In-memory SQLite with real migrations, like a fresh install.
 async fn fresh_pool() -> SqlitePool {
@@ -94,6 +96,51 @@ async fn fresh_migrations_provision_secure_permission_requests_and_new_feature_a
         .unwrap();
         assert_eq!(permitted_roles, ["admin", "super_admin"], "{permission}");
     }
+}
+
+#[tokio::test]
+async fn startup_backfills_backend_diagnostic_permission_for_existing_databases() {
+    let pool = fresh_pool().await;
+    sqlx::query(
+        "DELETE FROM role_permissions WHERE permission_id = ( \
+         SELECT id FROM permissions WHERE code = 'api:clusters:backends:diagnose')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query("DELETE FROM permissions WHERE code = 'api:clusters:backends:diagnose'")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    ensure_backend_diagnostic_permission::<Sqlite>(&pool)
+        .await
+        .unwrap();
+    ensure_backend_diagnostic_permission::<Sqlite>(&pool)
+        .await
+        .unwrap();
+
+    let parent: String = sqlx::query_scalar(
+        "SELECT parent.code FROM permissions child \
+         JOIN permissions parent ON parent.id = child.parent_id \
+         WHERE child.code = 'api:clusters:backends:diagnose'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(parent, "menu:nodes:backends");
+
+    let roles: Vec<String> = sqlx::query_scalar(
+        "SELECT r.code FROM role_permissions rp \
+         JOIN roles r ON r.id = rp.role_id \
+         JOIN permissions p ON p.id = rp.permission_id \
+         WHERE p.code = 'api:clusters:backends:diagnose' \
+         ORDER BY r.code",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(roles, ["admin", "super_admin"]);
 }
 
 #[tokio::test]

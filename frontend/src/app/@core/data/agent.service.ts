@@ -49,9 +49,13 @@ export interface ChatRequest {
   session_id?: number;
   cluster_id?: number;
   message: string;
-  /** 页面上下文（sxdevops 页面 Copilot 思路）：当前页面与参数，注入 prompt 感知场景。 */
-  context?: { page: string; params: Record<string, string> };
+  /** 受限页面上下文：仅用于定位当前界面，不能承载任意用户内容。 */
+  context?: AgentPageContext;
 }
+
+export type AgentPageContext =
+  | { page: 'agent'; params?: { session?: number } }
+  | { page: 'current_route'; params: { route: string } };
 
 /** 对话内动作申请（确认卡）。 */
 export interface ChatActionRequest {
@@ -95,7 +99,7 @@ export class AgentService {
    * Stream one chat turn over SSE (`step` -> `answer` -> `done`).
    * Uses fetch + ReadableStream with the Bearer header — the token never
    * travels in the URL. Unsubscribing aborts the connection, which the
-   * backend observes at the next round boundary.
+   * backend cancels the active model/tool request when the connection closes.
    */
   chatStream(req: ChatRequest): Observable<ChatStreamEvent> {
     return new Observable<ChatStreamEvent>((subscriber) => {

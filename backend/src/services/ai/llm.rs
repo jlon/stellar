@@ -8,6 +8,7 @@
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio_stream::StreamExt;
+use tokio_util::sync::CancellationToken;
 
 use super::types::{ChatCompletion, ChatMessage, ToolCallDelta};
 use crate::services::llm::ResolvedLLMProvider;
@@ -225,6 +226,7 @@ impl ChatClient {
         &self,
         messages: &[ChatMessage],
         tools: Option<&Value>,
+        cancellation: Option<CancellationToken>,
         mut on_delta: impl FnMut(String),
     ) -> Result<ChatCompletion, String> {
         let api_key = self.provider.api_key();
@@ -249,7 +251,7 @@ impl ChatClient {
             messages.len(),
             tools.is_some()
         );
-        let resp = self
+        let request = self
             .http
             .post(&url)
             .header("Authorization", format!("Bearer {}", api_key))
@@ -257,23 +259,29 @@ impl ChatClient {
             .timeout(std::time::Duration::from_secs(
                 self.provider.provider.timeout_seconds.max(30) as u64
             ))
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| format!("LLM request failed: {}", e))?;
+            .json(&body);
+        let response = if let Some(token) = cancellation.as_ref() {
+            tokio::select! {
+                _ = token.cancelled() => return Err("AI 请求已取消".to_string()),
+                response = request.send() => response,
+            }
+        } else {
+            request.send().await
+        };
+        let resp = response.map_err(|e| format!("LLM request failed: {}", e))?;
 
         let status = resp.status();
         tracing::debug!("chat_stream resp status: {}", status);
         if !status.is_success() {
-            let text = resp
-                .text()
-                .await
-                .map_err(|e| format!("LLM read body failed: {}", e))?;
-            // 调试留档：失败请求的完整 body（排障用）
-            let _ = std::fs::write(
-                "/tmp/llm_last_body.json",
-                serde_json::to_string_pretty(&body).unwrap_or_default(),
-            );
+            let text = if let Some(token) = cancellation.as_ref() {
+                tokio::select! {
+                    _ = token.cancelled() => return Err("AI 请求已取消".to_string()),
+                    text = resp.text() => text,
+                }
+            } else {
+                resp.text().await
+            }
+            .map_err(|e| format!("LLM read body failed: {}", e))?;
             return Err(format!("LLM API error {}: {}", status, truncate(&text, 500)));
         }
 
@@ -283,7 +291,18 @@ impl ChatClient {
         let mut stream = resp.bytes_stream();
         let mut buf: Vec<u8> = Vec::new();
         let mut saw_data_line = false; // 非 SSE 响应（整包 JSON/HTML）时无 data: 行
-        while let Some(bytes) = stream.next().await {
+        loop {
+            let next = if let Some(token) = cancellation.as_ref() {
+                tokio::select! {
+                    _ = token.cancelled() => return Err("AI 请求已取消".to_string()),
+                    next = stream.next() => next,
+                }
+            } else {
+                stream.next().await
+            };
+            let Some(bytes) = next else {
+                break;
+            };
             let bytes = bytes.map_err(|e| format!("LLM stream error: {}", e))?;
             buf.extend_from_slice(&bytes);
             // 按行切分 SSE
@@ -381,8 +400,12 @@ fn finish_stream(
     })
 }
 
-fn truncate(s: &str, n: usize) -> String {
-    if s.len() <= n { s.to_string() } else { format!("{}...", &s[..n]) }
+pub(crate) fn truncate(s: &str, n: usize) -> String {
+    if s.chars().count() <= n {
+        s.to_string()
+    } else {
+        format!("{}...", s.chars().take(n).collect::<String>())
+    }
 }
 #[cfg(test)]
 mod wire_tests {

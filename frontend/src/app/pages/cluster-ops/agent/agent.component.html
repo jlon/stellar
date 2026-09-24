@@ -307,13 +307,13 @@
                     <nb-icon [icon]="m.copied ? 'checkmark-outline' : 'copy-outline'"></nb-icon>
                   </button>
                   <button class="mini-btn" (click)="regenerate(m)" [nbTooltip]="'换一种思路再答一次' | translate" [attr.aria-label]="'换一种思路再答一次' | translate">
-                    <i class="fas fa-undo-alt" aria-hidden="true"></i>
+                    <nb-icon icon="refresh-outline"></nb-icon>
                   </button>
                   <button class="mini-btn" [class.active]="m.feedback === 'up'" (click)="rate(m, 'up')" [nbTooltip]="'回答有帮助' | translate" [attr.aria-label]="'回答有帮助' | translate" [attr.aria-pressed]="m.feedback === 'up'">
-                    <i class="far fa-thumbs-up" aria-hidden="true"></i>
+                    <nb-icon icon="checkmark-circle-2-outline"></nb-icon>
                   </button>
                   <button class="mini-btn" [class.active]="m.feedback === 'down'" (click)="rate(m, 'down')" [nbTooltip]="'回答没帮助' | translate" [attr.aria-label]="'回答没帮助' | translate" [attr.aria-pressed]="m.feedback === 'down'">
-                    <i class="far fa-thumbs-down" aria-hidden="true"></i>
+                    <nb-icon icon="close-circle-outline"></nb-icon>
                   </button>
                   @if (evidence(m).length > 0) {
                     <button class="evidence-toggle" type="button" (click)="m.evidenceOpen = !m.evidenceOpen" [attr.aria-controls]="evidenceListId(m)" [attr.aria-expanded]="m.evidenceOpen ? 'true' : 'false'" [attr.aria-label]="'诊断证据' | translate">

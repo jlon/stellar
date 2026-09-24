@@ -13,3 +13,6 @@ pub mod types;
 pub use llm::ChatClient;
 pub use session::{AiSessionStore, MessageRecord, SessionInfo};
 pub use types::{AgentStep, ChatCompletion, ChatMessage, ToolCallDelta};
+
+#[cfg(test)]
+mod tests;

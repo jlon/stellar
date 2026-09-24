@@ -23,13 +23,16 @@ export class ApiService {
   }
 
   get<T>(path: string, params?: HttpParams | Record<string, any>): Observable<T> {
-    let httpParams: HttpParams | undefined;
-    if (params instanceof HttpParams) {
-      httpParams = params;
-    } else if (params && typeof params === 'object') {
-      httpParams = new HttpParams({ fromObject: params as any });
-    }
+    const httpParams = this.toHttpParams(params);
     return this.http.get<T>(`${this.resolvedBaseUrl}${path}`, { params: httpParams });
+  }
+
+  getBlob(path: string, params?: HttpParams | Record<string, any>): Observable<Blob> {
+    const httpParams = this.toHttpParams(params);
+    return this.http.get(`${this.resolvedBaseUrl}${path}`, {
+      params: httpParams,
+      responseType: 'blob',
+    });
   }
 
   post<T>(path: string, body: any = {}, customTimeout?: number): Observable<T> {
@@ -49,6 +52,15 @@ export class ApiService {
 
   delete<T>(path: string): Observable<T> {
     return this.http.delete<T>(`${this.resolvedBaseUrl}${path}`);
+  }
+
+  private toHttpParams(params?: HttpParams | Record<string, any>): HttpParams | undefined {
+    if (params instanceof HttpParams) {
+      return params;
+    }
+    return params && typeof params === 'object'
+      ? new HttpParams({ fromObject: params as any })
+      : undefined;
   }
 
   private computeBaseUrl(apiUrl: string): string {

@@ -692,7 +692,7 @@ export class AgentComponent implements OnInit, OnDestroy {
       message: text,
       context: {
         page: 'agent',
-        params: { session: this.activeSessionId ? String(this.activeSessionId) : '' },
+        params: { session: this.activeSessionId ?? undefined },
       },
     });
   }
