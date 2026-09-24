@@ -4,9 +4,8 @@ import { Cluster, ClusterService } from '../../../../@core/data/cluster.service'
 import { ClusterContextService } from '../../../../@core/data/cluster-context.service';
 import { Backend, NodeService } from '../../../../@core/data/node.service';
 import { I18nService } from '../../../../@core/i18n/i18n.service';
-import { ConfirmDialogService } from '../../../../@core/services/confirm-dialog.service';
 import { NbDialogService, NbToastrService } from '@nebular/theme';
-import { BackendsComponent } from '../backends.component';
+import { BackendActionsCellComponent, BackendsComponent } from '../backends.component';
 
 describe('BackendsComponent', () => {
   let fixture: ComponentFixture<BackendsComponent>;
@@ -41,7 +40,6 @@ describe('BackendsComponent', () => {
         { provide: I18nService, useValue: { instant: (key: string) => key } },
         { provide: NbToastrService, useValue: { danger: jasmine.createSpy() } },
         { provide: NbDialogService, useValue: {} },
-        { provide: ConfirmDialogService, useValue: {} },
       ],
     })
       .overrideComponent(BackendsComponent, { set: { template: '', imports: [] } })
@@ -79,7 +77,7 @@ describe('BackendsComponent', () => {
     expect(fixture.componentInstance.settings.columns.UsedPct.title).toBe('缓存使用率');
   });
 
-  it('uses discovered CN identity for diagnostics and never requests BE compaction', () => {
+  it('uses discovered CN identity for node diagnostics only', () => {
     const component = fixture.componentInstance;
     component.deploymentMode = 'shared_data';
     component.selectedBackend = {
@@ -102,5 +100,31 @@ describe('BackendsComponent', () => {
       http_port: '8040',
       include: 'blocking_drivers',
     });
+  });
+
+  it('explains memory trackers and blocked-driver states without hiding engine identifiers', () => {
+    const component = fixture.componentInstance;
+
+    expect(component.memoryTrackerDescription('query_pool')).toContain('正在执行的查询');
+    expect(component.memoryTrackerDescription('jemalloc_metadata')).toContain('内存分配器');
+    expect(component.memoryTrackerDescription('future_tracker')).toContain('引擎内部内存分类');
+    expect(component.blockingDriverStateLabel('INPUT_EMPTY')).toBe('等待上游数据（INPUT_EMPTY）');
+    expect(component.blockingDriverDescription({
+      query_id: 'q1', fragment_id: 'f1', driver_id: 1, state: 'OUTPUT_FULL', fragment_status: 'OK',
+    })).toContain('下游算子的输出缓冲');
+    expect(component.blockingDriverCountText(2, 101, 100)).toBe('已发现 2 条查询中的 101 个等待步骤；当前显示前 100 个');
+  });
+
+  it('keeps backend row actions read-only', () => {
+    const action = new BackendActionsCellComponent();
+    const backend = { BackendId: '2', IP: 'cn-0' } as Backend;
+    const diagnose = jasmine.createSpy('diagnose');
+    action.backend = backend;
+    action.diagnose.subscribe(diagnose);
+
+    action.openDiagnostics(new Event('click'));
+
+    expect(diagnose).toHaveBeenCalledOnceWith(backend);
+    expect((action as unknown as { remove?: unknown }).remove).toBeUndefined();
   });
 });

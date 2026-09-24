@@ -26,11 +26,10 @@ import {
   BlockingDriver,
   NodeService,
 } from '../../../@core/data/node.service';
-import { Cluster, ClusterService } from '../../../@core/data/cluster.service';
+import { Cluster } from '../../../@core/data/cluster.service';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
 import { HasPermissionDirective } from '../../../@core/directives/has-permission.directive';
 import { ErrorHandler } from '../../../@core/utils/error-handler';
-import { ConfirmDialogService } from '../../../@core/services/confirm-dialog.service';
 import { MetricThresholds, renderMetricBadge } from '../../../@core/utils/metric-badge';
 import { assignTableRows } from '../../../@core/utils/table-rows';
 
@@ -42,10 +41,6 @@ import { assignTableRows } from '../../../@core/utils/table-rows';
         [nbTooltip]="'诊断' | translate" [attr.aria-label]="'诊断' | translate" (click)="openDiagnostics($event)">
         <nb-icon icon="activity-outline"></nb-icon>
       </button>
-      <button nbButton ghost size="tiny" status="danger" ngxHasPermission="api:clusters:backends:delete"
-        [nbTooltip]="'删除' | translate" [attr.aria-label]="'删除' | translate" (click)="deleteNode($event)">
-        <nb-icon icon="trash-2-outline"></nb-icon>
-      </button>
     </div>
   `,
   imports: [TranslatePipe, NbButtonModule, NbIconModule, NbTooltipModule, HasPermissionDirective],
@@ -53,20 +48,12 @@ import { assignTableRows } from '../../../@core/utils/table-rows';
 export class BackendActionsCellComponent implements OnDestroy {
   backend: Backend | null = null;
   @Output() diagnose = new EventEmitter<Backend>();
-  @Output() remove = new EventEmitter<Backend>();
   readonly destroyed$ = new Subject<void>();
 
   openDiagnostics(event: Event): void {
     event.stopPropagation();
     if (this.backend) {
       this.diagnose.emit(this.backend);
-    }
-  }
-
-  deleteNode(event: Event): void {
-    event.stopPropagation();
-    if (this.backend) {
-      this.remove.emit(this.backend);
     }
   }
 
@@ -95,14 +82,44 @@ export class BackendActionsCellComponent implements OnDestroy {
 })
 export class BackendsComponent implements OnInit, OnDestroy {
   private static readonly sheetExitDurationMs = 180;
+  private static readonly memoryTrackerDescriptions: Readonly<Record<string, string>> = {
+    query_pool: '正在执行的查询及其执行算子占用的内存。',
+    load: '导入任务处理过程占用的内存。',
+    metadata: '存储元数据（如 Tablet 和 Rowset 信息）占用的内存。',
+    compaction: '本地 Compaction 任务合并数据文件和版本时占用的内存。',
+    schema_change: '数据结构变更任务占用的内存。',
+    page_cache: '节点内存中的数据页缓存，用于复用近期读取的数据页。',
+    update: '数据更新处理过程占用的内存。',
+    clone: '副本克隆或补数任务占用的内存。',
+    consistency: '数据一致性校验任务占用的内存。',
+    datacache: 'Data Cache 模块在内存中维护缓存数据时占用的内存。',
+    jit_cache: '表达式即时编译生成的缓存机器码占用的内存。',
+    replication: '副本同步或复制任务占用的内存。',
+    jemalloc_metadata: 'jemalloc 内存分配器维护分配记录和空闲页时占用的元数据内存。',
+    brpc_iobuf: 'BRPC 网络请求和响应缓冲区占用的内存。',
+  };
+  private static readonly blockingDriverStateLabels: Readonly<Record<string, string>> = {
+    INPUT_EMPTY: '等待上游数据',
+    OUTPUT_FULL: '等待下游释放缓冲',
+    PRECONDITION_BLOCK: '等待前置条件',
+    PENDING_FINISH: '等待后台 I/O 收尾',
+    EPOCH_PENDING_FINISH: '等待当前处理周期收尾',
+    LOCAL_WAITING: '本地等待可用数据',
+  };
+  private static readonly blockingDriverStateDescriptions: Readonly<Record<string, string>> = {
+    INPUT_EMPTY: '上游算子尚未产出可继续处理的数据。',
+    OUTPUT_FULL: '下游算子的输出缓冲尚未腾出空间。',
+    PRECONDITION_BLOCK: '执行所需的前置条件尚未满足。',
+    PENDING_FINISH: 'Sink 已完成，但仍有后台 I/O 任务等待结束。',
+    EPOCH_PENDING_FINISH: '当前流式处理周期仍在等待收尾。',
+    LOCAL_WAITING: '引擎暂在工作线程内等待可用数据。',
+  };
 
   private readonly document = inject(DOCUMENT);
   private readonly nodeService = inject(NodeService);
   private readonly i18n = inject(I18nService);
-  private readonly clusterService = inject(ClusterService);
   private readonly clusterContext = inject(ClusterContextService);
   private readonly toastrService = inject(NbToastrService);
-  private readonly confirmDialogService = inject(ConfirmDialogService);
   private readonly dialogService = inject(NbDialogService);
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly destroy$ = new Subject<void>();
@@ -187,7 +204,6 @@ export class BackendsComponent implements OnInit, OnDestroy {
         componentInitFunction: (instance: BackendActionsCellComponent, cell: any) => {
           instance.backend = cell.getRow().getData() as Backend;
           instance.diagnose.pipe(takeUntil(instance.destroyed$)).subscribe((backend) => this.openDetails(backend));
-          instance.remove.pipe(takeUntil(instance.destroyed$)).subscribe((backend) => this.confirmDelete(backend));
         },
       },
     },
@@ -215,6 +231,33 @@ export class BackendsComponent implements OnInit, OnDestroy {
 
   get blockingDrivers(): BlockingDriver[] {
     return this.diagnostic?.blocking_drivers?.data?.drivers ?? [];
+  }
+
+  memoryTrackerDescription(name: string): string {
+    return BackendsComponent.memoryTrackerDescriptions[name]
+      ?? `StarRocks 引擎内部内存分类“${name}”；当前接口未提供更细说明。`;
+  }
+
+  blockingDriverStateLabel(state: string): string {
+    const normalized = state.trim();
+    return BackendsComponent.blockingDriverStateLabels[normalized]
+      ? `${BackendsComponent.blockingDriverStateLabels[normalized]}（${normalized}）`
+      : `引擎状态（${normalized || 'UNKNOWN'}）`;
+  }
+
+  blockingDriverDescription(driver: BlockingDriver): string {
+    const normalized = driver.state.trim();
+    const description = BackendsComponent.blockingDriverStateDescriptions[normalized]
+      ?? '当前接口只报告该执行步骤处于阻塞队列，未提供具体等待原因。';
+    const fragmentStatus = driver.fragment_status
+      ? ` 执行片段状态：${driver.fragment_status}。`
+      : '';
+    return `${description}${fragmentStatus}`;
+  }
+
+  blockingDriverCountText(queryCount: number, driverCount: number, displayedCount: number): string {
+    const suffix = driverCount > displayedCount ? `；当前显示前 ${displayedCount} 个` : '';
+    return `已发现 ${queryCount} 条查询中的 ${driverCount} 个等待步骤${suffix}`;
   }
 
   ngOnInit(): void {
@@ -365,26 +408,6 @@ export class BackendsComponent implements OnInit, OnDestroy {
     pane.classList.add('side-sheet--closing');
     this.document.querySelector<HTMLElement>('.cdk-overlay-backdrop.side-sheet-backdrop')?.classList.add('side-sheet-backdrop--closing');
     this.document.defaultView?.setTimeout(() => ref.close(), BackendsComponent.sheetExitDurationMs);
-  }
-
-  confirmDelete(backend: Backend): void {
-    const itemName = `${backend.IP}:${backend.HeartbeatPort}`;
-    const nodeType = this.nodeType;
-    const warning = this.isSharedData
-      ? '删除 CN 会立即移除计算节点，请确认该节点已停止接收工作负载。'
-      : '删除 BE 会立即移除节点；常规缩容应先完成下线和副本迁移。';
-    this.confirmDialogService.confirmDelete(itemName, warning).subscribe((confirmed) => {
-      if (!confirmed) {
-        return;
-      }
-      this.nodeService.deleteBackend(backend.IP, backend.HeartbeatPort).subscribe({
-        next: () => {
-          this.toastrService.success(`${nodeType} ${itemName} 已删除`, '成功');
-          this.loadBackends();
-        },
-        error: (error) => this.toastrService.danger(ErrorHandler.extractErrorMessage(error), '删除失败'),
-      });
-    });
   }
 
   formatBytes(bytes: number | null | undefined): string {

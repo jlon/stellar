@@ -298,9 +298,8 @@
   color: var(--text-hint-color);
 }
 
-::ng-deep .frontend-profile-comparison-options {
+::ng-deep .frontend-profile-comparison-options .option-list {
   max-height: min(20rem, 50vh);
-  overflow-y: auto;
   overscroll-behavior: contain;
 }
 

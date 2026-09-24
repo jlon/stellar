@@ -220,10 +220,36 @@ search();`] )));
     expect(component.selectedProfile).toBe(later);
     expect(component.comparisonProfileFilename).toBe(later.filename);
     expect(component.profileFrameUrl).not.toBeNull();
+    expect(getFrontendProfile.calls.allArgs().filter((args) => args[1] === later.filename)).toHaveSize(1);
     expect(getFrontendProfile.calls.argsFor(0)).toEqual([
       jasmine.objectContaining({ theme: 'dark' }),
       later.filename,
     ]);
+    fixture.destroy();
+  });
+
+  it('clears stale comparison evidence while the selected later snapshot loads', () => {
+    const fixture = TestBed.createComponent(FrontendsComponent);
+    const component = fixture.componentInstance;
+    component.activeCluster = { cluster_type: 'starrocks' } as Cluster;
+    component.selectedFrontend = { Name: 'fe-0', IP: 'fe-0', HttpPort: '8030' } as Frontend;
+    (component as any).detailClusterId = 2;
+    const baseline = { filename: 'mem-profile-20260923-120000.html.tar.gz', captured_at: '2026-09-23 12:00:00' };
+    const current = { filename: 'mem-profile-20260923-130000.html.tar.gz', captured_at: '2026-09-23 13:00:00' };
+    const later = { filename: 'mem-profile-20260923-140000.html.tar.gz', captured_at: '2026-09-23 14:00:00' };
+    component.profiles = [later, current, baseline];
+    component.selectedProfile = current;
+    component.comparisonOpen = true;
+    component.comparisonBaselineFilename = baseline.filename;
+    component.comparisonProfileFilename = current.filename;
+    component.profileComparison = { baseline: { rootSamples: 1, stackDepth: 1, frameCount: 1 }, comparison: { rootSamples: 1, stackDepth: 1, frameCount: 1 }, hasCoverageChange: true, changes: [] };
+    getFrontendProfile.and.returnValue(profile.asObservable());
+
+    component.selectComparisonProfile(later.filename);
+
+    expect(component.selectedProfile).toBe(later);
+    expect(component.profileComparison).toBeNull();
+    expect(component.comparisonLoading).toBeTrue();
     fixture.destroy();
   });
 });

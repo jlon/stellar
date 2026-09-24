@@ -120,7 +120,7 @@ fn profile_html_applies_hash_csp_and_rejects_unsupported_markup() {
     let script_start = secured.find("<script>").unwrap() + "<script>".len();
     let script_end = secured[script_start..].find("</script>").unwrap() + script_start;
     let expected_hash = base64::engine::general_purpose::STANDARD
-        .encode(sha2::Sha256::digest(secured[script_start..script_end].as_bytes()));
+        .encode(sha2::Sha256::digest(&secured.as_bytes()[script_start..script_end]));
     assert!(secured.contains("let inverted = true;"));
     assert!(secured.contains("window.addEventListener('resize', function()"));
     assert!(secured.contains("canvas.style.width = '100%';"));

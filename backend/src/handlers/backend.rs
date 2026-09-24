@@ -251,10 +251,9 @@ pub async fn get_backend_diagnostics(
     let detail = BackendDiagnosticDetail::parse(query.include.as_deref())?;
     if detail == Some(BackendDiagnosticDetail::Compaction) && cluster.is_shared_data() {
         return Err(ApiError::invalid_data(
-            "Compaction diagnostics are available only for shared-nothing BE nodes",
+            "CN node diagnostics do not include cluster compaction",
         ));
     }
-
     let client = StarRocksClient::new(cluster.clone(), state.mysql_pool_manager.clone());
     let backend = resolve_backend(&client, &query).await?;
     let http_client = backend_http_client()?;
@@ -284,7 +283,6 @@ pub async fn get_backend_diagnostics(
         ) => (None, Some(probe)),
         _ => (None, None),
     };
-
     let complete = memory.is_available()
         && data_cache.is_available()
         && blocking_drivers
@@ -644,7 +642,8 @@ pub(crate) fn parse_compaction_summary(value: serde_json::Value) -> ApiResult<Co
         max_task_num: json_number(&value, "max_task_num").unwrap_or_default() as i64,
         running_task_num: running_task_num as i64,
         base_task_num: json_number(&value, "base_task_num").unwrap_or_default() as i64,
-        cumulative_task_num: json_number(&value, "cumulative_task_num").unwrap_or_default() as i64,
+        cumulative_task_num: json_number(&value, "cumulative_task_num").unwrap_or_default()
+            as i64,
         candidate_num: json_number(&value, "candidate_num").unwrap_or_default() as i64,
         tablet_num: json_number(&value, "tablet_num").unwrap_or_default() as i64,
     })

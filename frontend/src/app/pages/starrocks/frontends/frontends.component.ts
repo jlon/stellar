@@ -460,6 +460,9 @@ export class FrontendsComponent implements OnInit, OnDestroy {
     this.releaseProfileUrl();
     if (preserveComparison) {
       this.cancelProfileComparison();
+      this.profileComparison = null;
+      this.comparisonError = '';
+      this.comparisonLoading = true;
     } else {
       this.resetProfileComparison();
     }
@@ -505,6 +508,10 @@ export class FrontendsComponent implements OnInit, OnDestroy {
           }
           this.profileLoading = false;
           this.profileError = ErrorHandler.handleClusterError(error);
+          if (preserveComparison && this.comparisonOpen && this.comparisonProfileFilename === profile.filename) {
+            this.comparisonLoading = false;
+            this.comparisonError = this.i18n.instant('无法加载所选对比快照');
+          }
           this.cdr.markForCheck();
         },
       });
@@ -536,7 +543,7 @@ export class FrontendsComponent implements OnInit, OnDestroy {
       return;
     }
     if (this.chatService.isRunning()) {
-      this.profileError = '智能助手正在处理上一条消息，请稍后重试';
+      this.profileError = this.i18n.instant('智能助手正在处理上一条消息，请稍后重试');
       this.cdr.markForCheck();
       return;
     }
@@ -556,7 +563,7 @@ export class FrontendsComponent implements OnInit, OnDestroy {
       this.closeDetails();
       this.sidebarService.expand('assistant-drawer');
     } catch {
-      this.profileError = '无法提取 Profile 采样摘要，请选择其他快照重试';
+      this.profileError = this.i18n.instant('无法提取 Profile 采样摘要，请选择其他快照重试');
       this.cdr.markForCheck();
     } finally {
       this.sendingProfile = false;
