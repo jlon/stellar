@@ -277,7 +277,11 @@
     <nb-card-body>
       <nb-alert status="warning" class="mb-3">
         <nb-icon icon="alert-triangle-outline"></nb-icon>
-        {{ '创建异步物化视图后默认会立即触发刷新并占用资源。大数据量场景优先使用分区刷新，必要时在 SQL 中使用 REFRESH DEFERRED 推迟首刷。' | translate }}
+        {{ '提交 CREATE MATERIALIZED VIEW 成功仅表示创建任务已提交。异步 MV 默认以 IMMEDIATE 进行首次刷新；使用 REFRESH DEFERRED 可推迟首次刷新。' | translate }}
+      </nb-alert>
+      <nb-alert status="info" class="mb-3">
+        <nb-icon icon="info-outline"></nb-icon>
+        {{ '异步 MV 可省略 DISTRIBUTED BY；StarRocks 会使用随机分桶并自动设置桶数。仅在需要显式选择分桶方式时再指定该子句。' | translate }}
       </nb-alert>
       <nb-accordion>
         <nb-accordion-item>
@@ -286,7 +290,6 @@
             <div class="template-section">
               <h6>{{  '异步物化视图（手动刷新）' | translate }}</h6>
               <pre class="code-template">CREATE MATERIALIZED VIEW mv_async_manual
-                DISTRIBUTED BY HASH(order_date) BUCKETS 10
                 REFRESH MANUAL
                 AS SELECT
                 order_date,
@@ -297,7 +300,6 @@
 
               <h6>{{  '异步物化视图（自动刷新）' | translate }}</h6>
               <pre class="code-template">CREATE MATERIALIZED VIEW mv_async_auto
-                DISTRIBUTED BY HASH(order_date) BUCKETS 10
                 REFRESH ASYNC EVERY (INTERVAL 1 HOUR)
                 AS SELECT
                 order_date,
@@ -331,7 +333,7 @@
         ></textarea>
         <small class="form-text text-muted">
           <nb-icon icon="bulb-outline"></nb-icon>
-          {{ '请输入完整的CREATE MATERIALIZED VIEW SQL语句。异步MV需要DISTRIBUTED BY，同步MV（ROLLUP）无需DISTRIBUTED BY。' | translate }}
+          {{ '请输入完整的CREATE MATERIALIZED VIEW SQL语句。异步 MV 至少需指定 DISTRIBUTED BY 和刷新策略之一；省略 DISTRIBUTED BY 时，StarRocks 使用随机分桶并自动设置桶数。同步 MV（ROLLUP）无需 DISTRIBUTED BY。' | translate }}
         </small>
       </div>
     </nb-card-body>

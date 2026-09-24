@@ -16,8 +16,13 @@ import { MaterializedViewsComponent } from '../materialized-views.component';
 describe('MaterializedViewsComponent', () => {
   let component: MaterializedViewsComponent;
   const dialogService = { open: jasmine.createSpy('open') };
+  const toastrService = {
+    danger: jasmine.createSpy('danger'),
+    success: jasmine.createSpy('success'),
+  };
   const materializedViewService = {
     getMaterializedViewDDL: jasmine.createSpy('getMaterializedViewDDL').and.returnValue(of({ ddl: 'CREATE MATERIALIZED VIEW sales_mv' })),
+    createMaterializedView: jasmine.createSpy('createMaterializedView').and.returnValue(of({})),
   };
 
   beforeEach(() => {
@@ -28,7 +33,7 @@ describe('MaterializedViewsComponent', () => {
         { provide: ClusterContextService, useValue: { activeCluster$: new BehaviorSubject(null), getActiveClusterId: () => null } },
         { provide: AuthService, useValue: { isAuthenticated: () => true } },
         { provide: I18nService, useValue: { instant: (key: string) => key } },
-        { provide: NbToastrService, useValue: { danger: jasmine.createSpy('danger'), success: jasmine.createSpy('success') } },
+        { provide: NbToastrService, useValue: toastrService },
         { provide: ConfirmDialogService, useValue: {} },
         { provide: NbDialogService, useValue: dialogService },
         { provide: ChangeDetectorRef, useValue: { detectChanges: () => undefined } },
@@ -38,6 +43,8 @@ describe('MaterializedViewsComponent', () => {
     component = TestBed.runInInjectionContext(() => new MaterializedViewsComponent());
     dialogService.open.calls.reset();
     materializedViewService.getMaterializedViewDDL.calls.reset();
+    materializedViewService.createMaterializedView.calls.reset();
+    toastrService.success.calls.reset();
   });
 
   it('uses a single selected table row as the details entry point', () => {
@@ -88,5 +95,23 @@ describe('MaterializedViewsComponent', () => {
     const pickerValue = new Date(2026, 8, 21, 9, 8);
 
     expect((component as any).normalizeTime(pickerValue)).toBe('2026-09-21T09:08');
+  });
+
+  it('reports a successful create as a submitted task', () => {
+    component.createSQL = 'CREATE MATERIALIZED VIEW sales_mv REFRESH MANUAL AS SELECT 1';
+    spyOn(component, 'closeCreateDialog');
+    spyOn(component, 'loadMaterializedViews');
+
+    component.createMV();
+
+    expect(materializedViewService.createMaterializedView).toHaveBeenCalledOnceWith({
+      sql: component.createSQL,
+    });
+    expect(toastrService.success).toHaveBeenCalledOnceWith(
+      '物化视图创建任务已提交',
+      '成功',
+    );
+    expect(component.closeCreateDialog).toHaveBeenCalled();
+    expect(component.loadMaterializedViews).toHaveBeenCalled();
   });
 });

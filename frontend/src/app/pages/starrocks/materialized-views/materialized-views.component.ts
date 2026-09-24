@@ -566,7 +566,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: () => {
-          this.toastrService.success(this.i18n.instant('物化视图创建成功'), this.i18n.instant('成功'));
+          this.toastrService.success(this.i18n.instant('物化视图创建任务已提交'), this.i18n.instant('成功'));
           this.closeCreateDialog();
           this.loadMaterializedViews();
         },
