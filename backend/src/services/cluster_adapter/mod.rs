@@ -2,13 +2,17 @@
 // Purpose: Provide unified interface for different OLAP engines (StarRocks, Doris)
 // Design: Static dispatch via trait for zero-cost abstraction
 
-mod doris;
+pub(crate) mod doris;
 mod starrocks;
 
 pub use doris::DorisAdapter;
 pub use starrocks::StarRocksAdapter;
 
-use crate::models::{Backend, Cluster, ClusterType, Frontend, Query, RuntimeInfo};
+use crate::models::{
+    Backend, Cluster, ClusterType, Frontend, MaterializedView, MaterializedViewDependencies,
+    MaterializedViewRef, MaterializedViewState, Query, RefreshMaterializedViewRequest,
+    RefreshSchedule, RuntimeInfo,
+};
 use crate::services::MySQLPoolManager;
 use crate::utils::ApiResult;
 use async_trait::async_trait;
@@ -64,36 +68,64 @@ pub trait ClusterAdapter: Send + Sync {
     async fn list_materialized_views(
         &self,
         database: Option<&str>,
-    ) -> ApiResult<Vec<crate::models::MaterializedView>>;
+    ) -> ApiResult<Vec<MaterializedView>>;
+
+    /// Look up one view by complete identity. Never search by name alone.
+    async fn get_materialized_view(
+        &self,
+        reference: &MaterializedViewRef,
+    ) -> ApiResult<MaterializedView>;
 
     /// Get materialized view DDL
-    async fn get_materialized_view_ddl(&self, mv_name: &str) -> ApiResult<String>;
+    async fn get_materialized_view_ddl(&self, reference: &MaterializedViewRef)
+    -> ApiResult<String>;
 
     /// Create materialized view
     async fn create_materialized_view(&self, ddl: &str) -> ApiResult<()>;
 
     /// Drop materialized view
-    async fn drop_materialized_view(&self, mv_name: &str) -> ApiResult<()>;
+    async fn drop_materialized_view(&self, reference: &MaterializedViewRef) -> ApiResult<()>;
 
-    /// Refresh materialized view
-    ///
-    /// # Parameters
-    /// - `mv_name`: Materialized view name
-    /// - `partition_start`: Optional partition start (for partition refresh)
-    /// - `partition_end`: Optional partition end (for partition refresh)
-    /// - `force`: Force refresh (StarRocks specific)
-    /// - `mode`: Refresh mode ("complete", "auto", etc.)
+    /// Refresh a precisely identified view using validated typed parameters.
     async fn refresh_materialized_view(
         &self,
-        mv_name: &str,
-        partition_start: Option<&str>,
-        partition_end: Option<&str>,
-        force: bool,
-        mode: &str,
+        reference: &MaterializedViewRef,
+        request: &RefreshMaterializedViewRequest,
     ) -> ApiResult<()>;
 
-    /// Alter materialized view
-    async fn alter_materialized_view(&self, mv_name: &str, ddl: &str) -> ApiResult<()>;
+    /// Cancel an asynchronous refresh task.
+    async fn cancel_materialized_view_refresh(
+        &self,
+        reference: &MaterializedViewRef,
+        force: bool,
+    ) -> ApiResult<()>;
+
+    /// Pause or resume an asynchronous materialized view through a fixed action.
+    async fn set_materialized_view_state(
+        &self,
+        reference: &MaterializedViewRef,
+        state: MaterializedViewState,
+    ) -> ApiResult<()>;
+
+    /// Rename an asynchronous materialized view using a validated identifier.
+    async fn rename_materialized_view(
+        &self,
+        reference: &MaterializedViewRef,
+        new_name: &str,
+    ) -> ApiResult<()>;
+
+    /// Update the supported refresh schedule without accepting an arbitrary ALTER clause.
+    async fn update_materialized_view_refresh_schedule(
+        &self,
+        reference: &MaterializedViewRef,
+        schedule: RefreshSchedule,
+    ) -> ApiResult<()>;
+
+    /// Return only direct upstream dependencies with evidence metadata.
+    async fn get_materialized_view_dependencies(
+        &self,
+        reference: &MaterializedViewRef,
+    ) -> ApiResult<MaterializedViewDependencies>;
 
     /// List SQL blacklist rules
     async fn list_sql_blacklist(&self) -> ApiResult<Vec<crate::models::SqlBlacklistItem>>;

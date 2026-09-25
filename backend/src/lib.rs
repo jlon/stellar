@@ -86,6 +86,10 @@ mod overview_disk_pressure_test;
 mod frontend_profile_test;
 
 #[cfg(test)]
+#[path = "tests/materialized_view_test.rs"]
+mod materialized_view_test;
+
+#[cfg(test)]
 #[path = "tests/agent_chat_test.rs"]
 mod agent_chat_test;
 

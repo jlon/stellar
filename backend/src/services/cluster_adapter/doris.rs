@@ -3,23 +3,22 @@
 // Reference: https://doris.apache.org/zh-CN/docs/4.x/gettingStarted/quick-start
 
 use super::ClusterAdapter;
-use crate::models::{Backend, Cluster, ClusterType, Frontend, Query, RuntimeInfo};
+use crate::models::{
+    Backend, Cluster, ClusterType, DependencyEvidence, DependencyObject, DependencySource,
+    Frontend, MaterializedView, MaterializedViewDependencies, MaterializedViewDependency,
+    MaterializedViewKind, MaterializedViewRef, MaterializedViewState, Query,
+    RefreshMaterializedViewRequest, RefreshMode, RefreshSchedule, RelationKind, RuntimeInfo,
+};
 use crate::services::{MySQLClient, MySQLPoolManager};
 use crate::utils::{ApiError, ApiResult};
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
+use regex::Regex;
 use reqwest::Client;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
-
-/// Type of materialized view in Doris
-enum MaterializedViewType {
-    /// Async MV (independent table) - database name
-    AsyncMV(String),
-    /// Rollup (sync MV, part of table) - (database name, table name)
-    Rollup(String, String),
-}
 
 pub struct DorisAdapter {
     pub http_client: Client,
@@ -131,72 +130,312 @@ impl DorisAdapter {
         Ok(all_errors)
     }
 
-    /// Find materialized view by name, returns type and location
-    ///
-    /// # Search Strategy
-    /// 1. Check if it's an async MV (independent table) by querying each database
-    /// 2. Check if it's a Rollup (sync MV) by DESC ALL on each table
-    async fn find_materialized_view(
+    fn is_user_database(database: &str) -> bool {
+        !database.starts_with("__") && !matches!(database, "information_schema" | "mysql" | "sys")
+    }
+
+    fn row_string(row: &Value, key: &str) -> Option<String> {
+        row.get(key).and_then(|value| match value {
+            Value::String(value) => Some(value.clone()),
+            Value::Number(value) => Some(value.to_string()),
+            Value::Bool(value) => Some(value.to_string()),
+            _ => None,
+        })
+    }
+
+    async fn list_async_materialized_views(
         &self,
         mysql_client: &MySQLClient,
-        mv_name: &str,
-    ) -> ApiResult<MaterializedViewType> {
-        let (_, db_rows) = mysql_client.query_raw("SHOW DATABASES").await?;
+        database: &str,
+    ) -> ApiResult<Vec<MaterializedView>> {
+        MaterializedViewRef::validate_identifier("database", database)?;
+        let sql = format!(
+            "SELECT Id AS id, Name AS name, State AS state, RefreshState AS refresh_state, \
+             RefreshInfo AS refresh_info, QuerySql AS definition, MvPartitionInfo AS partition_info \
+             FROM mv_infos(\"database\" = \"{database}\")"
+        );
+        let rows = mysql_client.query(&sql).await?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| {
+                let name = Self::row_string(&row, "name")?;
+                Some(MaterializedView {
+                    id: Self::row_string(&row, "id")
+                        .map(|id| format!("async:{database}:{id}"))
+                        .unwrap_or_else(|| format!("async:{database}:{name}")),
+                    name,
+                    database_name: database.to_string(),
+                    kind: MaterializedViewKind::Async,
+                    refresh_type: Self::row_string(&row, "refresh_info")
+                        .filter(|value| !value.is_empty())
+                        .unwrap_or_else(|| "ASYNC".to_string()),
+                    is_active: !Self::row_string(&row, "state")
+                        .is_some_and(|state| state.eq_ignore_ascii_case("PAUSED")),
+                    partition_type: Self::row_string(&row, "partition_info"),
+                    task_id: None,
+                    task_name: None,
+                    last_refresh_start_time: None,
+                    last_refresh_finished_time: None,
+                    last_refresh_duration: None,
+                    last_refresh_state: Self::row_string(&row, "refresh_state"),
+                    rows: None,
+                    definition: Self::row_string(&row, "definition").unwrap_or_default(),
+                })
+            })
+            .collect())
+    }
 
-        for db_row in db_rows {
-            if let Some(db_name) = db_row.first() {
-                if db_name == "information_schema"
-                    || db_name == "mysql"
-                    || db_name == "__internal_schema"
-                {
-                    continue;
+    /// Doris exposes rollup history directly. One query per database avoids a
+    /// table scan, `DESC ... ALL` fan-out, and the former `COUNT(*)` scans.
+    async fn list_rollups(
+        &self,
+        mysql_client: &MySQLClient,
+        database: &str,
+    ) -> ApiResult<Vec<MaterializedView>> {
+        MaterializedViewRef::validate_identifier("database", database)?;
+        let rows = mysql_client
+            .query(&format!("SHOW ALTER TABLE ROLLUP FROM `{database}`"))
+            .await?;
+        let rollups: Vec<_> = rows
+            .into_iter()
+            .filter_map(|row| {
+                if !Self::is_finished_rollup_state(Self::row_string(&row, "State").as_deref()) {
+                    return None;
                 }
+                let name = Self::row_string(&row, "RollupIndexName")?;
+                let table = Self::row_string(&row, "TableName")?;
+                Some(MaterializedView {
+                    id: format!("rollup:{database}:{table}:{name}"),
+                    name,
+                    database_name: database.to_string(),
+                    kind: MaterializedViewKind::Rollup,
+                    refresh_type: "ROLLUP".to_string(),
+                    is_active: true,
+                    partition_type: None,
+                    task_id: None,
+                    task_name: None,
+                    last_refresh_start_time: Self::row_string(&row, "CreateTime"),
+                    last_refresh_finished_time: Self::row_string(&row, "FinishedTime"),
+                    last_refresh_duration: None,
+                    last_refresh_state: Some("FINISHED".to_string()),
+                    rows: None,
+                    definition: format!(
+                        "-- ROLLUP materialized view on table `{database}`.`{table}`"
+                    ),
+                })
+            })
+            .collect();
+        let candidate_count = rollups.len();
+        let unique_rollups = Self::unique_rollups(rollups);
+        if unique_rollups.len() != candidate_count {
+            tracing::warn!(
+                database,
+                skipped = candidate_count - unique_rollups.len(),
+                "Skipping ambiguous Doris ROLLUP names from alter-job metadata"
+            );
+        }
+        Ok(unique_rollups)
+    }
 
-                let check_table_sql = format!("SELECT 1 FROM {}.{} LIMIT 1", db_name, mv_name);
-                if mysql_client.query_raw(&check_table_sql).await.is_ok() {
-                    tracing::debug!(
-                        "[Doris] Found async MV '{}' in database '{}'",
-                        mv_name,
-                        db_name
-                    );
-                    return Ok(MaterializedViewType::AsyncMV(db_name.clone()));
-                }
+    pub(crate) fn is_finished_rollup_state(state: Option<&str>) -> bool {
+        state.is_some_and(|state| state.eq_ignore_ascii_case("FINISHED"))
+    }
 
-                let show_tables_sql = format!("SHOW TABLES FROM {}", db_name);
-                if let Ok((_, table_rows)) = mysql_client.query_raw(&show_tables_sql).await {
-                    for table_row in table_rows {
-                        if let Some(table_name) = table_row.first() {
-                            let desc_sql = format!("DESC {}.{} ALL", db_name, table_name);
-                            if let Ok((cols, index_rows)) = mysql_client.query_raw(&desc_sql).await
-                            {
-                                let index_name_col = cols.iter().position(|c| c == "IndexName");
+    pub(crate) fn unique_rollups(rollups: Vec<MaterializedView>) -> Vec<MaterializedView> {
+        let mut counts = HashMap::<String, usize>::new();
+        for rollup in &rollups {
+            *counts.entry(rollup.name.clone()).or_default() += 1;
+        }
+        rollups
+            .into_iter()
+            .filter(|rollup| counts.get(&rollup.name) == Some(&1))
+            .collect()
+    }
 
-                                if let Some(idx) = index_name_col {
-                                    for index_row in index_rows {
-                                        if let Some(index_name) = index_row.get(idx)
-                                            && index_name == mv_name
-                                        {
-                                            tracing::debug!(
-                                                "[Doris] Found Rollup '{}' in table '{}.{}'",
-                                                mv_name,
-                                                db_name,
-                                                table_name
-                                            );
-                                            return Ok(MaterializedViewType::Rollup(
-                                                db_name.clone(),
-                                                table_name.clone(),
-                                            ));
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+    async fn find_rollup_parent(
+        &self,
+        mysql_client: &MySQLClient,
+        reference: &MaterializedViewRef,
+    ) -> ApiResult<String> {
+        let materialized_view = self
+            .list_rollups(mysql_client, &reference.database)
+            .await?
+            .into_iter()
+            .find(|materialized_view| materialized_view.name == reference.name)
+            .ok_or_else(|| ApiError::not_found(reference.display_name()))?;
+        Self::rollup_parent_from_definition(&materialized_view.definition, reference)
+    }
+
+    fn rollup_parent_from_definition(
+        definition: &str,
+        reference: &MaterializedViewRef,
+    ) -> ApiResult<String> {
+        let parent = definition
+            .strip_prefix("-- ROLLUP materialized view on table `")
+            .and_then(|value| value.rsplit_once("`.`"))
+            .map(|(_, table)| table.trim_end_matches('`').to_string())
+            .ok_or_else(|| ApiError::not_found(reference.display_name()))?;
+        MaterializedViewRef::validate_identifier("ROLLUP parent", &parent)?;
+        Ok(parent)
+    }
+
+    async fn ensure_current_rollup(
+        &self,
+        mysql_client: &MySQLClient,
+        reference: &MaterializedViewRef,
+        parent: &str,
+    ) -> ApiResult<()> {
+        let rows = mysql_client
+            .query(&format!("SHOW DATA FROM `{}`.`{parent}`", reference.database))
+            .await?;
+        if !Self::has_current_rollup(&rows, &reference.name) {
+            return Err(ApiError::not_found(reference.display_name()));
+        }
+        Ok(())
+    }
+
+    /// `SHOW ALTER TABLE ROLLUP` is historical. Before using its parent table
+    /// for a read result or a write, confirm the ROLLUP still exists in the
+    /// current table metadata.
+    async fn current_rollup_parent(
+        &self,
+        mysql_client: &MySQLClient,
+        reference: &MaterializedViewRef,
+    ) -> ApiResult<String> {
+        let parent = self.find_rollup_parent(mysql_client, reference).await?;
+        self.ensure_current_rollup(mysql_client, reference, &parent)
+            .await?;
+        Ok(parent)
+    }
+
+    pub(crate) fn has_current_rollup(rows: &[Value], rollup_name: &str) -> bool {
+        rows.iter()
+            .any(|row| Self::row_string(row, "IndexName").as_deref() == Some(rollup_name))
+    }
+
+    async fn get_materialized_view_exact(
+        &self,
+        mysql_client: &MySQLClient,
+        reference: &MaterializedViewRef,
+    ) -> ApiResult<MaterializedView> {
+        reference.validate()?;
+        let materialized_views = match reference.kind {
+            MaterializedViewKind::Async => {
+                self.list_async_materialized_views(mysql_client, &reference.database)
+                    .await?
+            },
+            MaterializedViewKind::Rollup => {
+                self.list_rollups(mysql_client, &reference.database).await?
+            },
+        };
+        let materialized_view = materialized_views
+            .into_iter()
+            .find(|materialized_view| materialized_view.name == reference.name)
+            .ok_or_else(|| ApiError::not_found(reference.display_name()))?;
+        if reference.kind == MaterializedViewKind::Rollup {
+            let parent =
+                Self::rollup_parent_from_definition(&materialized_view.definition, reference)?;
+            self.ensure_current_rollup(mysql_client, reference, &parent)
+                .await?;
+        }
+        Ok(materialized_view)
+    }
+
+    /// This is deliberately a bounded, conservative extractor rather than a
+    /// SQL parser. It recognizes unambiguous FROM/JOIN identifiers and excludes
+    /// CTE aliases; all results remain partial because Doris definitions can
+    /// include external catalogs and dialect constructs we do not model here.
+    pub(crate) fn extract_doris_dependencies(
+        definition: &str,
+        default_database: &str,
+    ) -> (Vec<MaterializedViewDependency>, Vec<String>) {
+        const MAX_DEFINITION_BYTES: usize = 100_000;
+        const MAX_DEPENDENCIES: usize = 64;
+        static CTE_RE: Lazy<Regex> = Lazy::new(|| {
+            Regex::new(r"(?is)(?:\bwith|,)\s*(`[^`]+`|[a-z_][a-z0-9_]*)\s*(?:\([^)]*\))?\s+as\s*\(")
+                .expect("CTE regex is valid")
+        });
+        static SOURCE_RE: Lazy<Regex> = Lazy::new(|| {
+            Regex::new(r"(?is)\b(?:from|join)\s+((?:`[^`]+`|[a-z_][a-z0-9_]*)(?:\s*\.\s*(?:`[^`]+`|[a-z_][a-z0-9_]*)){0,2})")
+                .expect("source regex is valid")
+        });
+        static COMMENT_RE: Lazy<Regex> =
+            Lazy::new(|| Regex::new(r"(?s)/\*.*?\*/|--[^\r\n]*").expect("comment regex is valid"));
+        static NESTED_SOURCE_RE: Lazy<Regex> = Lazy::new(|| {
+            Regex::new(r"(?is)\b(?:from|join)\s*\(").expect("nested source regex is valid")
+        });
+
+        let mut warnings = Vec::new();
+        if definition.len() > MAX_DEFINITION_BYTES {
+            warnings.push("Doris definition exceeds the dependency parser limit; no inferred dependencies were returned.".to_string());
+            return (Vec::new(), warnings);
+        }
+        let definition_without_comments = COMMENT_RE.replace_all(definition, " ");
+        if definition_without_comments.len() != definition.len() {
+            warnings.push("Comments were ignored while extracting Doris dependencies.".to_string());
+        }
+        if NESTED_SOURCE_RE.is_match(&definition_without_comments) {
+            warnings.push("Nested query sources are not expanded into dependencies.".to_string());
+        }
+        let cte_names: HashSet<String> = CTE_RE
+            .captures_iter(&definition_without_comments)
+            .filter_map(|capture| {
+                capture
+                    .get(1)
+                    .map(|value| Self::unquote_identifier(value.as_str()))
+            })
+            .collect();
+        let mut dependencies = Vec::new();
+        let mut seen = HashSet::new();
+        for capture in SOURCE_RE.captures_iter(&definition_without_comments) {
+            let Some(value) = capture.get(1) else {
+                continue;
+            };
+            let parts: Vec<String> = value
+                .as_str()
+                .split('.')
+                .map(|part| Self::unquote_identifier(part.trim()))
+                .collect();
+            if parts.len() == 1 && cte_names.contains(&parts[0]) {
+                continue;
+            }
+            let (catalog, database, name) = match parts.as_slice() {
+                [name] => (None, Some(default_database.to_string()), name.clone()),
+                [database, name] => (None, Some(database.clone()), name.clone()),
+                [catalog, database, name] => {
+                    warnings.push(format!("External or qualified source `{}` is shown without confirming its object type.", value.as_str()));
+                    (Some(catalog.clone()), Some(database.clone()), name.clone())
+                },
+                _ => continue,
+            };
+            let identity = format!(
+                "{}:{}:{}",
+                catalog.as_deref().unwrap_or_default(),
+                database.as_deref().unwrap_or_default(),
+                name
+            );
+            if !seen.insert(identity) {
+                continue;
+            }
+            dependencies.push(MaterializedViewDependency {
+                object: DependencyObject { catalog, database, name, kind: RelationKind::Unknown },
+                evidence: DependencyEvidence::Partial,
+                source: DependencySource::DorisDefinition,
+                evidence_snippet: Some(value.as_str().to_string()),
+            });
+            if dependencies.len() == MAX_DEPENDENCIES {
+                warnings.push(
+                    "Dependency result reached the parser limit; remaining sources were omitted."
+                        .to_string(),
+                );
+                break;
             }
         }
+        (dependencies, warnings)
+    }
 
-        Err(ApiError::not_found(format!("Materialized view {} not found in any database", mv_name)))
+    fn unquote_identifier(value: &str) -> String {
+        value.trim().trim_matches('`').replace("``", "`")
     }
 
     /// Helper to get string value from JSON
@@ -799,238 +1038,69 @@ impl ClusterAdapter for DorisAdapter {
     async fn list_materialized_views(
         &self,
         database: Option<&str>,
-    ) -> ApiResult<Vec<crate::models::MaterializedView>> {
-        use crate::models::MaterializedView;
-
-        tracing::debug!(
-            "[Doris] Listing materialized views (Rollups) from cluster: {}",
-            self.cluster.name
-        );
-
+    ) -> ApiResult<Vec<MaterializedView>> {
         let mysql_client = self.mysql_client().await?;
-        let mut mvs = Vec::new();
-
-        let databases = if let Some(db) = database {
-            vec![db.to_string()]
-        } else {
-            <Self as ClusterAdapter>::list_databases(self, None).await?
+        let databases = match database {
+            Some(database) => {
+                MaterializedViewRef::validate_identifier("database", database)?;
+                vec![database.to_string()]
+            },
+            None => <Self as ClusterAdapter>::list_databases(self, None).await?,
         };
-
-        for db in databases {
-            if db.starts_with("__") || db == "information_schema" || db == "mysql" || db == "sys" {
-                continue;
+        let mut materialized_views = Vec::new();
+        for database in databases
+            .into_iter()
+            .filter(|database| Self::is_user_database(database))
+        {
+            match self
+                .list_async_materialized_views(&mysql_client, &database)
+                .await
+            {
+                Ok(mut views) => materialized_views.append(&mut views),
+                Err(error) => tracing::warn!(
+                    database,
+                    "Unable to list Doris async materialized views: {error}"
+                ),
             }
-
-            tracing::info!("[Doris] Scanning database: {}", db);
-
-            let tables_sql = format!("SHOW TABLES FROM {}", db);
-            let (_, table_rows) = match mysql_client.query_raw(&tables_sql).await {
-                Ok(result) => {
-                    tracing::info!("[Doris] Found {} tables in database {}", result.1.len(), db);
-                    result
-                },
-                Err(e) => {
-                    tracing::warn!("[Doris] Failed to list tables in database {}: {}", db, e);
-                    continue;
-                },
-            };
-
-            for table_row in table_rows {
-                if let Some(table_name) = table_row.first() {
-                    let row_count = match mysql_client
-                        .query_raw(&format!("SELECT COUNT(*) FROM `{}`.`{}`", db, table_name))
-                        .await
-                    {
-                        Ok((_, count_rows)) => count_rows
-                            .first()
-                            .and_then(|row| row.first())
-                            .and_then(|v| v.parse::<i64>().ok()),
-                        Err(_) => None,
-                    };
-
-                    let create_time = match mysql_client.query_raw(&format!("SELECT CREATE_TIME FROM information_schema.TABLES WHERE TABLE_SCHEMA='{}' AND TABLE_NAME='{}'", db, table_name)).await {
-                        Ok((_, time_rows)) => {
-                            time_rows.first()
-                                .and_then(|row| row.first())
-                                .map(|s| s.to_string())
-                        },
-                        Err(_) => None,
-                    };
-
-                    tracing::info!("[Doris] Checking if {}.{} is async MV", db, table_name);
-                    let is_async_mv = match mysql_client
-                        .query_raw(&format!(
-                            "SHOW CREATE MATERIALIZED VIEW `{}`.`{}`",
-                            db, table_name
-                        ))
-                        .await
-                    {
-                        Ok(_) => {
-                            tracing::info!(
-                                "[Doris] ✅ {}.{} is an async materialized view",
-                                db,
-                                table_name
-                            );
-                            true
-                        },
-                        Err(e) => {
-                            tracing::debug!(
-                                "[Doris] ❌ {}.{} is NOT an async MV: {}",
-                                db,
-                                table_name,
-                                e
-                            );
-                            false
-                        },
-                    };
-
-                    if is_async_mv {
-                        tracing::debug!("[Doris] Found async MV: {}.{}", db, table_name);
-                        mvs.push(MaterializedView {
-                            id: format!("{}.{}", db, table_name),
-                            name: table_name.clone(),
-                            database_name: db.clone(),
-                            text: format!("Async materialized view in database {}", db),
-                            rows: row_count,
-                            refresh_type: "ASYNC".to_string(),
-                            is_active: true,
-                            partition_type: Some("UNPARTITIONED".to_string()),
-                            task_id: None,
-                            task_name: None,
-                            last_refresh_start_time: create_time.clone(),
-                            last_refresh_finished_time: create_time,
-                            last_refresh_duration: None,
-                            last_refresh_state: Some("SUCCESS".to_string()),
-                        });
-                        continue;
-                    }
-
-                    let desc_sql = format!("DESC `{}`.`{}` ALL", db, table_name);
-                    if let Ok((_, rows)) = mysql_client.query_raw(&desc_sql).await {
-                        let mut seen_indexes = std::collections::HashSet::new();
-
-                        for row in rows {
-                            if let Some(index_name) = row.first() {
-                                if index_name == table_name || index_name.is_empty() {
-                                    continue;
-                                }
-
-                                if seen_indexes.insert(index_name.clone()) {
-                                    tracing::debug!(
-                                        "[Doris] Found rollup: {} in table {}.{}",
-                                        index_name,
-                                        db,
-                                        table_name
-                                    );
-
-                                    let (rollup_state, rollup_create_time, rollup_finish_time) =
-                                        match mysql_client
-                                            .query_raw(&format!(
-                                                "SHOW ALTER TABLE ROLLUP FROM `{}`",
-                                                db
-                                            ))
-                                            .await
-                                        {
-                                            Ok((_, job_rows)) => {
-                                                let mut state = "FINISHED".to_string();
-                                                let mut create_t = create_time.clone();
-                                                let mut finish_t = create_time.clone();
-
-                                                for job_row in job_rows {
-                                                    if job_row.get(1) == Some(table_name)
-                                                        && job_row.get(5) == Some(index_name)
-                                                    {
-                                                        state = job_row
-                                                            .get(8)
-                                                            .unwrap_or(&"FINISHED".to_string())
-                                                            .clone();
-                                                        create_t = job_row.get(2).cloned();
-                                                        finish_t = job_row.get(3).cloned();
-                                                        break;
-                                                    }
-                                                }
-                                                (state, create_t, finish_t)
-                                            },
-                                            Err(_) => (
-                                                "FINISHED".to_string(),
-                                                create_time.clone(),
-                                                create_time.clone(),
-                                            ),
-                                        };
-
-                                    mvs.push(MaterializedView {
-                                        id: format!("{}.{}.{}", db, table_name, index_name),
-                                        name: index_name.clone(),
-                                        database_name: db.clone(),
-                                        text: format!("Rollup of table {}.{}", db, table_name),
-                                        rows: row_count,
-                                        refresh_type: "ROLLUP".to_string(),
-                                        is_active: rollup_state == "FINISHED",
-                                        partition_type: Some("UNPARTITIONED".to_string()),
-                                        task_id: None,
-                                        task_name: None,
-                                        last_refresh_start_time: rollup_create_time,
-                                        last_refresh_finished_time: rollup_finish_time,
-                                        last_refresh_duration: None,
-                                        last_refresh_state: Some(rollup_state),
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
+            match self.list_rollups(&mysql_client, &database).await {
+                Ok(mut rollups) => materialized_views.append(&mut rollups),
+                Err(error) => tracing::warn!(
+                    database,
+                    "Unable to list Doris ROLLUP materialized views: {error}"
+                ),
             }
         }
-
-        tracing::info!("[Doris] Retrieved {} materialized views (Rollups)", mvs.len());
-        Ok(mvs)
+        Ok(materialized_views)
     }
 
-    async fn get_materialized_view_ddl(&self, mv_name: &str) -> ApiResult<String> {
-        tracing::debug!(
-            "[Doris] Getting MV DDL for {} from cluster: {}",
-            mv_name,
-            self.cluster.name
-        );
-
+    async fn get_materialized_view(
+        &self,
+        reference: &MaterializedViewRef,
+    ) -> ApiResult<MaterializedView> {
         let mysql_client = self.mysql_client().await?;
+        self.get_materialized_view_exact(&mysql_client, reference)
+            .await
+    }
 
-        let databases = <Self as ClusterAdapter>::list_databases(self, None).await?;
-
-        for db in databases {
-            if db.starts_with("__") || db == "information_schema" || db == "mysql" {
-                continue;
-            }
-
-            let tables_sql = format!("SHOW TABLES FROM {}", db);
-            let (_, table_rows) = mysql_client.query_raw(&tables_sql).await?;
-
-            for table_row in table_rows {
-                if let Some(table_name) = table_row.first() {
-                    let sql = format!("DESC {}.{} ALL", db, table_name);
-                    if let Ok((_, rows)) = mysql_client.query_raw(&sql).await {
-                        for row in rows {
-                            if let Some(index_name) = row.first()
-                                && index_name == mv_name
-                            {
-                                let ddl_sql = format!("SHOW CREATE TABLE {}.{}", db, table_name);
-                                let (_, ddl_rows) = mysql_client.query_raw(&ddl_sql).await?;
-                                if let Some(ddl_row) = ddl_rows.first()
-                                    && let Some(ddl) = ddl_row.get(1)
-                                {
-                                    return Ok(ddl.clone());
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+    async fn get_materialized_view_ddl(
+        &self,
+        reference: &MaterializedViewRef,
+    ) -> ApiResult<String> {
+        let mysql_client = self.mysql_client().await?;
+        let materialized_view = self
+            .get_materialized_view_exact(&mysql_client, reference)
+            .await?;
+        if reference.kind == MaterializedViewKind::Async {
+            let (_, rows) = mysql_client
+                .query_raw(&format!("SHOW CREATE MATERIALIZED VIEW {}", reference.quoted_name()))
+                .await?;
+            return rows
+                .first()
+                .and_then(|row| row.get(1).or_else(|| row.first()))
+                .cloned()
+                .ok_or_else(|| ApiError::not_found(reference.display_name()));
         }
-
-        Err(ApiError::not_found(format!(
-            "Materialized view '{}' not found or DDL unavailable",
-            mv_name
-        )))
+        Ok(materialized_view.definition)
     }
 
     async fn create_materialized_view(&self, ddl: &str) -> ApiResult<()> {
@@ -1043,159 +1113,173 @@ impl ClusterAdapter for DorisAdapter {
         Ok(())
     }
 
-    async fn drop_materialized_view(&self, mv_name: &str) -> ApiResult<()> {
-        tracing::debug!(
-            "[Doris] Dropping materialized view {} from cluster: {}",
-            mv_name,
-            self.cluster.name
-        );
-
+    async fn drop_materialized_view(&self, reference: &MaterializedViewRef) -> ApiResult<()> {
         let mysql_client = self.mysql_client().await?;
-
-        let mv_info = self.find_materialized_view(&mysql_client, mv_name).await?;
-
-        match mv_info {
-            MaterializedViewType::AsyncMV(db_name) => {
-                let sql = format!("DROP MATERIALIZED VIEW IF EXISTS `{}`.`{}`", db_name, mv_name);
-                tracing::debug!("[Doris] Executing: {}", sql);
-                mysql_client.execute(&sql).await?;
-                tracing::info!(
-                    "[Doris] Async materialized view '{}.{}' dropped successfully",
-                    db_name,
-                    mv_name
-                );
+        reference.validate()?;
+        let sql = match reference.kind {
+            MaterializedViewKind::Async => {
+                self.get_materialized_view_exact(&mysql_client, reference)
+                    .await?;
+                format!("DROP MATERIALIZED VIEW {}", reference.quoted_name())
             },
-            MaterializedViewType::Rollup(db_name, table_name) => {
-                let sql =
-                    format!("ALTER TABLE `{}`.`{}` DROP ROLLUP `{}`", db_name, table_name, mv_name);
-                tracing::debug!("[Doris] Executing: {}", sql);
-                mysql_client.execute(&sql).await?;
-                tracing::info!(
-                    "[Doris] Rollup '{}' dropped from table '{}.{}'",
-                    mv_name,
-                    db_name,
-                    table_name
-                );
+            MaterializedViewKind::Rollup => {
+                let parent = self.current_rollup_parent(&mysql_client, reference).await?;
+                format!(
+                    "ALTER TABLE `{}`.`{parent}` DROP ROLLUP `{}`",
+                    reference.database, reference.name
+                )
             },
-        }
-
-        Ok(())
+        };
+        mysql_client.execute(&sql).await.map(|_| ())
     }
 
     async fn refresh_materialized_view(
         &self,
-        mv_name: &str,
-        partition_start: Option<&str>,
-        partition_end: Option<&str>,
-        _force: bool,
-        mode: &str,
+        reference: &MaterializedViewRef,
+        request: &RefreshMaterializedViewRequest,
     ) -> ApiResult<()> {
-        tracing::debug!(
-            "[Doris] Refreshing materialized view {} on cluster: {}",
-            mv_name,
-            self.cluster.name
-        );
-
         let mysql_client = self.mysql_client().await?;
-
-        let mv_info = self.find_materialized_view(&mysql_client, mv_name).await?;
-
-        match mv_info {
-            MaterializedViewType::AsyncMV(db_name) => {
-                let sql = if let (Some(start), Some(end)) = (partition_start, partition_end) {
-                    format!(
-                        "REFRESH MATERIALIZED VIEW {}.{} PARTITION ({}, {})",
-                        db_name, mv_name, start, end
-                    )
-                } else if mode.to_uppercase() == "COMPLETE" {
-                    format!("REFRESH MATERIALIZED VIEW {}.{} COMPLETE", db_name, mv_name)
-                } else {
-                    format!("REFRESH MATERIALIZED VIEW {}.{} AUTO", db_name, mv_name)
-                };
-
-                tracing::debug!("[Doris] Executing: {}", sql);
-                mysql_client.execute(&sql).await?;
-                tracing::info!(
-                    "[Doris] Async materialized view {} refreshed successfully",
-                    mv_name
-                );
-            },
-            MaterializedViewType::Rollup(db_name, table_name) => {
-                tracing::warn!(
-                    "[Doris] Rollup '{}' in table '{}.{}' is automatically maintained",
-                    mv_name,
-                    db_name,
-                    table_name
-                );
-                return Err(ApiError::not_implemented(format!(
-                    "Doris Rollup '{}' is a synchronous materialized view that is automatically maintained in real-time. \
-                     Manual refresh is not supported. The Rollup data is always up-to-date with the base table '{}.{}'.",
-                    mv_name, db_name, table_name
-                )));
+        reference.validate()?;
+        request.validate()?;
+        if reference.kind == MaterializedViewKind::Rollup {
+            return Err(ApiError::not_implemented(
+                "Doris ROLLUP materialized views refresh synchronously",
+            ));
+        }
+        self.get_materialized_view_exact(&mysql_client, reference)
+            .await?;
+        let mut sql = format!("REFRESH MATERIALIZED VIEW {}", reference.quoted_name());
+        if let Some(partition) = &request.partition {
+            sql.push_str(&format!(
+                " PARTITION ({}, {})",
+                partition.start.sql_literal()?,
+                partition.end.sql_literal()?
+            ));
+        }
+        match request.mode {
+            RefreshMode::Auto => sql.push_str(" AUTO"),
+            RefreshMode::Complete => sql.push_str(" COMPLETE"),
+            RefreshMode::Async | RefreshMode::Sync => {
+                return Err(ApiError::invalid_data("Doris refresh mode must be auto or complete"));
             },
         }
-
-        Ok(())
+        mysql_client.execute(&sql).await.map(|_| ())
     }
 
-    async fn alter_materialized_view(&self, mv_name: &str, alter_clause: &str) -> ApiResult<()> {
-        tracing::debug!("[Doris] Altering materialized view on cluster: {}", self.cluster.name);
-
-        let clause_upper = alter_clause.trim().to_uppercase();
-        let mysql_client = self.mysql_client().await?;
-
-        if clause_upper == "ACTIVE" || clause_upper == "INACTIVE" {
-            let mv_info = self.find_materialized_view(&mysql_client, mv_name).await?;
-
-            match mv_info {
-                MaterializedViewType::AsyncMV(db_name) => {
-                    let alter_sql = if clause_upper == "ACTIVE" {
-                        format!("RESUME MATERIALIZED VIEW JOB ON {}.{}", db_name, mv_name)
-                    } else {
-                        format!("PAUSE MATERIALIZED VIEW JOB ON {}.{}", db_name, mv_name)
-                    };
-
-                    tracing::debug!("[Doris] Executing: {}", alter_sql);
-                    mysql_client.execute(&alter_sql).await?;
-                },
-                MaterializedViewType::Rollup(_, _) => {
-                    return Err(ApiError::not_implemented(format!(
-                        "Doris Rollup '{}' is a synchronous materialized view that is always active. \
-                         ACTIVE/INACTIVE operations are only supported for asynchronous materialized views. \
-                         Rollups are automatically maintained in real-time and cannot be paused.",
-                        mv_name
-                    )));
-                },
-            }
-        } else {
-            let alter_sql = format!("ALTER MATERIALIZED VIEW {} {}", mv_name, alter_clause);
-            tracing::debug!("[Doris] Executing: {}", alter_sql);
-
-            let result = mysql_client.execute(&alter_sql).await;
-            if result.is_err() {
-                tracing::debug!(
-                    "[Doris] ALTER MATERIALIZED VIEW failed, trying ALTER TABLE for Rollup"
-                );
-
-                let mv_info = self.find_materialized_view(&mysql_client, mv_name).await?;
-                match mv_info {
-                    MaterializedViewType::AsyncMV(_) => {
-                        result?;
-                    },
-                    MaterializedViewType::Rollup(db_name, table_name) => {
-                        let rollup_sql =
-                            format!("ALTER TABLE `{}`.`{}` {}", db_name, table_name, alter_clause);
-                        tracing::debug!("[Doris] Executing: {}", rollup_sql);
-                        mysql_client.execute(&rollup_sql).await?;
-                    },
-                }
-            } else {
-                result?;
-            }
+    async fn cancel_materialized_view_refresh(
+        &self,
+        reference: &MaterializedViewRef,
+        force: bool,
+    ) -> ApiResult<()> {
+        reference.validate()?;
+        if reference.kind == MaterializedViewKind::Rollup {
+            return Err(ApiError::not_implemented(
+                "Doris ROLLUP materialized views have no refresh job to cancel",
+            ));
         }
+        let suffix = if force { " FORCE" } else { "" };
+        self.mysql_client()
+            .await?
+            .execute(&format!(
+                "CANCEL REFRESH MATERIALIZED VIEW {}{suffix}",
+                reference.quoted_name()
+            ))
+            .await
+            .map(|_| ())
+    }
 
-        tracing::info!("[Doris] Materialized view {} altered successfully", mv_name);
-        Ok(())
+    async fn set_materialized_view_state(
+        &self,
+        reference: &MaterializedViewRef,
+        state: MaterializedViewState,
+    ) -> ApiResult<()> {
+        reference.validate()?;
+        if reference.kind == MaterializedViewKind::Rollup {
+            return Err(ApiError::not_implemented(
+                "Doris ROLLUP materialized views cannot be paused",
+            ));
+        }
+        let action = match state {
+            MaterializedViewState::Active => "RESUME",
+            MaterializedViewState::Inactive => "PAUSE",
+        };
+        self.mysql_client()
+            .await?
+            .execute(&format!("{action} MATERIALIZED VIEW JOB ON {}", reference.quoted_name()))
+            .await
+            .map(|_| ())
+    }
+
+    async fn rename_materialized_view(
+        &self,
+        reference: &MaterializedViewRef,
+        new_name: &str,
+    ) -> ApiResult<()> {
+        reference.validate()?;
+        MaterializedViewRef::validate_identifier("new materialized view", new_name)?;
+        if reference.kind == MaterializedViewKind::Rollup {
+            return Err(ApiError::not_implemented(
+                "Doris ROLLUP renaming is not supported by this API",
+            ));
+        }
+        self.mysql_client()
+            .await?
+            .execute(&format!(
+                "ALTER MATERIALIZED VIEW {} RENAME `{new_name}`",
+                reference.quoted_name()
+            ))
+            .await
+            .map(|_| ())
+    }
+
+    async fn update_materialized_view_refresh_schedule(
+        &self,
+        reference: &MaterializedViewRef,
+        _schedule: RefreshSchedule,
+    ) -> ApiResult<()> {
+        reference.validate()?;
+        Err(ApiError::not_implemented(
+            "Doris refresh schedule updates are unavailable until engine-specific typed syntax is verified",
+        ))
+    }
+
+    async fn get_materialized_view_dependencies(
+        &self,
+        reference: &MaterializedViewRef,
+    ) -> ApiResult<MaterializedViewDependencies> {
+        let mysql_client = self.mysql_client().await?;
+        let materialized_view = self
+            .get_materialized_view_exact(&mysql_client, reference)
+            .await?;
+        if reference.kind == MaterializedViewKind::Rollup {
+            let parent =
+                Self::rollup_parent_from_definition(&materialized_view.definition, reference)?;
+            return Ok(MaterializedViewDependencies {
+                object: reference.clone(),
+                dependencies: vec![MaterializedViewDependency {
+                    object: DependencyObject {
+                        catalog: None,
+                        database: Some(reference.database.clone()),
+                        name: parent,
+                        kind: RelationKind::Table,
+                    },
+                    evidence: DependencyEvidence::Verified,
+                    source: DependencySource::RollupParent,
+                    evidence_snippet: None,
+                }],
+                complete: true,
+                warnings: Vec::new(),
+            });
+        }
+        let (dependencies, mut warnings) =
+            Self::extract_doris_dependencies(&materialized_view.definition, &reference.database);
+        warnings.push("Doris dependencies are conservatively extracted from the stored definition; nested expressions, external catalogs, and unrecognized syntax are not complete lineage.".to_string());
+        Ok(MaterializedViewDependencies {
+            object: reference.clone(),
+            dependencies,
+            complete: false,
+            warnings,
+        })
     }
 
     async fn list_sql_blacklist(&self) -> ApiResult<Vec<crate::models::SqlBlacklistItem>> {

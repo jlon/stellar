@@ -22,6 +22,12 @@ describe('MaterializedViewsComponent', () => {
   };
   const materializedViewService = {
     getMaterializedViewDDL: jasmine.createSpy('getMaterializedViewDDL').and.returnValue(of({ ddl: 'CREATE MATERIALIZED VIEW sales_mv' })),
+    getDependencies: jasmine.createSpy('getDependencies').and.returnValue(of({
+      object: { database: 'analytics', name: 'sales_mv', kind: 'async' },
+      dependencies: [],
+      complete: true,
+      warnings: [],
+    })),
     createMaterializedView: jasmine.createSpy('createMaterializedView').and.returnValue(of({})),
   };
 
@@ -43,12 +49,13 @@ describe('MaterializedViewsComponent', () => {
     component = TestBed.runInInjectionContext(() => new MaterializedViewsComponent());
     dialogService.open.calls.reset();
     materializedViewService.getMaterializedViewDDL.calls.reset();
+    materializedViewService.getDependencies.calls.reset();
     materializedViewService.createMaterializedView.calls.reset();
     toastrService.success.calls.reset();
   });
 
   it('uses a single selected table row as the details entry point', () => {
-    const view = { name: 'sales_mv', database: 'analytics', query: 'SELECT 1' } as MaterializedView;
+    const view = testView();
     const openDetail = spyOn(component, 'viewDetail');
 
     component.onRowSelect({ data: view, row: { index: 4 } } as unknown as RowSelectionEvent);
@@ -64,7 +71,7 @@ describe('MaterializedViewsComponent', () => {
     dialogService.open.and.returnValue({ close: jasmine.createSpy('close'), onBackdropClick, onClose });
     const template = {} as TemplateRef<unknown>;
     (component as unknown as { detailDialogTemplate: TemplateRef<unknown> }).detailDialogTemplate = template;
-    const view = { name: 'sales_mv', database: 'analytics', query: 'SELECT 1' } as MaterializedView;
+    const view = testView();
 
     component.viewDetail(view);
 
@@ -75,7 +82,9 @@ describe('MaterializedViewsComponent', () => {
       closeOnEsc: false,
       dialogClass: 'side-sheet',
     }));
-    expect(materializedViewService.getMaterializedViewDDL).toHaveBeenCalledWith('sales_mv');
+    const reference = { database: 'analytics', name: 'sales_mv', kind: 'async' };
+    expect(materializedViewService.getMaterializedViewDDL).toHaveBeenCalledWith(reference);
+    expect(materializedViewService.getDependencies).toHaveBeenCalledWith(reference);
     expect(component.mvDDL).toBe('CREATE MATERIALIZED VIEW sales_mv');
   });
 
@@ -89,6 +98,17 @@ describe('MaterializedViewsComponent', () => {
 
     expect(event.stopPropagation).toHaveBeenCalled();
     expect(toggle.toggleActive.emit).toHaveBeenCalledWith(toggle.rowData);
+  });
+
+  it('identifies synchronous materialized views by their explicit kind', () => {
+    const toggle = new ActiveToggleRenderComponent();
+    toggle.value = true;
+    toggle.rowData = { kind: 'rollup', refresh_type: 'SYNC' };
+
+    toggle.ngOnInit();
+
+    expect(toggle.isRollup).toBeTrue();
+    expect(toggle.isActive).toBeTrue();
   });
 
   it('normalizes a picker value without changing its local minute', () => {
@@ -115,3 +135,15 @@ describe('MaterializedViewsComponent', () => {
     expect(component.loadMaterializedViews).toHaveBeenCalled();
   });
 });
+
+function testView(): MaterializedView {
+  return {
+    id: 'async:analytics:sales_mv',
+    name: 'sales_mv',
+    database_name: 'analytics',
+    kind: 'async',
+    definition: 'SELECT 1',
+    refresh_type: 'MANUAL',
+    is_active: true,
+  };
+}

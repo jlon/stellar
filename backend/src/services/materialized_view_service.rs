@@ -1,6 +1,13 @@
-use crate::models::MaterializedView;
+use crate::models::{
+    DependencyEvidence, DependencyObject, DependencySource, MaterializedView,
+    MaterializedViewDependencies, MaterializedViewDependency, MaterializedViewKind,
+    MaterializedViewRef, MaterializedViewState, RefreshIntervalUnit,
+    RefreshMaterializedViewRequest, RefreshMode, RefreshSchedule, RelationKind,
+};
 use crate::services::MySQLClient;
 use crate::utils::{ApiError, ApiResult};
+use once_cell::sync::Lazy;
+use regex::Regex;
 
 pub struct MaterializedViewService {
     mysql_client: MySQLClient,
@@ -11,444 +18,380 @@ impl MaterializedViewService {
         Self { mysql_client }
     }
 
-    /// Get all materialized views (both async and sync)
-    /// If database is None, fetches from all databases in the catalog
-    /// Optimized version using information_schema system tables for better performance
     pub async fn list_materialized_views(
         &self,
         database: Option<&str>,
     ) -> ApiResult<Vec<MaterializedView>> {
-        let sql = if let Some(db) = database {
-            format!(
-                "SELECT 
-                    mv.MATERIALIZED_VIEW_ID as `id`,
-                    mv.TABLE_NAME as `name`,
-                    mv.TABLE_SCHEMA as database_name,
-                    mv.REFRESH_TYPE as refresh_type,
-                    mv.IS_ACTIVE as is_active,
-                    mv.PARTITION_TYPE as partition_type,
-                    mv.TASK_ID as task_id,
-                    mv.TASK_NAME as task_name,
-                    mv.LAST_REFRESH_START_TIME as last_refresh_start_time,
-                    mv.LAST_REFRESH_FINISHED_TIME as last_refresh_finished_time,
-                    mv.LAST_REFRESH_DURATION as last_refresh_duration,
-                    mv.LAST_REFRESH_STATE as last_refresh_state,
-                    COALESCE(t.TABLE_ROWS, 0) as `rows`,
-                    mv.MATERIALIZED_VIEW_DEFINITION as `text`
-                FROM information_schema.materialized_views mv
-                LEFT JOIN information_schema.tables t 
-                    ON mv.TABLE_SCHEMA = t.TABLE_SCHEMA AND mv.TABLE_NAME = t.TABLE_NAME
-                WHERE mv.TABLE_SCHEMA = '{}'",
-                db
-            )
-        } else {
-            "SELECT 
-                mv.MATERIALIZED_VIEW_ID as `id`,
-                mv.TABLE_NAME as `name`,
-                mv.TABLE_SCHEMA as database_name,
-                mv.REFRESH_TYPE as refresh_type,
-                mv.IS_ACTIVE as is_active,
-                mv.PARTITION_TYPE as partition_type,
-                mv.TASK_ID as task_id,
-                mv.TASK_NAME as task_name,
-                mv.LAST_REFRESH_START_TIME as last_refresh_start_time,
-                mv.LAST_REFRESH_FINISHED_TIME as last_refresh_finished_time,
-                mv.LAST_REFRESH_DURATION as last_refresh_duration,
-                mv.LAST_REFRESH_STATE as last_refresh_state,
-                COALESCE(t.TABLE_ROWS, 0) as `rows`,
-                mv.MATERIALIZED_VIEW_DEFINITION as `text`
-            FROM information_schema.materialized_views mv
-            LEFT JOIN information_schema.tables t 
-                ON mv.TABLE_SCHEMA = t.TABLE_SCHEMA AND mv.TABLE_NAME = t.TABLE_NAME
-            WHERE mv.TABLE_SCHEMA NOT IN ('information_schema', '_statistics_')"
-                .to_string()
-        };
-
-        tracing::info!("Querying materialized views using information_schema");
-        let results = self.mysql_client.query(&sql).await?;
-        let mvs = Self::parse_system_table_results(results)?;
-        tracing::info!("Fetched {} materialized views", mvs.len());
-
-        Ok(mvs)
+        if let Some(database) = database {
+            MaterializedViewRef::validate_identifier("database", database)?;
+        }
+        self.query_current_materialized_views(database, None).await
     }
 
-    /// Get a specific materialized view by name.
-    /// 先单条 information_schema 查询（覆盖全部异步 MV，通常 1 次命中）；
-    /// 未命中再逐库 SHOW ALTER 找 ROLLUP（同步物化视图不在 information_schema 里）。
-    /// 原逻辑逐库 N×2 次 SHOW，已优化为 1+N（罕见路径）。
-    pub async fn get_materialized_view(&self, mv_name: &str) -> ApiResult<MaterializedView> {
-        if mv_name.is_empty()
-            || !mv_name
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '_')
-        {
-            return Err(ApiError::invalid_data("物化视图名称非法"));
-        }
-        let sql = "SELECT
-                    mv.MATERIALIZED_VIEW_ID as `id`,
-                    mv.TABLE_NAME as `name`,
-                    mv.TABLE_SCHEMA as database_name,
-                    mv.REFRESH_TYPE as refresh_type,
-                    mv.IS_ACTIVE as is_active,
-                    mv.PARTITION_TYPE as partition_type,
-                    mv.TASK_ID as task_id,
-                    mv.TASK_NAME as task_name,
-                    mv.LAST_REFRESH_START_TIME as last_refresh_start_time,
-                    mv.LAST_REFRESH_FINISHED_TIME as last_refresh_finished_time,
-                    mv.LAST_REFRESH_DURATION as last_refresh_duration,
-                    mv.LAST_REFRESH_STATE as last_refresh_state,
-                    COALESCE(t.TABLE_ROWS, 0) as `rows`,
-                    mv.MATERIALIZED_VIEW_DEFINITION as `text`
-                FROM information_schema.materialized_views mv
-                LEFT JOIN information_schema.tables t
-                    ON mv.TABLE_SCHEMA = t.TABLE_SCHEMA AND mv.TABLE_NAME = t.TABLE_NAME";
-        let sql = format!(
-            "{} WHERE mv.TABLE_NAME = '{}' AND mv.TABLE_SCHEMA NOT IN \
-             ('information_schema', '_statistics_') ORDER BY mv.TABLE_SCHEMA LIMIT 1",
-            sql, mv_name
-        );
-        let results = self.mysql_client.query(&sql).await?;
-        if let Some(mv) = Self::parse_system_table_results(results)?
+    pub async fn get_materialized_view(
+        &self,
+        reference: &MaterializedViewRef,
+    ) -> ApiResult<MaterializedView> {
+        reference.validate()?;
+        let mut matches = self
+            .query_current_materialized_views(Some(&reference.database), Some(&reference.name))
+            .await?
             .into_iter()
+            .filter(|materialized_view| materialized_view.kind == reference.kind);
+        let materialized_view = matches
             .next()
-        {
-            return Ok(mv);
-        }
-        // ROLLUP 回退：逐库 SHOW ALTER。
-        let databases = self.get_all_databases().await?;
-        for db in &databases {
-            if let Ok(mvs) = self.get_sync_mvs_from_db(db).await
-                && let Some(mv) = mvs.into_iter().find(|m| m.name == mv_name)
-            {
-                return Ok(mv);
-            }
-        }
-
-        Err(ApiError::not_found(format!("Materialized view '{}' not found", mv_name)))
-    }
-
-    /// Get DDL for a materialized view
-    pub async fn get_materialized_view_ddl(&self, mv_name: &str) -> ApiResult<String> {
-        let mv = self.get_materialized_view(mv_name).await?;
-
-        if mv.refresh_type == "ROLLUP" {
-            if !mv.text.is_empty() {
-                tracing::info!("Using DDL from MV text field for ROLLUP: {}", mv_name);
-                return Ok(mv.text.clone());
-            }
-
-            return Err(ApiError::not_found(format!(
-                "DDL for sync MV (ROLLUP) '{}' not available. ROLLUP MVs are table indexes, not standalone views.",
-                mv_name
+            .ok_or_else(|| ApiError::not_found(reference.display_name()))?;
+        if matches.next().is_some() {
+            return Err(ApiError::invalid_data(format!(
+                "materialized view identity is ambiguous: {}",
+                reference.display_name()
             )));
         }
-
-        let mut session = self.mysql_client.create_session().await?;
-        session.use_database(&mv.database_name).await?;
-
-        let sql1 = format!("SHOW CREATE MATERIALIZED VIEW `{}`.`{}`", mv.database_name, mv_name);
-        tracing::info!("Querying async MV DDL (attempt 1): {}", sql1);
-
-        let (column_names, rows) = match session.execute(&sql1).await {
-            Ok((cols, rows, _)) => (cols, rows),
-            Err(_) => {
-                let sql2 = format!("SHOW CREATE MATERIALIZED VIEW `{}`", mv_name);
-                tracing::info!("Querying async MV DDL (attempt 2): {}", sql2);
-                let (cols, rows, _) = session.execute(&sql2).await?;
-                (cols, rows)
-            },
-        };
-
-        let mut results = Vec::new();
-        for row in rows {
-            let mut obj = serde_json::Map::new();
-            for (i, col_name) in column_names.iter().enumerate() {
-                if let Some(value) = row.get(i) {
-                    obj.insert(col_name.clone(), serde_json::Value::String(value.clone()));
-                }
-            }
-            results.push(serde_json::Value::Object(obj));
-        }
-
-        if let Some(row) = results.first() {
-            if let Some(ddl_val) = row.get("Create Materialized View")
-                && let Some(ddl) = ddl_val.as_str()
-            {
-                return Ok(ddl.to_string());
-            }
-            if let Some(ddl_val) = row.get("Create View")
-                && let Some(ddl) = ddl_val.as_str()
-            {
-                return Ok(ddl.to_string());
-            }
-
-            if let Some(obj) = row.as_object() {
-                for (_key, value) in obj {
-                    if let Some(ddl) = value.as_str() {
-                        return Ok(ddl.to_string());
-                    }
-                }
-            }
-        }
-
-        Err(ApiError::not_found(format!("DDL for materialized view '{}' not found", mv_name)))
+        Ok(materialized_view)
     }
 
-    /// Create a materialized view
+    pub async fn get_materialized_view_ddl(
+        &self,
+        reference: &MaterializedViewRef,
+    ) -> ApiResult<String> {
+        let materialized_view = self.get_materialized_view(reference).await?;
+        if reference.kind == MaterializedViewKind::Rollup {
+            return Ok(materialized_view.definition);
+        }
+
+        let (_, rows) = self
+            .mysql_client
+            .query_raw(&format!("SHOW CREATE MATERIALIZED VIEW {}", reference.quoted_name()))
+            .await?;
+        Self::ddl_from_rows(&rows).ok_or_else(|| ApiError::not_found(reference.display_name()))
+    }
+
     pub async fn create_materialized_view(&self, sql: &str) -> ApiResult<()> {
-        tracing::info!("Creating materialized view with SQL: {}", sql);
-        self.mysql_client.execute(sql).await?;
-        Ok(())
+        if sql.trim().is_empty() {
+            return Err(ApiError::invalid_data("materialized view SQL is empty"));
+        }
+        self.mysql_client.execute(sql).await.map(|_| ())
     }
 
-    /// Drop a materialized view
-    pub async fn drop_materialized_view(&self, mv_name: &str, if_exists: bool) -> ApiResult<()> {
-        let database = if if_exists {
-            match self.get_materialized_view(mv_name).await {
-                Ok(mv) => Some(mv.database_name),
-                Err(_) => None,
-            }
-        } else {
-            Some(self.get_materialized_view(mv_name).await?.database_name)
-        };
-
-        let sql = if let Some(db) = database {
-            if if_exists {
-                format!("DROP MATERIALIZED VIEW IF EXISTS `{}`.`{}`", db, mv_name)
-            } else {
-                format!("DROP MATERIALIZED VIEW `{}`.`{}`", db, mv_name)
-            }
-        } else {
-            format!("DROP MATERIALIZED VIEW IF EXISTS `{}`", mv_name)
-        };
-
-        tracing::info!("Dropping materialized view: {}", sql);
-        self.mysql_client.execute(&sql).await?;
-        Ok(())
+    pub async fn drop_materialized_view(&self, reference: &MaterializedViewRef) -> ApiResult<()> {
+        self.get_materialized_view(reference).await?;
+        self.mysql_client
+            .execute(&format!("DROP MATERIALIZED VIEW {}", reference.quoted_name()))
+            .await
+            .map(|_| ())
     }
 
-    /// Refresh a materialized view
     pub async fn refresh_materialized_view(
         &self,
-        mv_name: &str,
-        partition_start: Option<&str>,
-        partition_end: Option<&str>,
-        force: bool,
-        mode: &str,
+        reference: &MaterializedViewRef,
+        request: &RefreshMaterializedViewRequest,
     ) -> ApiResult<()> {
-        let mv = self.get_materialized_view(mv_name).await?;
+        self.ensure_async(reference)?;
+        request.validate()?;
 
-        let mut sql = format!("REFRESH MATERIALIZED VIEW `{}`.`{}`", mv.database_name, mv_name);
-
-        if let (Some(start), Some(end)) = (partition_start, partition_end) {
-            sql.push_str(&format!(" PARTITION START ('{}') END ('{}')", start, end));
+        let mode = match request.mode {
+            RefreshMode::Async => "ASYNC",
+            RefreshMode::Sync => "SYNC",
+            RefreshMode::Auto | RefreshMode::Complete => {
+                return Err(ApiError::invalid_data("StarRocks refresh mode must be async or sync"));
+            },
+        };
+        let mut sql = format!("REFRESH MATERIALIZED VIEW {}", reference.quoted_name());
+        if let Some(partition) = &request.partition {
+            sql.push_str(&format!(
+                " PARTITION START ({}) END ({})",
+                partition.start.sql_literal()?,
+                partition.end.sql_literal()?
+            ));
         }
-
-        if force {
+        if request.force {
             sql.push_str(" FORCE");
         }
-
-        sql.push_str(&format!(" WITH {} MODE", mode));
-
-        tracing::info!("Refreshing materialized view: {}", sql);
-        self.mysql_client.execute(&sql).await?;
-        Ok(())
+        sql.push_str(&format!(" WITH {mode} MODE"));
+        self.mysql_client.execute(&sql).await.map(|_| ())
     }
 
-    /// Cancel refresh of a materialized view
     pub async fn cancel_refresh_materialized_view(
         &self,
-        mv_name: &str,
+        reference: &MaterializedViewRef,
         force: bool,
     ) -> ApiResult<()> {
-        let mv = self.get_materialized_view(mv_name).await?;
-
-        let sql = if force {
-            format!("CANCEL REFRESH MATERIALIZED VIEW `{}`.`{}` FORCE", mv.database_name, mv_name)
-        } else {
-            format!("CANCEL REFRESH MATERIALIZED VIEW `{}`.`{}`", mv.database_name, mv_name)
-        };
-        tracing::info!("Cancelling refresh for materialized view: {}", sql);
-        self.mysql_client.execute(&sql).await?;
-        Ok(())
+        self.ensure_async(reference)?;
+        let force = if force { " FORCE" } else { "" };
+        self.mysql_client
+            .execute(&format!(
+                "CANCEL REFRESH MATERIALIZED VIEW {}{force}",
+                reference.quoted_name()
+            ))
+            .await
+            .map(|_| ())
     }
 
-    /// Alter a materialized view
-    pub async fn alter_materialized_view(
+    pub async fn set_materialized_view_state(
         &self,
-        mv_name: &str,
-        alter_clause: &str,
+        reference: &MaterializedViewRef,
+        state: MaterializedViewState,
     ) -> ApiResult<()> {
-        let mv = self.get_materialized_view(mv_name).await?;
+        self.ensure_async(reference)?;
+        let state = match state {
+            MaterializedViewState::Active => "ACTIVE",
+            MaterializedViewState::Inactive => "INACTIVE",
+        };
+        self.mysql_client
+            .execute(&format!("ALTER MATERIALIZED VIEW {} {state}", reference.quoted_name()))
+            .await
+            .map(|_| ())
+    }
 
-        let sql = format!(
-            "ALTER MATERIALIZED VIEW `{}`.`{}` {}",
-            mv.database_name, mv_name, alter_clause
-        );
-        tracing::info!("Altering materialized view: {}", sql);
-        self.mysql_client.execute(&sql).await?;
+    pub async fn rename_materialized_view(
+        &self,
+        reference: &MaterializedViewRef,
+        new_name: &str,
+    ) -> ApiResult<()> {
+        self.ensure_async(reference)?;
+        MaterializedViewRef::validate_identifier("new materialized view", new_name)?;
+        self.mysql_client
+            .execute(&format!(
+                "ALTER MATERIALIZED VIEW {} RENAME `{new_name}`",
+                reference.quoted_name()
+            ))
+            .await
+            .map(|_| ())
+    }
+
+    pub async fn update_refresh_schedule(
+        &self,
+        reference: &MaterializedViewRef,
+        schedule: RefreshSchedule,
+    ) -> ApiResult<()> {
+        self.ensure_async(reference)?;
+        let schedule = Self::refresh_schedule_clause(schedule);
+        self.mysql_client
+            .execute(&format!("ALTER MATERIALIZED VIEW {} {schedule}", reference.quoted_name()))
+            .await
+            .map(|_| ())
+    }
+
+    pub async fn get_direct_dependencies(
+        &self,
+        reference: &MaterializedViewRef,
+    ) -> ApiResult<MaterializedViewDependencies> {
+        reference.validate()?;
+        let materialized_view = self.get_materialized_view(reference).await?;
+        if reference.kind == MaterializedViewKind::Rollup {
+            let parent = Self::rollup_parent_from_definition(&materialized_view.definition)
+                .ok_or_else(|| ApiError::not_found(reference.display_name()))?;
+            return Ok(MaterializedViewDependencies {
+                object: reference.clone(),
+                dependencies: vec![MaterializedViewDependency {
+                    object: DependencyObject {
+                        catalog: None,
+                        database: Some(reference.database.clone()),
+                        name: parent,
+                        kind: RelationKind::Table,
+                    },
+                    evidence: DependencyEvidence::Verified,
+                    source: DependencySource::RollupParent,
+                    evidence_snippet: None,
+                }],
+                complete: true,
+                warnings: Vec::new(),
+            });
+        }
+
+        let sql = Self::direct_dependencies_query(reference);
+        let rows = match self.mysql_client.query(&sql).await {
+            Ok(rows) => rows,
+            Err(error) => {
+                return Ok(MaterializedViewDependencies {
+                    object: reference.clone(),
+                    dependencies: Vec::new(),
+                    complete: false,
+                    warnings: vec![format!(
+                        "StarRocks dependency metadata is unavailable for this cluster or user: {error}"
+                    )],
+                });
+            },
+        };
+        let dependencies = rows
+            .into_iter()
+            .filter_map(|row| {
+                let name = row.get("name")?.as_str()?.to_string();
+                Some(MaterializedViewDependency {
+                    object: DependencyObject {
+                        catalog: Self::row_string(&row, "catalog"),
+                        database: Self::row_string(&row, "database_name"),
+                        name,
+                        kind: Self::relation_kind(Self::row_string(&row, "object_type").as_deref()),
+                    },
+                    evidence: DependencyEvidence::Verified,
+                    source: DependencySource::StarRocksObjectDependencies,
+                    evidence_snippet: None,
+                })
+            })
+            .collect();
+
+        Ok(MaterializedViewDependencies {
+            object: reference.clone(),
+            dependencies,
+            complete: true,
+            warnings: Vec::new(),
+        })
+    }
+
+    fn ensure_async(&self, reference: &MaterializedViewRef) -> ApiResult<()> {
+        reference.validate()?;
+        if reference.kind == MaterializedViewKind::Rollup {
+            return Err(ApiError::not_implemented(
+                "ROLLUP materialized views are maintained synchronously and cannot use this operation",
+            ));
+        }
         Ok(())
     }
 
-    /// Get all databases (excluding system databases)
-    async fn get_all_databases(&self) -> ApiResult<Vec<String>> {
-        let sql = "SHOW DATABASES";
-        tracing::debug!("Querying databases: {}", sql);
-
-        let results = self.mysql_client.query(sql).await?;
-        let mut databases = Vec::new();
-
-        for row in results {
-            if let Some(db_name) = row.get("Database").and_then(|v| v.as_str()) {
-                if db_name != "information_schema" && db_name != "_statistics_" {
-                    databases.push(db_name.to_string());
-                }
-            }
-        }
-
-        tracing::debug!("Found {} databases", databases.len());
-        Ok(databases)
-    }
-
-    /// Get sync materialized views (ROLLUP) from a specific database
-    async fn get_sync_mvs_from_db(&self, database: &str) -> ApiResult<Vec<MaterializedView>> {
-        let sql = format!("SHOW ALTER MATERIALIZED VIEW FROM `{}`", database);
-        tracing::debug!("Querying sync MVs: {}", sql);
-
-        let results = self.mysql_client.query(&sql).await?;
-        Self::parse_sync_mv_results(results, database)
-    }
-
-    /// Parse SHOW ALTER MATERIALIZED VIEW result (sync MVs/ROLLUP)
-    fn parse_sync_mv_results(
-        results: Vec<serde_json::Value>,
-        database: &str,
+    async fn query_current_materialized_views(
+        &self,
+        database: Option<&str>,
+        name: Option<&str>,
     ) -> ApiResult<Vec<MaterializedView>> {
-        let mut mvs = Vec::new();
-
-        for row in results {
-            let state = row.get("State").and_then(|v| v.as_str()).unwrap_or("");
-
-            if state != "FINISHED" {
-                continue;
-            }
-
-            let mv_name = row
-                .get("RollupIndexName")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-
-            let table_name = row
-                .get("TableName")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-
-            let mv = MaterializedView {
-                id: format!("sync_{}", mv_name),
-                name: mv_name.clone(),
-                database_name: database.to_string(),
-                refresh_type: "ROLLUP".to_string(),
-                is_active: true,
-                partition_type: None,
-                task_id: None,
-                task_name: None,
-                last_refresh_start_time: row
-                    .get("CreateTime")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-                last_refresh_finished_time: row
-                    .get("FinishedTime")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-                last_refresh_duration: None,
-                last_refresh_state: Some("SUCCESS".to_string()),
-                rows: None,
-                text: format!("-- Sync materialized view on table: {}", table_name),
-            };
-
-            mvs.push(mv);
+        let mut filters = Vec::new();
+        match database {
+            Some(database) => {
+                filters.push(format!("mv.TABLE_SCHEMA = {}", Self::sql_literal(database)))
+            },
+            None => filters
+                .push("mv.TABLE_SCHEMA NOT IN ('information_schema', '_statistics_')".to_string()),
         }
-
-        Ok(mvs)
+        if let Some(name) = name {
+            filters.push(format!("mv.TABLE_NAME = {}", Self::sql_literal(name)));
+        }
+        let sql = format!(
+            "SELECT mv.MATERIALIZED_VIEW_ID AS id, mv.TABLE_NAME AS name, \
+             mv.TABLE_SCHEMA AS database_name, mv.REFRESH_TYPE AS refresh_type, \
+             mv.IS_ACTIVE AS is_active, mv.PARTITION_TYPE AS partition_type, \
+             mv.TASK_ID AS task_id, mv.TASK_NAME AS task_name, \
+             mv.LAST_REFRESH_START_TIME AS last_refresh_start_time, \
+             mv.LAST_REFRESH_FINISHED_TIME AS last_refresh_finished_time, \
+             mv.LAST_REFRESH_DURATION AS last_refresh_duration, \
+             mv.LAST_REFRESH_STATE AS last_refresh_state, COALESCE(t.TABLE_ROWS, 0) AS rows, \
+             mv.MATERIALIZED_VIEW_DEFINITION AS definition \
+             FROM information_schema.materialized_views mv \
+             LEFT JOIN information_schema.tables t \
+             ON mv.TABLE_SCHEMA = t.TABLE_SCHEMA AND mv.TABLE_NAME = t.TABLE_NAME \
+             WHERE {}",
+            filters.join(" AND ")
+        );
+        Self::parse_system_table_results(self.mysql_client.query(&sql).await?)
     }
 
-    /// Parse results from information_schema system tables
     fn parse_system_table_results(
         results: Vec<serde_json::Value>,
     ) -> ApiResult<Vec<MaterializedView>> {
-        let mut mvs = Vec::new();
+        Ok(results
+            .into_iter()
+            .map(|row| {
+                let refresh_type =
+                    Self::row_string(&row, "refresh_type").unwrap_or_else(|| "UNKNOWN".to_string());
+                MaterializedView {
+                    id: Self::row_string(&row, "id").unwrap_or_default(),
+                    name: Self::row_string(&row, "name").unwrap_or_default(),
+                    database_name: Self::row_string(&row, "database_name").unwrap_or_default(),
+                    kind: Self::kind_from_refresh_type(&refresh_type),
+                    refresh_type,
+                    is_active: Self::row_string(&row, "is_active")
+                        .is_some_and(|value| value == "true" || value == "1"),
+                    partition_type: Self::row_string(&row, "partition_type"),
+                    task_id: Self::row_string(&row, "task_id"),
+                    task_name: Self::row_string(&row, "task_name"),
+                    last_refresh_start_time: Self::row_string(&row, "last_refresh_start_time"),
+                    last_refresh_finished_time: Self::row_string(
+                        &row,
+                        "last_refresh_finished_time",
+                    ),
+                    last_refresh_duration: Self::row_string(&row, "last_refresh_duration"),
+                    last_refresh_state: Self::row_string(&row, "last_refresh_state"),
+                    rows: row.get("rows").and_then(|value| {
+                        value
+                            .as_i64()
+                            .or_else(|| value.as_str().and_then(|value| value.parse().ok()))
+                    }),
+                    definition: Self::row_string(&row, "definition").unwrap_or_default(),
+                }
+            })
+            .collect())
+    }
 
-        for row in results {
-            let mv = MaterializedView {
-                id: row
-                    .get("id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
-                name: row
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
-                database_name: row
-                    .get("database_name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
-                refresh_type: row
-                    .get("refresh_type")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("UNKNOWN")
-                    .to_string(),
-                is_active: row
-                    .get("is_active")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s == "true" || s == "1")
-                    .unwrap_or(false),
-                partition_type: row
-                    .get("partition_type")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-                task_id: row
-                    .get("task_id")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-                task_name: row
-                    .get("task_name")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-                last_refresh_start_time: row
-                    .get("last_refresh_start_time")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-                last_refresh_finished_time: row
-                    .get("last_refresh_finished_time")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-                last_refresh_duration: row
-                    .get("last_refresh_duration")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-                last_refresh_state: row
-                    .get("last_refresh_state")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-                rows: row.get("rows").and_then(|v| {
-                    v.as_i64()
-                        .or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok()))
-                }),
-                text: row
-                    .get("text")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
-            };
-
-            mvs.push(mv);
+    pub(crate) fn kind_from_refresh_type(refresh_type: &str) -> MaterializedViewKind {
+        if refresh_type.eq_ignore_ascii_case("SYNC") || refresh_type.eq_ignore_ascii_case("ROLLUP")
+        {
+            MaterializedViewKind::Rollup
+        } else {
+            MaterializedViewKind::Async
         }
+    }
 
-        Ok(mvs)
+    pub(crate) fn rollup_parent_from_definition(definition: &str) -> Option<String> {
+        static SOURCE_RE: Lazy<Regex> = Lazy::new(|| {
+            Regex::new(r"(?is)\bfrom\s+(?:(?:`[^`]+`|[a-z_][a-z0-9_]*)\s*\.\s*){0,2}(`[^`]+`|[a-z_][a-z0-9_]*)")
+                .expect("ROLLUP source regex is valid")
+        });
+        SOURCE_RE
+            .captures(definition)
+            .and_then(|capture| capture.get(1))
+            .map(|name| name.as_str().trim_matches('`').replace("``", "`"))
+    }
+
+    fn ddl_from_rows(rows: &[Vec<String>]) -> Option<String> {
+        rows.first()
+            .and_then(|row| row.get(1).or_else(|| row.first()))
+            .cloned()
+    }
+
+    fn row_string(row: &serde_json::Value, key: &str) -> Option<String> {
+        row.get(key).and_then(|value| match value {
+            serde_json::Value::String(value) => Some(value.clone()),
+            serde_json::Value::Number(value) => Some(value.to_string()),
+            serde_json::Value::Bool(value) => Some(value.to_string()),
+            _ => None,
+        })
+    }
+
+    fn relation_kind(value: Option<&str>) -> RelationKind {
+        match value.unwrap_or_default().to_ascii_uppercase().as_str() {
+            value if value.contains("MATERIALIZED") => RelationKind::MaterializedView,
+            value if value.contains("VIEW") => RelationKind::View,
+            value if value.contains("TABLE") => RelationKind::Table,
+            _ => RelationKind::Unknown,
+        }
+    }
+
+    pub(crate) fn direct_dependencies_query(reference: &MaterializedViewRef) -> String {
+        let database = Self::sql_literal(&reference.database);
+        let name = Self::sql_literal(&reference.name);
+        format!(
+            "SELECT ref_object_name AS name, ref_object_database AS database_name, \
+             ref_object_catalog AS catalog, ref_object_type AS object_type \
+             FROM sys.object_dependencies \
+             WHERE object_database = {database} AND object_name = {name} \
+             AND object_type = 'MATERIALIZED_VIEW'"
+        )
+    }
+
+    fn refresh_unit_keyword(unit: RefreshIntervalUnit) -> &'static str {
+        unit.sql_keyword()
+    }
+
+    pub(crate) fn refresh_schedule_clause(schedule: RefreshSchedule) -> String {
+        match schedule {
+            RefreshSchedule::Manual => "REFRESH MANUAL".to_string(),
+            RefreshSchedule::Scheduled { interval, unit } => format!(
+                "REFRESH SCHEDULE EVERY (INTERVAL {interval} {})",
+                Self::refresh_unit_keyword(unit)
+            ),
+        }
+    }
+
+    fn sql_literal(value: &str) -> String {
+        format!("'{}'", value.replace('\'', "''"))
     }
 }

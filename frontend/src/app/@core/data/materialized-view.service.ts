@@ -1,123 +1,140 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
+
 import { ApiService } from './api.service';
 
-export interface MaterializedView {
-  id?: number;
-  name: string;
+export type MaterializedViewKind = 'async' | 'rollup';
+export type RefreshMode = 'async' | 'sync' | 'auto' | 'complete';
+export type MaterializedViewState = 'active' | 'inactive';
+
+export interface MaterializedViewRef {
   database: string;
-  database_name?: string; // Alias for database
-  query: string;
-  status: string;
-  rows?: number;
-  created_time?: string;
-  last_refresh_time?: string;
-  last_refresh_finished_time?: string;
-  last_refresh_state?: string;
-  last_refresh_error_message?: string;
-  refresh_type?: string;
-  is_active?: boolean;
-  refresh_status?: string;
+  name: string;
+  kind: MaterializedViewKind;
+}
+
+export interface MaterializedView {
+  id: string;
+  name: string;
+  database_name: string;
+  kind: MaterializedViewKind;
+  definition: string;
+  refresh_type: string;
+  is_active: boolean;
   partition_type?: string;
+  task_id?: string;
+  task_name?: string;
+  last_refresh_start_time?: string;
+  last_refresh_finished_time?: string;
+  last_refresh_duration?: string;
+  last_refresh_state?: string;
+  last_refresh_error_code?: string;
+  last_refresh_error_message?: string;
+  last_refresh_start_partition?: string;
+  last_refresh_end_partition?: string;
+  last_refresh_force_refresh?: boolean;
+  rows?: number;
 }
 
 export interface MaterializedViewDDL {
+  object: MaterializedViewRef;
   ddl: string;
 }
 
-export interface CreateMaterializedViewRequest {
-  name?: string;
+export interface DependencyObject {
+  catalog?: string;
   database?: string;
+  name: string;
+  kind: 'table' | 'view' | 'materialized_view' | 'unknown';
+}
+
+export interface MaterializedViewDependency {
+  object: DependencyObject;
+  evidence: 'verified' | 'partial' | 'annotated' | 'unknown';
+  source: 'star_rocks_object_dependencies' | 'rollup_parent' | 'doris_definition';
+  evidence_snippet?: string;
+}
+
+export interface MaterializedViewDependencies {
+  object: MaterializedViewRef;
+  dependencies: MaterializedViewDependency[];
+  complete: boolean;
+  warnings: string[];
+}
+
+export interface CreateMaterializedViewRequest {
   sql: string;
-  properties?: Record<string, string>;
-  [key: string]: any; // Allow any additional fields
+}
+
+export interface PartitionValue {
+  type: 'date' | 'timestamp' | 'integer' | 'string';
+  value: string | number;
 }
 
 export interface RefreshMaterializedViewRequest {
-  priority?: 'LOW' | 'NORMAL' | 'HIGH';
-  mode?: string;
+  mode: RefreshMode;
   force?: boolean;
-  partition_start?: string;
-  partition_end?: string;
-  [key: string]: any; // Allow any additional fields
+  partition?: { start: PartitionValue; end: PartitionValue };
 }
 
-export interface AlterMaterializedViewRequest {
-  alter_clause: string;
+export interface RefreshSchedule {
+  kind: 'manual' | 'scheduled';
+  interval?: number;
+  unit?: 'hour' | 'day';
 }
 
-@Injectable({
-  providedIn: 'root',
-})
+@Injectable({ providedIn: 'root' })
 export class MaterializedViewService {
   private api = inject(ApiService);
 
-
-  // All methods now use backend routes without cluster ID
-  // The active cluster is determined by the backend
-
   getMaterializedViews(database?: string): Observable<MaterializedView[]> {
-    const params = database ? { database } : {};
-    return this.api.get<MaterializedView[]>(
-      `/clusters/materialized_views`,
-      params
-    );
+    return this.api.get<MaterializedView[]>('/clusters/materialized_views', database ? { database } : {});
   }
 
-  getMaterializedView(mvName: string): Observable<MaterializedView> {
-    return this.api.get<MaterializedView>(
-      `/clusters/materialized_views/${mvName}`
-    );
+  getMaterializedView(reference: MaterializedViewRef): Observable<MaterializedView> {
+    return this.api.get<MaterializedView>(this.objectPath(reference));
   }
 
-  getMaterializedViewDDL(mvName: string): Observable<MaterializedViewDDL> {
-    return this.api.get<MaterializedViewDDL>(
-      `/clusters/materialized_views/${mvName}/ddl`
-    );
+  getMaterializedViewDDL(reference: MaterializedViewRef): Observable<MaterializedViewDDL> {
+    return this.api.get<MaterializedViewDDL>(`${this.objectPath(reference)}/ddl`);
   }
 
-  createMaterializedView(
-    request: CreateMaterializedViewRequest
-  ): Observable<any> {
-    return this.api.post(`/clusters/materialized_views`, request);
+  getDependencies(reference: MaterializedViewRef): Observable<MaterializedViewDependencies> {
+    return this.api.get<MaterializedViewDependencies>(`${this.objectPath(reference)}/dependencies`);
   }
 
-  deleteMaterializedView(
-    mvName: string,
-    ifExists: boolean = true
-  ): Observable<any> {
-    return this.api.delete(
-      `/clusters/materialized_views/${mvName}?if_exists=${ifExists}`
-    );
+  createMaterializedView(request: CreateMaterializedViewRequest): Observable<unknown> {
+    return this.api.post('/clusters/materialized_views', request);
+  }
+
+  deleteMaterializedView(reference: MaterializedViewRef): Observable<unknown> {
+    return this.api.delete(this.objectPath(reference));
   }
 
   refreshMaterializedView(
-    mvName: string,
-    request: RefreshMaterializedViewRequest
-  ): Observable<any> {
-    return this.api.post(
-      `/clusters/materialized_views/${mvName}/refresh`,
-      request
-    );
+    reference: MaterializedViewRef,
+    request: RefreshMaterializedViewRequest,
+  ): Observable<unknown> {
+    return this.api.post(`${this.objectPath(reference)}/refresh`, request);
   }
 
-  cancelRefreshMaterializedView(
-    mvName: string,
-    force: boolean = false
-  ): Observable<any> {
-    return this.api.post(
-      `/clusters/materialized_views/${mvName}/cancel?force=${force}`,
-      {}
-    );
+  cancelRefreshMaterializedView(reference: MaterializedViewRef, force = false): Observable<unknown> {
+    return this.api.post(`${this.objectPath(reference)}/cancel?force=${force}`, {});
   }
 
-  alterMaterializedView(
-    mvName: string,
-    request: AlterMaterializedViewRequest
-  ): Observable<any> {
-    return this.api.put(
-      `/clusters/materialized_views/${mvName}`,
-      request
-    );
+  setMaterializedViewState(reference: MaterializedViewRef, state: MaterializedViewState): Observable<unknown> {
+    return this.api.put(`${this.objectPath(reference)}/state`, { state });
+  }
+
+  renameMaterializedView(reference: MaterializedViewRef, newName: string): Observable<unknown> {
+    return this.api.put(`${this.objectPath(reference)}/rename`, { new_name: newName });
+  }
+
+  updateRefreshSchedule(reference: MaterializedViewRef, schedule: RefreshSchedule): Observable<unknown> {
+    return this.api.put(`${this.objectPath(reference)}/refresh-schedule`, { schedule });
+  }
+
+  private objectPath(reference: MaterializedViewRef): string {
+    return `/clusters/materialized_views/${encodeURIComponent(reference.database)}/${encodeURIComponent(reference.name)}/${reference.kind}`;
   }
 }

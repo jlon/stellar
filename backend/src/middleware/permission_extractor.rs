@@ -447,23 +447,32 @@ fn extract_resource_groups_action(segments: &[&str], method: &str) -> Option<Str
 
 /// Extract action for materialized_views paths
 fn extract_materialized_views_action(segments: &[&str], method: &str) -> Option<String> {
-    if segments.get(1) != Some(&"materialized_views") || segments.len() < 3 {
+    if segments.get(1) != Some(&"materialized_views") {
         return None;
     }
 
     match segments.len() {
-        3 => match method {
+        2 => match method {
+            "GET" => Some("materialized_views".to_string()),
+            "POST" => Some("materialized_views:create".to_string()),
+            _ => None,
+        },
+        // Exact object identity: /materialized_views/:database/:name/:kind
+        5 => match method {
             "GET" => Some("materialized_views:get".to_string()),
-            "PUT" => Some("materialized_views:update".to_string()),
             "DELETE" => Some("materialized_views:delete".to_string()),
             _ => None,
         },
-        4 => {
-            let action = segments.get(3)?;
+        6 => {
+            let action = segments.get(5)?;
             match (*action, method) {
                 ("ddl", "GET") => Some("materialized_views:ddl".to_string()),
+                ("dependencies", "GET") => Some("materialized_views:get".to_string()),
                 ("refresh", "POST") => Some("materialized_views:refresh".to_string()),
                 ("cancel", "POST") => Some("materialized_views:cancel".to_string()),
+                ("state", "PUT") | ("rename", "PUT") | ("refresh-schedule", "PUT") => {
+                    Some("materialized_views:alter".to_string())
+                },
                 _ => None,
             }
         },

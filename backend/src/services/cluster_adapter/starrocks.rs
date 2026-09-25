@@ -531,12 +531,27 @@ impl ClusterAdapter for StarRocksAdapter {
         mv_service.list_materialized_views(database).await
     }
 
-    async fn get_materialized_view_ddl(&self, mv_name: &str) -> ApiResult<String> {
+    async fn get_materialized_view(
+        &self,
+        reference: &crate::models::MaterializedViewRef,
+    ) -> ApiResult<crate::models::MaterializedView> {
+        use crate::services::MaterializedViewService;
+
+        let mysql_client = self.mysql_client().await?;
+        MaterializedViewService::new(mysql_client)
+            .get_materialized_view(reference)
+            .await
+    }
+
+    async fn get_materialized_view_ddl(
+        &self,
+        reference: &crate::models::MaterializedViewRef,
+    ) -> ApiResult<String> {
         use crate::services::MaterializedViewService;
 
         let mysql_client = self.mysql_client().await?;
         let mv_service = MaterializedViewService::new(mysql_client);
-        mv_service.get_materialized_view_ddl(mv_name).await
+        mv_service.get_materialized_view_ddl(reference).await
     }
 
     async fn create_materialized_view(&self, ddl: &str) -> ApiResult<()> {
@@ -547,35 +562,92 @@ impl ClusterAdapter for StarRocksAdapter {
         mv_service.create_materialized_view(ddl).await
     }
 
-    async fn drop_materialized_view(&self, mv_name: &str) -> ApiResult<()> {
-        use crate::services::MaterializedViewService;
-
-        let mysql_client = self.mysql_client().await?;
-        let mv_service = MaterializedViewService::new(mysql_client);
-        mv_service.drop_materialized_view(mv_name, false).await
-    }
-
-    async fn refresh_materialized_view(
+    async fn drop_materialized_view(
         &self,
-        mv_name: &str,
-        partition_start: Option<&str>,
-        partition_end: Option<&str>,
-        force: bool,
-        mode: &str,
+        reference: &crate::models::MaterializedViewRef,
     ) -> ApiResult<()> {
         use crate::services::MaterializedViewService;
 
         let mysql_client = self.mysql_client().await?;
         let mv_service = MaterializedViewService::new(mysql_client);
-        mv_service
-            .refresh_materialized_view(mv_name, partition_start, partition_end, force, mode)
+        mv_service.drop_materialized_view(reference).await
+    }
+
+    async fn refresh_materialized_view(
+        &self,
+        reference: &crate::models::MaterializedViewRef,
+        request: &crate::models::RefreshMaterializedViewRequest,
+    ) -> ApiResult<()> {
+        use crate::services::MaterializedViewService;
+
+        let mysql_client = self.mysql_client().await?;
+        MaterializedViewService::new(mysql_client)
+            .refresh_materialized_view(reference, request)
             .await
     }
 
-    async fn alter_materialized_view(&self, _mv_name: &str, ddl: &str) -> ApiResult<()> {
+    async fn cancel_materialized_view_refresh(
+        &self,
+        reference: &crate::models::MaterializedViewRef,
+        force: bool,
+    ) -> ApiResult<()> {
+        use crate::services::MaterializedViewService;
+
         let mysql_client = self.mysql_client().await?;
-        mysql_client.execute(ddl).await?;
-        Ok(())
+        MaterializedViewService::new(mysql_client)
+            .cancel_refresh_materialized_view(reference, force)
+            .await
+    }
+
+    async fn set_materialized_view_state(
+        &self,
+        reference: &crate::models::MaterializedViewRef,
+        state: crate::models::MaterializedViewState,
+    ) -> ApiResult<()> {
+        use crate::services::MaterializedViewService;
+
+        let mysql_client = self.mysql_client().await?;
+        MaterializedViewService::new(mysql_client)
+            .set_materialized_view_state(reference, state)
+            .await
+    }
+
+    async fn rename_materialized_view(
+        &self,
+        reference: &crate::models::MaterializedViewRef,
+        new_name: &str,
+    ) -> ApiResult<()> {
+        use crate::services::MaterializedViewService;
+
+        let mysql_client = self.mysql_client().await?;
+        MaterializedViewService::new(mysql_client)
+            .rename_materialized_view(reference, new_name)
+            .await
+    }
+
+    async fn update_materialized_view_refresh_schedule(
+        &self,
+        reference: &crate::models::MaterializedViewRef,
+        schedule: crate::models::RefreshSchedule,
+    ) -> ApiResult<()> {
+        use crate::services::MaterializedViewService;
+
+        let mysql_client = self.mysql_client().await?;
+        MaterializedViewService::new(mysql_client)
+            .update_refresh_schedule(reference, schedule)
+            .await
+    }
+
+    async fn get_materialized_view_dependencies(
+        &self,
+        reference: &crate::models::MaterializedViewRef,
+    ) -> ApiResult<crate::models::MaterializedViewDependencies> {
+        use crate::services::MaterializedViewService;
+
+        let mysql_client = self.mysql_client().await?;
+        MaterializedViewService::new(mysql_client)
+            .get_direct_dependencies(reference)
+            .await
     }
 
     async fn list_sql_blacklist(&self) -> ApiResult<Vec<crate::models::SqlBlacklistItem>> {

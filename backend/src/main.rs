@@ -61,11 +61,14 @@ use stellar::{AppState, handlers, middleware, services};
         handlers::materialized_view::list_materialized_views,
         handlers::materialized_view::get_materialized_view,
         handlers::materialized_view::get_materialized_view_ddl,
+        handlers::materialized_view::get_materialized_view_dependencies,
         handlers::materialized_view::create_materialized_view,
         handlers::materialized_view::delete_materialized_view,
         handlers::materialized_view::refresh_materialized_view,
         handlers::materialized_view::cancel_refresh_materialized_view,
-        handlers::materialized_view::alter_materialized_view,
+        handlers::materialized_view::update_materialized_view_state,
+        handlers::materialized_view::rename_materialized_view,
+        handlers::materialized_view::update_materialized_view_refresh_schedule,
 
         handlers::query::list_catalogs,
         handlers::query::list_databases,
@@ -175,10 +178,26 @@ use stellar::{AppState, handlers, middleware, services};
             models::Frontend,
             models::FrontendProfile,
             models::MaterializedView,
+            models::MaterializedViewRef,
+            models::MaterializedViewKind,
             models::CreateMaterializedViewRequest,
             models::RefreshMaterializedViewRequest,
-            models::AlterMaterializedViewRequest,
+            models::RefreshMode,
+            models::PartitionRange,
+            models::PartitionValue,
+            models::RenameMaterializedViewRequest,
+            models::UpdateMaterializedViewStateRequest,
+            models::MaterializedViewState,
+            models::UpdateRefreshScheduleRequest,
+            models::RefreshSchedule,
+            models::RefreshIntervalUnit,
             models::MaterializedViewDDL,
+            models::MaterializedViewDependencies,
+            models::MaterializedViewDependency,
+            models::DependencyObject,
+            models::DependencyEvidence,
+            models::DependencySource,
+            models::RelationKind,
             models::Query,
             models::QueryExecuteRequest,
             models::QueryExecuteResponse,
@@ -730,22 +749,37 @@ where
                 .post(handlers::materialized_view::create_materialized_view),
         )
         .route(
-            "/api/clusters/materialized_views/:mv_name",
+            "/api/clusters/materialized_views/:database/:name/:kind",
             get(handlers::materialized_view::get_materialized_view)
-                .delete(handlers::materialized_view::delete_materialized_view)
-                .put(handlers::materialized_view::alter_materialized_view),
+                .delete(handlers::materialized_view::delete_materialized_view),
         )
         .route(
-            "/api/clusters/materialized_views/:mv_name/ddl",
+            "/api/clusters/materialized_views/:database/:name/:kind/ddl",
             get(handlers::materialized_view::get_materialized_view_ddl),
         )
         .route(
-            "/api/clusters/materialized_views/:mv_name/refresh",
+            "/api/clusters/materialized_views/:database/:name/:kind/dependencies",
+            get(handlers::materialized_view::get_materialized_view_dependencies),
+        )
+        .route(
+            "/api/clusters/materialized_views/:database/:name/:kind/refresh",
             post(handlers::materialized_view::refresh_materialized_view),
         )
         .route(
-            "/api/clusters/materialized_views/:mv_name/cancel",
+            "/api/clusters/materialized_views/:database/:name/:kind/cancel",
             post(handlers::materialized_view::cancel_refresh_materialized_view),
+        )
+        .route(
+            "/api/clusters/materialized_views/:database/:name/:kind/state",
+            put(handlers::materialized_view::update_materialized_view_state),
+        )
+        .route(
+            "/api/clusters/materialized_views/:database/:name/:kind/rename",
+            put(handlers::materialized_view::rename_materialized_view),
+        )
+        .route(
+            "/api/clusters/materialized_views/:database/:name/:kind/refresh-schedule",
+            put(handlers::materialized_view::update_materialized_view_refresh_schedule),
         )
         .route("/api/clusters/profiles", get(handlers::profile::list_profiles))
         .route("/api/clusters/profiles/:query_id", get(handlers::profile::get_profile))

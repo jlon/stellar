@@ -10,6 +10,10 @@ import { LocalDataSource, Angular2SmartTableModule, RowSelectionEvent } from 'an
 import {
   MaterializedViewService,
   MaterializedView,
+  MaterializedViewDependencies,
+  MaterializedViewRef,
+  RefreshMode,
+  RefreshSchedule,
 } from '../../../@core/data/materialized-view.service';
 import { ClusterService, Cluster } from '../../../@core/data/cluster.service';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
@@ -20,6 +24,7 @@ import { assignTableRows } from '../../../@core/utils/table-rows';
 import { ActiveToggleRenderComponent } from './active-toggle-render.component';
 import { BadgeRenderComponent, BadgeInfo } from './badge-render.component';
 import { FormsModule } from '@angular/forms';
+import * as dagre from 'dagre';
 
 
 @Component({
@@ -129,32 +134,45 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
   editDialogRef: any;
   selectedMV: MaterializedView | null = null;
   mvDDL = '';
+  dependencies: MaterializedViewDependencies | null = null;
+  dependenciesLoading = false;
+  dependencyGraphNodes: Array<{
+    id: string;
+    label: string;
+    subtitle: string;
+    type: string;
+    evidence?: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }> = [];
+  dependencyGraphEdges: Array<{ from: { x: number; y: number }; to: { x: number; y: number } }> = [];
+  dependencyGraphWidth = 600;
+  dependencyGraphHeight = 250;
 
   // Create form
   createSQL = '';
   creating = false;
 
   // Refresh form
-  refreshMode = 'ASYNC';
+  refreshMode: RefreshMode = 'async';
   refreshForce = false;
   refreshPartitionStart = '';
   refreshPartitionEnd = '';
   refreshing = false;
 
   // Edit form
-  editAction = 'rename'; // rename | refresh_strategy | properties | advanced
+  editAction = 'rename'; // rename | refresh_strategy
   editNewName = '';
-  editRefreshStrategy = 'MANUAL';
+  editRefreshStrategy: 'manual' | 'scheduled' = 'manual';
   editRefreshInterval = '1';
-  editRefreshUnit = 'HOUR'; // HOUR | DAY | WEEK | MONTH
-  editPropertyKey = '';
-  editPropertyValue = '';
-  editAdvancedClause = '';
+  editRefreshUnit: 'hour' | 'day' = 'hour';
   editing = false;
 
   refreshModeOptions = [
-    { value: 'ASYNC', label: this.i18n.instant('异步模式') },
-    { value: 'SYNC', label: this.i18n.instant('同步模式') },
+    { value: 'async' as const, label: this.i18n.instant('异步模式') },
+    { value: 'sync' as const, label: this.i18n.instant('同步模式') },
   ];
 
   settings = {
@@ -195,8 +213,8 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
         renderComponent: BadgeRenderComponent,
         componentInitFunction: (instance: BadgeRenderComponent) => {
           instance.getBadge = (_value: any, row: MaterializedView) => ({
-            status: row?.refresh_type === 'ROLLUP' ? 'primary' : 'info',
-            label: row?.refresh_type === 'ROLLUP' ? '同步' : '异步',
+            status: row?.kind === 'rollup' ? 'primary' : 'info',
+            label: row?.kind === 'rollup' ? '同步' : '异步',
           });
         },
       },
@@ -235,7 +253,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
         renderComponent: BadgeRenderComponent,
         componentInitFunction: (instance: BadgeRenderComponent) => {
           instance.getBadge = (value: string, row: MaterializedView): BadgeInfo | null => {
-            if (row?.refresh_type === 'ROLLUP') return null;
+            if (row?.kind === 'rollup') return null;
             const map: Record<string, BadgeInfo> = {
               SUCCESS: { status: 'success', label: this.i18n.instant('成功') },
               RUNNING: { status: 'info', label: this.i18n.instant('运行中') },
@@ -592,6 +610,10 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
     this.captureDetailTrigger(rowIndex);
     this.selectedMV = mv;
     this.mvDDL = '';
+    this.dependencies = null;
+    this.dependenciesLoading = true;
+    this.dependencyGraphNodes = [];
+    this.dependencyGraphEdges = [];
     const dialogRef = this.dialogService.open(template, {
       autoFocus: false,
       backdropClass: 'side-sheet-backdrop',
@@ -612,6 +634,10 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
       this.detailRequest$.next();
       this.selectedMV = null;
       this.mvDDL = '';
+      this.dependencies = null;
+      this.dependenciesLoading = false;
+      this.dependencyGraphNodes = [];
+      this.dependencyGraphEdges = [];
       this.detailDialogRef = undefined;
       this.sheetClosing = false;
       this.restoreDetailFocus();
@@ -619,11 +645,11 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
 
     this.detailRequest$.next();
     this.mvService
-      .getMaterializedViewDDL( mv.name)
+      .getMaterializedViewDDL(this.objectRef(mv))
       .pipe(takeUntil(this.destroy$), takeUntil(this.detailRequest$), timeout(20000))
       .subscribe({
         next: (result) => {
-          if (this.detailDialogRef === dialogRef && this.selectedMV?.name === mv.name) {
+          if (this.detailDialogRef === dialogRef && this.isSelected(mv)) {
             this.mvDDL = result.ddl;
           }
         },
@@ -635,6 +661,30 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
             ErrorHandler.extractErrorMessage(error),
             '加载DDL失败',
           );
+        },
+      });
+
+    this.mvService
+      .getDependencies(this.objectRef(mv))
+      .pipe(takeUntil(this.destroy$), takeUntil(this.detailRequest$), timeout(20000))
+      .subscribe({
+        next: (dependencies) => {
+          if (this.detailDialogRef === dialogRef && this.isSelected(mv)) {
+            this.dependencies = dependencies;
+            this.dependenciesLoading = false;
+            this.buildDependencyGraph(mv, dependencies);
+          }
+        },
+        error: (error) => {
+          if (this.detailDialogRef === dialogRef && this.isSelected(mv)) {
+            this.dependencies = {
+              object: this.objectRef(mv),
+              dependencies: [],
+              complete: false,
+              warnings: [ErrorHandler.extractErrorMessage(error)],
+            };
+            this.dependenciesLoading = false;
+          }
         },
       });
   }
@@ -688,7 +738,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
 
   openRefreshDialog(mv: MaterializedView) {
     this.selectedMV = mv;
-    this.refreshMode = 'ASYNC';
+    this.refreshMode = this.activeCluster?.cluster_type === 'doris' ? 'auto' : 'async';
     this.refreshForce = false;
     this.refreshPartitionStart = '';
     this.refreshPartitionEnd = '';
@@ -710,11 +760,15 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
 
     this.refreshing = true;
     this.mvService
-      .refreshMaterializedView( this.selectedMV.name, {
+      .refreshMaterializedView(this.objectRef(this.selectedMV), {
         mode: this.refreshMode,
         force: this.refreshForce,
-        partition_start: this.refreshPartitionStart || undefined,
-        partition_end: this.refreshPartitionEnd || undefined,
+        partition: this.refreshPartitionStart && this.refreshPartitionEnd
+          ? {
+              start: { type: 'string', value: this.refreshPartitionStart },
+              end: { type: 'string', value: this.refreshPartitionEnd },
+            }
+          : undefined,
       })
       .pipe(takeUntil(this.destroy$))
       .subscribe({
@@ -747,7 +801,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
       .subscribe((confirmed) => {
         if (confirmed) {
           this.mvService
-            .cancelRefreshMaterializedView( mv.name, false)
+            .cancelRefreshMaterializedView(this.objectRef(mv), false)
             .pipe(takeUntil(this.destroy$))
             .subscribe({
               next: () => {
@@ -770,7 +824,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
 
   deleteMV(mv: MaterializedView, tableEvent?: any) {
     this.mvService
-      .deleteMaterializedView( mv.name, true)
+      .deleteMaterializedView(this.objectRef(mv))
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: () => {
@@ -793,7 +847,6 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
 
   // Toggle Active/Inactive state
   toggleActiveState(mv: MaterializedView) {
-    const newState = mv.is_active ? 'INACTIVE' : 'ACTIVE';
     const action = mv.is_active ? '停用' : '激活';
     
     this.confirmDialogService
@@ -806,7 +859,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
       .subscribe((confirmed) => {
         if (confirmed) {
           this.mvService
-            .alterMaterializedView( mv.name, { alter_clause: newState })
+            .setMaterializedViewState(this.objectRef(mv), mv.is_active ? 'inactive' : 'active')
             .pipe(takeUntil(this.destroy$))
             .subscribe({
               next: () => {
@@ -832,12 +885,9 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
     this.selectedMV = mv;
     this.editAction = 'rename';
     this.editNewName = mv.name;
-    this.editRefreshStrategy = 'MANUAL';
+    this.editRefreshStrategy = 'manual';
     this.editRefreshInterval = '1';
-    this.editRefreshUnit = 'HOUR';
-    this.editPropertyKey = '';
-    this.editPropertyValue = '';
-    this.editAdvancedClause = '';
+    this.editRefreshUnit = 'hour';
     this.editing = false;
 
     this.editDialogRef = this.dialogService.open(this.editDialogTemplate, {
@@ -855,8 +905,6 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
   editMV() {
     if (!this.selectedMV) return;
 
-    let alterClause = '';
-    
     switch (this.editAction) {
       case 'rename':
         if (!this.editNewName.trim()) {
@@ -867,42 +915,25 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
           this.toastrService.warning(this.i18n.instant('新名称与当前名称相同'), this.i18n.instant('输入错误'));
           return;
         }
-        alterClause = `RENAME ${this.editNewName}`;
         break;
         
       case 'refresh_strategy':
-        if (this.editRefreshStrategy === 'MANUAL') {
-          alterClause = 'REFRESH MANUAL';
-        } else {
-          const interval = parseInt(this.editRefreshInterval);
-          if (!interval || interval <= 0) {
-            this.toastrService.warning(this.i18n.instant('请输入有效的刷新间隔'), this.i18n.instant('输入错误'));
+        if (this.editRefreshStrategy === 'scheduled') {
+          const interval = Number(this.editRefreshInterval);
+          if (!Number.isInteger(interval) || interval < 1 || interval > 8760) {
+            this.toastrService.warning(this.i18n.instant('请输入 1 到 8760 之间的整数刷新间隔'), this.i18n.instant('输入错误'));
             return;
           }
-          alterClause = `REFRESH ASYNC EVERY(INTERVAL ${interval} ${this.editRefreshUnit})`;
         }
-        break;
-        
-      case 'properties':
-        if (!this.editPropertyKey.trim() || !this.editPropertyValue.trim()) {
-          this.toastrService.warning(this.i18n.instant('请输入属性名称和值'), this.i18n.instant('输入错误'));
-          return;
-        }
-        alterClause = `SET ("${this.editPropertyKey}" = "${this.editPropertyValue}")`;
-        break;
-        
-      case 'advanced':
-        if (!this.editAdvancedClause.trim()) {
-          this.toastrService.warning(this.i18n.instant('请输入ALTER子句'), this.i18n.instant('输入错误'));
-          return;
-        }
-        alterClause = this.editAdvancedClause;
         break;
     }
 
     this.editing = true;
-    this.mvService
-      .alterMaterializedView( this.selectedMV.name, { alter_clause: alterClause })
+    const reference = this.objectRef(this.selectedMV);
+    const request = this.editAction === 'rename'
+      ? this.mvService.renameMaterializedView(reference, this.editNewName.trim())
+      : this.mvService.updateRefreshSchedule(reference, this.refreshSchedule());
+    request
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: () => {
@@ -930,6 +961,100 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
       return (num / 1000).toFixed(1) + 'K';
     }
     return num.toString();
+  }
+
+  get isDoris(): boolean {
+    return this.activeCluster?.cluster_type === 'doris';
+  }
+
+  get availableRefreshModeOptions(): Array<{ value: RefreshMode; label: string }> {
+    return this.isDoris
+      ? [
+          { value: 'auto', label: this.i18n.instant('自动模式') },
+          { value: 'complete', label: this.i18n.instant('全量模式') },
+        ]
+      : this.refreshModeOptions;
+  }
+
+  private objectRef(mv: MaterializedView): MaterializedViewRef {
+    return { database: mv.database_name, name: mv.name, kind: mv.kind };
+  }
+
+  private isSelected(mv: MaterializedView): boolean {
+    return this.selectedMV?.name === mv.name
+      && this.selectedMV.database_name === mv.database_name
+      && this.selectedMV.kind === mv.kind;
+  }
+
+  private refreshSchedule(): RefreshSchedule {
+    if (this.editRefreshStrategy === 'manual') {
+      return { kind: 'manual' };
+    }
+    return {
+      kind: 'scheduled',
+      interval: Number(this.editRefreshInterval),
+      unit: this.editRefreshUnit,
+    };
+  }
+
+  dependencyObjectLabel(catalog: string | undefined, database: string | undefined, name: string): string {
+    return [catalog, database, name].filter((part): part is string => !!part).join('.');
+  }
+
+  private buildDependencyGraph(
+    materializedView: MaterializedView,
+    dependencies: MaterializedViewDependencies,
+  ): void {
+    const graph = new dagre.graphlib.Graph();
+    graph.setGraph({ rankdir: 'LR', marginx: 28, marginy: 28, ranksep: 72, nodesep: 24 });
+    graph.setDefaultEdgeLabel(() => ({}));
+
+    const currentId = 'current';
+    const items = [
+      {
+        id: currentId,
+        label: this.graphLabel(`${materializedView.database_name}.${materializedView.name}`),
+        subtitle: materializedView.kind === 'rollup' ? 'ROLLUP' : 'MATERIALIZED VIEW',
+        type: 'current',
+      },
+      ...dependencies.dependencies.map((dependency, index) => ({
+        id: `dependency-${index}`,
+        label: this.graphLabel(this.dependencyObjectLabel(
+          dependency.object.catalog,
+          dependency.object.database,
+          dependency.object.name,
+        )),
+        subtitle: dependency.object.kind.replace('_', ' ').toUpperCase(),
+        type: dependency.object.kind,
+        evidence: dependency.evidence,
+      })),
+    ];
+
+    items.forEach((item) => graph.setNode(item.id, { width: 210, height: 68 }));
+    items.slice(1).forEach((item) => graph.setEdge(item.id, currentId));
+    dagre.layout(graph);
+
+    this.dependencyGraphNodes = items.map((item) => {
+      const layout = graph.node(item.id);
+      return { ...item, x: Math.round(layout.x), y: Math.round(layout.y), width: 210, height: 68 };
+    });
+    const byId = new Map(this.dependencyGraphNodes.map((node) => [node.id, node]));
+    this.dependencyGraphEdges = items.slice(1).flatMap((item) => {
+      const source = byId.get(item.id);
+      const target = byId.get(currentId);
+      return source && target
+        ? [{
+            from: { x: source.x + source.width / 2, y: source.y },
+            to: { x: target.x - target.width / 2, y: target.y },
+          }]
+        : [];
+    });
+    this.dependencyGraphWidth = Math.max(600, ...this.dependencyGraphNodes.map((node) => node.x + node.width / 2 + 28));
+    this.dependencyGraphHeight = Math.max(180, ...this.dependencyGraphNodes.map((node) => node.y + node.height / 2 + 28));
+  }
+
+  private graphLabel(label: string): string {
+    return label.length > 28 ? `${label.slice(0, 27)}...` : label;
   }
 
   private closeDetailThen(action: (mv: MaterializedView) => void): void {

@@ -28,7 +28,7 @@ import { NbButtonModule, NbIconModule } from '@nebular/theme';
     imports: [NbButtonModule, NbIconModule]
 })
 export class ActiveToggleRenderComponent implements OnInit {
-  @Input() value: string | number;
+  @Input() value: string | number | boolean;
   @Input() rowData: any;
   @Output() toggleActive: EventEmitter<any> = new EventEmitter();
 
@@ -37,8 +37,8 @@ export class ActiveToggleRenderComponent implements OnInit {
 
   ngOnInit() {
     // Convert value to boolean
-    this.isActive = this.value === 'true' || this.value === 1 || (this.value as any) === true;
-    this.isRollup = this.rowData?.refresh_type === 'ROLLUP';
+    this.isActive = this.value === 'true' || this.value === 1 || this.value === true;
+    this.isRollup = this.rowData?.kind === 'rollup';
   }
 
   onToggle(event: MouseEvent) {

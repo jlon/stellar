@@ -300,7 +300,7 @@
 
               <h6>{{  '异步物化视图（自动刷新）' | translate }}</h6>
               <pre class="code-template">CREATE MATERIALIZED VIEW mv_async_auto
-                REFRESH ASYNC EVERY (INTERVAL 1 HOUR)
+                REFRESH SCHEDULE EVERY (INTERVAL 1 HOUR)
                 AS SELECT
                 order_date,
                 SUM(amount) as daily_sales
@@ -440,7 +440,7 @@
                 <div class="col-md-6 mb-3">
                   <label class="label">{{  '最后刷新状态' | translate }}</label>
                   <p>
-                    @if (selectedMV.refresh_type === 'ROLLUP') {
+                    @if (selectedMV.kind === 'rollup') {
                       <span class="text-hint">-</span>
                     } @else {
                       @switch (selectedMV.last_refresh_state) {
@@ -493,6 +493,59 @@
               </div>
             </div>
           </nb-tab>
+          <nb-tab [tabTitle]="'依赖' | translate">
+            <section class="dependency-section" [attr.aria-busy]="dependenciesLoading">
+              @if (dependenciesLoading) {
+                <div class="text-center text-hint p-4">{{ '正在加载直接上游依赖...' | translate }}</div>
+              } @else if (dependencies) {
+                <div class="dependency-summary">
+                  <nb-badge
+                    [status]="dependencies.complete ? 'success' : 'warning'"
+                    [text]="dependencies.complete ? ('已验证的直接依赖' | translate) : ('部分依赖结果' | translate)"
+                  ></nb-badge>
+                  <span class="text-hint">{{ dependencies.dependencies.length }} {{ '个上游对象' | translate }}</span>
+                </div>
+                @if (dependencies.dependencies.length) {
+                  <div class="dependency-graph" role="img" [attr.aria-label]="'当前物化视图的直接上游依赖图' | translate">
+                    <svg [attr.viewBox]="'0 0 ' + dependencyGraphWidth + ' ' + dependencyGraphHeight" [attr.width]="dependencyGraphWidth" [attr.height]="dependencyGraphHeight">
+                      @for (edge of dependencyGraphEdges; track $index) {
+                        <line class="dependency-edge" [attr.x1]="edge.from.x" [attr.y1]="edge.from.y" [attr.x2]="edge.to.x" [attr.y2]="edge.to.y"></line>
+                      }
+                      @for (node of dependencyGraphNodes; track node.id) {
+                        <g [attr.transform]="'translate(' + (node.x - node.width / 2) + ' ' + (node.y - node.height / 2) + ')'" [class.dependency-node--current]="node.type === 'current'" class="dependency-node">
+                          <rect [attr.width]="node.width" [attr.height]="node.height" rx="6"></rect>
+                          <text class="dependency-node__label" x="12" y="28">{{ node.label }}</text>
+                          <text class="dependency-node__meta" x="12" y="48">{{ node.subtitle }}{{ node.evidence ? ' · ' + node.evidence : '' }}</text>
+                        </g>
+                      }
+                    </svg>
+                  </div>
+                } @else {
+                  <div class="text-hint p-3">{{ '未返回可确认的直接上游对象。' | translate }}</div>
+                }
+                @if (dependencies.warnings.length) {
+                  <nb-alert status="warning" closable="false" class="dependency-warnings">
+                    @for (warning of dependencies.warnings; track warning) {
+                      <div>{{ warning }}</div>
+                    }
+                  </nb-alert>
+                }
+                @if (dependencies.dependencies.length) {
+                  <div class="dependency-evidence-list">
+                    @for (dependency of dependencies.dependencies; track $index) {
+                      <div class="dependency-evidence-row">
+                        <code>{{ dependencyObjectLabel(dependency.object.catalog, dependency.object.database, dependency.object.name) }}</code>
+                        <span>{{ dependency.source }} · {{ dependency.evidence }}</span>
+                        @if (dependency.evidence_snippet) {
+                          <small>{{ dependency.evidence_snippet }}</small>
+                        }
+                      </div>
+                    }
+                  </div>
+                }
+              }
+            </section>
+          </nb-tab>
           <nb-tab [tabTitle]="'DDL语句' | translate">
             <div class="ddl-section">
               <div class="ddl-toolbar">
@@ -526,11 +579,13 @@
       <nb-card-footer>
         <div class="d-flex justify-content-between">
           <div class="d-flex gap-2">
+            @if (selectedMV.kind !== 'rollup') {
             <button nbButton ghost status="info" size="small" (click)="editSelectedMV()">
               <nb-icon icon="edit-outline"></nb-icon>
               {{ '编辑' | translate }}
             </button>
-            @if (selectedMV.refresh_type !== 'ROLLUP') {
+            }
+            @if (selectedMV.kind !== 'rollup') {
               <button
                 nbButton
                 ghost
@@ -542,7 +597,7 @@
                 {{ '刷新' | translate }}
               </button>
             }
-            @if (selectedMV.refresh_type !== 'ROLLUP') {
+            @if (selectedMV.kind !== 'rollup') {
               <button
                 nbButton
                 ghost
@@ -577,16 +632,21 @@
         <div class="form-group">
           <label class="label">{{  '刷新模式' | translate }}</label>
           <nb-select size="small" fullWidth [(selected)]="refreshMode">
-            @for (option of refreshModeOptions; track option) {
+            @for (option of availableRefreshModeOptions; track option.value) {
               <nb-option [value]="option.value">
                 {{ option.label }}
               </nb-option>
             }
           </nb-select>
           <small class="form-text text-muted">
+            @if (isDoris) {
+              {{ '自动模式按引擎默认策略执行；全量模式刷新所有分区。' | translate }}
+            } @else {
             {{ 'ASYNC: 异步刷新（后台执行），SYNC: 同步刷新（阻塞等待完成）' | translate }}
+            }
           </small>
         </div>
+        @if (!isDoris) {
         <div class="form-group mt-3">
           <nb-checkbox [(checked)]="refreshForce">
             {{ '强制刷新 (FORCE)' | translate }}
@@ -600,6 +660,7 @@
             <nb-icon icon="alert-triangle-outline"></nb-icon>
             {{ '强制刷新且未指定分区范围时，可能触发全量刷新并耗尽资源；优先限定分区范围。' | translate }}
           </nb-alert>
+        }
         }
         @if (selectedMV.partition_type && selectedMV.partition_type !== 'UNPARTITIONED') {
           <div class="form-group mt-3">
@@ -659,9 +720,9 @@
         <label class="label">{{  '操作类型' | translate }}</label>
         <nb-select size="small" [(selected)]="editAction" fullWidth>
           <nb-option value="rename">{{  '重命名' | translate }}</nb-option>
-          <nb-option value="refresh_strategy">{{  '修改刷新策略' | translate }}</nb-option>
-          <nb-option value="properties">{{  '修改属性' | translate }}</nb-option>
-          <nb-option value="advanced">{{  '高级模式（自定义ALTER子句）' | translate }}</nb-option>
+          @if (!isDoris) {
+            <nb-option value="refresh_strategy">{{  '修改刷新策略' | translate }}</nb-option>
+          }
         </nb-select>
       </div>
 
@@ -689,11 +750,11 @@
           <div class="form-group">
             <label class="label">{{  '刷新策略' | translate }}<span class="text-danger">*</span></label>
             <nb-select size="small" [(selected)]="editRefreshStrategy" fullWidth>
-              <nb-option value="MANUAL">{{  '手动刷新 (MANUAL)' | translate }}</nb-option>
-              <nb-option value="ASYNC">{{  '自动刷新 (ASYNC)' | translate }}</nb-option>
+              <nb-option value="manual">{{  '手动刷新 (MANUAL)' | translate }}</nb-option>
+              <nb-option value="scheduled">{{  '定时刷新 (SCHEDULE)' | translate }}</nb-option>
             </nb-select>
           </div>
-          @if (editRefreshStrategy === 'ASYNC') {
+          @if (editRefreshStrategy === 'scheduled') {
             <div class="row">
               <div class="col-md-6">
                 <div class="form-group">
@@ -703,6 +764,7 @@
                     fullWidth
                     type="number"
                     min="1"
+                    max="8760"
                     [(ngModel)]="editRefreshInterval"
                     placeholder="1"
                     />
@@ -712,10 +774,8 @@
                 <div class="form-group">
                   <label class="label">{{  '时间单位' | translate }}</label>
                   <nb-select size="small" [(selected)]="editRefreshUnit" fullWidth>
-                    <nb-option value="HOUR">{{  '小时' | translate }}</nb-option>
-                    <nb-option value="DAY">{{  '天' | translate }}</nb-option>
-                    <nb-option value="WEEK">{{  '周' | translate }}</nb-option>
-                    <nb-option value="MONTH">{{  '月' | translate }}</nb-option>
+                    <nb-option value="hour">{{  '小时' | translate }}</nb-option>
+                    <nb-option value="day">{{  '天' | translate }}</nb-option>
                   </nb-select>
                 </div>
               </div>
@@ -723,94 +783,20 @@
           }
           <p class="caption text-hint mt-2">
             <nb-icon icon="info-outline"></nb-icon>
-            @if (editRefreshStrategy === 'MANUAL') {
+            @if (editRefreshStrategy === 'manual') {
               <span>
                 {{ '将生成SQL: ALTER MATERIALIZED VIEW ... REFRESH MANUAL' | translate }}
               </span>
             }
-            @if (editRefreshStrategy === 'ASYNC') {
+            @if (editRefreshStrategy === 'scheduled') {
               <span>
-                {{ '将生成SQL: ALTER MATERIALIZED VIEW ... REFRESH ASYNC EVERY(INTERVAL' | translate }} {{ editRefreshInterval }} {{ editRefreshUnit }})
+                {{ '将生成SQL: ALTER MATERIALIZED VIEW ... REFRESH SCHEDULE EVERY(INTERVAL' | translate }} {{ editRefreshInterval }} {{ editRefreshUnit }})
               </span>
             }
           </p>
         </div>
       }
 
-      <!-- Properties Form -->
-      @if (editAction === 'properties') {
-        <div>
-          <div class="form-group">
-            <label class="label">{{  '属性名称' | translate }}<span class="text-danger">*</span></label>
-            <input fieldSize="small"
-              nbInput
-              fullWidth
-              type="text"
-              [(ngModel)]="editPropertyKey"
-              [placeholder]="'例如: session.enable_profile 或 mv_rewrite_staleness_second' | translate"
-              />
-          </div>
-          <div class="form-group">
-            <label class="label">{{  '属性值' | translate }}<span class="text-danger">*</span></label>
-            <input fieldSize="small"
-              nbInput
-              fullWidth
-              type="text"
-              [(ngModel)]="editPropertyValue"
-              [placeholder]="'输入属性值' | translate"
-              />
-          </div>
-          <nb-accordion class="mt-3">
-            <nb-accordion-item>
-              <nb-accordion-item-header>{{  '常用属性说明' | translate }}</nb-accordion-item-header>
-              <nb-accordion-item-body>
-                <ul class="list-unstyled small">
-                  <li><strong>session.enable_profile</strong>{{  '- 启用Profile (true/false)' | translate }}</li>
-                  <li><strong>session.enable_spill</strong>{{  '- 启用中间结果落盘 (true/false)' | translate }}</li>
-                  <li><strong>session.spill_mode</strong>{{  '- 落盘模式 (auto/force)' | translate }}</li>
-                  <li><strong>mv_rewrite_staleness_second</strong>{{  '- 查询改写Staleness时间（秒）' | translate }}</li>
-                  <li><strong>partition_ttl_number</strong>{{  '- 分区TTL数量' | translate }}</li>
-                  <li><strong>partition_refresh_number</strong>{{  '- 分区刷新数量' | translate }}</li>
-                </ul>
-              </nb-accordion-item-body>
-            </nb-accordion-item>
-          </nb-accordion>
-          <p class="caption text-hint mt-2">
-            <nb-icon icon="info-outline"></nb-icon>
-            {{ '将生成SQL: ALTER MATERIALIZED VIEW ... SET (' | translate }}"{{ editPropertyKey }}" = "{{ editPropertyValue }}")
-          </p>
-        </div>
-      }
-
-      <!-- Advanced Form -->
-      @if (editAction === 'advanced') {
-        <div>
-          <div class="form-group">
-            <label class="label">{{  'ALTER子句' | translate }}<span class="text-danger">*</span></label>
-            <textarea nbInput size="small"
-              nbInput
-              fullWidth
-              rows="4"
-              [(ngModel)]="editAdvancedClause"
-              [placeholder]="'例如: ACTIVE, INACTIVE, SWAP WITH other_mv, SET (...) 等' | translate"
-            ></textarea>
-          </div>
-          <nb-alert status="info" closable="false">
-            <strong>{{  '支持的ALTER子句:' | translate }}</strong>
-            <ul class="mb-0 mt-2">
-              <li><code>RENAME new_name</code>{{  '- 重命名' | translate }}</li>
-              <li><code>REFRESH MANUAL</code>{{  '或' | translate }}<code>REFRESH ASYNC EVERY(...)</code>{{  '- 修改刷新策略' | translate }}</li>
-              <li><code>ACTIVE</code>{{  '或' | translate }}<code>INACTIVE</code>{{  '- 修改状态' | translate }}</li>
-              <li><code>SET ("key" = "value")</code>{{  '- 修改属性' | translate }}</li>
-              <li><code>SWAP WITH other_mv_name</code>{{  '- 原子替换' | translate }}</li>
-            </ul>
-          </nb-alert>
-          <p class="caption text-hint mt-2">
-            <nb-icon icon="alert-triangle-outline"></nb-icon>
-            {{ '请确保ALTER子句语法正确，完整SQL将为: ALTER MATERIALIZED VIEW' | translate }} {{ selectedMV?.database_name }}.{{ selectedMV?.name }} {{ editAdvancedClause }}
-          </p>
-        </div>
-      }
     </nb-card-body>
     <nb-card-footer>
       <div class="d-flex justify-content-end gap-2">
