@@ -1,4 +1,4 @@
-use crate::handlers::query::parse_sql_statements;
+use crate::handlers::query::{is_materialized_view_write, parse_sql_statements};
 
 #[test]
 fn preserves_semicolons_inside_literals_and_identifiers() {
@@ -17,4 +17,37 @@ fn preserves_semicolons_after_backslash_escaped_quotes() {
     let statements = parse_sql_statements(r#"SELECT "value with \"; still quoted"; SELECT 1"#);
 
     assert_eq!(statements, vec![r#"SELECT "value with \"; still quoted""#, "SELECT 1"]);
+}
+
+#[test]
+fn identifies_materialized_view_writes_for_the_dedicated_api() {
+    for statement in [
+        "CREATE MATERIALIZED VIEW sales_mv AS SELECT 1",
+        "CREATE /* controlled */ MATERIALIZED\nVIEW sales_mv AS SELECT 1",
+        "/* maintenance */ DROP MATERIALIZED VIEW sales_mv",
+        "ALTER MATERIALIZED VIEW sales_mv RENAME next_sales_mv",
+        "REFRESH MATERIALIZED VIEW sales_mv",
+        "CANCEL REFRESH MATERIALIZED VIEW sales_mv",
+        "PAUSE MATERIALIZED VIEW JOB ON sales_mv",
+        "RESUME MATERIALIZED VIEW JOB ON sales_mv",
+        "ALTER TABLE `analytics`.`sales` ADD ROLLUP sales_mv (day)",
+        "ALTER TABLE analytics.sales DROP ROLLUP sales_mv",
+    ] {
+        assert!(is_materialized_view_write(statement), "{statement}");
+    }
+
+    for statement in [
+        "SHOW CREATE MATERIALIZED VIEW sales_mv",
+        "SELECT 'CREATE MATERIALIZED VIEW sales_mv'",
+        "EXPLAIN SELECT * FROM sales",
+    ] {
+        assert!(!is_materialized_view_write(statement), "{statement}");
+    }
+
+    let batch = parse_sql_statements("SELECT 1; CREATE MATERIALIZED VIEW sales_mv AS SELECT 1");
+    assert!(
+        batch
+            .iter()
+            .any(|statement| is_materialized_view_write(statement))
+    );
 }

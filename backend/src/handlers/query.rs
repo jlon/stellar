@@ -592,6 +592,24 @@ pub async fn execute_sql(
     // creation, USE, execution, row conversion and history persistence.
     let total_start = Instant::now();
 
+    let sql_statements: Vec<String> = parse_sql_statements(&request.sql)
+        .into_iter()
+        .take(5)
+        .collect();
+
+    if sql_statements.is_empty() {
+        return Ok(Json(QueryExecuteResponse { results: Vec::new(), total_execution_time_ms: 0 }));
+    }
+
+    if sql_statements
+        .iter()
+        .any(|sql| is_materialized_view_write(sql))
+    {
+        return Err(ApiError::invalid_data(
+            "materialized view writes must use the materialized view API",
+        ));
+    }
+
     let cluster = if org_ctx.is_super_admin {
         state.cluster_service.get_active_cluster().await?
     } else {
@@ -603,14 +621,6 @@ pub async fn execute_sql(
 
     let pool: mysql_async::Pool = state.mysql_pool_manager.get_pool(&cluster).await?;
     let mysql_client = MySQLClient::from_pool(pool);
-
-    let sql_statements = parse_sql_statements(&request.sql);
-
-    let sql_statements: Vec<String> = sql_statements.into_iter().take(5).collect();
-
-    if sql_statements.is_empty() {
-        return Ok(Json(QueryExecuteResponse { results: Vec::new(), total_execution_time_ms: 0 }));
-    }
 
     let mut session = mysql_client.create_session().await?;
 
@@ -782,6 +792,73 @@ pub(crate) fn parse_sql_statements(sql: &str) -> Vec<String> {
     }
 
     statements
+}
+
+pub(crate) fn is_materialized_view_write(sql: &str) -> bool {
+    let words = leading_sql_words(sql, 12);
+    has_sql_prefix(&words, &["CREATE", "MATERIALIZED", "VIEW"])
+        || has_sql_prefix(&words, &["DROP", "MATERIALIZED", "VIEW"])
+        || has_sql_prefix(&words, &["ALTER", "MATERIALIZED", "VIEW"])
+        || has_sql_prefix(&words, &["REFRESH", "MATERIALIZED", "VIEW"])
+        || has_sql_prefix(&words, &["CANCEL", "REFRESH", "MATERIALIZED", "VIEW"])
+        || has_sql_prefix(&words, &["PAUSE", "MATERIALIZED", "VIEW", "JOB"])
+        || has_sql_prefix(&words, &["RESUME", "MATERIALIZED", "VIEW", "JOB"])
+        || (has_sql_prefix(&words, &["ALTER", "TABLE"])
+            && words[2..].windows(2).any(|pair| {
+                (pair[0].eq_ignore_ascii_case("ADD") || pair[0].eq_ignore_ascii_case("DROP"))
+                    && pair[1].eq_ignore_ascii_case("ROLLUP")
+            }))
+}
+
+fn leading_sql_words(sql: &str, max_words: usize) -> Vec<String> {
+    let chars: Vec<char> = sql.chars().collect();
+    let mut words = Vec::with_capacity(max_words);
+    let mut i = 0;
+
+    while i < chars.len() && words.len() < max_words {
+        i = skip_sql_trivia(&chars, i);
+        if i >= chars.len() {
+            break;
+        }
+        if is_sql_ident_start(chars[i]) {
+            let word = sql_keyword_at(&chars, i);
+            i += word.chars().count();
+            words.push(word);
+        } else if matches!(chars[i], '\'' | '"' | '`') {
+            i = skip_sql_quoted(&chars, i);
+        } else {
+            i += 1;
+        }
+    }
+
+    words
+}
+
+fn has_sql_prefix(words: &[String], prefix: &[&str]) -> bool {
+    words.len() >= prefix.len()
+        && words
+            .iter()
+            .zip(prefix)
+            .all(|(word, expected)| word.eq_ignore_ascii_case(expected))
+}
+
+fn skip_sql_quoted(chars: &[char], start: usize) -> usize {
+    let delimiter = chars[start];
+    let mut i = start + 1;
+    while i < chars.len() {
+        if chars[i] == '\\' && delimiter != '`' {
+            i = (i + 2).min(chars.len());
+        } else if chars[i] == delimiter {
+            if i + 1 < chars.len() && chars[i + 1] == delimiter {
+                i += 2;
+            } else {
+                return i + 1;
+            }
+        } else {
+            i += 1;
+        }
+    }
+    chars.len()
 }
 
 fn apply_query_limit(sql: &str, limit: i32) -> String {
