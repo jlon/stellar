@@ -270,29 +270,6 @@
   }
 }
 
-.template-section {
-  h6 {
-    margin-top: 1rem;
-    margin-bottom: 0.5rem;
-    font-weight: 600;
-    
-    &:first-child {
-      margin-top: 0;
-    }
-  }
-
-  .code-template {
-    background-color: nb-theme(background-basic-color-2);
-    border: 1px solid nb-theme(border-basic-color-3);
-    border-radius: 0.25rem;
-    padding: 0.75rem;
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 0.875rem;
-    overflow-x: auto;
-    margin-bottom: 0.5rem;
-  }
-}
-
 .gap-2 {
   gap: 0.5rem;
 }

@@ -1,7 +1,7 @@
 use crate::models::{
-    DependencyEvidence, DependencyObject, DependencySource, MaterializedView,
-    MaterializedViewDependencies, MaterializedViewDependency, MaterializedViewKind,
-    MaterializedViewRef, MaterializedViewState, RefreshIntervalUnit,
+    CreateMaterializedViewRequest, DependencyEvidence, DependencyObject, DependencySource,
+    MaterializedView, MaterializedViewDependencies, MaterializedViewDependency,
+    MaterializedViewKind, MaterializedViewRef, MaterializedViewState, RefreshIntervalUnit,
     RefreshMaterializedViewRequest, RefreshMode, RefreshSchedule, RelationKind,
 };
 use crate::services::MySQLClient;
@@ -66,11 +66,14 @@ impl MaterializedViewService {
         Self::ddl_from_rows(&rows).ok_or_else(|| ApiError::not_found(reference.display_name()))
     }
 
-    pub async fn create_materialized_view(&self, sql: &str) -> ApiResult<()> {
-        if sql.trim().is_empty() {
-            return Err(ApiError::invalid_data("materialized view SQL is empty"));
-        }
-        self.mysql_client.execute(sql).await.map(|_| ())
+    pub async fn create_materialized_view(
+        &self,
+        request: &CreateMaterializedViewRequest,
+    ) -> ApiResult<()> {
+        self.mysql_client
+            .execute(&Self::create_materialized_view_sql(request)?)
+            .await
+            .map(|_| ())
     }
 
     pub async fn drop_materialized_view(&self, reference: &MaterializedViewRef) -> ApiResult<()> {
@@ -388,6 +391,28 @@ impl MaterializedViewService {
                 "REFRESH SCHEDULE EVERY (INTERVAL {interval} {})",
                 Self::refresh_unit_keyword(unit)
             ),
+        }
+    }
+
+    pub(crate) fn create_materialized_view_sql(
+        request: &CreateMaterializedViewRequest,
+    ) -> ApiResult<String> {
+        request.validate()?;
+        Ok(format!(
+            "CREATE MATERIALIZED VIEW {} REFRESH DEFERRED {} AS SELECT {} FROM {}",
+            request.reference().quoted_name(),
+            Self::create_refresh_schedule_clause(request.schedule),
+            request.selected_columns_sql(),
+            request.source_quoted_name(),
+        ))
+    }
+
+    fn create_refresh_schedule_clause(schedule: RefreshSchedule) -> String {
+        match schedule {
+            RefreshSchedule::Manual => "MANUAL".to_string(),
+            RefreshSchedule::Scheduled { interval, unit } => {
+                format!("SCHEDULE EVERY (INTERVAL {interval} {})", Self::refresh_unit_keyword(unit))
+            },
         }
     }
 

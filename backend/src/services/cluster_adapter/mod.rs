@@ -9,9 +9,9 @@ pub use doris::DorisAdapter;
 pub use starrocks::StarRocksAdapter;
 
 use crate::models::{
-    Backend, Cluster, ClusterType, Frontend, MaterializedView, MaterializedViewDependencies,
-    MaterializedViewRef, MaterializedViewState, Query, RefreshMaterializedViewRequest,
-    RefreshSchedule, RuntimeInfo,
+    Backend, Cluster, ClusterType, CreateMaterializedViewRequest, Frontend, MaterializedView,
+    MaterializedViewDependencies, MaterializedViewRef, MaterializedViewState, Query,
+    RefreshMaterializedViewRequest, RefreshSchedule, RuntimeInfo,
 };
 use crate::services::MySQLPoolManager;
 use crate::utils::ApiResult;
@@ -80,8 +80,11 @@ pub trait ClusterAdapter: Send + Sync {
     async fn get_materialized_view_ddl(&self, reference: &MaterializedViewRef)
     -> ApiResult<String>;
 
-    /// Create materialized view
-    async fn create_materialized_view(&self, ddl: &str) -> ApiResult<()>;
+    /// Create a constrained asynchronous materialized view from typed inputs.
+    async fn create_materialized_view(
+        &self,
+        request: &CreateMaterializedViewRequest,
+    ) -> ApiResult<()>;
 
     /// Drop materialized view
     async fn drop_materialized_view(&self, reference: &MaterializedViewRef) -> ApiResult<()>;

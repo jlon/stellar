@@ -63,7 +63,12 @@ export interface MaterializedViewDependencies {
 }
 
 export interface CreateMaterializedViewRequest {
-  sql: string;
+  database: string;
+  name: string;
+  source_database: string;
+  source_table: string;
+  columns: string[];
+  schedule: RefreshSchedule;
 }
 
 export interface PartitionValue {

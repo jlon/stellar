@@ -9,7 +9,6 @@ use serde_json::json;
 use std::sync::Arc;
 use stellar_macros::app_db;
 
-use crate::handlers::query::parse_sql_statements;
 use crate::{
     AppState,
     models::{
@@ -43,18 +42,6 @@ fn materialized_view_ref(path: MaterializedViewPath) -> ApiResult<MaterializedVi
     let reference = MaterializedViewRef { database, name, kind };
     reference.validate()?;
     Ok(reference)
-}
-
-pub(crate) fn validate_create_materialized_view_request(
-    request: &CreateMaterializedViewRequest,
-) -> ApiResult<()> {
-    request.validate()?;
-    if parse_sql_statements(&request.sql).len() != 1 {
-        return Err(crate::utils::ApiError::invalid_data(
-            "exactly one CREATE MATERIALIZED VIEW statement is required",
-        ));
-    }
-    Ok(())
 }
 
 macro_rules! active_cluster {
@@ -195,16 +182,12 @@ pub async fn create_materialized_view(
     axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
     Json(request): Json<CreateMaterializedViewRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    validate_create_materialized_view_request(&request)?;
+    request.validate()?;
+    let target = request.reference().display_name();
     let cluster = active_cluster!(state, org_ctx);
     let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
-    adapter.create_materialized_view(&request.sql).await?;
-    audit_materialized_view_write!(
-        state,
-        org_ctx,
-        "materialized_views:create",
-        "CREATE MATERIALIZED VIEW"
-    );
+    adapter.create_materialized_view(&request).await?;
+    audit_materialized_view_write!(state, org_ctx, "materialized_views:create", &target);
     Ok((StatusCode::CREATED, Json(json!({ "message": "Materialized view created successfully" }))))
 }
 

@@ -1,9 +1,8 @@
 use crate::{
-    handlers::materialized_view::validate_create_materialized_view_request,
     middleware::permission_extractor::extract_permission,
     models::{
-        MaterializedView, MaterializedViewKind, MaterializedViewRef, PartitionValue,
-        RefreshIntervalUnit, RefreshMaterializedViewRequest, RefreshSchedule,
+        CreateMaterializedViewRequest, MaterializedView, MaterializedViewKind, MaterializedViewRef,
+        PartitionValue, RefreshIntervalUnit, RefreshMaterializedViewRequest, RefreshSchedule,
         UpdateRefreshScheduleRequest,
     },
     services::{MaterializedViewService, cluster_adapter::doris::DorisAdapter},
@@ -117,22 +116,62 @@ fn materialized_view_routes_require_existing_specific_permissions() {
 }
 
 #[test]
-fn create_request_accepts_one_materialized_view_statement_only() {
-    let valid = serde_json::from_value(json!({
+fn create_request_rejects_raw_sql_and_renders_fixed_engine_sql() {
+    let raw_sql = serde_json::from_value::<CreateMaterializedViewRequest>(json!({
+        "database": "analytics",
+        "name": "daily_sales",
+        "source_database": "warehouse",
+        "source_table": "orders",
+        "columns": ["order_date"],
+        "schedule": { "kind": "manual" },
         "sql": "CREATE MATERIALIZED VIEW daily_sales AS SELECT 1"
-    }))
-    .expect("a materialized view request should deserialize");
-    assert!(validate_create_materialized_view_request(&valid).is_ok());
+    }));
+    assert!(raw_sql.is_err());
 
-    let multiple = serde_json::from_value(json!({
-        "sql": "CREATE MATERIALIZED VIEW daily_sales AS SELECT 1; DROP DATABASE analytics"
-    }))
-    .expect("request shape should deserialize before statement validation");
-    assert!(validate_create_materialized_view_request(&multiple).is_err());
+    let request = create_request();
+    assert_eq!(
+        MaterializedViewService::create_materialized_view_sql(&request).unwrap(),
+        "CREATE MATERIALIZED VIEW `analytics`.`daily_sales` REFRESH DEFERRED MANUAL AS SELECT `order_date`, `amount` FROM `warehouse`.`orders`"
+    );
+    assert_eq!(
+        DorisAdapter::create_materialized_view_sql(&request).unwrap(),
+        "CREATE MATERIALIZED VIEW `analytics`.`daily_sales` BUILD DEFERRED REFRESH AUTO ON MANUAL AS SELECT `order_date`, `amount` FROM `warehouse`.`orders`"
+    );
 
-    let arbitrary = serde_json::from_value(json!({ "sql": "DROP DATABASE analytics" }))
-        .expect("request shape should deserialize before statement validation");
-    assert!(validate_create_materialized_view_request(&arbitrary).is_err());
+    let scheduled = scheduled_create_request();
+    assert_eq!(
+        MaterializedViewService::create_materialized_view_sql(&scheduled).unwrap(),
+        "CREATE MATERIALIZED VIEW `analytics`.`daily_sales` REFRESH DEFERRED SCHEDULE EVERY (INTERVAL 1 HOUR) AS SELECT `order_date`, `amount` FROM `warehouse`.`orders`"
+    );
+    assert_eq!(
+        DorisAdapter::create_materialized_view_sql(&scheduled).unwrap(),
+        "CREATE MATERIALIZED VIEW `analytics`.`daily_sales` BUILD DEFERRED REFRESH AUTO ON SCHEDULE EVERY 1 HOUR AS SELECT `order_date`, `amount` FROM `warehouse`.`orders`"
+    );
+}
+
+#[test]
+fn create_request_rejects_sql_fragments_and_duplicate_columns() {
+    let unsafe_source = serde_json::from_value::<CreateMaterializedViewRequest>(json!({
+        "database": "analytics",
+        "name": "daily_sales",
+        "source_database": "warehouse",
+        "source_table": "orders; DROP DATABASE analytics",
+        "columns": ["order_date"],
+        "schedule": { "kind": "manual" }
+    }))
+    .expect("request shape should deserialize");
+    assert!(unsafe_source.validate().is_err());
+
+    let duplicate_columns = serde_json::from_value::<CreateMaterializedViewRequest>(json!({
+        "database": "analytics",
+        "name": "daily_sales",
+        "source_database": "warehouse",
+        "source_table": "orders",
+        "columns": ["order_date", "ORDER_DATE"],
+        "schedule": { "kind": "manual" }
+    }))
+    .expect("request shape should deserialize");
+    assert!(duplicate_columns.validate().is_err());
 }
 
 #[test]
@@ -225,4 +264,28 @@ fn test_rollup(name: &str) -> MaterializedView {
         rows: None,
         definition: "-- fixture".to_string(),
     }
+}
+
+fn create_request() -> CreateMaterializedViewRequest {
+    serde_json::from_value(json!({
+        "database": "analytics",
+        "name": "daily_sales",
+        "source_database": "warehouse",
+        "source_table": "orders",
+        "columns": ["order_date", "amount"],
+        "schedule": { "kind": "manual" }
+    }))
+    .expect("valid typed creation request")
+}
+
+fn scheduled_create_request() -> CreateMaterializedViewRequest {
+    serde_json::from_value(json!({
+        "database": "analytics",
+        "name": "daily_sales",
+        "source_database": "warehouse",
+        "source_table": "orders",
+        "columns": ["order_date", "amount"],
+        "schedule": { "kind": "scheduled", "interval": 1, "unit": "hour" }
+    }))
+    .expect("valid scheduled typed creation request")
 }

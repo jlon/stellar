@@ -4,7 +4,7 @@ import { TranslatePipe } from '@ngx-translate/core';
 import { Component, OnInit, OnDestroy, TemplateRef, ViewChild, ChangeDetectorRef, inject } from '@angular/core';
 import { Subject } from 'rxjs';
 import { skip, take, takeUntil, timeout } from 'rxjs/operators';
-import { NbToastrService, NbDialogRef, NbDialogService, NbCardModule, NbButtonModule, NbIconModule, NbInputModule, NbDatepickerModule, NbSelectModule, NbOptionModule, NbBadgeModule, NbSpinnerModule, NbAccordionModule, NbTabsetModule, NbAlertModule, NbCheckboxModule, NbFormFieldModule, NbTooltipModule } from '@nebular/theme';
+import { NbToastrService, NbDialogRef, NbDialogService, NbCardModule, NbButtonModule, NbIconModule, NbInputModule, NbDatepickerModule, NbSelectModule, NbOptionModule, NbBadgeModule, NbSpinnerModule, NbTabsetModule, NbAlertModule, NbCheckboxModule, NbFormFieldModule, NbTooltipModule } from '@nebular/theme';
 import { MarkdownModule } from 'ngx-markdown';
 import { LocalDataSource, Angular2SmartTableModule, RowSelectionEvent } from 'angular2-smart-table';
 import {
@@ -12,6 +12,7 @@ import {
   MaterializedView,
   MaterializedViewDependencies,
   MaterializedViewRef,
+  CreateMaterializedViewRequest,
   RefreshMode,
   RefreshSchedule,
 } from '../../../@core/data/materialized-view.service';
@@ -45,7 +46,6 @@ import * as dagre from 'dagre';
     NbBadgeModule,
     NbSpinnerModule,
     Angular2SmartTableModule,
-    NbAccordionModule,
     NbTabsetModule,
     NbAlertModule,
     NbCheckboxModule,
@@ -152,7 +152,14 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
   dependencyGraphHeight = 250;
 
   // Create form
-  createSQL = '';
+  createDatabase = '';
+  createName = '';
+  createSourceDatabase = '';
+  createSourceTable = '';
+  createColumns = '';
+  createSchedule: 'manual' | 'scheduled' = 'manual';
+  createScheduleInterval = '1';
+  createScheduleUnit: 'hour' | 'day' = 'hour';
   creating = false;
 
   // Refresh form
@@ -559,7 +566,14 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
 
   // Check if refresh action should be shown
   openCreateDialog() {
-    this.createSQL = '';
+    this.createDatabase = this.selectedDatabase === 'all' ? '' : this.selectedDatabase;
+    this.createName = '';
+    this.createSourceDatabase = this.createDatabase;
+    this.createSourceTable = '';
+    this.createColumns = '';
+    this.createSchedule = 'manual';
+    this.createScheduleInterval = '1';
+    this.createScheduleUnit = 'hour';
     this.creating = false;
     this.createDialogRef = this.dialogService.open(this.createDialogTemplate, {
       context: {},
@@ -573,14 +587,33 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
   }
 
   createMV() {
-    if (!this.createSQL.trim()) {
-      this.toastrService.warning(this.i18n.instant('请输入CREATE MATERIALIZED VIEW SQL语句'), this.i18n.instant('输入错误'));
+    const columns = this.createColumns.split(',').map(column => column.trim()).filter(Boolean);
+    if (!this.createDatabase.trim() || !this.createName.trim() || !this.createSourceDatabase.trim()
+      || !this.createSourceTable.trim() || !columns.length) {
+      this.toastrService.warning(this.i18n.instant('请填写物化视图、源表和至少一个列'), this.i18n.instant('输入错误'));
       return;
     }
 
+    const interval = Number(this.createScheduleInterval);
+    if (this.createSchedule === 'scheduled' && (!Number.isInteger(interval) || interval < 1 || interval > 8760)) {
+      this.toastrService.warning(this.i18n.instant('刷新间隔必须是 1 到 8760 之间的整数'), this.i18n.instant('输入错误'));
+      return;
+    }
+
+    const request: CreateMaterializedViewRequest = {
+      database: this.createDatabase.trim(),
+      name: this.createName.trim(),
+      source_database: this.createSourceDatabase.trim(),
+      source_table: this.createSourceTable.trim(),
+      columns,
+      schedule: this.createSchedule === 'manual'
+        ? { kind: 'manual' }
+        : { kind: 'scheduled', interval, unit: this.createScheduleUnit },
+    };
+
     this.creating = true;
     this.mvService
-      .createMaterializedView( { sql: this.createSQL })
+      .createMaterializedView(request)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: () => {

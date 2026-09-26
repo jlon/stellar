@@ -118,14 +118,23 @@ describe('MaterializedViewsComponent', () => {
   });
 
   it('reports a successful create as a submitted task', () => {
-    component.createSQL = 'CREATE MATERIALIZED VIEW sales_mv REFRESH MANUAL AS SELECT 1';
+    component.createDatabase = 'analytics';
+    component.createName = 'sales_mv';
+    component.createSourceDatabase = 'analytics';
+    component.createSourceTable = 'sales';
+    component.createColumns = 'order_date, total';
     spyOn(component, 'closeCreateDialog');
     spyOn(component, 'loadMaterializedViews');
 
     component.createMV();
 
     expect(materializedViewService.createMaterializedView).toHaveBeenCalledOnceWith({
-      sql: component.createSQL,
+      database: 'analytics',
+      name: 'sales_mv',
+      source_database: 'analytics',
+      source_table: 'sales',
+      columns: ['order_date', 'total'],
+      schedule: { kind: 'manual' },
     });
     expect(toastrService.success).toHaveBeenCalledOnceWith(
       '物化视图创建任务已提交',

@@ -277,71 +277,56 @@
     <nb-card-body>
       <nb-alert status="warning" class="mb-3">
         <nb-icon icon="alert-triangle-outline"></nb-icon>
-        {{ '提交 CREATE MATERIALIZED VIEW 成功仅表示创建任务已提交。异步 MV 默认以 IMMEDIATE 进行首次刷新；使用 REFRESH DEFERRED 可推迟首次刷新。' | translate }}
+        {{ '此入口创建单源表的异步投影 MV，并以延迟构建方式创建；首次刷新请在创建后单独发起。' | translate }}
       </nb-alert>
-      <nb-alert status="info" class="mb-3">
-        <nb-icon icon="info-outline"></nb-icon>
-        {{ '异步 MV 可省略 DISTRIBUTED BY；StarRocks 会使用随机分桶并自动设置桶数。仅在需要显式选择分桶方式时再指定该子句。' | translate }}
-      </nb-alert>
-      <nb-accordion>
-        <nb-accordion-item>
-          <nb-accordion-item-header>{{  'SQL 模板示例（点击查看）' | translate }}</nb-accordion-item-header>
-          <nb-accordion-item-body>
-            <div class="template-section">
-              <h6>{{  '异步物化视图（手动刷新）' | translate }}</h6>
-              <pre class="code-template">CREATE MATERIALIZED VIEW mv_async_manual
-                REFRESH MANUAL
-                AS SELECT
-                order_date,
-                SUM(amount) as daily_sales,
-                COUNT(*) as order_count
-                FROM orders
-              GROUP BY order_date;</pre>
-
-              <h6>{{  '异步物化视图（自动刷新）' | translate }}</h6>
-              <pre class="code-template">CREATE MATERIALIZED VIEW mv_async_auto
-                REFRESH SCHEDULE EVERY (INTERVAL 1 HOUR)
-                AS SELECT
-                order_date,
-                SUM(amount) as daily_sales
-                FROM orders
-              GROUP BY order_date;</pre>
-
-              <h6>{{  '同步物化视图（ROLLUP，导入时自动刷新）' | translate }}</h6>
-              <pre class="code-template">CREATE MATERIALIZED VIEW mv_sync_rollup
-                AS SELECT
-                customer_id,
-                order_date,
-                SUM(amount) as total_amount,
-                COUNT(*) as order_count
-                FROM orders
-              GROUP BY customer_id, order_date;</pre>
-            </div>
-          </nb-accordion-item-body>
-        </nb-accordion-item>
-      </nb-accordion>
-
-      <div class="form-group mt-3">
-        <label class="label">{{  'CREATE MATERIALIZED VIEW SQL 语句' | translate }}</label>
-        <textarea nbInput size="small"
-          nbInput
-          fullWidth
-          rows="12"
-          [placeholder]="'输入完整的 CREATE MATERIALIZED VIEW 语句...' | translate"
-          [(ngModel)]="createSQL"
-          [disabled]="creating"
-        ></textarea>
-        <small class="form-text text-muted">
-          <nb-icon icon="bulb-outline"></nb-icon>
-          {{ '请输入完整的CREATE MATERIALIZED VIEW SQL语句。异步 MV 至少需指定 DISTRIBUTED BY 和刷新策略之一；省略 DISTRIBUTED BY 时，StarRocks 使用随机分桶并自动设置桶数。同步 MV（ROLLUP）无需 DISTRIBUTED BY。' | translate }}
-        </small>
+      <div class="row">
+        <div class="col-md-6 form-group">
+          <label class="label">{{ '物化视图数据库' | translate }}</label>
+          <input nbInput fullWidth [(ngModel)]="createDatabase" [disabled]="creating" autocomplete="off">
+        </div>
+        <div class="col-md-6 form-group">
+          <label class="label">{{ '物化视图名称' | translate }}</label>
+          <input nbInput fullWidth [(ngModel)]="createName" [disabled]="creating" autocomplete="off">
+        </div>
+        <div class="col-md-6 form-group">
+          <label class="label">{{ '源表数据库' | translate }}</label>
+          <input nbInput fullWidth [(ngModel)]="createSourceDatabase" [disabled]="creating" autocomplete="off">
+        </div>
+        <div class="col-md-6 form-group">
+          <label class="label">{{ '源表名称' | translate }}</label>
+          <input nbInput fullWidth [(ngModel)]="createSourceTable" [disabled]="creating" autocomplete="off">
+        </div>
+        <div class="col-12 form-group">
+          <label class="label">{{ '投影列' | translate }}</label>
+          <input nbInput fullWidth [(ngModel)]="createColumns" [disabled]="creating" autocomplete="off" [placeholder]="'使用逗号分隔列名' | translate">
+        </div>
+        <div class="col-md-4 form-group">
+          <label class="label">{{ '刷新策略' | translate }}</label>
+          <nb-select fullWidth [(selected)]="createSchedule" [disabled]="creating">
+            <nb-option value="manual">{{ '手动刷新' | translate }}</nb-option>
+            <nb-option value="scheduled">{{ '定时刷新' | translate }}</nb-option>
+          </nb-select>
+        </div>
+        @if (createSchedule === 'scheduled') {
+          <div class="col-md-4 form-group">
+            <label class="label">{{ '刷新间隔' | translate }}</label>
+            <input nbInput fullWidth type="number" min="1" max="8760" [(ngModel)]="createScheduleInterval" [disabled]="creating">
+          </div>
+          <div class="col-md-4 form-group">
+            <label class="label">{{ '间隔单位' | translate }}</label>
+            <nb-select fullWidth [(selected)]="createScheduleUnit" [disabled]="creating">
+              <nb-option value="hour">{{ '小时' | translate }}</nb-option>
+              <nb-option value="day">{{ '天' | translate }}</nb-option>
+            </nb-select>
+          </div>
+        }
       </div>
     </nb-card-body>
     <nb-card-footer>
       <div class="d-flex justify-content-end gap-2">
         <button type="button" class="icon-btn" (click="closeCreateDialog()" [disabled]="creating"
           [nbTooltip]="'取消' | translate" nbTooltipPlacement="top" [aria-label]="'取消' | translate"><nb-icon icon="close-outline"></nb-icon></button>
-        <button type="button" class="icon-btn is-primary" (click="createMV()" [disabled]="creating || !createSQL.trim()"
+        <button type="button" class="icon-btn is-primary" (click="createMV()" [disabled]="creating"
           [nbTooltip]="'创建' | translate" nbTooltipPlacement="top" [aria-label]="'创建' | translate"><nb-icon icon="checkmark-outline"></nb-icon></button>
       </div>
     </nb-card-footer>

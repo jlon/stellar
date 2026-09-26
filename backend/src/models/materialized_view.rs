@@ -1,5 +1,6 @@
 use chrono::{NaiveDate, NaiveDateTime};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use utoipa::ToSchema;
 
 use crate::utils::{ApiError, ApiResult};
@@ -101,30 +102,66 @@ impl MaterializedView {
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateMaterializedViewRequest {
-    pub sql: String,
+    pub database: String,
+    pub name: String,
+    pub source_database: String,
+    pub source_table: String,
+    pub columns: Vec<String>,
+    pub schedule: RefreshSchedule,
 }
 
 impl CreateMaterializedViewRequest {
     pub fn validate(&self) -> ApiResult<()> {
-        const MAX_SQL_BYTES: usize = 1_000_000;
-        let sql = self.sql.trim();
-        if sql.is_empty() || sql.len() > MAX_SQL_BYTES {
-            return Err(ApiError::invalid_data("materialized view SQL is invalid"));
-        }
-        let prefix_len = "CREATE MATERIALIZED VIEW".len();
-        if !sql
-            .get(..prefix_len)
-            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("CREATE MATERIALIZED VIEW"))
-            || !sql
-                .get(prefix_len..)
-                .and_then(|remainder| remainder.chars().next())
-                .is_some_and(char::is_whitespace)
+        const MAX_COLUMNS: usize = 128;
+
+        let reference = self.reference();
+        reference.validate()?;
+        if reference.name.len() > 64
+            || !reference
+                .name
+                .chars()
+                .next()
+                .is_some_and(|character| character.is_ascii_alphabetic())
         {
             return Err(ApiError::invalid_data(
-                "only CREATE MATERIALIZED VIEW statements are accepted",
+                "materialized view name must start with a letter and be at most 64 characters",
             ));
         }
-        Ok(())
+        MaterializedViewRef::validate_identifier("source database", &self.source_database)?;
+        MaterializedViewRef::validate_identifier("source table", &self.source_table)?;
+        if self.columns.is_empty() || self.columns.len() > MAX_COLUMNS {
+            return Err(ApiError::invalid_data(
+                "materialized view must select between 1 and 128 columns",
+            ));
+        }
+        let mut columns = HashSet::new();
+        for column in &self.columns {
+            MaterializedViewRef::validate_identifier("source column", column)?;
+            if !columns.insert(column.to_ascii_lowercase()) {
+                return Err(ApiError::invalid_data("materialized view columns must be unique"));
+            }
+        }
+        self.schedule.validate()
+    }
+
+    pub fn reference(&self) -> MaterializedViewRef {
+        MaterializedViewRef {
+            database: self.database.clone(),
+            name: self.name.clone(),
+            kind: MaterializedViewKind::Async,
+        }
+    }
+
+    pub fn source_quoted_name(&self) -> String {
+        format!("`{}`.`{}`", self.source_database, self.source_table)
+    }
+
+    pub fn selected_columns_sql(&self) -> String {
+        self.columns
+            .iter()
+            .map(|column| format!("`{column}`"))
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 }
 
@@ -247,12 +284,7 @@ pub struct UpdateRefreshScheduleRequest {
 
 impl UpdateRefreshScheduleRequest {
     pub fn validate(&self) -> ApiResult<()> {
-        if let RefreshSchedule::Scheduled { interval, .. } = self.schedule
-            && !(1..=8_760).contains(&interval)
-        {
-            return Err(ApiError::invalid_data("refresh interval must be between 1 and 8760"));
-        }
-        Ok(())
+        self.schedule.validate()
     }
 }
 
@@ -261,6 +293,17 @@ impl UpdateRefreshScheduleRequest {
 pub enum RefreshSchedule {
     Manual,
     Scheduled { interval: u32, unit: RefreshIntervalUnit },
+}
+
+impl RefreshSchedule {
+    pub fn validate(self) -> ApiResult<()> {
+        if let Self::Scheduled { interval, .. } = self
+            && !(1..=8_760).contains(&interval)
+        {
+            return Err(ApiError::invalid_data("refresh interval must be between 1 and 8760"));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema, Clone, Copy, PartialEq, Eq)]

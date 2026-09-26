@@ -4,10 +4,10 @@
 
 use super::ClusterAdapter;
 use crate::models::{
-    Backend, Cluster, ClusterType, DependencyEvidence, DependencyObject, DependencySource,
-    Frontend, MaterializedView, MaterializedViewDependencies, MaterializedViewDependency,
-    MaterializedViewKind, MaterializedViewRef, MaterializedViewState, Query,
-    RefreshMaterializedViewRequest, RefreshMode, RefreshSchedule, RelationKind, RuntimeInfo,
+    Backend, Cluster, ClusterType, CreateMaterializedViewRequest, DependencyEvidence,
+    DependencyObject, DependencySource, Frontend, MaterializedView, MaterializedViewDependencies,
+    MaterializedViewDependency, MaterializedViewKind, MaterializedViewRef, MaterializedViewState,
+    Query, RefreshMaterializedViewRequest, RefreshMode, RefreshSchedule, RelationKind, RuntimeInfo,
 };
 use crate::services::{MySQLClient, MySQLPoolManager};
 use crate::utils::{ApiError, ApiResult};
@@ -311,6 +311,24 @@ impl DorisAdapter {
     pub(crate) fn has_current_rollup(rows: &[Value], rollup_name: &str) -> bool {
         rows.iter()
             .any(|row| Self::row_string(row, "IndexName").as_deref() == Some(rollup_name))
+    }
+
+    pub(crate) fn create_materialized_view_sql(
+        request: &CreateMaterializedViewRequest,
+    ) -> ApiResult<String> {
+        request.validate()?;
+        let schedule = match request.schedule {
+            RefreshSchedule::Manual => "ON MANUAL".to_string(),
+            RefreshSchedule::Scheduled { interval, unit } => {
+                format!("ON SCHEDULE EVERY {interval} {}", unit.sql_keyword())
+            },
+        };
+        Ok(format!(
+            "CREATE MATERIALIZED VIEW {} BUILD DEFERRED REFRESH AUTO {schedule} AS SELECT {} FROM {}",
+            request.reference().quoted_name(),
+            request.selected_columns_sql(),
+            request.source_quoted_name(),
+        ))
     }
 
     async fn get_materialized_view_exact(
@@ -1103,11 +1121,16 @@ impl ClusterAdapter for DorisAdapter {
         Ok(materialized_view.definition)
     }
 
-    async fn create_materialized_view(&self, ddl: &str) -> ApiResult<()> {
+    async fn create_materialized_view(
+        &self,
+        request: &CreateMaterializedViewRequest,
+    ) -> ApiResult<()> {
         tracing::debug!("[Doris] Creating materialized view on cluster: {}", self.cluster.name);
 
         let mysql_client = self.mysql_client().await?;
-        mysql_client.execute(ddl).await?;
+        mysql_client
+            .execute(&Self::create_materialized_view_sql(request)?)
+            .await?;
 
         tracing::info!("[Doris] Materialized view created successfully");
         Ok(())
