@@ -36,6 +36,10 @@ describe('AiConnectionsSheetComponent', () => {
   };
   const changeDetectorRef = { detectChanges: jasmine.createSpy('detectChanges') };
   const dialogRef = { close: jasmine.createSpy('close') };
+  const confirmDialog = {
+    confirm: jasmine.createSpy('confirm').and.returnValue(of(false)),
+    confirmDelete: jasmine.createSpy('confirmDelete').and.returnValue(of(false)),
+  };
 
   beforeEach(() => {
     granted = new Set<string>();
@@ -44,6 +48,8 @@ describe('AiConnectionsSheetComponent', () => {
     llmProviders.testConnection.calls.reset();
     changeDetectorRef.detectChanges.calls.reset();
     dialogRef.close.calls.reset();
+    confirmDialog.confirm.calls.reset();
+    confirmDialog.confirmDelete.calls.reset();
     TestBed.configureTestingModule({
       providers: [
         { provide: NbDialogRef, useValue: dialogRef },
@@ -55,7 +61,7 @@ describe('AiConnectionsSheetComponent', () => {
           useValue: { permissions$, hasPermission: (code: string) => granted.has(code) },
         },
         { provide: AuthService, useValue: { isSuperAdmin: () => false } },
-        { provide: ConfirmDialogService, useValue: { confirm: () => of(false), confirmDelete: () => of(false) } },
+        { provide: ConfirmDialogService, useValue: confirmDialog },
         { provide: NbToastrService, useValue: { success: jasmine.createSpy('success') } },
         { provide: I18nService, useValue: { instant: (value: string) => value } },
       ],
@@ -86,6 +92,17 @@ describe('AiConnectionsSheetComponent', () => {
     component.close();
 
     expect(dialogRef.close).toHaveBeenCalledWith(false);
+  });
+
+  it('does not close the sheet when Escape belongs to a nested confirmation', () => {
+    const nestedDialog = document.createElement('div');
+    nestedDialog.className = 'cdk-overlay-pane nested-action-dialog';
+    document.body.append(nestedDialog);
+
+    component.closeOnEscape();
+
+    expect(dialogRef.close).not.toHaveBeenCalled();
+    nestedDialog.remove();
   });
 
   it('requires an API key when creating a connection', () => {
@@ -125,5 +142,21 @@ describe('AiConnectionsSheetComponent', () => {
     component.test(provider);
 
     expect(llmProviders.testConnection).toHaveBeenCalledWith(provider.id);
+  });
+
+  it('opens provider activation as a nested confirmation above the sheet', () => {
+    granted.add('api:llm:providers:activate');
+    component.ngOnInit();
+
+    component.activate(provider);
+
+    expect(confirmDialog.confirm).toHaveBeenCalledWith(
+      '切换 AI 模型供应商',
+      jasmine.any(String),
+      '设为当前',
+      '取消',
+      'primary',
+      { nested: true },
+    );
   });
 });

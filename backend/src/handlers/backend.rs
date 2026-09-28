@@ -642,8 +642,7 @@ pub(crate) fn parse_compaction_summary(value: serde_json::Value) -> ApiResult<Co
         max_task_num: json_number(&value, "max_task_num").unwrap_or_default() as i64,
         running_task_num: running_task_num as i64,
         base_task_num: json_number(&value, "base_task_num").unwrap_or_default() as i64,
-        cumulative_task_num: json_number(&value, "cumulative_task_num").unwrap_or_default()
-            as i64,
+        cumulative_task_num: json_number(&value, "cumulative_task_num").unwrap_or_default() as i64,
         candidate_num: json_number(&value, "candidate_num").unwrap_or_default() as i64,
         tablet_num: json_number(&value, "tablet_num").unwrap_or_default() as i64,
     })

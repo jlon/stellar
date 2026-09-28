@@ -757,9 +757,25 @@
             }
           </div>
         </div>
-        <button nbButton ghost status="basic" size="tiny" (click)="ref.close()">
-          <nb-icon icon="close-outline"></nb-icon>
-        </button>
+        <div class="schema-header-actions">
+          @if (schemaObject) {
+            <button nbButton ghost status="basic" size="tiny" type="button" (click)="copySchemaObjectName()" [nbTooltip]="'复制限定对象名' | translate" [aria-label]="'复制限定对象名' | translate">
+              <nb-icon icon="copy-outline"></nb-icon>
+            </button>
+            <button nbButton ghost status="basic" size="tiny" type="button" (click)="insertSchemaObjectName()" [nbTooltip]="'插入 SQL 编辑器' | translate" [aria-label]="'插入 SQL 编辑器' | translate">
+              <nb-icon icon="corner-down-right-outline"></nb-icon>
+            </button>
+            <button nbButton ghost status="basic" size="tiny" type="button" (click)="previewSchemaObjectRows()" [nbTooltip]="'预览前 N 行' | translate" [aria-label]="'预览前 N 行' | translate">
+              <nb-icon icon="eye-outline"></nb-icon>
+            </button>
+            <button nbButton ghost status="basic" size="tiny" type="button" (click)="refreshSchemaObject()" [disabled]="schemaRefreshing" [nbTooltip]="'刷新对象详情' | translate" [aria-label]="'刷新对象详情' | translate">
+              <nb-icon icon="refresh-outline"></nb-icon>
+            </button>
+          }
+          <button nbButton ghost status="basic" size="tiny" type="button" (click)="ref.close()" [aria-label]="'关闭' | translate">
+            <nb-icon icon="close-outline"></nb-icon>
+          </button>
+        </div>
       </div>
     </nb-card-header>
     <nb-card-body>
@@ -770,22 +786,175 @@
         </div>
       }
       @if (!tableSchemaLoading) {
-        <div class="schema-content">
-          <div class="schema-scroll">
-            @if (currentTableSchema) {
-              @if (schemaContentType === 'sql') {
-                <div class="schema-editor" [attr.data-schema-dialog-id]="schemaDialogId"></div>
-              } @else {
-                <pre class="schema-text">{{ currentTableSchema }}</pre>
-              }
-            } @else {
-              <div class="empty-schema">
-                <nb-icon icon="alert-circle-outline" status="warning"></nb-icon>
-                <p class="mb-0">{{  '未获取到建表语句' | translate }}</p>
-              </div>
+        @if (schemaObject; as object) {
+          <div class="schema-content">
+            <div class="schema-summary">
+              <span class="schema-summary-kind">{{ object.identity.object_kind }}</span>
+              <code>{{ object.identity.catalog }}.{{ object.identity.database }}.{{ object.identity.name }}</code>
+              <span>{{ schemaStatusLabel() }}</span>
+              <time>{{ object.read_at | date:'yyyy-MM-dd HH:mm:ss' }}</time>
+            </div>
+
+            @if (object.warnings.length > 0) {
+              <nb-alert status="warning" closable="false">
+                @for (warning of object.warnings; track warning) {
+                  <div>{{ warning }}</div>
+                }
+              </nb-alert>
             }
+
+            <section class="schema-section schema-dependency-section">
+              <div class="schema-section-heading">
+                <h6>{{ '一跳依赖' | translate }}</h6>
+                @if (schemaDependencies; as dependencies) {
+                  <div class="schema-dependency-controls">
+                    <span class="schema-dependency-status">
+                      {{ dependencies.complete ? ('已完整验证' | translate) : ('信息不完整' | translate) }}
+                    </span>
+                    <nb-checkbox
+                      [checked]="showPartialSchemaDependencies"
+                      (checkedChange)="setShowPartialSchemaDependencies($event)">
+                      {{ '显示部分关系' | translate }}
+                    </nb-checkbox>
+                  </div>
+                }
+              </div>
+              @if (schemaDependenciesLoading) {
+                <div class="schema-dependency-loading"><nb-spinner size="small"></nb-spinner></div>
+              } @else if (schemaDependencies; as dependencies) {
+                <div class="schema-dependency-meta">
+                  <span>{{ '关系读取时间' | translate }}: {{ dependencies.read_at | date:'yyyy-MM-dd HH:mm:ss' }}</span>
+                  <span>{{ dependencies.dependencies.length }} {{ '条候选关系' | translate }}</span>
+                </div>
+                @if (dependencies.warnings.length > 0) {
+                  <nb-alert status="info" closable="false">
+                    @for (warning of dependencies.warnings; track warning) { <div>{{ warning }}</div> }
+                  </nb-alert>
+                }
+                @if (schemaDependencyGraphNodes.length > 1) {
+                  <div class="schema-dependency-graph" role="group" [attr.aria-label]="'当前对象的一跳依赖图' | translate">
+                    <svg [attr.viewBox]="'0 0 ' + schemaDependencyGraphWidth + ' ' + schemaDependencyGraphHeight" [attr.width]="schemaDependencyGraphWidth" [attr.height]="schemaDependencyGraphHeight">
+                      @for (edge of schemaDependencyGraphEdges; track $index) {
+                        <line class="schema-dependency-edge" [attr.x1]="edge.from.x" [attr.y1]="edge.from.y" [attr.x2]="edge.to.x" [attr.y2]="edge.to.y"></line>
+                        <text class="schema-dependency-edge-label" [attr.x]="edge.labelX" [attr.y]="edge.labelY">{{ edge.label }}</text>
+                      }
+                      @for (node of schemaDependencyGraphNodes; track node.id) {
+                        <g
+                          class="schema-dependency-graph-node"
+                          [class.current]="node.type === 'current'"
+                          [class.clickable]="!!node.dependency"
+                          [attr.transform]="'translate(' + (node.x - node.width / 2) + ' ' + (node.y - node.height / 2) + ')'"
+                          [attr.role]="node.dependency ? 'button' : null"
+                          [attr.tabindex]="node.dependency ? 0 : null"
+                          (click)="openSchemaDependencyNode(node)"
+                          (keydown.enter)="openSchemaDependencyNode(node)"
+                          (keydown.space)="$event.preventDefault(); openSchemaDependencyNode(node)">
+                          <rect [attr.width]="node.width" [attr.height]="node.height" rx="6"></rect>
+                          <text class="schema-dependency-node-label" x="12" y="27">{{ node.label }}</text>
+                          <text class="schema-dependency-node-meta" x="12" y="47">{{ node.subtitle }}</text>
+                          @if (node.evidence) {
+                            <text class="schema-dependency-node-evidence" x="12" y="62">{{ node.evidence }}</text>
+                          }
+                        </g>
+                      }
+                    </svg>
+                  </div>
+                } @else if (!hasVisibleSchemaDependencies()) {
+                  <span class="schema-dependency-empty">{{ '未发现当前筛选条件下的一跳依赖' | translate }}</span>
+                }
+                @if (dependencies.dependencies.length > 0) {
+                  <div class="schema-dependency-evidence-list">
+                    @for (dependency of dependencies.dependencies; track dependency.object_ref) {
+                      @if (showPartialSchemaDependencies || dependency.evidence !== 'partial') {
+                        <div class="schema-dependency-evidence-row">
+                          <code>{{ schemaDependencyLabel(dependency) }}</code>
+                          <span>{{ dependency.relation_kind }} · {{ dependency.evidence }} · {{ dependency.source }}</span>
+                          <small>{{ dependency.observed_at | date:'yyyy-MM-dd HH:mm:ss' }}{{ dependency.evidence_snippet ? ' · ' + dependency.evidence_snippet : '' }}</small>
+                        </div>
+                      }
+                    }
+                  </div>
+                }
+              }
+            </section>
+
+            @if (object.columns.length > 0) {
+              <section class="schema-section">
+                <h6>{{ '字段' | translate }}</h6>
+                <div class="schema-table-wrap">
+                  <table class="schema-table">
+                    <thead>
+                      <tr>
+                        <th>{{ '名称' | translate }}</th>
+                        <th>{{ '类型' | translate }}</th>
+                        <th>{{ '可空' | translate }}</th>
+                        <th>{{ '默认值' | translate }}</th>
+                        <th>{{ '键' | translate }}</th>
+                        <th>{{ '注释' | translate }}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (column of object.columns; track column.name) {
+                        <tr>
+                          <td><code>{{ column.name }}</code></td>
+                          <td>{{ column.data_type }}</td>
+                          <td>{{ column.nullable === null ? '-' : (column.nullable ? '是' : '否') }}</td>
+                          <td>{{ column.default_value || '-' }}</td>
+                          <td>{{ column.key || '-' }}</td>
+                          <td>{{ column.comment || '-' }}</td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            }
+
+            @if (object.physical_properties; as properties) {
+              <section class="schema-section">
+                <h6>{{ '物理属性' | translate }}</h6>
+                <dl class="schema-properties">
+                  @if (properties.key_model) { <div><dt>Key Model</dt><dd>{{ properties.key_model }}</dd></div> }
+                  @if (properties.partition) { <div><dt>{{ '分区' | translate }}</dt><dd>{{ properties.partition }}</dd></div> }
+                  @if (properties.distribution) { <div><dt>{{ '分桶' | translate }}</dt><dd>{{ properties.distribution }}</dd></div> }
+                  @if (properties.engine) { <div><dt>Engine</dt><dd>{{ properties.engine }}</dd></div> }
+                  @for (property of schemaPropertyEntries(); track property[0]) {
+                    <div><dt>{{ property[0] }}</dt><dd>{{ property[1] }}</dd></div>
+                  }
+                </dl>
+              </section>
+            }
+
+            <section class="schema-section schema-ddl-section">
+              <div class="schema-section-heading">
+                <h6>DDL</h6>
+                <button nbButton ghost status="basic" size="tiny" type="button" (click)="copySchemaDdl()" [nbTooltip]="'复制 DDL' | translate" [aria-label]="'复制 DDL' | translate">
+                  <nb-icon icon="copy-outline"></nb-icon>
+                </button>
+              </div>
+              <div class="schema-scroll">
+                <div class="schema-editor" [attr.data-schema-dialog-id]="schemaDialogId"></div>
+              </div>
+            </section>
           </div>
-        </div>
+        } @else {
+          <div class="schema-content">
+            <div class="schema-scroll">
+              @if (currentTableSchema) {
+                @if (schemaContentType === 'sql') {
+                  <div class="schema-editor" [attr.data-schema-dialog-id]="schemaDialogId"></div>
+                } @else {
+                  <pre class="schema-text">{{ currentTableSchema }}</pre>
+                }
+              } @else {
+                <div class="empty-schema">
+                  <nb-icon icon="alert-circle-outline" status="warning"></nb-icon>
+                  <p class="mb-0">{{  '未获取到对象定义' | translate }}</p>
+                </div>
+              }
+            </div>
+          </div>
+        }
       }
     </nb-card-body>
   </nb-card>
@@ -1086,7 +1255,7 @@
     }
     <nb-card-footer>
       <div class="d-flex justify-content-end">
-        <button nbButton status="danger" (click)="killQueryFromDetail(); ref.close()">
+        <button nbButton status="danger" (click)="killQueryFromDetail()">
           <nb-icon icon="trash-2-outline"></nb-icon>
           {{ '查杀查询' | translate }}
         </button>

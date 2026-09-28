@@ -399,6 +399,43 @@
     opacity: 0;
   }
 
+  // 详情抽屉上的操作表单保持为二级模态：抽屉留在下层提供对象上下文，
+  // 但遮罩阻止在表单提交期间继续操作底层详情。
+  .cdk-overlay-pane.mv-action-dialog {
+    width: min(34rem, calc(100vw - 2rem));
+    max-width: unset !important;
+  }
+
+  .cdk-overlay-pane.mv-action-dialog nb-dialog-container > nb-card {
+    width: 100%;
+    margin: 0;
+  }
+
+  // 详情抽屉或详情弹窗上的二级操作层保留父对象上下文，
+  // 并使用独立遮罩阻止底层继续交互。
+  .cdk-overlay-pane.nested-action-dialog {
+    width: min(34rem, calc(100vw - 2rem));
+    max-width: unset !important;
+  }
+
+  .cdk-overlay-pane.nested-action-dialog nb-dialog-container > nb-card {
+    width: 100%;
+    margin: 0;
+  }
+
+  .cdk-overlay-container:has(.cdk-overlay-pane.side-sheet) .cdk-overlay-backdrop.mv-action-backdrop {
+    background-color: color-mix(in srgb, var(--background-basic-color-4) 62%, transparent);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .cdk-overlay-container:has(.cdk-overlay-pane.side-sheet) .cdk-overlay-backdrop.nested-action-backdrop,
+  .cdk-overlay-backdrop.nested-action-backdrop {
+    background-color: color-mix(in srgb, var(--background-basic-color-4) 62%, transparent);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
   @keyframes dialog-enter {
     from {
       opacity: 0;

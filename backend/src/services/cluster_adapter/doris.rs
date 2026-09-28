@@ -12,6 +12,7 @@ use crate::models::{
 use crate::services::{MySQLClient, MySQLPoolManager};
 use crate::utils::{ApiError, ApiResult};
 use async_trait::async_trait;
+use chrono::Utc;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use reqwest::Client;
@@ -405,6 +406,7 @@ impl DorisAdapter {
             .collect();
         let mut dependencies = Vec::new();
         let mut seen = HashSet::new();
+        let observed_at = Utc::now();
         for capture in SOURCE_RE.captures_iter(&definition_without_comments) {
             let Some(value) = capture.get(1) else {
                 continue;
@@ -440,6 +442,7 @@ impl DorisAdapter {
                 evidence: DependencyEvidence::Partial,
                 source: DependencySource::DorisDefinition,
                 evidence_snippet: Some(value.as_str().to_string()),
+                observed_at,
             });
             if dependencies.len() == MAX_DEPENDENCIES {
                 warnings.push(
@@ -1277,6 +1280,7 @@ impl ClusterAdapter for DorisAdapter {
         if reference.kind == MaterializedViewKind::Rollup {
             let parent =
                 Self::rollup_parent_from_definition(&materialized_view.definition, reference)?;
+            let observed_at = Utc::now();
             return Ok(MaterializedViewDependencies {
                 object: reference.clone(),
                 dependencies: vec![MaterializedViewDependency {
@@ -1289,9 +1293,11 @@ impl ClusterAdapter for DorisAdapter {
                     evidence: DependencyEvidence::Verified,
                     source: DependencySource::RollupParent,
                     evidence_snippet: None,
+                    observed_at,
                 }],
                 complete: true,
                 warnings: Vec::new(),
+                read_at: observed_at,
             });
         }
         let (dependencies, mut warnings) =
@@ -1302,6 +1308,7 @@ impl ClusterAdapter for DorisAdapter {
             dependencies,
             complete: false,
             warnings,
+            read_at: Utc::now(),
         })
     }
 

@@ -2,12 +2,13 @@ import { ChangeDetectorRef, DOCUMENT, TemplateRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { NbDialogService, NbToastrService } from '@nebular/theme';
 import { RowSelectionEvent } from 'angular2-smart-table';
-import { BehaviorSubject, Subject, of } from 'rxjs';
+import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
 
 import { AuthService } from '../../../../@core/data/auth.service';
 import { ClusterService } from '../../../../@core/data/cluster.service';
 import { ClusterContextService } from '../../../../@core/data/cluster-context.service';
 import { MaterializedView, MaterializedViewService } from '../../../../@core/data/materialized-view.service';
+import { NodeService } from '../../../../@core/data/node.service';
 import { I18nService } from '../../../../@core/i18n/i18n.service';
 import { ConfirmDialogService } from '../../../../@core/services/confirm-dialog.service';
 import { ActiveToggleRenderComponent } from '../active-toggle-render.component';
@@ -19,6 +20,10 @@ describe('MaterializedViewsComponent', () => {
   const toastrService = {
     danger: jasmine.createSpy('danger'),
     success: jasmine.createSpy('success'),
+    warning: jasmine.createSpy('warning'),
+  };
+  const changeDetector = {
+    detectChanges: jasmine.createSpy('detectChanges'),
   };
   const materializedViewService = {
     getMaterializedViewDDL: jasmine.createSpy('getMaterializedViewDDL').and.returnValue(of({ ddl: 'CREATE MATERIALIZED VIEW sales_mv' })),
@@ -27,14 +32,23 @@ describe('MaterializedViewsComponent', () => {
       dependencies: [],
       complete: true,
       warnings: [],
+      read_at: '2026-09-28T00:00:00Z',
     })),
     createMaterializedView: jasmine.createSpy('createMaterializedView').and.returnValue(of({})),
+    refreshMaterializedView: jasmine.createSpy('refreshMaterializedView').and.returnValue(of({})),
+    renameMaterializedView: jasmine.createSpy('renameMaterializedView').and.returnValue(of({})),
+    getMaterializedView: jasmine.createSpy('getMaterializedView').and.returnValue(of(testView())),
+  };
+  const nodeService = {
+    getSchemaObjects: jasmine.createSpy('getSchemaObjects').and.returnValue(of([])),
+    getSchemaObject: jasmine.createSpy('getSchemaObject').and.returnValue(of(testSchemaObject())),
   };
 
   beforeEach(() => {
     TestBed.configureTestingModule({
       providers: [
         { provide: MaterializedViewService, useValue: materializedViewService },
+        { provide: NodeService, useValue: nodeService },
         { provide: ClusterService, useValue: {} },
         { provide: ClusterContextService, useValue: { activeCluster$: new BehaviorSubject(null), getActiveClusterId: () => null } },
         { provide: AuthService, useValue: { isAuthenticated: () => true } },
@@ -42,7 +56,7 @@ describe('MaterializedViewsComponent', () => {
         { provide: NbToastrService, useValue: toastrService },
         { provide: ConfirmDialogService, useValue: {} },
         { provide: NbDialogService, useValue: dialogService },
-        { provide: ChangeDetectorRef, useValue: { detectChanges: () => undefined } },
+        { provide: ChangeDetectorRef, useValue: changeDetector },
         { provide: DOCUMENT, useValue: document },
       ],
     });
@@ -51,7 +65,14 @@ describe('MaterializedViewsComponent', () => {
     materializedViewService.getMaterializedViewDDL.calls.reset();
     materializedViewService.getDependencies.calls.reset();
     materializedViewService.createMaterializedView.calls.reset();
+    materializedViewService.refreshMaterializedView.calls.reset();
+    materializedViewService.renameMaterializedView.calls.reset();
+    materializedViewService.getMaterializedView.calls.reset();
+    nodeService.getSchemaObjects.calls.reset();
+    nodeService.getSchemaObject.calls.reset();
     toastrService.success.calls.reset();
+    toastrService.warning.calls.reset();
+    changeDetector.detectChanges.calls.reset();
   });
 
   it('uses a single selected table row as the details entry point', () => {
@@ -86,6 +107,7 @@ describe('MaterializedViewsComponent', () => {
     expect(materializedViewService.getMaterializedViewDDL).toHaveBeenCalledWith(reference);
     expect(materializedViewService.getDependencies).toHaveBeenCalledWith(reference);
     expect(component.mvDDL).toBe('CREATE MATERIALIZED VIEW sales_mv');
+    expect(changeDetector.detectChanges).toHaveBeenCalled();
   });
 
   it('does not open row details when the inline state control is clicked', () => {
@@ -143,6 +165,135 @@ describe('MaterializedViewsComponent', () => {
     expect(component.closeCreateDialog).toHaveBeenCalled();
     expect(component.loadMaterializedViews).toHaveBeenCalled();
   });
+
+  it('submits a refresh only once while the request is in flight', () => {
+    const refreshRequest$ = new Subject<void>();
+    materializedViewService.refreshMaterializedView.and.returnValue(refreshRequest$);
+    component.selectedMV = testView();
+
+    component.refreshMV();
+    component.refreshMV();
+
+    expect(materializedViewService.refreshMaterializedView).toHaveBeenCalledOnceWith(
+      { database: 'analytics', name: 'sales_mv', kind: 'async' },
+      { mode: 'async', force: false, partition: undefined },
+    );
+  });
+
+  it('submits an edit only once while the request is in flight', () => {
+    const editRequest$ = new Subject<void>();
+    materializedViewService.renameMaterializedView.and.returnValue(editRequest$);
+    component.selectedMV = testView();
+    component.editNewName = 'sales_mv_renamed';
+
+    component.editMV();
+    component.editMV();
+
+    expect(materializedViewService.renameMaterializedView).toHaveBeenCalledOnceWith(
+      { database: 'analytics', name: 'sales_mv', kind: 'async' },
+      'sales_mv_renamed',
+    );
+  });
+
+  it('opens footer actions without closing the current detail sheet', () => {
+    const view = testView();
+    component.selectedMV = view;
+    const openEdit = spyOn(component, 'openEditDialog');
+    const openRefresh = spyOn(component, 'openRefreshDialog');
+    const toggleState = spyOn(component, 'toggleActiveState');
+    const closeDetail = spyOn(component, 'closeDetailDialog');
+
+    component.editSelectedMV();
+    component.refreshSelectedMV();
+    component.toggleSelectedMV();
+
+    expect(openEdit).toHaveBeenCalledOnceWith(view);
+    expect(openRefresh).toHaveBeenCalledOnceWith(view);
+    expect(toggleState).toHaveBeenCalledOnceWith(view, true);
+    expect(closeDetail).not.toHaveBeenCalled();
+  });
+
+  it('renders direct reads as directed graph edges and resolves opaque references', () => {
+    const onBackdropClick = new Subject<void>();
+    const onClose = new Subject<void>();
+    dialogService.open.and.returnValue({ close: jasmine.createSpy('close'), onBackdropClick, onClose });
+    (component as unknown as { detailDialogTemplate: TemplateRef<unknown> }).detailDialogTemplate = {} as TemplateRef<unknown>;
+    component.clusterId = 7;
+    component.activeCluster = { catalog: 'default_catalog' } as any;
+    materializedViewService.getDependencies.and.returnValue(of({
+      object: { database: 'analytics', name: 'sales_mv', kind: 'async' },
+      dependencies: [{
+        object: { catalog: 'default_catalog', database: 'analytics', name: 'orders', kind: 'table' },
+        evidence: 'verified',
+        source: 'star_rocks_object_dependencies',
+        observed_at: '2026-09-28T00:00:00Z',
+      }],
+      complete: true,
+      warnings: [],
+      read_at: '2026-09-28T00:00:00Z',
+    }));
+    nodeService.getSchemaObjects.and.returnValue(of([
+      { name: 'orders', object_kind: 'table', object_ref: 'opaque-orders-ref' },
+    ]));
+
+    component.viewDetail(testView());
+
+    expect(component.dependencyGraphEdges).toHaveSize(1);
+    expect(component.dependencyGraphEdges[0].label).toBe('mv_reads');
+    expect(component.dependencyGraphEdges[0].path).toMatch(/^M \d+ \d+ C /);
+    expect(component.dependencyGraphNodes.find((node) => node.id === 'dependency-0')?.objectRef)
+      .toBe('opaque-orders-ref');
+  });
+
+  it('renews a rejected object reference before opening dependency details', () => {
+    component.clusterId = 7;
+    nodeService.getSchemaObject.and.returnValues(
+      throwError(() => ({ status: 404 })),
+      of(testSchemaObject()),
+    );
+    nodeService.getSchemaObjects.and.returnValue(of([
+      { name: 'orders', object_kind: 'table', object_ref: 'renewed-orders-ref' },
+    ]));
+
+    component.openDependencyNode({
+      id: 'dependency-0',
+      label: 'analytics.orders',
+      subtitle: 'TABLE',
+      type: 'table',
+      catalog: 'default_catalog',
+      database: 'analytics',
+      objectName: 'orders',
+      objectKind: 'table',
+      objectRef: 'expired-orders-ref',
+      x: 0,
+      y: 0,
+      width: 220,
+      height: 72,
+    });
+
+    expect(nodeService.getSchemaObject.calls.allArgs()).toEqual([
+      [7, 'expired-orders-ref'],
+      [7, 'renewed-orders-ref'],
+    ]);
+    expect(component.dependencyObject?.identity.name).toBe('orders');
+  });
+
+  it('ignores graph nodes without an object reference', () => {
+    component.openDependencyNode({
+      id: 'current',
+      label: 'analytics.sales_mv',
+      subtitle: 'MATERIALIZED VIEW',
+      type: 'current',
+      x: 0,
+      y: 0,
+      width: 220,
+      height: 72,
+    });
+
+    expect(nodeService.getSchemaObject).not.toHaveBeenCalled();
+    expect(toastrService.warning).not.toHaveBeenCalled();
+  });
+
 });
 
 function testView(): MaterializedView {
@@ -154,5 +305,23 @@ function testView(): MaterializedView {
     definition: 'SELECT 1',
     refresh_type: 'MANUAL',
     is_active: true,
+  };
+}
+
+function testSchemaObject() {
+  return {
+    identity: {
+      cluster_id: 7,
+      catalog: 'default_catalog',
+      database: 'analytics',
+      name: 'orders',
+      object_kind: 'table' as const,
+    },
+    columns: [],
+    physical_properties: null,
+    ddl_raw: 'CREATE TABLE analytics.orders (order_id BIGINT)',
+    parse_status: 'parsed' as const,
+    read_at: '2026-09-28T00:00:00Z',
+    warnings: [],
   };
 }

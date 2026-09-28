@@ -361,6 +361,31 @@
       <nb-card-body>
         <nb-tabset>
           <nb-tab [tabTitle]="'基本信息' | translate">
+            <section class="mv-evidence-summary" aria-label="物化视图事实状态">
+              <div
+                class="mv-evidence-item"
+                [class.mv-evidence-item--success]="selectedMV.is_active"
+                [class.mv-evidence-item--warning]="!selectedMV.is_active">
+                <span>{{ '引擎状态' | translate }}</span>
+                <strong>{{ selectedMV.is_active ? ('已激活' | translate) : ('已停用' | translate) }}</strong>
+                <small>{{ '来自当前物化视图元数据' | translate }}</small>
+              </div>
+              <div
+                class="mv-evidence-item"
+                [class.mv-evidence-item--success]="selectedMV.last_refresh_state === 'SUCCESS'"
+                [class.mv-evidence-item--danger]="selectedMV.last_refresh_state === 'FAILED'"
+                [class.mv-evidence-item--warning]="selectedMV.kind !== 'rollup' && !!selectedMV.last_refresh_state && selectedMV.last_refresh_state !== 'SUCCESS' && selectedMV.last_refresh_state !== 'FAILED'">
+                <span>{{ '最后刷新' | translate }}</span>
+                @if (selectedMV.kind === 'rollup') {
+                  <strong>{{ '不适用' | translate }}</strong>
+                  <small>{{ '同步 ROLLUP 不报告异步刷新任务' | translate }}</small>
+                } @else {
+                  <strong>{{ selectedMV.last_refresh_state || ('未报告' | translate) }}</strong>
+                  <small>{{ selectedMV.last_refresh_finished_time || ('引擎未返回完成时间' | translate) }}</small>
+                }
+              </div>
+            </section>
+            <p class="mv-evidence-note">{{ '刷新成功只说明刷新任务状态，不代表查询改写或性能收益。' | translate }}</p>
             <div class="detail-section">
               <div class="row">
                 <div class="col-md-6 mb-3">
@@ -483,30 +508,56 @@
               @if (dependenciesLoading) {
                 <div class="text-center text-hint p-4">{{ '正在加载直接上游依赖...' | translate }}</div>
               } @else if (dependencies) {
-                <div class="dependency-summary">
-                  <nb-badge
-                    [status]="dependencies.complete ? 'success' : 'warning'"
-                    [text]="dependencies.complete ? ('已验证的直接依赖' | translate) : ('部分依赖结果' | translate)"
-                  ></nb-badge>
-                  <span class="text-hint">{{ dependencies.dependencies.length }} {{ '个上游对象' | translate }}</span>
-                </div>
                 @if (dependencies.dependencies.length) {
-                  <div class="dependency-graph" role="img" [attr.aria-label]="'当前物化视图的直接上游依赖图' | translate">
+                  <div class="dependency-graph" role="group" [attr.aria-label]="'当前物化视图的直接上游依赖图' | translate">
                     <svg [attr.viewBox]="'0 0 ' + dependencyGraphWidth + ' ' + dependencyGraphHeight" [attr.width]="dependencyGraphWidth" [attr.height]="dependencyGraphHeight">
+                      <defs>
+                        <marker id="mv-dependency-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+                          <path class="dependency-edge-arrow" d="M 1 1 L 8 5 L 1 9"></path>
+                        </marker>
+                      </defs>
                       @for (edge of dependencyGraphEdges; track $index) {
-                        <line class="dependency-edge" [attr.x1]="edge.from.x" [attr.y1]="edge.from.y" [attr.x2]="edge.to.x" [attr.y2]="edge.to.y"></line>
+                        <path class="dependency-edge-halo" [attr.d]="edge.path"></path>
+                        <path class="dependency-edge" marker-end="url(#mv-dependency-arrow)" [attr.d]="edge.path"></path>
+                        <rect class="dependency-edge-label-surface" [attr.x]="edge.labelX - 22" [attr.y]="edge.labelY - 10" width="44" height="14" rx="3"></rect>
+                        <text class="dependency-edge-label" [attr.x]="edge.labelX" [attr.y]="edge.labelY">{{ edge.label }}</text>
                       }
                       @for (node of dependencyGraphNodes; track node.id) {
-                        <g [attr.transform]="'translate(' + (node.x - node.width / 2) + ' ' + (node.y - node.height / 2) + ')'" [class.dependency-node--current]="node.type === 'current'" class="dependency-node">
-                          <rect [attr.width]="node.width" [attr.height]="node.height" rx="6"></rect>
-                          <text class="dependency-node__label" x="12" y="28">{{ node.label }}</text>
-                          <text class="dependency-node__meta" x="12" y="48">{{ node.subtitle }}{{ node.evidence ? ' · ' + node.evidence : '' }}</text>
+                        <g
+                          class="dependency-node"
+                          [class.dependency-node--current]="node.type === 'current'"
+                          [class.dependency-node--table]="node.type === 'table'"
+                          [class.dependency-node--view]="node.type === 'view'"
+                          [class.dependency-node--materialized-view]="node.type === 'materialized_view'"
+                          [class.dependency-node--clickable]="!!node.objectRef"
+                          [attr.transform]="'translate(' + (node.x - node.width / 2) + ' ' + (node.y - node.height / 2) + ')'"
+                          [attr.aria-label]="node.objectRef ? node.label + '，' + node.subtitle + '，打开对象详情' : null"
+                          [attr.role]="node.objectRef ? 'button' : null"
+                          [attr.tabindex]="node.objectRef ? 0 : null"
+                          (click)="node.objectRef && openDependencyNode(node, $event)"
+                          (contextmenu)="node.objectRef && openDependencyNode(node, $event)"
+                          (keydown.enter)="node.objectRef && openDependencyNode(node, $event)"
+                          (keydown.space)="node.objectRef && openDependencyNode(node, $event)">
+                          <title>{{ node.label }} · {{ node.subtitle }}{{ node.evidence ? ' · ' + node.evidence : '' }}</title>
+                          <rect class="dependency-node__surface" [attr.width]="node.width" [attr.height]="node.height" rx="8"></rect>
+                          <circle class="dependency-node__type-mark" cx="16" cy="21" r="4"></circle>
+                          <text class="dependency-node__label" x="27" y="26">{{ node.label }}</text>
+                          <text class="dependency-node__meta" x="27" y="49">{{ node.subtitle }}{{ node.evidence ? ' · ' + node.evidence : '' }}</text>
                         </g>
+                      }
+                      @for (edge of dependencyGraphEdges; track $index) {
+                        <circle class="dependency-edge-port dependency-edge-port--source" [attr.cx]="edge.from.x" [attr.cy]="edge.from.y" r="3.5"></circle>
+                        <circle class="dependency-edge-port dependency-edge-port--target" [attr.cx]="edge.to.x" [attr.cy]="edge.to.y" r="3.5"></circle>
                       }
                     </svg>
                   </div>
                 } @else {
                   <div class="text-hint p-3">{{ '未返回可确认的直接上游对象。' | translate }}</div>
+                }
+                @if (dependencyObjectReferenceWarning) {
+                  <nb-alert status="info" closable="false" class="dependency-warnings">
+                    {{ dependencyObjectReferenceWarning }}
+                  </nb-alert>
                 }
                 @if (dependencies.warnings.length) {
                   <nb-alert status="warning" closable="false" class="dependency-warnings">
@@ -517,16 +568,104 @@
                 }
                 @if (dependencies.dependencies.length) {
                   <div class="dependency-evidence-list">
-                    @for (dependency of dependencies.dependencies; track $index) {
-                      <div class="dependency-evidence-row">
-                        <code>{{ dependencyObjectLabel(dependency.object.catalog, dependency.object.database, dependency.object.name) }}</code>
-                        <span>{{ dependency.source }} · {{ dependency.evidence }}</span>
-                        @if (dependency.evidence_snippet) {
-                          <small>{{ dependency.evidence_snippet }}</small>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>{{ '上游对象' | translate }}</th>
+                          <th>{{ '关系' | translate }}</th>
+                          <th>{{ '证据' | translate }}</th>
+                          <th>{{ '采集时间' | translate }}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (dependency of dependencies.dependencies; track $index) {
+                          <tr>
+                            <td><code>{{ dependencyObjectLabel(dependency.object.catalog, dependency.object.database, dependency.object.name) }}</code></td>
+                            <td><span class="dependency-relation">mv_reads</span></td>
+                            <td>
+                              <span>{{ dependency.evidence }} · {{ dependency.source }}</span>
+                              @if (dependency.evidence_snippet) {
+                                <small>{{ dependency.evidence_snippet }}</small>
+                              }
+                            </td>
+                            <td><time>{{ dependency.observed_at | date:'yyyy-MM-dd HH:mm:ss' }}</time></td>
+                          </tr>
                         }
+                      </tbody>
+                    </table>
+                  </div>
+                }
+                @if (dependencyObjectLoading) {
+                  <div class="dependency-object-loading">
+                    <nb-spinner size="small" status="primary" [message]="''"></nb-spinner>
+                  </div>
+                }
+                @if (dependencyObject; as object) {
+                  <section class="dependency-object-detail" aria-live="polite">
+                    <div class="dependency-object-heading">
+                      <div>
+                        <h6>{{ object.identity.name }}</h6>
+                        <code>{{ object.identity.catalog }}.{{ object.identity.database }}.{{ object.identity.name }}</code>
+                      </div>
+                      <button nbButton ghost size="tiny" type="button" (click)="dependencyObject = null" [nbTooltip]="'关闭对象详情' | translate" [aria-label]="'关闭对象详情' | translate">
+                        <nb-icon icon="close-outline"></nb-icon>
+                      </button>
+                    </div>
+                    <div class="dependency-object-meta">
+                      <span>{{ object.identity.object_kind }}</span>
+                      <span>{{ object.parse_status }}</span>
+                      <time>{{ object.read_at | date:'yyyy-MM-dd HH:mm:ss' }}</time>
+                    </div>
+                    @if (object.warnings.length) {
+                      <nb-alert status="warning" closable="false">
+                        @for (warning of object.warnings; track warning) { <div>{{ warning }}</div> }
+                      </nb-alert>
+                    }
+                    @if (object.columns.length) {
+                      <div class="dependency-object-columns">
+                        <table>
+                          <thead>
+                            <tr><th>{{ '名称' | translate }}</th><th>{{ '类型' | translate }}</th><th>{{ '可空' | translate }}</th><th>{{ '键' | translate }}</th><th>{{ '注释' | translate }}</th></tr>
+                          </thead>
+                          <tbody>
+                            @for (column of object.columns; track column.name) {
+                              <tr>
+                                <td><code>{{ column.name }}</code></td>
+                                <td>{{ column.data_type }}</td>
+                                <td>{{ column.nullable === null ? '-' : (column.nullable ? '是' : '否') }}</td>
+                                <td>{{ column.key || '-' }}</td>
+                                <td>{{ column.comment || '-' }}</td>
+                              </tr>
+                            }
+                          </tbody>
+                        </table>
                       </div>
                     }
-                  </div>
+                    @if (object.physical_properties; as properties) {
+                      <dl class="dependency-object-properties">
+                        @if (properties.key_model) { <div><dt>Key Model</dt><dd>{{ properties.key_model }}</dd></div> }
+                        @if (properties.partition) { <div><dt>{{ '分区' | translate }}</dt><dd>{{ properties.partition }}</dd></div> }
+                        @if (properties.distribution) { <div><dt>{{ '分桶' | translate }}</dt><dd>{{ properties.distribution }}</dd></div> }
+                        @if (properties.engine) { <div><dt>Engine</dt><dd>{{ properties.engine }}</dd></div> }
+                        @for (property of dependencyObjectPropertyEntries(); track property[0]) {
+                          <div><dt>{{ property[0] }}</dt><dd>{{ property[1] }}</dd></div>
+                        }
+                      </dl>
+                    }
+                    @if (object.ddl_raw) {
+                      <section class="code-surface dependency-object-ddl">
+                        <div class="code-surface__header">
+                          <span class="code-surface__label"><nb-icon icon="code-outline"></nb-icon>{{ '对象定义' | translate }}</span>
+                          <code>SQL</code>
+                        </div>
+                        <markdown
+                          class="sql-markdown markdown-body"
+                          [data]="'```sql\n' + object.ddl_raw + '\n```'"
+                          [clipboard]="true"
+                        ></markdown>
+                      </section>
+                    }
+                  </section>
                 }
               }
             </section>
@@ -534,7 +673,7 @@
           <nb-tab [tabTitle]="'DDL语句' | translate">
             <div class="ddl-section">
               <div class="ddl-toolbar">
-                <span class="text-hint">{{  '建表语句' | translate }}</span>
+                <span class="code-surface__label"><nb-icon icon="code-outline"></nb-icon>{{ '建表语句' | translate }}<code>SQL</code></span>
                 <button
                   nbButton
                   ghost
@@ -551,51 +690,47 @@
                 <div class="text-center text-hint p-4">{{  '正在加载 DDL...' | translate }}</div>
               }
               @if (mvDDL) {
-                <markdown
-                  class="ddl-markdown markdown-body"
-                  [data]="'```sql\n' + mvDDL + '\n```'"
-                  [clipboard]="true"
-                ></markdown>
+                <section class="code-surface ddl-code-surface">
+                  <markdown
+                    class="sql-markdown markdown-body"
+                    [data]="'```sql\n' + mvDDL + '\n```'"
+                    [clipboard]="true"
+                  ></markdown>
+                </section>
               }
             </div>
           </nb-tab>
         </nb-tabset>
       </nb-card-body>
       <nb-card-footer>
-        <div class="d-flex justify-content-between">
-          <div class="d-flex gap-2">
-            @if (selectedMV.kind !== 'rollup') {
+        @if (selectedMV.kind !== 'rollup') {
+          <div class="mv-detail-actions">
             <button nbButton ghost status="info" size="small" (click)="editSelectedMV()">
               <nb-icon icon="edit-outline"></nb-icon>
               {{ '编辑' | translate }}
             </button>
-            }
-            @if (selectedMV.kind !== 'rollup') {
-              <button
-                nbButton
-                ghost
-                status="success"
-                size="small"
-                (click)="refreshSelectedMV()"
-                >
-                <nb-icon icon="refresh-outline"></nb-icon>
-                {{ '刷新' | translate }}
-              </button>
-            }
-            @if (selectedMV.kind !== 'rollup') {
-              <button
-                nbButton
-                ghost
-                [status]="selectedMV.is_active ? 'warning' : 'success'"
-                size="small"
-                (click)="toggleSelectedMV()"
-                >
-                <nb-icon icon="power-outline"></nb-icon>
-                {{  selectedMV.is_active ? ('停用' | translate) : ('激活' | translate)  }}
-              </button>
-            }
+            <button
+              nbButton
+              ghost
+              status="success"
+              size="small"
+              (click)="refreshSelectedMV()"
+              >
+              <nb-icon icon="refresh-outline"></nb-icon>
+              {{ '刷新' | translate }}
+            </button>
+            <button
+              nbButton
+              ghost
+              [status]="selectedMV.is_active ? 'warning' : 'success'"
+              size="small"
+              (click)="toggleSelectedMV()"
+              >
+              <nb-icon icon="power-outline"></nb-icon>
+              {{  selectedMV.is_active ? ('停用' | translate) : ('激活' | translate)  }}
+            </button>
           </div>
-        </div>
+        }
       </nb-card-footer>
     </nb-card>
   }

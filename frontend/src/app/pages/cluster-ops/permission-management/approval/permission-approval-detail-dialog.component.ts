@@ -451,17 +451,18 @@ export class PermissionApprovalDetailDialogComponent {
 
   @Input() request: PermissionRequestResponse;
   @Input() showActions: boolean = false;
+  @Input() onDecision?: (approve: boolean) => void;
 
   close() {
     this.dialogRef.close();
   }
 
   approve() {
-    this.dialogRef.close({ action: 'approve' });
+    this.onDecision?.(true);
   }
 
   reject() {
-    this.dialogRef.close({ action: 'reject' });
+    this.onDecision?.(false);
   }
 
   formatDateTime(dateStr: string): string {

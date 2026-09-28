@@ -3,6 +3,10 @@ import { NbDialogService } from '@nebular/theme';
 import { Observable } from 'rxjs';
 import { ConfirmDialogComponent } from '../components/confirm-dialog/confirm-dialog.component';
 
+interface ConfirmDialogOptions {
+  nested?: boolean;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -15,7 +19,8 @@ export class ConfirmDialogService {
     message: string,
     confirmText: string = '确定',
     cancelText: string = '取消',
-    confirmStatus: string = 'primary'
+    confirmStatus: string = 'primary',
+    options: ConfirmDialogOptions = {},
   ): Observable<boolean> {
     return this.dialogService.open(ConfirmDialogComponent, {
       context: {
@@ -28,11 +33,21 @@ export class ConfirmDialogService {
       hasBackdrop: true,
       closeOnBackdropClick: false,
       closeOnEsc: true,
-      autoFocus: true
+      autoFocus: true,
+      ...(options.nested
+        ? {
+            backdropClass: 'nested-action-backdrop',
+            dialogClass: 'nested-action-dialog',
+          }
+        : {}),
     }).onClose;
   }
 
-  confirmDelete(itemName: string, additionalWarning?: string): Observable<boolean> {
+  confirmDelete(
+    itemName: string,
+    additionalWarning?: string,
+    options?: ConfirmDialogOptions,
+  ): Observable<boolean> {
     const message = additionalWarning 
       ? `确定要删除 "${itemName}" 吗？\n\n${additionalWarning}`
       : `确定要删除 "${itemName}" 吗？`;
@@ -42,7 +57,8 @@ export class ConfirmDialogService {
       message,
       '删除',
       '取消',
-      'danger'
+      'danger',
+      options,
     );
   }
 }

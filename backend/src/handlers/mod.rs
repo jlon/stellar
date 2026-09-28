@@ -18,6 +18,7 @@ pub mod query_execution_history;
 pub mod query_history;
 pub mod resource_group;
 pub mod role;
+pub mod schema;
 pub mod sessions;
 pub mod sql_diag;
 pub mod system;

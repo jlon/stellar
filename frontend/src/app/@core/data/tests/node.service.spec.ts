@@ -83,4 +83,28 @@ describe("NodeService", () => {
       "/clusters/profiles/abc-123/retest",
     );
   });
+
+  it("uses the dedicated Schema Explorer endpoints with opaque references", () => {
+    service.getSchemaObjects(7, "default_catalog", "analytics").subscribe();
+    expect(apiService.get).toHaveBeenCalledWith("/clusters/7/schema/objects", {
+      catalog: "default_catalog",
+      database: "analytics",
+    });
+
+    service.getSchemaObject(7, "opaque/reference").subscribe();
+    expect(apiService.get).toHaveBeenCalledWith(
+      "/clusters/7/schema/objects/opaque%2Freference",
+    );
+
+    service.refreshSchemaObject(7, "opaque/reference").subscribe();
+    expect(apiService.post).toHaveBeenCalledWith(
+      "/clusters/7/schema/objects/opaque%2Freference/refresh",
+      {},
+    );
+
+    service.getSchemaObjectDependencies(7, "opaque/reference").subscribe();
+    expect(apiService.get).toHaveBeenCalledWith(
+      "/clusters/7/schema/objects/opaque%2Freference/dependencies",
+    );
+  });
 });

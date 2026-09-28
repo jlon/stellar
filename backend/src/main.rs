@@ -22,8 +22,8 @@ use stellar::services::{
     AgentRuntimeService, AuditLogService, AuthService, CasbinService, ClusterService,
     DataStatisticsService, DbAuthQueryService, LLMServiceImpl, MetricsCollectorService,
     MySQLPoolManager, NotificationService, OpsAgentService, OrganizationService, OverviewService,
-    PermissionRequestService, PermissionService, RoleService, SystemFunctionService,
-    UserRoleService, UserService,
+    PermissionRequestService, PermissionService, RoleService, SchemaObjectReferenceStore,
+    SystemFunctionService, UserRoleService, UserService,
 };
 use stellar::utils::{JwtUtil, ScheduledExecutor};
 use stellar::{AppState, handlers, middleware, services};
@@ -73,6 +73,10 @@ use stellar::{AppState, handlers, middleware, services};
         handlers::query::list_catalogs,
         handlers::query::list_databases,
         handlers::query::list_catalogs_with_databases,
+        handlers::schema::list_schema_objects,
+        handlers::schema::get_schema_object,
+        handlers::schema::refresh_schema_object,
+        handlers::schema::get_schema_object_dependencies,
         handlers::query::list_queries,
         handlers::query::kill_query,
         handlers::query::execute_sql,
@@ -203,6 +207,17 @@ use stellar::{AppState, handlers, middleware, services};
             models::QueryExecuteResponse,
             models::CatalogWithDatabases,
             models::CatalogsWithDatabasesResponse,
+            models::SchemaObjectKind,
+            models::SchemaObjectIdentity,
+            models::SchemaObjectSummary,
+            models::SchemaColumn,
+            models::SchemaPhysicalProperties,
+            models::SchemaParseStatus,
+            models::SchemaObjectDetail,
+            models::SchemaDependencyDirection,
+            models::SchemaRelationKind,
+            models::SchemaObjectDependency,
+            models::SchemaObjectDependencies,
             models::QueryHistoryItem,
             models::QueryHistoryResponse,
             models::QueryExecutionHistory,
@@ -583,6 +598,8 @@ where
         &config.security.llm_provider_encryption_key,
     ));
     tracing::info!("AgentRuntimeService initialized");
+    let schema_object_reference_store =
+        Arc::new(SchemaObjectReferenceStore::new(&config.auth.jwt_secret));
 
     let app_state = AppState {
         db: pool.clone(),
@@ -608,6 +625,7 @@ where
         profile_analysis_cache,
         ops_agent_service,
         notification_service,
+        schema_object_reference_store,
         agent_runtime_service: Arc::clone(&agent_runtime_service),
     };
 
@@ -691,6 +709,22 @@ where
         .route("/api/clusters/catalogs", get(handlers::query::list_catalogs))
         .route("/api/clusters/databases", get(handlers::query::list_databases))
         .route("/api/clusters/tables", get(handlers::query::list_tables))
+        .route(
+            "/api/clusters/:cluster_id/schema/objects",
+            get(handlers::schema::list_schema_objects),
+        )
+        .route(
+            "/api/clusters/:cluster_id/schema/objects/:object_ref",
+            get(handlers::schema::get_schema_object),
+        )
+        .route(
+            "/api/clusters/:cluster_id/schema/objects/:object_ref/refresh",
+            post(handlers::schema::refresh_schema_object),
+        )
+        .route(
+            "/api/clusters/:cluster_id/schema/objects/:object_ref/dependencies",
+            get(handlers::schema::get_schema_object_dependencies),
+        )
         .route(
             "/api/clusters/catalogs-databases",
             get(handlers::query::list_catalogs_with_databases),

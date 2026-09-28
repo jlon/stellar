@@ -5,8 +5,8 @@ import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
 import { NbAlertModule, NbBadgeModule, NbButtonModule, NbCardModule, NbCheckboxModule, NbDialogRef, NbDialogService, NbIconModule, NbInputModule, NbMenuItem, NbMenuService, NbOptionModule, NbSelectModule, NbSidebarService, NbSidebarState, NbSpinnerModule, NbTabsetModule, NbThemeService, NbToastrService, NbTooltipModule } from '@nebular/theme';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
 import { Subject, Observable, forkJoin, of, fromEvent, Subscription } from 'rxjs';
-import { map, catchError, filter, take, takeUntil, debounceTime, finalize } from 'rxjs/operators';
-import { NodeService, Query, QueryExecuteResult, SingleQueryResult, TableInfo, TableObjectType, SqlDiagResponse, SqlDiagResult, PerfIssue, QueryExecutionHistoryItem } from '../../../../@core/data/node.service';
+import { map, catchError, filter, take, takeUntil, debounceTime } from 'rxjs/operators';
+import { NodeService, Query, QueryExecuteResult, SingleQueryResult, TableInfo, TableObjectType, SchemaObjectDetail, SchemaObjectKind, SchemaObjectSummary, SchemaObjectDependencies, SchemaObjectDependency, SqlDiagResponse, SqlDiagResult, PerfIssue, QueryExecutionHistoryItem } from '../../../../@core/data/node.service';
 import { ClusterContextService } from '../../../../@core/data/cluster-context.service';
 import { Cluster } from '../../../../@core/data/cluster.service';
 import { ErrorHandler } from '../../../../@core/utils/error-handler';
@@ -32,6 +32,7 @@ import { themeColor, themeColorAlpha, themeChartChrome } from '../../../../@core
 import { CommonModule, NgTemplateOutlet, NgClass, SlicePipe, DecimalPipe, DatePipe } from '@angular/common';
 import { NgxEchartsDirective } from 'ngx-echarts';
 import { FormsModule } from '@angular/forms';
+import * as dagre from 'dagre';
 
 // Chart 相关类型定义
 type FieldType = 'numeric' | 'text';
@@ -62,6 +63,28 @@ interface ChartConfig {
 interface ChartDataPoint {
   label: string;
   value: number;
+}
+
+interface SchemaDependencyGraphNode {
+  id: string;
+  label: string;
+  subtitle: string;
+  type: SchemaObjectKind | 'current';
+  evidence?: string;
+  objectRef?: string;
+  dependency?: SchemaObjectDependency;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface SchemaDependencyGraphEdge {
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+  label: string;
+  labelX: number;
+  labelY: number;
 }
 
 /** 收藏的 SQL（localStorage 持久化）。 */
@@ -113,6 +136,8 @@ interface NavTreeNode {
     database?: string;
     table?: string;
     tableType?: TableObjectType;
+    schemaObjectRef?: string;
+    schemaObjectKind?: SchemaObjectKind;
     storageType?: string; // Storage type: NORMAL, CLOUD_NATIVE, etc.
     originalName?: string;
     tablesLoaded?: boolean;
@@ -240,6 +265,8 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   private resizeStartWidth = 280;
   private databaseCache: Record<string, string[]> = {};
   private tableCache: Record<string, TableInfo[]> = {};
+  private tableCacheExpiresAt: Record<string, number> = {};
+  private readonly schemaObjectReferenceCacheMs = 8 * 60 * 1000;
   // Cache database ID mapping: catalog|database -> dbId
   private databaseIdCache: Record<string, string> = {};
   private currentSqlSchema: SQLNamespace = {};
@@ -260,6 +287,17 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   currentSchemaDatabase: string | null = null;
   currentSchemaTable: string | null = null;
   currentTableSchema: string = '';
+  schemaObject: SchemaObjectDetail | null = null;
+  schemaDependencies: SchemaObjectDependencies | null = null;
+  schemaDependenciesLoading = false;
+  showPartialSchemaDependencies = false;
+  schemaDependencyGraphNodes: SchemaDependencyGraphNode[] = [];
+  schemaDependencyGraphEdges: SchemaDependencyGraphEdge[] = [];
+  schemaDependencyGraphWidth = 680;
+  schemaDependencyGraphHeight = 240;
+  private currentSchemaObjectRef: string | null = null;
+  private currentSchemaNode: NavTreeNode | null = null;
+  schemaRefreshing = false;
   schemaContentType: 'sql' | 'plain' = 'sql';
   schemaDialogId = 0;
   tableSchemaLoading: boolean = false;
@@ -375,7 +413,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   private getDatabaseCacheKey(catalog: string, database: string): string {
-    return `${this.getCatalogKey(catalog)}|${database}`;
+    return JSON.stringify([this.getCatalogKey(catalog), database]);
   }
 
   private createCatalogNode(catalog: string): NavTreeNode {
@@ -428,6 +466,8 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         database,
         table: table.name,
         tableType: table.object_type,
+        schemaObjectRef: table.object_ref,
+        schemaObjectKind: table.object_kind,
       },
     };
   }
@@ -441,6 +481,20 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       default:
         return 'grid-outline';
     }
+  }
+
+  private schemaObjectToTableInfo(object: SchemaObjectSummary): TableInfo {
+    const objectType: TableObjectType = object.object_kind === 'view'
+      ? 'VIEW'
+      : object.object_kind === 'materialized_view'
+        ? 'MATERIALIZED_VIEW'
+        : 'TABLE';
+    return {
+      name: object.name,
+      object_type: objectType,
+      object_ref: object.object_ref,
+      object_kind: object.object_kind,
+    };
   }
 
   private mapTableNames(tables: TableInfo[]): string[] {
@@ -1174,7 +1228,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         return [
           ...this.tableQueryMenuItems(),
           {
-            label: '查看视图结构',
+            label: '查看对象详情',
             icon: 'file-text-outline',
             action: 'viewSchema',
           },
@@ -1191,7 +1245,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         return [
           ...this.tableQueryMenuItems(),
           {
-            label: '查看物化视图结构',
+            label: '查看对象详情',
             icon: 'file-text-outline',
             action: 'viewSchema',
           },
@@ -1218,7 +1272,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         return [
           ...this.tableQueryMenuItems(),
           {
-            label: '查看表结构',
+            label: '查看对象详情',
             icon: 'file-text-outline',
             action: 'viewSchema',
           },
@@ -1238,7 +1292,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       return [
         ...this.tableQueryMenuItems(),
         {
-          label: '查看表结构',
+          label: '查看对象详情',
           icon: 'file-text-outline',
           action: 'viewSchema',
         },
@@ -1470,30 +1524,44 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
   private viewTableSchema(node: NavTreeNode): void {
     const info = this.extractNodeInfo(node);
-    if (!this.validateNodeInfo(info, true, { 
+    if (!this.validateNodeInfo(info, true, {
       database: '无法识别该表所属的数据库',
       table: '无法识别表名称'
     })) {
+      return;
+    }
+    const objectRef = node.data?.schemaObjectRef;
+    if (!this.clusterId || !objectRef) {
+      this.toastrService.warning(this.i18n.instant('对象引用已失效，请刷新数据库树'), this.i18n.instant('提示'));
       return;
     }
 
     const { catalogName, databaseName, tableName } = info!;
 
     this.destroySchemaEditor();
-    this.schemaDialogTitle = '表结构';
+    this.schemaDialogTitle = '对象详情';
     this.schemaDialogSubtitle = tableName;
     this.schemaContentType = 'sql';
     this.currentSchemaCatalog = catalogName || null;
     this.currentSchemaDatabase = databaseName;
     this.currentSchemaTable = tableName;
     this.currentTableSchema = '';
+    this.schemaObject = null;
+    this.schemaDependencies = null;
+    this.schemaDependenciesLoading = true;
+    this.showPartialSchemaDependencies = false;
+    this.clearSchemaDependencyGraph();
+    this.currentSchemaObjectRef = objectRef;
+    this.currentSchemaNode = node;
+    this.schemaRefreshing = false;
     this.schemaDialogId += 1;
+    const dialogId = this.schemaDialogId;
     this.tableSchemaLoading = true;
 
-    const qualifiedTableName = this.buildQualifiedTableName(catalogName, databaseName, tableName);
-
-    if (this.schemaDialogRef) {
-      this.schemaDialogRef.close();
+    const previousDialogRef = this.schemaDialogRef;
+    this.schemaDialogRef = null;
+    if (previousDialogRef) {
+      previousDialogRef.close();
     }
 
     const dialogRef = this.dialogService.open(this.tableSchemaDialogTemplate, {
@@ -1508,97 +1576,403 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         if (this.schemaDialogRef === dialogRef) {
           this.destroySchemaEditor();
           this.schemaDialogRef = null;
+          this.currentSchemaObjectRef = null;
+          this.currentSchemaNode = null;
+          this.schemaDependencies = null;
+          this.clearSchemaDependencyGraph();
         }
       });
     }
 
-    const sql = `SHOW CREATE TABLE ${qualifiedTableName}`;
+    this.loadSchemaObjectDetail(objectRef, dialogId, true);
+  }
 
+  refreshSchemaObject(): void {
+    if (!this.clusterId || !this.currentSchemaObjectRef || this.schemaRefreshing) {
+      return;
+    }
+    this.schemaRefreshing = true;
+    this.tableSchemaLoading = true;
+    const dialogId = this.schemaDialogId;
+    const objectRef = this.currentSchemaObjectRef;
+    this.refreshSchemaObjectDetail(objectRef, dialogId, true);
+  }
+
+  private loadSchemaObjectDetail(objectRef: string, dialogId: number, retryExpiredRef: boolean): void {
     this.nodeService
-      .executeSQL(sql)
+      .getSchemaObject(this.clusterId, objectRef)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
-        next: (result) => this.handleTableSchemaSuccess(result, tableName),
+        next: (detail) => {
+          if (this.isCurrentSchemaDialog(dialogId)) {
+            this.applySchemaObject(detail);
+            this.loadSchemaObjectDependencies(objectRef, dialogId);
+          }
+        },
         error: (error) => {
+          if (!this.isCurrentSchemaDialog(dialogId)) {
+            return;
+          }
+          if (retryExpiredRef && error?.status === 404) {
+            this.renewSchemaObjectReference(dialogId, (renewedRef) =>
+              this.loadSchemaObjectDetail(renewedRef, dialogId, false),
+            );
+            return;
+          }
           this.tableSchemaLoading = false;
           this.currentTableSchema = '';
-          this.toastrService.danger(ErrorHandler.extractErrorMessage(error), '获取表结构失败');
+          this.toastrService.danger(ErrorHandler.extractErrorMessage(error), '获取对象详情失败');
+          this.cdr.markForCheck();
         },
       });
   }
 
-  private handleTableSchemaSuccess(result: QueryExecuteResult | null | undefined, tableName: string): void {
+  private refreshSchemaObjectDetail(objectRef: string, dialogId: number, retryExpiredRef: boolean): void {
+    this.nodeService
+      .refreshSchemaObject(this.clusterId, objectRef)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (detail) => {
+          if (this.isCurrentSchemaDialog(dialogId)) {
+            this.schemaRefreshing = false;
+            this.applySchemaObject(detail);
+            this.loadSchemaObjectDependencies(objectRef, dialogId);
+          }
+        },
+        error: (error) => {
+          if (!this.isCurrentSchemaDialog(dialogId)) {
+            return;
+          }
+          if (retryExpiredRef && error?.status === 404) {
+            this.renewSchemaObjectReference(dialogId, (renewedRef) =>
+              this.refreshSchemaObjectDetail(renewedRef, dialogId, false),
+            );
+            return;
+          }
+          this.schemaRefreshing = false;
+          this.tableSchemaLoading = false;
+          this.toastrService.danger(ErrorHandler.extractErrorMessage(error), '刷新对象详情失败');
+          this.cdr.markForCheck();
+        },
+      });
+  }
+
+  private renewSchemaObjectReference(dialogId: number, continueWith: (objectRef: string) => void): void {
+    const node = this.currentSchemaNode;
+    const info = node && this.extractNodeInfo(node);
+    if (!node || !info?.catalogName || !info.databaseName || !info.tableName) {
+      this.schemaRefreshing = false;
+      this.tableSchemaLoading = false;
+      this.toastrService.warning(this.i18n.instant('对象引用已失效，请重新打开数据库'), this.i18n.instant('提示'));
+      this.cdr.markForCheck();
+      return;
+    }
+
+    this.nodeService
+      .getSchemaObjects(this.clusterId, info.catalogName, info.databaseName)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (objects) => {
+          if (!this.isCurrentSchemaDialog(dialogId)) {
+            return;
+          }
+          const object = objects.find((candidate) =>
+            candidate.name === info.tableName && candidate.object_kind === node.data?.schemaObjectKind,
+          );
+          if (!object) {
+            this.schemaRefreshing = false;
+            this.tableSchemaLoading = false;
+            this.toastrService.warning(this.i18n.instant('对象已不存在或当前无权访问'), this.i18n.instant('提示'));
+            this.cdr.markForCheck();
+            return;
+          }
+
+          const cacheKey = this.getDatabaseCacheKey(info.catalogName, info.databaseName);
+          this.tableCache[cacheKey] = objects.map((candidate) => this.schemaObjectToTableInfo(candidate));
+          this.tableCacheExpiresAt[cacheKey] = Date.now() + this.schemaObjectReferenceCacheMs;
+          const table = this.schemaObjectToTableInfo(object);
+          if (node.data) {
+            node.data.tableType = table.object_type;
+            node.data.schemaObjectRef = table.object_ref;
+            node.data.schemaObjectKind = table.object_kind;
+          }
+          this.currentSchemaObjectRef = object.object_ref;
+          continueWith(object.object_ref);
+        },
+        error: (error) => {
+          if (this.isCurrentSchemaDialog(dialogId)) {
+            this.schemaRefreshing = false;
+            this.tableSchemaLoading = false;
+            this.toastrService.danger(ErrorHandler.extractErrorMessage(error), '刷新对象引用失败');
+            this.cdr.markForCheck();
+          }
+        },
+      });
+  }
+
+  private isCurrentSchemaDialog(dialogId: number): boolean {
+    return dialogId === this.schemaDialogId && this.schemaDialogRef !== null;
+  }
+
+  insertSchemaObjectName(): void {
+    const qualifiedName = this.schemaQualifiedName();
+    if (qualifiedName) {
+      this.insertTextAtCursor(qualifiedName);
+    }
+  }
+
+  previewSchemaObjectRows(): void {
+    const qualifiedName = this.schemaQualifiedName();
+    if (!qualifiedName) {
+      return;
+    }
+    if (this.sqlEditorCollapsed) {
+      this.toggleSqlEditor(false);
+    }
+    this.setEditorContent(`SELECT *\nFROM ${qualifiedName}\nLIMIT ${this.queryLimit}`);
+  }
+
+  copySchemaObjectName(): void {
+    const qualifiedName = this.schemaQualifiedName();
+    if (qualifiedName) {
+      this.copyToClipboard(qualifiedName);
+    }
+  }
+
+  copySchemaDdl(): void {
+    if (this.schemaObject?.ddl_raw) {
+      this.copyToClipboard(this.schemaObject.ddl_raw);
+    }
+  }
+
+  schemaPropertyEntries(): Array<[string, string]> {
+    return Object.entries(this.schemaObject?.physical_properties?.properties || {});
+  }
+
+  schemaStatusLabel(): string {
+    const status = this.schemaObject?.parse_status;
+    return {
+      parsed: '已解析',
+      partial: '部分解析',
+      raw_only: '仅原始 DDL',
+      not_applicable: '不适用',
+    }[status || 'raw_only'];
+  }
+
+  private applySchemaObject(detail: SchemaObjectDetail): void {
     this.tableSchemaLoading = false;
-
-    if (!result || !Array.isArray(result.results) || result.results.length === 0) {
-      this.currentTableSchema = '';
-      this.toastrService.warning(this.i18n.instant('未返回表结构信息'), this.i18n.instant('提示'));
-      return;
-    }
-
-    const primaryResult = result.results[0];
-
-    if (!primaryResult.success) {
-      const errorMessage = primaryResult.error || '执行 SHOW CREATE TABLE 失败';
-      this.currentTableSchema = '';
-      this.toastrService.danger(errorMessage, '获取表结构失败');
-      return;
-    }
-
-    const columns = primaryResult.columns || [];
-    const rows = primaryResult.rows || [];
-
-    if (!rows || rows.length === 0) {
-      this.currentTableSchema = '';
-      this.toastrService.warning(this.i18n.instant('未获取到建表语句'), this.i18n.instant('提示'));
-      return;
-    }
-
-    const createIndex = columns.findIndex((column) => (column || '').toLowerCase() === 'create table');
-    const tableIndex = columns.findIndex((column) => (column || '').toLowerCase() === 'table');
-
-    const matchedRow = rows.find((row) => {
-      if (tableIndex === -1) {
-        return true;
-      }
-      return Array.isArray(row) && row[tableIndex] === tableName;
-    }) || rows[0];
-
-    if (!matchedRow) {
-      this.currentTableSchema = '';
-      this.toastrService.warning(this.i18n.instant('未获取到建表语句'), this.i18n.instant('提示'));
-      return;
-    }
-
-    let createStatement = '';
-    if (createIndex !== -1 && matchedRow.length > createIndex) {
-      createStatement = matchedRow[createIndex];
-    } else if (matchedRow.length > 1) {
-      createStatement = matchedRow[1];
-    } else if (matchedRow.length > 0) {
-      createStatement = matchedRow[0];
-    }
-
-    this.currentTableSchema = createStatement || '';
+    this.schemaObject = detail;
+    this.schemaDialogSubtitle = detail.identity.name;
+    this.currentSchemaCatalog = detail.identity.catalog;
+    this.currentSchemaDatabase = detail.identity.database;
+    this.currentSchemaTable = detail.identity.name;
+    this.currentTableSchema = detail.ddl_raw || '';
     if (this.currentTableSchema) {
       // The dialog content is under an OnPush embedded view. Create the
       // ViewChild before mounting the read-only CodeMirror instance.
       this.cdr.detectChanges();
       this.renderSchemaSql();
     }
+    this.cdr.markForCheck();
+  }
+
+  private loadSchemaObjectDependencies(objectRef: string, dialogId: number): void {
+    this.nodeService
+      .getSchemaObjectDependencies(this.clusterId, objectRef)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (dependencies) => {
+          if (this.isCurrentSchemaDialog(dialogId)) {
+            this.schemaDependencies = dependencies;
+            this.schemaDependenciesLoading = false;
+            this.buildSchemaDependencyGraph(dependencies);
+            this.cdr.markForCheck();
+          }
+        },
+        error: (error) => {
+          if (this.isCurrentSchemaDialog(dialogId)) {
+            this.schemaDependencies = null;
+            this.schemaDependenciesLoading = false;
+            this.clearSchemaDependencyGraph();
+            this.toastrService.warning(
+              ErrorHandler.extractErrorMessage(error),
+              '获取依赖关系失败',
+            );
+            this.cdr.markForCheck();
+          }
+        },
+      });
+  }
+
+  schemaDependencyLabel(dependency: SchemaObjectDependency): string {
+    return `${dependency.object.catalog}.${dependency.object.database}.${dependency.object.name}`;
+  }
+
+  schemaDependencyRelationLabel(dependency: SchemaObjectDependency): string {
+    return dependency.relation_kind.replace('_', ' ');
+  }
+
+  schemaDependencyParseStatus(dependency: SchemaObjectDependency): string {
+    return dependency.object_parse_status
+      ? dependency.object_parse_status.replace('_', ' ')
+      : 'metadata not read';
+  }
+
+  hasVisibleSchemaDependencies(): boolean {
+    return this.schemaDependencies?.dependencies.some(
+      (dependency) => this.showPartialSchemaDependencies || dependency.evidence !== 'partial',
+    ) ?? false;
+  }
+
+  setShowPartialSchemaDependencies(show: boolean): void {
+    this.showPartialSchemaDependencies = show;
+    if (this.schemaDependencies) {
+      this.buildSchemaDependencyGraph(this.schemaDependencies);
+      this.cdr.markForCheck();
+    }
+  }
+
+  openSchemaDependencyNode(node: SchemaDependencyGraphNode): void {
+    if (node.dependency) {
+      this.openSchemaDependency(node.dependency);
+    }
+  }
+
+  openSchemaDependency(dependency: SchemaObjectDependency): void {
+    const node: NavTreeNode = {
+      id: `schema-dependency-${dependency.object_ref}`,
+      name: dependency.object.name,
+      type: 'table',
+      icon: this.getTableIcon(this.schemaDependencyTableType(dependency.object.object_kind)),
+      children: [],
+      data: {
+        catalog: dependency.object.catalog,
+        database: dependency.object.database,
+        table: dependency.object.name,
+        tableType: this.schemaDependencyTableType(dependency.object.object_kind),
+        schemaObjectRef: dependency.object_ref,
+        schemaObjectKind: dependency.object.object_kind,
+      },
+    };
+    this.viewTableSchema(node);
+  }
+
+  private schemaDependencyTableType(kind: SchemaObjectKind): TableObjectType {
+    return kind === 'view' ? 'VIEW' : kind === 'materialized_view' ? 'MATERIALIZED_VIEW' : 'TABLE';
+  }
+
+  private clearSchemaDependencyGraph(): void {
+    this.schemaDependencyGraphNodes = [];
+    this.schemaDependencyGraphEdges = [];
+  }
+
+  private buildSchemaDependencyGraph(dependencies: SchemaObjectDependencies): void {
+    const visibleDependencies = dependencies.dependencies.filter(
+      (dependency) => this.showPartialSchemaDependencies || dependency.evidence !== 'partial',
+    );
+    const current = dependencies.object;
+    const currentId = 'schema-dependency-current';
+    const items: Array<Omit<SchemaDependencyGraphNode, 'x' | 'y'>> = [
+      {
+        id: currentId,
+        label: this.schemaGraphLabel(this.schemaDependencyLabelFromIdentity(current)),
+        subtitle: `${current.object_kind} · current`,
+        type: 'current',
+        width: 220,
+        height: 70,
+      },
+      ...visibleDependencies.map((dependency, index) => ({
+        id: `schema-dependency-${index}`,
+        label: this.schemaGraphLabel(this.schemaDependencyLabel(dependency)),
+        subtitle: `${dependency.object.object_kind} · ${this.schemaDependencyParseStatus(dependency)}`,
+        type: dependency.object.object_kind,
+        evidence: dependency.evidence,
+        objectRef: dependency.object_ref,
+        dependency,
+        width: 220,
+        height: 70,
+      })),
+    ];
+    const graph = new dagre.graphlib.Graph();
+    graph.setGraph({ rankdir: 'LR', marginx: 28, marginy: 28, ranksep: 86, nodesep: 26 });
+    graph.setDefaultEdgeLabel(() => ({}));
+    items.forEach((item) => graph.setNode(item.id, { width: item.width, height: item.height }));
+    visibleDependencies.forEach((dependency, index) => {
+      const dependencyId = `schema-dependency-${index}`;
+      if (dependency.direction === 'upstream') {
+        graph.setEdge(dependencyId, currentId);
+      } else {
+        graph.setEdge(currentId, dependencyId);
+      }
+    });
+    dagre.layout(graph);
+
+    this.schemaDependencyGraphNodes = items.map((item) => {
+      const layout = graph.node(item.id);
+      return {
+        ...item,
+        x: Math.round(layout.x),
+        y: Math.round(layout.y),
+      };
+    });
+    const byId = new Map(this.schemaDependencyGraphNodes.map((node) => [node.id, node]));
+    this.schemaDependencyGraphEdges = visibleDependencies.flatMap((dependency, index) => {
+      const dependencyNode = byId.get(`schema-dependency-${index}`);
+      const currentNode = byId.get(currentId);
+      if (!dependencyNode || !currentNode) {
+        return [];
+      }
+      const upstream = dependency.direction === 'upstream';
+      const from = upstream ? dependencyNode : currentNode;
+      const to = upstream ? currentNode : dependencyNode;
+      return [{
+        from: { x: from.x + from.width / 2, y: from.y },
+        to: { x: to.x - to.width / 2, y: to.y },
+        label: this.schemaDependencyRelationLabel(dependency),
+        labelX: Math.round((from.x + to.x) / 2),
+        labelY: Math.round((from.y + to.y) / 2 - 6),
+      }];
+    });
+    this.schemaDependencyGraphWidth = Math.max(
+      680,
+      ...this.schemaDependencyGraphNodes.map((node) => node.x + node.width / 2 + 28),
+    );
+    this.schemaDependencyGraphHeight = Math.max(
+      200,
+      ...this.schemaDependencyGraphNodes.map((node) => node.y + node.height / 2 + 28),
+    );
+  }
+
+  private schemaDependencyLabelFromIdentity(identity: SchemaObjectDetail['identity']): string {
+    return `${identity.catalog}.${identity.database}.${identity.name}`;
+  }
+
+  private schemaGraphLabel(label: string): string {
+    return label.length > 32 ? `${label.slice(0, 31)}...` : label;
+  }
+
+  private schemaQualifiedName(): string {
+    const identity = this.schemaObject?.identity;
+    return identity
+      ? this.buildQualifiedTableName(identity.catalog, identity.database, identity.name)
+      : '';
   }
 
   private buildQualifiedTableName(catalog: string, database: string, table: string): string {
     const parts: string[] = [];
 
     if (catalog && catalog.trim().length > 0) {
-      parts.push(`\`${catalog}\``);
+      parts.push(this.quoteSqlIdentifier(catalog));
     }
 
-    parts.push(`\`${database}\``);
-    parts.push(`\`${table}\``);
+    parts.push(this.quoteSqlIdentifier(database));
+    parts.push(this.quoteSqlIdentifier(table));
 
     return parts.join('.');
+  }
+
+  private quoteSqlIdentifier(identifier: string): string {
+    return `\`${identifier.replace(/`/g, '``')}\``;
   }
 
   /**
@@ -2877,6 +3251,9 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     this.schemaDialogTitle = '查询计划';
     this.schemaDialogSubtitle = tableName;
     this.schemaContentType = 'plain';
+    this.schemaObject = null;
+    this.currentSchemaObjectRef = null;
+    this.currentSchemaNode = null;
     this.currentSchemaCatalog = catalogName || null;
     this.currentSchemaDatabase = databaseName;
     this.currentSchemaTable = tableName;
@@ -4219,7 +4596,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     this.compactionTriggerDialogRef = this.dialogService.open(this.compactionTriggerDialogTemplate, {
       hasBackdrop: true,
       closeOnBackdropClick: true,
-      closeOnEsc: true,
+      closeOnEsc: false,
     });
 
     if (this.compactionTriggerDialogRef) {
@@ -4281,7 +4658,8 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         `确定要${actionDesc}吗？\n\n该操作需要目标表的 ALTER 权限；SQL 成功仅表示提交成功，请继续查看 Compaction 信息。`,
         '确认触发',
         '取消',
-        'primary'
+        'primary',
+        { nested: true },
       )
       .subscribe((confirmed) => {
         if (!confirmed) {
@@ -4341,6 +4719,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     this.databaseTree = [];
     this.databaseCache = {};
     this.tableCache = {};
+    this.tableCacheExpiresAt = {};
     this.selectedNodeId = null;
     this.selectedCatalog = '';
     this.selectedDatabase = null;
@@ -4449,9 +4828,12 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
     const cacheKey = this.getDatabaseCacheKey(catalogName, databaseName);
 
-    const applyTables = (tables: TableInfo[]) => {
+    const applyTables = (tables: TableInfo[], refreshObjectReferences = false) => {
       const tableList = tables ? [...tables] : [];
-      this.tableCache[cacheKey] = tableList;
+      if (refreshObjectReferences) {
+        this.tableCache[cacheKey] = tableList;
+        this.tableCacheExpiresAt[cacheKey] = Date.now() + this.schemaObjectReferenceCacheMs;
+      }
       node.children = tableList.map((table) => this.createTableNode(catalogName, databaseName, table));
       const baseName = node.data?.originalName || databaseName;
       node.name = `${baseName}${tableList.length > 0 ? ` (${tableList.length})` : ''}`;
@@ -4465,16 +4847,18 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       this.refreshSqlSchema();
     };
 
-    if (this.tableCache[cacheKey]) {
+    if (this.tableCache[cacheKey] && this.tableCacheExpiresAt[cacheKey] > Date.now()) {
       applyTables(this.tableCache[cacheKey]);
       return;
     }
+    delete this.tableCache[cacheKey];
+    delete this.tableCacheExpiresAt[cacheKey];
 
     node.loading = true;
 
-    this.nodeService.getTables(catalogName || undefined, databaseName).subscribe({
-      next: (tables) => {
-        applyTables(tables || []);
+    this.nodeService.getSchemaObjects(this.clusterId, catalogName, databaseName).subscribe({
+      next: (objects) => {
+        applyTables((objects || []).map((object) => this.schemaObjectToTableInfo(object)), true);
         node.loading = false;
       },
       error: (error) => {
@@ -5126,7 +5510,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     this.queryDetailDialogRef = this.dialogService.open(this.queryDetailDialogTemplate, {
       hasBackdrop: true,
       closeOnBackdropClick: true,
-      closeOnEsc: true,
+      closeOnEsc: false,
       context: {},
     });
   }
@@ -5135,8 +5519,16 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   killQueryFromDetail(): void {
     if (!this.currentQueryDetail) return;
     const queryId = this.currentQueryDetail.QueryId;
+    const detailRef = this.queryDetailDialogRef;
 
-    this.confirmDialogService.confirm('确认查杀查询', `确定要查杀查询 ${queryId} 吗？`, '查杀', '取消', 'danger')
+    this.confirmDialogService.confirm(
+      '确认查杀查询',
+      `确定要查杀查询 ${queryId} 吗？`,
+      '查杀',
+      '取消',
+      'danger',
+      { nested: true },
+    )
       .pipe(takeUntil(this.destroy$))
       .subscribe(confirmed => {
         if (!confirmed) return;
@@ -5145,6 +5537,9 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
           next: () => {
             this.toastrService.success(`查询 ${queryId} 已成功查杀`, '成功');
             this.loading = false;
+            if (this.queryDetailDialogRef === detailRef) {
+              detailRef?.close();
+            }
             this.cdr.markForCheck();
             setTimeout(() => this.loadRunningQueries(), 1000);
           },

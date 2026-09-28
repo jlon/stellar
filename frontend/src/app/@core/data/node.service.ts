@@ -270,6 +270,76 @@ export type TableObjectType = "TABLE" | "VIEW" | "MATERIALIZED_VIEW";
 export interface TableInfo {
   name: string;
   object_type: TableObjectType;
+  object_ref?: string;
+  object_kind?: SchemaObjectKind;
+}
+
+export type SchemaObjectKind = 'table' | 'view' | 'materialized_view' | 'external_table';
+
+export interface SchemaObjectSummary {
+  name: string;
+  object_kind: SchemaObjectKind;
+  object_ref: string;
+}
+
+export interface SchemaObjectIdentity {
+  cluster_id: number;
+  catalog: string;
+  database: string;
+  name: string;
+  object_kind: SchemaObjectKind;
+}
+
+export interface SchemaColumn {
+  name: string;
+  data_type: string;
+  nullable: boolean | null;
+  default_value: string | null;
+  comment: string | null;
+  key: string | null;
+}
+
+export interface SchemaPhysicalProperties {
+  key_model: string | null;
+  partition: string | null;
+  distribution: string | null;
+  engine: string | null;
+  properties: Record<string, string>;
+}
+
+export interface SchemaObjectDetail {
+  identity: SchemaObjectIdentity;
+  columns: SchemaColumn[];
+  physical_properties: SchemaPhysicalProperties | null;
+  ddl_raw: string;
+  parse_status: 'parsed' | 'partial' | 'raw_only' | 'not_applicable';
+  read_at: string;
+  warnings: string[];
+}
+
+export type SchemaDependencyDirection = 'upstream' | 'downstream';
+export type SchemaRelationKind = 'view_reads' | 'mv_reads' | 'declared_constraint';
+export type DependencyEvidence = 'verified' | 'partial' | 'annotated' | 'unknown';
+export type DependencySource = 'star_rocks_object_dependencies' | 'doris_definition';
+
+export interface SchemaObjectDependency {
+  direction: SchemaDependencyDirection;
+  relation_kind: SchemaRelationKind;
+  object: SchemaObjectIdentity;
+  object_ref: string;
+  object_parse_status?: 'parsed' | 'partial' | 'raw_only' | 'not_applicable';
+  evidence: DependencyEvidence;
+  source: DependencySource;
+  evidence_snippet?: string;
+  observed_at: string;
+}
+
+export interface SchemaObjectDependencies {
+  object: SchemaObjectIdentity;
+  dependencies: SchemaObjectDependency[];
+  complete: boolean;
+  warnings: string[];
+  read_at: string;
 }
 
 export interface ProfileListItem {
@@ -584,6 +654,39 @@ export class NodeService {
       params.catalog = catalog;
     }
     return this.api.get<TableInfo[]>(`/clusters/tables`, params);
+  }
+
+  getSchemaObjects(
+    clusterId: number,
+    catalog: string,
+    database: string,
+  ): Observable<SchemaObjectSummary[]> {
+    return this.api.get<SchemaObjectSummary[]>(
+      `/clusters/${clusterId}/schema/objects`,
+      { catalog, database },
+    );
+  }
+
+  getSchemaObject(clusterId: number, objectRef: string): Observable<SchemaObjectDetail> {
+    return this.api.get<SchemaObjectDetail>(
+      `/clusters/${clusterId}/schema/objects/${encodeURIComponent(objectRef)}`,
+    );
+  }
+
+  refreshSchemaObject(clusterId: number, objectRef: string): Observable<SchemaObjectDetail> {
+    return this.api.post<SchemaObjectDetail>(
+      `/clusters/${clusterId}/schema/objects/${encodeURIComponent(objectRef)}/refresh`,
+      {},
+    );
+  }
+
+  getSchemaObjectDependencies(
+    clusterId: number,
+    objectRef: string,
+  ): Observable<SchemaObjectDependencies> {
+    return this.api.get<SchemaObjectDependencies>(
+      `/clusters/${clusterId}/schema/objects/${encodeURIComponent(objectRef)}/dependencies`,
+    );
   }
 
   // Execute SQL API

@@ -69,7 +69,17 @@ fn starrocks_dependency_query_uses_complete_async_mv_identity() {
 
     assert!(query.contains("object_database = 'analytics'"));
     assert!(query.contains("object_name = 'daily_sales'"));
-    assert!(query.contains("object_type = 'MATERIALIZED_VIEW'"));
+    assert!(
+        query.contains("object_type IN ('MATERIALIZED_VIEW', 'CLOUD_NATIVE_MATERIALIZED_VIEW')")
+    );
+    assert_eq!(
+        MaterializedViewService::relation_kind(Some("CLOUD_NATIVE")),
+        crate::models::RelationKind::Table
+    );
+    assert_eq!(
+        MaterializedViewService::relation_kind(Some("CLOUD_NATIVE_MATERIALIZED_VIEW")),
+        crate::models::RelationKind::MaterializedView
+    );
 }
 
 #[test]
@@ -94,6 +104,16 @@ fn starrocks_current_metadata_distinguishes_sync_rollups() {
         ),
         Some("orders.v1".to_string())
     );
+}
+
+#[test]
+fn starrocks_current_metadata_avoids_reserved_rows_alias() {
+    let query = MaterializedViewService::current_materialized_views_query(&[
+        "mv.TABLE_SCHEMA = 'analytics'".to_string(),
+    ]);
+
+    assert!(query.contains("COALESCE(t.TABLE_ROWS, 0) AS table_rows"));
+    assert!(!query.contains(" AS rows"));
 }
 
 #[test]

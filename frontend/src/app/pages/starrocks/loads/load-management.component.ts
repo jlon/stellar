@@ -68,6 +68,7 @@ interface LoadTableRow {
 }
 
 type ImportSourceType = "file" | "path" | "kafka";
+type ImportDialogPresentation = "side-sheet" | "nested-modal";
 
 interface ImportForm {
   type: ImportSourceType;
@@ -313,9 +314,14 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
     type?: ImportSourceType;
     database?: string;
     table?: string;
-  }): void {
+  }, presentation: ImportDialogPresentation = "side-sheet"): void {
     const template = this.importDialog;
-    if (!template || !this.activeCluster || !this.isStarRocksCluster) {
+    if (
+      !template ||
+      !this.activeCluster ||
+      !this.isStarRocksCluster ||
+      this.importDialogRef
+    ) {
       return;
     }
 
@@ -341,11 +347,20 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
     this.loadFormErrorMessage = "";
     this.importSubmitting = false;
 
+    const nested = presentation === "nested-modal";
     const dialogRef = this.dialogService.open(template, {
-      autoFocus: false,
-      backdropClass: "side-sheet-backdrop",
-      dialogClass: "side-sheet",
+      autoFocus: nested,
+      backdropClass: nested
+        ? "nested-action-backdrop"
+        : "side-sheet-backdrop",
+      dialogClass: nested ? "nested-action-dialog" : "side-sheet",
       hasBackdrop: true,
+      ...(nested
+        ? {
+            closeOnBackdropClick: false,
+            closeOnEsc: true,
+          }
+        : {}),
     });
     this.importDialogRef = dialogRef;
     dialogRef.onClose.pipe(take(1)).subscribe(() => {
@@ -1268,7 +1283,7 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
     );
   }
 
-  /// 按失败作业的已知信息打开创建抽屉。
+  /// 按失败作业的已知信息在详情抽屉上方打开重新导入表单。
   ///
   /// 只预填库、表与导入类型：源文件、HDFS 路径、Kafka 地址从不落库，
   /// 必须由用户重新提供，不做"一键重跑"的假象。
@@ -1284,12 +1299,7 @@ export class LoadManagementComponent implements OnInit, OnDestroy {
       database: job.database,
       table: job.table_name,
     };
-    this.closeDetails();
-    // 等详情抽屉退场动画结束再打开创建抽屉，避免两层遮罩叠加
-    this.document.defaultView?.setTimeout(
-      () => this.openImportDialog(prefill),
-      LoadManagementComponent.sheetExitDurationMs + 40,
-    );
+    this.openImportDialog(prefill, "nested-modal");
   }
 
   /// 执行引擎侧处置动作；成功后重新读取详情，用引擎返回的新状态呈现处置结果。

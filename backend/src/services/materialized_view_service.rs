@@ -6,6 +6,7 @@ use crate::models::{
 };
 use crate::services::MySQLClient;
 use crate::utils::{ApiError, ApiResult};
+use chrono::Utc;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -184,6 +185,7 @@ impl MaterializedViewService {
         if reference.kind == MaterializedViewKind::Rollup {
             let parent = Self::rollup_parent_from_definition(&materialized_view.definition)
                 .ok_or_else(|| ApiError::not_found(reference.display_name()))?;
+            let observed_at = Utc::now();
             return Ok(MaterializedViewDependencies {
                 object: reference.clone(),
                 dependencies: vec![MaterializedViewDependency {
@@ -196,9 +198,11 @@ impl MaterializedViewService {
                     evidence: DependencyEvidence::Verified,
                     source: DependencySource::RollupParent,
                     evidence_snippet: None,
+                    observed_at,
                 }],
                 complete: true,
                 warnings: Vec::new(),
+                read_at: observed_at,
             });
         }
 
@@ -206,6 +210,7 @@ impl MaterializedViewService {
         let rows = match self.mysql_client.query(&sql).await {
             Ok(rows) => rows,
             Err(error) => {
+                let read_at = Utc::now();
                 return Ok(MaterializedViewDependencies {
                     object: reference.clone(),
                     dependencies: Vec::new(),
@@ -213,9 +218,11 @@ impl MaterializedViewService {
                     warnings: vec![format!(
                         "StarRocks dependency metadata is unavailable for this cluster or user: {error}"
                     )],
+                    read_at,
                 });
             },
         };
+        let observed_at = Utc::now();
         let dependencies = rows
             .into_iter()
             .filter_map(|row| {
@@ -230,6 +237,7 @@ impl MaterializedViewService {
                     evidence: DependencyEvidence::Verified,
                     source: DependencySource::StarRocksObjectDependencies,
                     evidence_snippet: None,
+                    observed_at,
                 })
             })
             .collect();
@@ -239,6 +247,7 @@ impl MaterializedViewService {
             dependencies,
             complete: true,
             warnings: Vec::new(),
+            read_at: observed_at,
         })
     }
 
@@ -268,7 +277,12 @@ impl MaterializedViewService {
         if let Some(name) = name {
             filters.push(format!("mv.TABLE_NAME = {}", Self::sql_literal(name)));
         }
-        let sql = format!(
+        let sql = Self::current_materialized_views_query(&filters);
+        Self::parse_system_table_results(self.mysql_client.query(&sql).await?)
+    }
+
+    pub(crate) fn current_materialized_views_query(filters: &[String]) -> String {
+        format!(
             "SELECT mv.MATERIALIZED_VIEW_ID AS id, mv.TABLE_NAME AS name, \
              mv.TABLE_SCHEMA AS database_name, mv.REFRESH_TYPE AS refresh_type, \
              mv.IS_ACTIVE AS is_active, mv.PARTITION_TYPE AS partition_type, \
@@ -276,15 +290,14 @@ impl MaterializedViewService {
              mv.LAST_REFRESH_START_TIME AS last_refresh_start_time, \
              mv.LAST_REFRESH_FINISHED_TIME AS last_refresh_finished_time, \
              mv.LAST_REFRESH_DURATION AS last_refresh_duration, \
-             mv.LAST_REFRESH_STATE AS last_refresh_state, COALESCE(t.TABLE_ROWS, 0) AS rows, \
+             mv.LAST_REFRESH_STATE AS last_refresh_state, COALESCE(t.TABLE_ROWS, 0) AS table_rows, \
              mv.MATERIALIZED_VIEW_DEFINITION AS definition \
              FROM information_schema.materialized_views mv \
              LEFT JOIN information_schema.tables t \
              ON mv.TABLE_SCHEMA = t.TABLE_SCHEMA AND mv.TABLE_NAME = t.TABLE_NAME \
              WHERE {}",
             filters.join(" AND ")
-        );
-        Self::parse_system_table_results(self.mysql_client.query(&sql).await?)
+        )
     }
 
     fn parse_system_table_results(
@@ -313,7 +326,7 @@ impl MaterializedViewService {
                     ),
                     last_refresh_duration: Self::row_string(&row, "last_refresh_duration"),
                     last_refresh_state: Self::row_string(&row, "last_refresh_state"),
-                    rows: row.get("rows").and_then(|value| {
+                    rows: row.get("table_rows").and_then(|value| {
                         value
                             .as_i64()
                             .or_else(|| value.as_str().and_then(|value| value.parse().ok()))
@@ -359,11 +372,17 @@ impl MaterializedViewService {
         })
     }
 
-    fn relation_kind(value: Option<&str>) -> RelationKind {
+    pub(crate) fn relation_kind(value: Option<&str>) -> RelationKind {
         match value.unwrap_or_default().to_ascii_uppercase().as_str() {
             value if value.contains("MATERIALIZED") => RelationKind::MaterializedView,
             value if value.contains("VIEW") => RelationKind::View,
-            value if value.contains("TABLE") => RelationKind::Table,
+            value
+                if value.contains("TABLE")
+                    || value.contains("OLAP")
+                    || value.contains("CLOUD_NATIVE") =>
+            {
+                RelationKind::Table
+            },
             _ => RelationKind::Unknown,
         }
     }
@@ -376,7 +395,7 @@ impl MaterializedViewService {
              ref_object_catalog AS catalog, ref_object_type AS object_type \
              FROM sys.object_dependencies \
              WHERE object_database = {database} AND object_name = {name} \
-             AND object_type = 'MATERIALIZED_VIEW'"
+             AND object_type IN ('MATERIALIZED_VIEW', 'CLOUD_NATIVE_MATERIALIZED_VIEW')"
         )
     }
 

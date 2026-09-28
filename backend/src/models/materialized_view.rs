@@ -1,4 +1,4 @@
-use chrono::{NaiveDate, NaiveDateTime};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use utoipa::ToSchema;
@@ -371,6 +371,9 @@ pub struct MaterializedViewDependency {
     pub source: DependencySource,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub evidence_snippet: Option<String>,
+    /// Time at which this direct relationship was read from the engine or
+    /// conservatively extracted from its stored definition.
+    pub observed_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -379,4 +382,6 @@ pub struct MaterializedViewDependencies {
     pub dependencies: Vec<MaterializedViewDependency>,
     pub complete: bool,
     pub warnings: Vec<String>,
+    /// Time at which this bounded dependency response was assembled.
+    pub read_at: DateTime<Utc>,
 }

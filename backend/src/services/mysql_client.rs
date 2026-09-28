@@ -15,6 +15,7 @@ pub struct MySQLClient {
 /// with persistent context (catalog, database)
 pub struct MySQLSession {
     conn: Conn,
+    query_timeout: Option<Duration>,
 }
 
 impl MySQLClient {
@@ -53,7 +54,7 @@ impl MySQLClient {
             tracing::error!("Failed to get connection from pool: {}", e);
             ApiError::cluster_connection_failed(format!("Failed to get connection: {}", e))
         })?;
-        Ok(MySQLSession { conn })
+        Ok(MySQLSession { conn, query_timeout: self.query_timeout })
     }
 
     /// Execute a query and return results as (column_names, rows)
@@ -136,31 +137,13 @@ impl MySQLSession {
             return Ok(());
         }
 
-        let (switch_sql, switch_sql_quoted) = match cluster_type {
-            ClusterType::StarRocks => {
-                (format!("SET CATALOG {}", catalog), format!("SET CATALOG `{}`", catalog))
-            },
-            ClusterType::Doris => (format!("SWITCH {}", catalog), format!("SWITCH `{}`", catalog)),
+        let quoted_catalog = quote_identifier(catalog)?;
+        let switch_sql = match cluster_type {
+            ClusterType::StarRocks => format!("SET CATALOG {quoted_catalog}"),
+            ClusterType::Doris => format!("SWITCH {quoted_catalog}"),
         };
 
-        if let Err(primary_err) = self.conn.query::<mysql_async::Row, _>(&switch_sql).await {
-            tracing::debug!(
-                "Switch catalog {} without quotes failed: {}. Retrying with backticks.",
-                catalog,
-                primary_err
-            );
-
-            self.conn
-                .query::<mysql_async::Row, _>(&switch_sql_quoted)
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to switch to catalog {}: {}", catalog, e);
-                    ApiError::internal_error(format!(
-                        "Failed to switch to catalog {}: {}",
-                        catalog, e
-                    ))
-                })?;
-        }
+        self.execute_statement(&switch_sql, "切换 Catalog").await?;
 
         tracing::debug!("Successfully switched to catalog: {}", catalog);
         Ok(())
@@ -172,17 +155,8 @@ impl MySQLSession {
             return Ok(());
         }
 
-        let use_db_sql = format!("USE `{}`", database);
-        self.conn
-            .query::<mysql_async::Row, _>(&use_db_sql)
-            .await
-            .map_err(|e| {
-                tracing::warn!("Failed to execute USE DATABASE {}: {}", database, e);
-                ApiError::internal_error(format!(
-                    "Failed to switch to database {}: {}",
-                    database, e
-                ))
-            })?;
+        let use_db_sql = format!("USE {}", quote_identifier(database)?);
+        self.execute_statement(&use_db_sql, "切换数据库").await?;
         Ok(())
     }
 
@@ -191,10 +165,7 @@ impl MySQLSession {
         sql: &str,
     ) -> Result<(Vec<String>, Vec<Vec<String>>, u128), ApiError> {
         let start = std::time::Instant::now();
-        let rows: Vec<mysql_async::Row> = self.conn.query(sql).await.map_err(|e| {
-            tracing::error!("MySQL query execution failed: {}", e);
-            ApiError::internal_error(format!("SQL execution failed: {}", e))
-        })?;
+        let rows = self.query_rows(sql).await?;
         let (columns, data_rows) = process_query_result(rows);
         let execution_time_ms = start.elapsed().as_millis();
         tracing::debug!("SQL: '{}' -> {} rows in {}ms", sql, data_rows.len(), execution_time_ms);
@@ -209,14 +180,61 @@ impl MySQLSession {
     where
         P: Into<mysql_async::Params>,
     {
-        let rows: Vec<mysql_async::Row> =
-            self.conn.exec(sql, params.into()).await.map_err(|e| {
-                tracing::error!("MySQL query execution failed: {}", e);
-                ApiError::internal_error(format!("SQL execution failed: {}", e))
-            })?;
+        let query = self.conn.exec(sql, params.into());
+        let rows = match self.query_timeout {
+            Some(timeout) => tokio::time::timeout(timeout, query)
+                .await
+                .map_err(|_| query_timeout_error("SQL 查询", timeout))?,
+            None => query.await,
+        }
+        .map_err(|error| {
+            tracing::error!("MySQL query execution failed: {}", error);
+            ApiError::internal_error(format!("SQL execution failed: {error}"))
+        })?;
 
         Ok(process_query_result(rows))
     }
+
+    async fn query_rows(&mut self, sql: &str) -> Result<Vec<mysql_async::Row>, ApiError> {
+        let query = self.conn.query(sql);
+        let rows = match self.query_timeout {
+            Some(timeout) => tokio::time::timeout(timeout, query)
+                .await
+                .map_err(|_| query_timeout_error("SQL 查询", timeout))?,
+            None => query.await,
+        }
+        .map_err(|error| {
+            tracing::error!("MySQL query execution failed: {}", error);
+            ApiError::internal_error(format!("SQL execution failed: {error}"))
+        })?;
+        Ok(rows)
+    }
+
+    async fn execute_statement(&mut self, sql: &str, operation: &str) -> Result<(), ApiError> {
+        self.query_rows(sql).await.map(|_| ()).map_err(|error| {
+            tracing::warn!("{} failed: {}", operation, error);
+            error
+        })
+    }
+}
+
+fn quote_identifier(value: &str) -> Result<String, ApiError> {
+    if value.is_empty()
+        || value.len() > 256
+        || value.contains('\0')
+        || value.chars().any(char::is_control)
+    {
+        return Err(ApiError::invalid_data("Invalid SQL identifier"));
+    }
+    Ok(format!("`{}`", value.replace('`', "``")))
+}
+
+fn query_timeout_error(operation: &str, timeout: Duration) -> ApiError {
+    ApiError::cluster_connection_failed(format!(
+        "集群查询超时（{}，{}s）：FE 可能过载，请稍后重试",
+        operation,
+        timeout.as_secs()
+    ))
 }
 
 fn process_query_result(rows: Vec<mysql_async::Row>) -> (Vec<String>, Vec<Vec<String>>) {

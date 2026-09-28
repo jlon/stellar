@@ -280,6 +280,20 @@ fn extract_clusters_id_action(segments: &[&str], method: &str) -> Option<String>
         _ if segments.len() >= 3 => {
             let action = segments.get(2)?;
 
+            if *action == "schema" {
+                return match (segments.len(), method, segments.get(3), segments.get(5)) {
+                    (4, "GET", Some(&"objects"), _) => Some("schema:list".to_string()),
+                    (5, "GET", Some(&"objects"), _) => Some("schema:get".to_string()),
+                    (6, "GET", Some(&"objects"), Some(&"dependencies")) => {
+                        Some("schema:dependencies".to_string())
+                    },
+                    (6, "POST", Some(&"objects"), Some(&"refresh")) => {
+                        Some("schema:refresh".to_string())
+                    },
+                    _ => None,
+                };
+            }
+
             // Special handling for db-auth routes
             if *action == "db-auth" && segments.len() >= 4 {
                 let db_action = segments.get(3)?;

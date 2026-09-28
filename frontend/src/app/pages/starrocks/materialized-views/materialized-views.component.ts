@@ -1,9 +1,9 @@
 import { I18nService } from '../../../@core/i18n/i18n.service';
-import { DOCUMENT } from '@angular/common';
+import { DatePipe, DOCUMENT } from '@angular/common';
 import { TranslatePipe } from '@ngx-translate/core';
-import { Component, OnInit, OnDestroy, TemplateRef, ViewChild, ChangeDetectorRef, inject } from '@angular/core';
-import { Subject } from 'rxjs';
-import { skip, take, takeUntil, timeout } from 'rxjs/operators';
+import { Component, OnInit, OnDestroy, TemplateRef, ViewChild, ChangeDetectorRef, HostListener, inject } from '@angular/core';
+import { forkJoin, of, Subject } from 'rxjs';
+import { catchError, map, skip, take, takeUntil, timeout } from 'rxjs/operators';
 import { NbToastrService, NbDialogRef, NbDialogService, NbCardModule, NbButtonModule, NbIconModule, NbInputModule, NbDatepickerModule, NbSelectModule, NbOptionModule, NbBadgeModule, NbSpinnerModule, NbTabsetModule, NbAlertModule, NbCheckboxModule, NbFormFieldModule, NbTooltipModule } from '@nebular/theme';
 import { MarkdownModule } from 'ngx-markdown';
 import { LocalDataSource, Angular2SmartTableModule, RowSelectionEvent } from 'angular2-smart-table';
@@ -26,6 +26,12 @@ import { ActiveToggleRenderComponent } from './active-toggle-render.component';
 import { BadgeRenderComponent, BadgeInfo } from './badge-render.component';
 import { FormsModule } from '@angular/forms';
 import * as dagre from 'dagre';
+import {
+  NodeService,
+  SchemaObjectDetail,
+  SchemaObjectKind,
+  SchemaObjectSummary,
+} from '../../../@core/data/node.service';
 
 
 @Component({
@@ -41,6 +47,7 @@ import * as dagre from 'dagre';
     NbInputModule,
     NbDatepickerModule,
     FormsModule,
+    DatePipe,
     NbSelectModule,
     NbOptionModule,
     NbBadgeModule,
@@ -67,6 +74,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
   private dialogService = inject(NbDialogService);
   private cdRef = inject(ChangeDetectorRef);
   private authService = inject(AuthService);
+  private nodeService = inject(NodeService);
 
   @ViewChild('createDialog', { static: false }) createDialogTemplate: TemplateRef<any>;
   @ViewChild('detailDialog', { static: false }) detailDialogTemplate: TemplateRef<any>;
@@ -81,6 +89,8 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
   loading = true;
   private destroy$ = new Subject<void>();
   private detailRequest$ = new Subject<void>();
+  private dependencyObjectRequest$ = new Subject<void>();
+  private dependencyGraphCompact?: boolean;
   private detailTrigger?: HTMLElement;
   private sheetClosing = false;
 
@@ -136,18 +146,34 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
   mvDDL = '';
   dependencies: MaterializedViewDependencies | null = null;
   dependenciesLoading = false;
+  dependencyObject: SchemaObjectDetail | null = null;
+  dependencyObjectLoading = false;
+  dependencyObjectReferenceWarning = '';
+  private dependencyObjectRefs = new Map<string, string>();
   dependencyGraphNodes: Array<{
     id: string;
     label: string;
     subtitle: string;
     type: string;
     evidence?: string;
+    catalog?: string;
+    database?: string;
+    objectName?: string;
+    objectKind?: SchemaObjectKind;
+    objectRef?: string;
     x: number;
     y: number;
     width: number;
     height: number;
   }> = [];
-  dependencyGraphEdges: Array<{ from: { x: number; y: number }; to: { x: number; y: number } }> = [];
+  dependencyGraphEdges: Array<{
+    from: { x: number; y: number };
+    to: { x: number; y: number };
+    path: string;
+    label: string;
+    labelX: number;
+    labelY: number;
+  }> = [];
   dependencyGraphWidth = 600;
   dependencyGraphHeight = 250;
 
@@ -333,11 +359,21 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy() {
+    this.dependencyObjectRequest$.next();
+    this.dependencyObjectRequest$.complete();
     this.detailRequest$.next();
     this.detailRequest$.complete();
     this.detailDialogRef?.close();
     this.destroy$.next();
     this.destroy$.complete();
+  }
+
+  @HostListener('window:resize')
+  onViewportResize(): void {
+    const compact = this.isCompactDependencyGraph();
+    if (compact !== this.dependencyGraphCompact && this.selectedMV && this.dependencies) {
+      this.buildDependencyGraph(this.selectedMV, this.dependencies);
+    }
   }
 
   loadClusterInfo() {
@@ -642,11 +678,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
 
     this.captureDetailTrigger(rowIndex);
     this.selectedMV = mv;
-    this.mvDDL = '';
-    this.dependencies = null;
-    this.dependenciesLoading = true;
-    this.dependencyGraphNodes = [];
-    this.dependencyGraphEdges = [];
+    this.resetDetailResources();
     const dialogRef = this.dialogService.open(template, {
       autoFocus: false,
       backdropClass: 'side-sheet-backdrop',
@@ -669,6 +701,11 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
       this.mvDDL = '';
       this.dependencies = null;
       this.dependenciesLoading = false;
+      this.dependencyObject = null;
+      this.dependencyObjectLoading = false;
+      this.dependencyObjectRequest$.next();
+      this.dependencyObjectReferenceWarning = '';
+      this.dependencyObjectRefs.clear();
       this.dependencyGraphNodes = [];
       this.dependencyGraphEdges = [];
       this.detailDialogRef = undefined;
@@ -676,6 +713,23 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
       this.restoreDetailFocus();
     });
 
+    this.loadDetailResources(mv, dialogRef);
+  }
+
+  private resetDetailResources(): void {
+    this.mvDDL = '';
+    this.dependencies = null;
+    this.dependenciesLoading = true;
+    this.dependencyObject = null;
+    this.dependencyObjectLoading = false;
+    this.dependencyObjectRequest$.next();
+    this.dependencyObjectReferenceWarning = '';
+    this.dependencyObjectRefs.clear();
+    this.dependencyGraphNodes = [];
+    this.dependencyGraphEdges = [];
+  }
+
+  private loadDetailResources(mv: MaterializedView, dialogRef: NbDialogRef<unknown>): void {
     this.detailRequest$.next();
     this.mvService
       .getMaterializedViewDDL(this.objectRef(mv))
@@ -684,6 +738,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
         next: (result) => {
           if (this.detailDialogRef === dialogRef && this.isSelected(mv)) {
             this.mvDDL = result.ddl;
+            this.cdRef.detectChanges();
           }
         },
         error: (error) => {
@@ -706,6 +761,8 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
             this.dependencies = dependencies;
             this.dependenciesLoading = false;
             this.buildDependencyGraph(mv, dependencies);
+            this.resolveDependencyObjectReferences(mv, dependencies, dialogRef);
+            this.cdRef.detectChanges();
           }
         },
         error: (error) => {
@@ -715,8 +772,40 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
               dependencies: [],
               complete: false,
               warnings: [ErrorHandler.extractErrorMessage(error)],
+              read_at: new Date().toISOString(),
             };
             this.dependenciesLoading = false;
+            this.cdRef.detectChanges();
+          }
+        },
+      });
+  }
+
+  private reloadSelectedMVDetail(): void {
+    this.loadMaterializedViews();
+
+    const mv = this.selectedMV;
+    const dialogRef = this.detailDialogRef;
+    if (!mv || !dialogRef) {
+      return;
+    }
+
+    this.detailRequest$.next();
+    this.mvService
+      .getMaterializedView(this.objectRef(mv))
+      .pipe(takeUntil(this.destroy$), takeUntil(this.detailRequest$), timeout(20000))
+      .subscribe({
+        next: (updated) => {
+          if (this.detailDialogRef !== dialogRef || !this.isSelected(mv)) {
+            return;
+          }
+          this.selectedMV = updated;
+          this.resetDetailResources();
+          this.loadDetailResources(updated, dialogRef);
+        },
+        error: () => {
+          if (this.detailDialogRef === dialogRef && this.isSelected(mv)) {
+            this.toastrService.warning('操作已完成，但详情更新失败；请稍后刷新查看最新状态', '提示');
           }
         },
       });
@@ -746,15 +835,21 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
   }
 
   editSelectedMV(): void {
-    this.closeDetailThen((mv) => this.openEditDialog(mv));
+    if (this.selectedMV) {
+      this.openEditDialog(this.selectedMV);
+    }
   }
 
   refreshSelectedMV(): void {
-    this.closeDetailThen((mv) => this.openRefreshDialog(mv));
+    if (this.selectedMV) {
+      this.openRefreshDialog(this.selectedMV);
+    }
   }
 
   toggleSelectedMV(): void {
-    this.closeDetailThen((mv) => this.toggleActiveState(mv));
+    if (this.selectedMV) {
+      this.toggleActiveState(this.selectedMV, true);
+    }
   }
 
   copyDDL(): void {
@@ -769,7 +864,28 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
     }
   }
 
+  openDependencyNode(node: typeof this.dependencyGraphNodes[number], event?: Event): void {
+    event?.preventDefault();
+    event?.stopPropagation();
+    if (!node.objectRef) {
+      return;
+    }
+
+    this.dependencyObjectRequest$.next();
+    this.dependencyObject = null;
+    this.dependencyObjectLoading = true;
+    this.cdRef.detectChanges();
+    this.loadDependencyObject(node, node.objectRef, true);
+  }
+
+  dependencyObjectPropertyEntries(): Array<[string, string]> {
+    return Object.entries(this.dependencyObject?.physical_properties?.properties || {});
+  }
+
   openRefreshDialog(mv: MaterializedView) {
+    if (this.refreshDialogRef) {
+      return;
+    }
     this.selectedMV = mv;
     this.refreshMode = this.activeCluster?.cluster_type === 'doris' ? 'auto' : 'async';
     this.refreshForce = false;
@@ -779,6 +895,15 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
 
     this.refreshDialogRef = this.dialogService.open(this.refreshDialogTemplate, {
       context: {},
+      hasBackdrop: true,
+      backdropClass: 'mv-action-backdrop',
+      closeOnBackdropClick: false,
+      closeOnEsc: true,
+      autoFocus: true,
+      dialogClass: 'mv-action-dialog',
+    });
+    this.refreshDialogRef.onClose.pipe(take(1)).subscribe(() => {
+      this.refreshDialogRef = undefined;
     });
   }
 
@@ -789,7 +914,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
   }
 
   refreshMV() {
-    if (!this.selectedMV) return;
+    if (!this.selectedMV || this.refreshing) return;
 
     this.refreshing = true;
     this.mvService
@@ -808,7 +933,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
         next: () => {
           this.toastrService.success(this.i18n.instant('刷新任务已启动'), this.i18n.instant('成功'));
           this.closeRefreshDialog();
-          setTimeout(() => this.loadMaterializedViews(), 1000);
+          setTimeout(() => this.reloadSelectedMVDetail(), 1000);
         },
         error: (error) => {
           if (!this.authService.isAuthenticated()) {
@@ -879,7 +1004,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
   }
 
   // Toggle Active/Inactive state
-  toggleActiveState(mv: MaterializedView) {
+  toggleActiveState(mv: MaterializedView, nested = false) {
     const action = mv.is_active ? '停用' : '激活';
     
     this.confirmDialogService
@@ -888,6 +1013,8 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
         `确定要${action}物化视图 "${mv.name}" 吗？`,
         action,
         '取消',
+        'primary',
+        { nested },
       )
       .subscribe((confirmed) => {
         if (confirmed) {
@@ -897,7 +1024,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
             .subscribe({
               next: () => {
                 this.toastrService.success(`物化视图已${action}`, '成功');
-                this.loadMaterializedViews();
+                this.reloadSelectedMVDetail();
               },
               error: (error) => {
                 if (!this.authService.isAuthenticated()) {
@@ -915,6 +1042,9 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
 
   // Open edit dialog
   openEditDialog(mv: MaterializedView) {
+    if (this.editDialogRef) {
+      return;
+    }
     this.selectedMV = mv;
     this.editAction = 'rename';
     this.editNewName = mv.name;
@@ -925,6 +1055,15 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
 
     this.editDialogRef = this.dialogService.open(this.editDialogTemplate, {
       context: {},
+      hasBackdrop: true,
+      backdropClass: 'mv-action-backdrop',
+      closeOnBackdropClick: false,
+      closeOnEsc: true,
+      autoFocus: true,
+      dialogClass: 'mv-action-dialog',
+    });
+    this.editDialogRef.onClose.pipe(take(1)).subscribe(() => {
+      this.editDialogRef = undefined;
     });
   }
 
@@ -936,7 +1075,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
 
   // Execute edit action
   editMV() {
-    if (!this.selectedMV) return;
+    if (!this.selectedMV || this.editing) return;
 
     switch (this.editAction) {
       case 'rename':
@@ -963,16 +1102,20 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
 
     this.editing = true;
     const reference = this.objectRef(this.selectedMV);
+    const renamedTo = this.editAction === 'rename' ? this.editNewName.trim() : undefined;
     const request = this.editAction === 'rename'
-      ? this.mvService.renameMaterializedView(reference, this.editNewName.trim())
+      ? this.mvService.renameMaterializedView(reference, renamedTo!)
       : this.mvService.updateRefreshSchedule(reference, this.refreshSchedule());
     request
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: () => {
           this.toastrService.success(this.i18n.instant('物化视图修改成功'), this.i18n.instant('成功'));
+          if (renamedTo && this.selectedMV) {
+            this.selectedMV = { ...this.selectedMV, name: renamedTo };
+          }
           this.closeEditDialog();
-          this.loadMaterializedViews();
+          this.reloadSelectedMVDetail();
         },
         error: (error) => {
           if (!this.authService.isAuthenticated()) {
@@ -1034,70 +1177,269 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
     return [catalog, database, name].filter((part): part is string => !!part).join('.');
   }
 
+  private resolveDependencyObjectReferences(
+    materializedView: MaterializedView,
+    dependencies: MaterializedViewDependencies,
+    dialogRef: NbDialogRef<unknown>,
+  ): void {
+    if (!this.clusterId || dependencies.dependencies.length === 0) {
+      return;
+    }
+
+    const locations = new Map<string, { catalog: string; database: string }>();
+    dependencies.dependencies.forEach((dependency) => {
+      const catalog = dependency.object.catalog || this.activeCluster?.catalog;
+      const database = dependency.object.database || materializedView.database_name;
+      if (catalog && database) {
+        locations.set(`${catalog}\u0000${database}`, { catalog, database });
+      }
+    });
+    const requests = Array.from(locations.values()).map((location) =>
+      this.nodeService.getSchemaObjects(this.clusterId, location.catalog, location.database).pipe(
+        map((objects) => ({ ...location, objects })),
+        catchError(() => of({ ...location, objects: [] as SchemaObjectSummary[] })),
+      ),
+    );
+    if (requests.length === 0) {
+      return;
+    }
+
+    forkJoin(requests)
+      .pipe(takeUntil(this.destroy$), takeUntil(this.detailRequest$))
+      .subscribe((results) => {
+        if (this.detailDialogRef !== dialogRef || !this.isSelected(materializedView)) {
+          return;
+        }
+
+        const objectsByLocation = new Map(
+          results.map((result) => [`${result.catalog}\u0000${result.database}`, result.objects]),
+        );
+        let unresolved = 0;
+        dependencies.dependencies.forEach((dependency) => {
+          const catalog = dependency.object.catalog || this.activeCluster?.catalog;
+          const database = dependency.object.database || materializedView.database_name;
+          const expectedKind = this.schemaKindForDependency(dependency.object.kind);
+          const objects = catalog && database
+            ? objectsByLocation.get(`${catalog}\u0000${database}`) || []
+            : [];
+          const object = objects.find((candidate) =>
+            candidate.name === dependency.object.name
+            && (!expectedKind || candidate.object_kind === expectedKind),
+          );
+          if (!object || !catalog || !database) {
+            unresolved += 1;
+            return;
+          }
+          this.dependencyObjectRefs.set(
+            this.dependencyObjectKey(catalog, database, dependency.object.name, expectedKind),
+            object.object_ref,
+          );
+        });
+        this.dependencyObjectReferenceWarning = unresolved > 0
+          ? '部分对象详情不可用；关系图仍仅基于引擎返回的依赖元数据。'
+          : '';
+        this.buildDependencyGraph(materializedView, dependencies);
+        this.cdRef.detectChanges();
+      });
+  }
+
+  private loadDependencyObject(
+    node: typeof this.dependencyGraphNodes[number],
+    objectRef: string,
+    retryExpiredReference: boolean,
+  ): void {
+    this.nodeService
+      .getSchemaObject(this.clusterId, objectRef)
+      .pipe(
+        takeUntil(this.destroy$),
+        takeUntil(this.detailRequest$),
+        takeUntil(this.dependencyObjectRequest$),
+        timeout(20000),
+      )
+      .subscribe({
+        next: (object) => {
+          this.dependencyObjectLoading = false;
+          this.dependencyObject = object;
+          this.cdRef.detectChanges();
+        },
+        error: (error) => {
+          if (retryExpiredReference && error?.status === 404) {
+            this.renewDependencyObjectReference(node);
+            return;
+          }
+          this.dependencyObjectLoading = false;
+          this.toastrService.danger(ErrorHandler.extractErrorMessage(error), '获取对象详情失败');
+          this.cdRef.detectChanges();
+        },
+      });
+  }
+
+  private renewDependencyObjectReference(node: typeof this.dependencyGraphNodes[number]): void {
+    if (!node.catalog || !node.database || !node.objectName) {
+      this.dependencyObjectLoading = false;
+      return;
+    }
+    this.nodeService
+      .getSchemaObjects(this.clusterId, node.catalog, node.database)
+      .pipe(
+        takeUntil(this.destroy$),
+        takeUntil(this.detailRequest$),
+        takeUntil(this.dependencyObjectRequest$),
+        timeout(20000),
+      )
+      .subscribe({
+        next: (objects) => {
+          const object = objects.find((candidate) =>
+            candidate.name === node.objectName
+            && (!node.objectKind || candidate.object_kind === node.objectKind),
+          );
+          if (!object) {
+            this.dependencyObjectLoading = false;
+            this.toastrService.warning('对象已不存在或当前用户无权读取', '提示');
+            this.cdRef.detectChanges();
+            return;
+          }
+          node.objectRef = object.object_ref;
+          this.dependencyObjectRefs.set(
+            this.dependencyObjectKey(node.catalog!, node.database!, node.objectName!, node.objectKind),
+            object.object_ref,
+          );
+          this.loadDependencyObject(node, object.object_ref, false);
+        },
+        error: (error) => {
+          this.dependencyObjectLoading = false;
+          this.toastrService.danger(ErrorHandler.extractErrorMessage(error), '刷新对象引用失败');
+          this.cdRef.detectChanges();
+        },
+      });
+  }
+
   private buildDependencyGraph(
     materializedView: MaterializedView,
     dependencies: MaterializedViewDependencies,
   ): void {
+    const compact = this.isCompactDependencyGraph();
+    const nodeWidth = compact ? 132 : 220;
+    const nodeHeight = compact ? 68 : 72;
+    const labelLength = compact ? 16 : 28;
+    this.dependencyGraphCompact = compact;
     const graph = new dagre.graphlib.Graph();
-    graph.setGraph({ rankdir: 'LR', marginx: 28, marginy: 28, ranksep: 72, nodesep: 24 });
+    graph.setGraph({
+      rankdir: 'LR',
+      marginx: compact ? 16 : 28,
+      marginy: compact ? 16 : 28,
+      ranksep: compact ? 36 : 92,
+      nodesep: compact ? 20 : 28,
+    });
     graph.setDefaultEdgeLabel(() => ({}));
 
     const currentId = 'current';
     const items = [
       {
         id: currentId,
-        label: this.graphLabel(`${materializedView.database_name}.${materializedView.name}`),
+        label: this.graphLabel(`${materializedView.database_name}.${materializedView.name}`, labelLength),
         subtitle: materializedView.kind === 'rollup' ? 'ROLLUP' : 'MATERIALIZED VIEW',
         type: 'current',
       },
-      ...dependencies.dependencies.map((dependency, index) => ({
-        id: `dependency-${index}`,
-        label: this.graphLabel(this.dependencyObjectLabel(
-          dependency.object.catalog,
-          dependency.object.database,
-          dependency.object.name,
-        )),
-        subtitle: dependency.object.kind.replace('_', ' ').toUpperCase(),
-        type: dependency.object.kind,
-        evidence: dependency.evidence,
-      })),
+      ...dependencies.dependencies.map((dependency, index) => {
+        const catalog = dependency.object.catalog || this.activeCluster?.catalog;
+        const database = dependency.object.database || materializedView.database_name;
+        const objectKind = this.schemaKindForDependency(dependency.object.kind);
+        return {
+          id: `dependency-${index}`,
+          label: this.graphLabel(
+            this.dependencyObjectLabel(catalog, database, dependency.object.name),
+            labelLength,
+          ),
+          subtitle: dependency.object.kind.replace('_', ' ').toUpperCase(),
+          type: dependency.object.kind,
+          evidence: dependency.evidence,
+          catalog,
+          database,
+          objectName: dependency.object.name,
+          objectKind,
+          objectRef: catalog && database
+            ? this.dependencyObjectRefs.get(
+                this.dependencyObjectKey(catalog, database, dependency.object.name, objectKind),
+              )
+            : undefined,
+        };
+      }),
     ];
 
-    items.forEach((item) => graph.setNode(item.id, { width: 210, height: 68 }));
+    items.forEach((item) => graph.setNode(item.id, { width: nodeWidth, height: nodeHeight }));
     items.slice(1).forEach((item) => graph.setEdge(item.id, currentId));
     dagre.layout(graph);
 
     this.dependencyGraphNodes = items.map((item) => {
       const layout = graph.node(item.id);
-      return { ...item, x: Math.round(layout.x), y: Math.round(layout.y), width: 210, height: 68 };
+      return { ...item, x: Math.round(layout.x), y: Math.round(layout.y), width: nodeWidth, height: nodeHeight };
     });
     const byId = new Map(this.dependencyGraphNodes.map((node) => [node.id, node]));
-    this.dependencyGraphEdges = items.slice(1).flatMap((item) => {
+    const upstreamItems = items.slice(1);
+    this.dependencyGraphEdges = upstreamItems.flatMap((item, index) => {
       const source = byId.get(item.id);
       const target = byId.get(currentId);
-      return source && target
-        ? [{
-            from: { x: source.x + source.width / 2, y: source.y },
-            to: { x: target.x - target.width / 2, y: target.y },
-          }]
-        : [];
+      if (!source || !target) {
+        return [];
+      }
+
+      const from = { x: source.x + source.width / 2, y: source.y };
+      const to = {
+        x: target.x - target.width / 2,
+        y: Math.round(target.y - target.height / 2 + (target.height / (upstreamItems.length + 1)) * (index + 1)),
+      };
+      const controlOffset = Math.min(72, Math.max(12, Math.round((to.x - from.x) / 2)));
+      const routeLift = upstreamItems.length === 1 ? (compact ? -8 : -10) : 0;
+
+      return [{
+        from,
+        to,
+        path: `M ${from.x} ${from.y} C ${from.x + controlOffset} ${from.y + routeLift}, ${to.x - controlOffset} ${to.y + routeLift}, ${to.x} ${to.y}`,
+        label: 'mv_reads',
+        labelX: Math.round((from.x + to.x) / 2),
+        labelY: Math.max(12, Math.round(Math.min(from.y, to.y) - source.height / 2 + routeLift - 6)),
+      }];
     });
-    this.dependencyGraphWidth = Math.max(600, ...this.dependencyGraphNodes.map((node) => node.x + node.width / 2 + 28));
-    this.dependencyGraphHeight = Math.max(180, ...this.dependencyGraphNodes.map((node) => node.y + node.height / 2 + 28));
+    const margin = compact ? 16 : 28;
+    this.dependencyGraphWidth = Math.max(
+      compact ? 320 : 600,
+      ...this.dependencyGraphNodes.map((node) => node.x + node.width / 2 + margin),
+    );
+    this.dependencyGraphHeight = Math.max(
+      128,
+      ...this.dependencyGraphNodes.map((node) => node.y + node.height / 2 + margin),
+    );
   }
 
-  private graphLabel(label: string): string {
-    return label.length > 28 ? `${label.slice(0, 27)}...` : label;
+  private isCompactDependencyGraph(): boolean {
+    return (this.document.defaultView?.innerWidth || 1024) <= 640;
   }
 
-  private closeDetailThen(action: (mv: MaterializedView) => void): void {
-    const mv = this.selectedMV;
-    const dialogRef = this.detailDialogRef;
-    if (!mv || !dialogRef) {
-      return;
+  private schemaKindForDependency(kind: string): SchemaObjectKind | undefined {
+    switch (kind) {
+      case 'table':
+        return 'table';
+      case 'view':
+        return 'view';
+      case 'materialized_view':
+        return 'materialized_view';
+      default:
+        return undefined;
     }
-    dialogRef.onClose.pipe(take(1)).subscribe(() => action(mv));
-    this.closeDetailDialog(dialogRef);
+  }
+
+  private dependencyObjectKey(
+    catalog: string,
+    database: string,
+    name: string,
+    kind: SchemaObjectKind | undefined,
+  ): string {
+    return `${catalog}\u0000${database}\u0000${name}\u0000${kind || ''}`;
+  }
+
+  private graphLabel(label: string, maxLength = 28): string {
+    return label.length > maxLength ? `${label.slice(0, maxLength - 1)}...` : label;
   }
 
   private captureDetailTrigger(rowIndex?: number): void {

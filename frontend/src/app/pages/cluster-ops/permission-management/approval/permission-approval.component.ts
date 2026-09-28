@@ -1,10 +1,10 @@
 import { I18nService } from '../../../../@core/i18n/i18n.service';
 import { TranslatePipe } from '@ngx-translate/core';
 import { Component, OnInit, OnDestroy, Input, Output, EventEmitter, inject } from '@angular/core';
-import { Subject } from 'rxjs';
+import { Subject, take } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { LocalDataSource, Angular2SmartTableModule } from 'angular2-smart-table';
-import { NbBadgeModule, NbButtonModule, NbCardModule, NbDialogService, NbIconModule, NbOptionModule, NbSelectModule, NbSpinnerModule, NbToastrService, NbTooltipModule } from '@nebular/theme';
+import { NbBadgeModule, NbButtonModule, NbCardModule, NbDialogRef, NbDialogService, NbIconModule, NbOptionModule, NbSelectModule, NbSpinnerModule, NbToastrService, NbTooltipModule } from '@nebular/theme';
 import { PermissionRequestService } from '../../../../@core/data/permission-request.service';
 import { PermissionRequestResponse } from '../../../../@core/data/permission-request.model';
 import { PermissionApprovalDetailDialogComponent } from './permission-approval-detail-dialog.component';
@@ -117,6 +117,7 @@ export class PermissionApprovalComponent implements OnInit, OnDestroy {
 
   selectedRequest: PermissionRequestResponse | null = null;
   approvalInProgress = false;
+  private decisionDialogOpen = false;
 
   private destroy$ = new Subject<void>();
 
@@ -183,26 +184,29 @@ export class PermissionApprovalComponent implements OnInit, OnDestroy {
   }
 
   onViewDetail(request: PermissionRequestResponse): void {
-    const dialogRef = this.dialogService.open(PermissionApprovalDetailDialogComponent, {
+    const detailRef = this.dialogService.open(PermissionApprovalDetailDialogComponent, {
       context: {
         request: request,
         showActions: true,
       },
       hasBackdrop: true,
       closeOnBackdropClick: false,
-      closeOnEsc: true,
+      closeOnEsc: false,
     });
-
-    dialogRef.onClose.subscribe((result) => {
-      if (result?.action === 'approve') {
-        this.openDecisionDialog(request, true);
-      } else if (result?.action === 'reject') {
-        this.openDecisionDialog(request, false);
-      }
-    });
+    detailRef.componentRef.instance.onDecision = (approve) =>
+      this.openDecisionDialog(request, approve, detailRef);
   }
 
-  private openDecisionDialog(request: PermissionRequestResponse, approve: boolean): void {
+  private openDecisionDialog(
+    request: PermissionRequestResponse,
+    approve: boolean,
+    detailRef: NbDialogRef<PermissionApprovalDetailDialogComponent>,
+  ): void {
+    if (this.approvalInProgress || this.decisionDialogOpen) {
+      return;
+    }
+
+    this.decisionDialogOpen = true;
     const action = approve ? '批准' : '拒绝';
     const dialogRef = this.dialogService.open(ConfirmationDialogComponent, {
       context: {
@@ -222,9 +226,14 @@ export class PermissionApprovalComponent implements OnInit, OnDestroy {
       },
       hasBackdrop: true,
       closeOnBackdropClick: false,
+      closeOnEsc: true,
+      autoFocus: true,
+      backdropClass: 'nested-action-backdrop',
+      dialogClass: 'nested-action-dialog',
     });
 
-    dialogRef.onClose.subscribe((result) => {
+    dialogRef.onClose.pipe(take(1)).subscribe((result) => {
+      this.decisionDialogOpen = false;
       if (!result?.confirmed) return;
 
       this.approvalInProgress = true;
@@ -236,6 +245,7 @@ export class PermissionApprovalComponent implements OnInit, OnDestroy {
         next: () => {
           this.toastr.success(`已${action}申请 #${request.id}`, `${action}成功`);
           this.approvalInProgress = false;
+          detailRef.close();
           this.processed.emit();
           this.loadPendingRequests();
         },

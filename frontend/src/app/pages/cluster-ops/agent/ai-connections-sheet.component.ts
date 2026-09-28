@@ -143,6 +143,9 @@ export class AiConnectionsSheetComponent implements OnInit, OnDestroy {
 
   @HostListener('document:keyup.escape')
   closeOnEscape(): void {
+    if (this.elementRef.nativeElement.ownerDocument.querySelector('.cdk-overlay-pane.nested-action-dialog')) {
+      return;
+    }
     this.close();
   }
 
@@ -263,6 +266,9 @@ export class AiConnectionsSheetComponent implements OnInit, OnDestroy {
         '切换 AI 模型供应商',
         `切换为“${provider.display_name}”后，智能助手和 Profile 根因分析都会立即使用该模型。`,
         '设为当前',
+        '取消',
+        'primary',
+        { nested: true },
       )
       .pipe(take(1), takeUntil(this.destroy$))
       .subscribe((confirmed) => {
@@ -313,7 +319,11 @@ export class AiConnectionsSheetComponent implements OnInit, OnDestroy {
     if (!this.canDelete || provider.is_active) {
       return;
     }
-    this.confirmDialog.confirmDelete(provider.display_name, '历史分析记录会保留，但不再关联此连接。')
+    this.confirmDialog.confirmDelete(
+      provider.display_name,
+      '历史分析记录会保留，但不再关联此连接。',
+      { nested: true },
+    )
       .pipe(take(1), takeUntil(this.destroy$))
       .subscribe((confirmed) => {
         if (!confirmed) {

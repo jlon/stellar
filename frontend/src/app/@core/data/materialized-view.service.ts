@@ -53,6 +53,7 @@ export interface MaterializedViewDependency {
   evidence: 'verified' | 'partial' | 'annotated' | 'unknown';
   source: 'star_rocks_object_dependencies' | 'rollup_parent' | 'doris_definition';
   evidence_snippet?: string;
+  observed_at: string;
 }
 
 export interface MaterializedViewDependencies {
@@ -60,6 +61,7 @@ export interface MaterializedViewDependencies {
   dependencies: MaterializedViewDependency[];
   complete: boolean;
   warnings: string[];
+  read_at: string;
 }
 
 export interface CreateMaterializedViewRequest {

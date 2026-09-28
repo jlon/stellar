@@ -90,6 +90,10 @@ mod frontend_profile_test;
 mod materialized_view_test;
 
 #[cfg(test)]
+#[path = "tests/schema_explorer_test.rs"]
+mod schema_explorer_test;
+
+#[cfg(test)]
 #[path = "tests/agent_chat_test.rs"]
 mod agent_chat_test;
 
@@ -142,6 +146,7 @@ pub struct AppState<DB: AppDb> {
     pub profile_analysis_cache: Arc<ProfileAnalysisCache>,
     pub ops_agent_service: Arc<OpsAgentService<DB>>,
     pub notification_service: Arc<NotificationService<DB>>,
+    pub schema_object_reference_store: Arc<services::SchemaObjectReferenceStore>,
 
     pub agent_runtime_service: Arc<AgentRuntimeService<DB>>,
 }

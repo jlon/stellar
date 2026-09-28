@@ -182,6 +182,42 @@ describe("LoadManagementComponent", () => {
     );
   });
 
+  it("keeps the job detail sheet open when reopening an import", () => {
+    const detailDialogRef = { close: jasmine.createSpy("close") };
+    dialogService.open.and.returnValue({
+      close: jasmine.createSpy("close"),
+      onClose: of(undefined),
+    });
+    (
+      component as unknown as { importDialog: TemplateRef<unknown> }
+    ).importDialog = {} as TemplateRef<unknown>;
+    (component as unknown as { detailDialogRef: unknown }).detailDialogRef =
+      detailDialogRef;
+    component.activeCluster = { cluster_type: "starrocks" } as NonNullable<
+      typeof component.activeCluster
+    >;
+
+    component.reopenImportFromJob({
+      job_id: "failed-load",
+      load_type: "BROKER_LOAD",
+      state: "FAILED",
+      database: "target_db",
+      table_name: "target_table",
+      stage_timeline: [],
+    });
+
+    expect(detailDialogRef.close).not.toHaveBeenCalled();
+    expect(dialogService.open).toHaveBeenCalledWith(
+      jasmine.anything(),
+      jasmine.objectContaining({
+        dialogClass: "nested-action-dialog",
+        backdropClass: "nested-action-backdrop",
+        closeOnBackdropClick: false,
+        closeOnEsc: true,
+      }),
+    );
+  });
+
   it("does not open the import dialog for Doris", () => {
     (
       component as unknown as { importDialog: TemplateRef<unknown> }
