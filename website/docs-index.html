@@ -724,13 +724,16 @@ retention_days = "7d"                     <span class="c"># 指标保留时长</
 enabled = true                            <span class="c"># 采集开关</span>
 
 [audit]
-database = "starrocks_audit_db__"         <span class="c"># StarRocks 审计库</span>
-table = "starrocks_audit_tbl__"           <span class="c"># StarRocks 审计表</span>
+database = "starrocks_audit_db__"         <span class="c"># AuditLoader plugin.conf 的 database</span>
+table = "starrocks_audit_tbl__"           <span class="c"># AuditLoader plugin.conf 的 table；默认完整表名见下文</span>
 
 [agent]
 enabled = true                            <span class="c"># AI 运维事件循环；离线环境可关</span>
 interval_secs = "30s"                     <span class="c"># 循环周期</span>
 event_retention_days = 14                 <span class="c"># 事件保留天数</span></pre><button class="copy">复制</button></div>
+
+    <h3 id="audit">审计日志（StarRocks，可选）<a class="anchor" href="#audit">#</a></h3>
+    <p>Stellar 只读取 AuditLoader 导入 StarRocks 的审计表，不会创建库表或安装插件。默认表为 <code>starrocks_audit_db__.starrocks_audit_tbl__</code>；若改用自定义库表，AuditLoader <code>plugin.conf</code> 的 <code>database</code>、<code>table</code> 必须与 Stellar 的 <code>[audit]</code> 配置一致。Stellar 连接集群的账号还需要该审计库的 <code>SELECT</code> 权限。创建库表、配置并安装插件请参阅 <a href="https://docs.starrocks.io/zh/docs/administration/management/audit_loader/">StarRocks AuditLoader 官方文档</a>。</p>
 
     <div class="note warn">启动时会校验：端口不能为 0、数据库连接串不能为空、<code>metrics.interval_secs</code> 与 <code>retention_days</code> 必须大于 0。配置错误会直接拒绝启动并在日志里说明原因。</div>
 
@@ -829,7 +832,7 @@ event_retention_days = 14                 <span class="c"># 事件保留天数</
     </table></div>
 
     <h3 id="关于审计数据">关于审计数据<a class="anchor" href="#关于审计数据">#</a></h3>
-    <p>「审计日志」页面读取的是 StarRocks 侧已开启的审计表（默认库 <code>starrocks_audit_db__</code>、表 <code>starrocks_audit_tbl__</code>）。<strong>需要在 StarRocks 集群上先配置审计插件</strong>，并把库表名对应到 Stellar 的 <code>[audit]</code> 配置；未配置时该页面为空，不影响其他功能。</p>
+    <p>未配置 AuditLoader 时，「审计日志」页面为空，不影响其他功能。默认库表、账号权限与安装链接见 <a href="#audit">审计日志配置</a>。</p>
 
     <h2 id="uninstall">卸载<a class="anchor" href="#uninstall">#</a></h2>
     <div class="codewrap"><pre><span class="c"># deb</span>

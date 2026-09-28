@@ -268,10 +268,21 @@ retention_days = "7d"     # 指标保留时长
 enabled = true            # 是否启用采集
 
 [audit]
-# StarRocks 审计日志库表；Doris 固定使用 __internal_schema.audit_log
+# AuditLoader plugin.conf 的 database；Doris 固定使用 __internal_schema.audit_log
 database = "starrocks_audit_db__"
+# AuditLoader plugin.conf 的 table；默认完整表名见下文
 table = "starrocks_audit_tbl__"
 ```
+
+### 审计日志（StarRocks，可选）
+
+Stellar 只读取 AuditLoader 导入 StarRocks 的审计表，不会创建该库表或安装插件。默认读取
+`starrocks_audit_db__.starrocks_audit_tbl__`：前半段来自 `[audit].database`，后半段来自
+`[audit].table`。
+
+如果 AuditLoader 使用自定义库表，请将插件 `plugin.conf` 的 `database`、`table` 与 Stellar 的
+`[audit]` 配置（或 `APP_AUDIT_DATABASE`、`APP_AUDIT_TABLE`）设为相同值；Stellar 连接集群的账号还需要该审计库的 `SELECT` 权限。
+创建库表、配置并安装 AuditLoader 请参阅 [StarRocks AuditLoader 官方文档](https://docs.starrocks.io/zh/docs/administration/management/audit_loader/)。
 
 > 数据目录模式（`stellar server /var/lib/stellar`）会自动生成并保存 `.jwt-secret`，重启不失效。
 > 将数据目录与 `--config` 一起传入时，配置文件控制服务、数据库、日志和审计表，数据目录仅保存自动生成的 `.jwt-secret`；未传数据目录时，显式 `--config` 模式必须设置 `jwt_secret` 或 `APP_JWT_SECRET`。
