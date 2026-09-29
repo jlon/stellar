@@ -35,8 +35,20 @@
                                 <div class="tree-loading">
                                   <nb-spinner size="small" status="primary" [message]="''"></nb-spinner>
                                 </div>
-                              }
-                              @if (!loadingCatalogs && databaseTree.length > 0) {
+                              } @else if (catalogLoadError) {
+                                <div class="tree-state error" role="alert">
+                                  <nb-icon icon="alert-circle-outline"></nb-icon>
+                                  <span>{{ catalogLoadError }}</span>
+                                  <button
+                                    type="button"
+                                    class="tree-state-retry"
+                                    (click)="retryCatalogs()"
+                                    [nbTooltip]="'重新读取 Catalog' | translate"
+                                    [aria-label]="'重新读取 Catalog' | translate">
+                                    <nb-icon icon="refresh-outline"></nb-icon>
+                                  </button>
+                                </div>
+                              } @else if (databaseTree.length > 0) {
                                 <ul class="nav-tree">
                                   @for (node of databaseTree; track trackNodeById($index, node)) {
                                     <ng-container *ngTemplateOutlet="treeNodeTemplate; context: { $implicit: node }"></ng-container>
@@ -653,7 +665,11 @@
                         <div class="node-icon">
                           <nb-icon [icon]="node.icon || 'folder-outline'"></nb-icon>
                         </div>
-                        <span class="node-text">{{ node.name }}</span>
+                        <span
+                          class="node-text"
+                          [nbTooltip]="node.data?.schemaReadAt ? ('对象详情读取于 ' + (node.data?.schemaReadAt | date:'yyyy-MM-dd HH:mm:ss')) : ''">
+                          {{ node.name }}
+                        </span>
                         @switch (node.data?.tableType) {
                           @case ('VIEW') {
                             <span class="node-badge node-badge-view">VIEW</span>
@@ -666,12 +682,36 @@
                           <nb-spinner size="tiny" status="primary" [message]="''"></nb-spinner>
                         }
                       </div>
-                      @if (node.children && node.children.length && node.expanded) {
-                        <ul class="tree-children">
-                          @for (child of node.children; track trackNodeById($index, child)) {
-                            <ng-container *ngTemplateOutlet="treeNodeTemplate; context: { $implicit: child }"></ng-container>
-                          }
-                        </ul>
+                      @if (node.expanded) {
+                        @if (node.children && node.children.length) {
+                          <ul class="tree-children">
+                            @for (child of node.children; track trackNodeById($index, child)) {
+                              <ng-container *ngTemplateOutlet="treeNodeTemplate; context: { $implicit: child }"></ng-container>
+                            }
+                          </ul>
+                        } @else if (node.loadError) {
+                          <ul class="tree-children">
+                            <li class="tree-state error" role="alert">
+                              <nb-icon icon="alert-circle-outline"></nb-icon>
+                              <span>{{ node.loadError }}</span>
+                              <button
+                                type="button"
+                                class="tree-state-retry"
+                                (click)="retryTreeNode(node, $event)"
+                                [nbTooltip]="'重新读取' | translate"
+                                [aria-label]="'重新读取' | translate">
+                                <nb-icon icon="refresh-outline"></nb-icon>
+                              </button>
+                            </li>
+                          </ul>
+                        } @else if (node.loaded) {
+                          <ul class="tree-children">
+                            <li class="tree-state empty">
+                              <nb-icon icon="inbox-outline"></nb-icon>
+                              <span>{{ treeNodeEmptyLabel(node) | translate }}</span>
+                            </li>
+                          </ul>
+                        }
                       }
                     </li>
                   </ng-template>

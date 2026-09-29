@@ -1,6 +1,6 @@
 import { QueryExecutionComponent } from '../query-execution/query-execution.component';
 import { Query, SchemaObjectDependencies } from '../../../../@core/data/node.service';
-import { NEVER, Subject, of } from 'rxjs';
+import { NEVER, Subject, of, throwError } from 'rxjs';
 
 describe('QueryExecutionComponent database statistics', () => {
   it('does not let detail dialogs close on the same Escape as nested confirmations', () => {
@@ -248,6 +248,223 @@ describe('QueryExecutionComponent database statistics', () => {
     expect(internal.getDatabaseCacheKey('catalog|sales', 'orders')).not.toBe(
       internal.getDatabaseCacheKey('catalog', 'sales|orders'),
     );
+  });
+
+  it('includes copying the qualified object name in every object menu', () => {
+    const component = Object.create(QueryExecutionComponent.prototype) as QueryExecutionComponent;
+    const items = (component as unknown as {
+      tableQueryMenuItems: () => Array<{ action: string }>;
+    }).tableQueryMenuItems();
+
+    expect(items.map((item) => item.action)).toContain('copyQualifiedName');
+  });
+
+  it('copies the catalog-qualified name from the tree context menu', () => {
+    const component = Object.create(QueryExecutionComponent.prototype) as QueryExecutionComponent;
+    const copyToClipboard = jasmine.createSpy('copyToClipboard');
+    const closeContextMenu = jasmine.createSpy('closeContextMenu');
+    const internal = component as unknown as {
+      contextMenuTargetNode: { type: string } | null;
+      copyToClipboard: typeof copyToClipboard;
+      qualifiedTableName: jasmine.Spy;
+      closeContextMenu: typeof closeContextMenu;
+      handleContextMenuAction: (item: { action: string }) => void;
+    };
+    internal.contextMenuTargetNode = { type: 'table' };
+    internal.copyToClipboard = copyToClipboard;
+    internal.qualifiedTableName = jasmine
+      .createSpy('qualifiedTableName')
+      .and.returnValue('`default_catalog`.`analytics`.`orders`');
+    internal.closeContextMenu = closeContextMenu;
+
+    internal.handleContextMenuAction({ action: 'copyQualifiedName' });
+
+    expect(copyToClipboard).toHaveBeenCalledOnceWith('`default_catalog`.`analytics`.`orders`');
+    expect(closeContextMenu).toHaveBeenCalledOnceWith();
+  });
+
+  it('keeps a Catalog read failure distinct from an empty tree', () => {
+    const component = Object.create(QueryExecutionComponent.prototype) as QueryExecutionComponent;
+    const internal = component as unknown as {
+      loadingCatalogs: boolean;
+      catalogLoadError: string | null;
+      catalogs: string[];
+      databaseTree: unknown[];
+      nodeService: { getCatalogs: jasmine.Spy };
+      refreshSqlSchema: jasmine.Spy;
+      cdr: { markForCheck: jasmine.Spy };
+      loadCatalogs: (autoSelectFirst: boolean) => void;
+    };
+    internal.loadingCatalogs = false;
+    internal.catalogLoadError = null;
+    internal.catalogs = ['stale'];
+    internal.databaseTree = [{}];
+    internal.nodeService = {
+      getCatalogs: jasmine.createSpy('getCatalogs').and.returnValue(
+        throwError(() => ({ status: 403 })),
+      ),
+    };
+    internal.refreshSqlSchema = jasmine.createSpy('refreshSqlSchema');
+    internal.cdr = { markForCheck: jasmine.createSpy('markForCheck') };
+    spyOn(console, 'error');
+
+    internal.loadCatalogs(false);
+
+    expect(internal.loadingCatalogs).toBeFalse();
+    expect(internal.catalogLoadError).toBe('没有权限执行此操作');
+    expect(internal.databaseTree).toEqual([]);
+  });
+
+  it('synchronizes a refreshed object summary and read time back to its tree node', () => {
+    const component = Object.create(QueryExecutionComponent.prototype) as QueryExecutionComponent;
+    const node: {
+      type: 'table';
+      name: string;
+      icon: string;
+      data: {
+        catalog: string;
+        database: string;
+        table: string;
+        tableType: string;
+        schemaObjectKind: string;
+        schemaObjectRef: string;
+        schemaReadAt?: string;
+      };
+    } = {
+      type: 'table',
+      name: 'daily_summary',
+      icon: 'grid-outline',
+      data: {
+        catalog: 'default_catalog',
+        database: 'analytics',
+        table: 'daily_summary',
+        tableType: 'TABLE',
+        schemaObjectKind: 'table',
+        schemaObjectRef: 'object-ref',
+      },
+    };
+    const internal = component as unknown as {
+      currentSchemaNode: typeof node;
+      getTableIcon: jasmine.Spy;
+      syncSchemaObjectTreeSummary: (detail: {
+        identity: { catalog: string; database: string; name: string; object_kind: 'materialized_view' };
+        read_at: string;
+      }) => void;
+    };
+    internal.currentSchemaNode = node;
+    internal.getTableIcon = jasmine.createSpy('getTableIcon').and.returnValue('layers-outline');
+
+    internal.syncSchemaObjectTreeSummary({
+      identity: {
+        catalog: 'default_catalog',
+        database: 'analytics',
+        name: 'daily_summary',
+        object_kind: 'materialized_view',
+      },
+      read_at: '2026-09-29T02:55:00Z',
+    });
+
+    expect(node.icon).toBe('layers-outline');
+    expect(node.data.tableType).toBe('MATERIALIZED_VIEW');
+    expect(node.data.schemaObjectKind).toBe('materialized_view');
+    expect(node.data.schemaReadAt).toBe('2026-09-29T02:55:00Z');
+  });
+
+  it('retries only the failed tree node reader', () => {
+    const component = Object.create(QueryExecutionComponent.prototype) as QueryExecutionComponent;
+    const loadDatabasesForCatalog = jasmine.createSpy('loadDatabasesForCatalog');
+    const loadTablesForDatabase = jasmine.createSpy('loadTablesForDatabase');
+    const internal = component as unknown as {
+      loadDatabasesForCatalog: typeof loadDatabasesForCatalog;
+      loadTablesForDatabase: typeof loadTablesForDatabase;
+      retryTreeNode: (node: { type: string; expanded?: boolean; loadError?: string }, event: MouseEvent) => void;
+    };
+    internal.loadDatabasesForCatalog = loadDatabasesForCatalog;
+    internal.loadTablesForDatabase = loadTablesForDatabase;
+    const event = {
+      preventDefault: jasmine.createSpy('preventDefault'),
+      stopPropagation: jasmine.createSpy('stopPropagation'),
+    } as unknown as MouseEvent;
+    const catalog = { type: 'catalog', expanded: false, loadError: '读取失败' };
+    const database = { type: 'database', expanded: false, loadError: '读取失败' };
+
+    internal.retryTreeNode(catalog, event);
+    internal.retryTreeNode(database, event);
+
+    expect(catalog.expanded).toBeTrue();
+    expect(catalog.loadError).toBeUndefined();
+    expect(database.expanded).toBeTrue();
+    expect(database.loadError).toBeUndefined();
+    expect(loadDatabasesForCatalog).toHaveBeenCalledOnceWith(catalog);
+    expect(loadTablesForDatabase).toHaveBeenCalledOnceWith(database);
+  });
+
+  it('loads a collapsed database only once when selecting its tree row', () => {
+    const component = Object.create(QueryExecutionComponent.prototype) as QueryExecutionComponent;
+    const setSelectedContext = jasmine.createSpy('setSelectedContext');
+    const toggleNode = jasmine.createSpy('toggleNode');
+    const loadTablesForDatabase = jasmine.createSpy('loadTablesForDatabase');
+    const internal = component as unknown as {
+      selectedNodeId: string | null;
+      setSelectedContext: typeof setSelectedContext;
+      toggleNode: typeof toggleNode;
+      loadTablesForDatabase: typeof loadTablesForDatabase;
+      onNodeSelect: (node: { id: string; type: string; expanded: boolean; data: { catalog: string; database: string; tablesLoaded: boolean } }) => void;
+    };
+    internal.selectedNodeId = null;
+    internal.setSelectedContext = setSelectedContext;
+    internal.toggleNode = toggleNode;
+    internal.loadTablesForDatabase = loadTablesForDatabase;
+    const database = {
+      id: 'database::default_catalog::analytics',
+      type: 'database',
+      expanded: false,
+      data: { catalog: 'default_catalog', database: 'analytics', tablesLoaded: false },
+    };
+
+    internal.onNodeSelect(database);
+
+    expect(setSelectedContext).toHaveBeenCalledOnceWith('default_catalog', 'analytics', null);
+    expect(toggleNode).toHaveBeenCalledOnceWith(database);
+    expect(loadTablesForDatabase).not.toHaveBeenCalled();
+  });
+
+  it('clears database IDs when changing clusters', () => {
+    const component = Object.create(QueryExecutionComponent.prototype) as QueryExecutionComponent;
+    const internal = component as unknown as {
+      databaseTree: unknown[];
+      databaseCache: Record<string, string[]>;
+      tableCache: Record<string, unknown[]>;
+      tableCacheExpiresAt: Record<string, number>;
+      databaseIdCache: Record<string, string>;
+      catalogLoadError: string | null;
+      selectedNodeId: string | null;
+      selectedCatalog: string;
+      selectedDatabase: string | null;
+      selectedTable: string | null;
+      closeContextMenu: jasmine.Spy;
+      refreshSqlSchema: jasmine.Spy;
+      resetNavigationState: () => void;
+    };
+    internal.databaseTree = [{}];
+    internal.databaseCache = { default_catalog: ['analytics'] };
+    internal.tableCache = { analytics: [] };
+    internal.tableCacheExpiresAt = { analytics: Date.now() + 60_000 };
+    internal.databaseIdCache = { 'default_catalog|analytics': 'old-cluster-db-id' };
+    internal.catalogLoadError = '读取失败';
+    internal.selectedNodeId = 'catalog::default_catalog';
+    internal.selectedCatalog = 'default_catalog';
+    internal.selectedDatabase = 'analytics';
+    internal.selectedTable = 'orders';
+    internal.closeContextMenu = jasmine.createSpy('closeContextMenu');
+    internal.refreshSqlSchema = jasmine.createSpy('refreshSqlSchema');
+
+    internal.resetNavigationState();
+
+    expect(internal.databaseIdCache).toEqual({});
+    expect(internal.catalogLoadError).toBeNull();
+    expect(internal.closeContextMenu).toHaveBeenCalledOnceWith();
+    expect(internal.refreshSqlSchema).toHaveBeenCalledOnceWith();
   });
 
   it('keeps partial Schema Explorer relationships out of the local graph until requested', () => {

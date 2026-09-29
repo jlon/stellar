@@ -115,7 +115,8 @@ type ContextMenuAction =
   | 'viewViewQueryPlan'
   | 'viewBucketAnalysis'
   | 'previewRows'
-  | 'insertTableName';
+  | 'insertTableName'
+  | 'copyQualifiedName';
 
 interface TreeContextMenuItem {
   label: string;
@@ -130,6 +131,8 @@ interface NavTreeNode {
   icon?: string;
   expanded?: boolean;
   loading?: boolean;
+  loaded?: boolean;
+  loadError?: string;
   children: NavTreeNode[];
   data?: {
     catalog?: string;
@@ -138,6 +141,7 @@ interface NavTreeNode {
     tableType?: TableObjectType;
     schemaObjectRef?: string;
     schemaObjectKind?: SchemaObjectKind;
+    schemaReadAt?: string;
     storageType?: string; // Storage type: NORMAL, CLOUD_NATIVE, etc.
     originalName?: string;
     tablesLoaded?: boolean;
@@ -248,6 +252,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   catalogs: string[] = [];
   selectedCatalog: string = '';
   loadingCatalogs: boolean = false;
+  catalogLoadError: string | null = null;
   
   selectedDatabase: string | null = null;
   loadingDatabases: boolean = false;
@@ -424,6 +429,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       icon: 'folder-outline',
       expanded: false,
       loading: false,
+      loaded: false,
       children: [],
       data: {
         catalog,
@@ -439,6 +445,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       icon: 'cube-outline',
       expanded: false,
       loading: false,
+      loaded: false,
       children: [],
       data: {
         catalog,
@@ -1117,9 +1124,6 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         if (!node.expanded) {
           this.toggleNode(node);
         }
-        if (!node.data?.tablesLoaded) {
-          this.loadTablesForDatabase(node);
-        }
         break;
       }
       case 'group': {
@@ -1343,6 +1347,11 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
           this.insertTextAtCursor(this.qualifiedTableName(targetNode));
         }
         break;
+      case 'copyQualifiedName':
+        if (targetNode.type === 'table') {
+          this.copyToClipboard(this.qualifiedTableName(targetNode));
+        }
+        break;
       case 'viewSchema':
         if (targetNode.type === 'table') {
           this.viewTableSchema(targetNode);
@@ -1448,6 +1457,11 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
 
   private tableQueryMenuItems(): TreeContextMenuItem[] {
     return [
+      {
+        label: '复制限定对象名',
+        icon: 'copy-outline',
+        action: 'copyQualifiedName',
+      },
       {
         label: '查询前 N 行',
         icon: 'play-circle-outline',
@@ -1762,6 +1776,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   private applySchemaObject(detail: SchemaObjectDetail): void {
     this.tableSchemaLoading = false;
     this.schemaObject = detail;
+    this.syncSchemaObjectTreeSummary(detail);
     this.schemaDialogSubtitle = detail.identity.name;
     this.currentSchemaCatalog = detail.identity.catalog;
     this.currentSchemaDatabase = detail.identity.database;
@@ -1774,6 +1789,32 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       this.renderSchemaSql();
     }
     this.cdr.markForCheck();
+  }
+
+  private syncSchemaObjectTreeSummary(detail: SchemaObjectDetail): void {
+    const node = this.currentSchemaNode;
+    const nodeData = node?.data;
+    const identity = detail.identity;
+    if (
+      !nodeData ||
+      node.type !== 'table' ||
+      nodeData.catalog !== identity.catalog ||
+      nodeData.database !== identity.database ||
+      nodeData.table !== identity.name
+    ) {
+      return;
+    }
+
+    const table = this.schemaObjectToTableInfo({
+      name: identity.name,
+      object_kind: identity.object_kind,
+      object_ref: nodeData.schemaObjectRef || '',
+    });
+    node.name = table.name;
+    node.icon = this.getTableIcon(table.object_type);
+    nodeData.tableType = table.object_type;
+    nodeData.schemaObjectKind = table.object_kind;
+    nodeData.schemaReadAt = detail.read_at;
   }
 
   private loadSchemaObjectDependencies(objectRef: string, dialogId: number): void {
@@ -4720,6 +4761,8 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     this.databaseCache = {};
     this.tableCache = {};
     this.tableCacheExpiresAt = {};
+    this.databaseIdCache = {};
+    this.catalogLoadError = null;
     this.selectedNodeId = null;
     this.selectedCatalog = '';
     this.selectedDatabase = null;
@@ -4748,10 +4791,13 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         }
         return dbNode;
       });
+      node.loaded = true;
+      node.loadError = undefined;
       return;
     }
 
     node.loading = true;
+    node.loadError = undefined;
     this.loadingDatabases = true;
 
     // Load databases and their IDs in parallel
@@ -4799,6 +4845,8 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
           });
           
         node.loading = false;
+        node.loaded = true;
+        node.loadError = undefined;
         this.loadingDatabases = false;
         this.refreshSqlSchema();
         
@@ -4811,7 +4859,9 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         this.loadingDatabases = false;
         console.error('Failed to load databases:', error);
         node.children = [];
-        this.toastrService.danger(this.i18n.instant('加载数据库列表失败'), this.i18n.instant('错误'));
+        node.loaded = false;
+        node.loadError = ErrorHandler.extractErrorMessage(error);
+        this.toastrService.danger(node.loadError, this.i18n.instant('加载数据库列表失败'));
         this.refreshSqlSchema();
       },
     });
@@ -4835,6 +4885,8 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         this.tableCacheExpiresAt[cacheKey] = Date.now() + this.schemaObjectReferenceCacheMs;
       }
       node.children = tableList.map((table) => this.createTableNode(catalogName, databaseName, table));
+      node.loaded = true;
+      node.loadError = undefined;
       const baseName = node.data?.originalName || databaseName;
       node.name = `${baseName}${tableList.length > 0 ? ` (${tableList.length})` : ''}`;
       if (node.data) {
@@ -4855,6 +4907,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
     delete this.tableCacheExpiresAt[cacheKey];
 
     node.loading = true;
+    node.loadError = undefined;
 
     this.nodeService.getSchemaObjects(this.clusterId, catalogName, databaseName).subscribe({
       next: (objects) => {
@@ -4865,16 +4918,34 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         node.loading = false;
         console.error('Failed to load tables:', error);
         node.children = [];
+        node.loaded = false;
+        node.loadError = ErrorHandler.extractErrorMessage(error);
         const baseName = node.data?.originalName || databaseName || node.name;
         node.name = `${baseName}`;
         if (node.data) {
           node.data.tablesLoaded = false;
           node.data.tableCount = 0;
         }
-        this.toastrService.danger(`加载表列表失败: ${error.message || error.statusText || '未知错误'}`, '错误');
+        this.toastrService.danger(node.loadError, this.i18n.instant('加载表列表失败'));
         this.refreshSqlSchema();
       },
     });
+  }
+
+  retryTreeNode(node: NavTreeNode, event: MouseEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    node.expanded = true;
+    node.loadError = undefined;
+    if (node.type === 'catalog') {
+      this.loadDatabasesForCatalog(node);
+    } else if (node.type === 'database') {
+      this.loadTablesForDatabase(node);
+    }
+  }
+
+  treeNodeEmptyLabel(node: NavTreeNode): string {
+    return node.type === 'catalog' ? '暂无数据库' : '暂无对象';
   }
 
   getNodeIndent(node: NavTreeNode): number {
@@ -5032,6 +5103,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
   private loadCatalogs(autoSelectFirst = true): void {
     // Backend will get active cluster automatically - no need to check clusterId
     this.loadingCatalogs = true;
+    this.catalogLoadError = null;
     this.cdr.markForCheck();
     this.nodeService.getCatalogs().subscribe({
       next: (catalogs) => {
@@ -5039,6 +5111,7 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
         catalogList.sort((a, b) => a.localeCompare(b));
         this.catalogs = catalogList;
         this.loadingCatalogs = false;
+        this.catalogLoadError = null;
         this.databaseTree = this.catalogs.map((catalog) => this.createCatalogNode(catalog));
         this.refreshSqlSchema();
 
@@ -5052,10 +5125,17 @@ export class QueryExecutionComponent implements OnInit, OnDestroy, AfterViewInit
       error: (error) => {
         this.loadingCatalogs = false;
         console.error('Failed to load catalogs:', error);
+        this.catalogs = [];
+        this.databaseTree = [];
+        this.catalogLoadError = ErrorHandler.extractErrorMessage(error);
         this.refreshSqlSchema();
         this.cdr.markForCheck();
       },
     });
+  }
+
+  retryCatalogs(): void {
+    this.loadCatalogs();
   }
 
   ngOnInit(): void {
