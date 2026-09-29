@@ -86,7 +86,7 @@ export interface ChatActionRequest {
 
 /** One SSE event of `/api/agent/chat/stream`. */
 export interface ChatStreamEvent {
-  type: 'step' | 'delta' | 'phase' | 'action_request' | 'answer' | 'done' | 'error';
+  type: 'started' | 'step' | 'delta' | 'phase' | 'action_request' | 'answer' | 'done' | 'error';
   step?: AgentStep;
   /** Typewriter text chunk; the frontend appends it to the pending thinking bubble. */
   text?: string;
@@ -252,6 +252,13 @@ export function parseSseEvent(rawBlock: string): ChatStreamEvent | null {
     }
   }
   const data = dataLines.join('\n');
+  if (eventName === 'started' && data) {
+    try {
+      return { type: 'started', ...(JSON.parse(data) as object) } as ChatStreamEvent;
+    } catch {
+      return null;
+    }
+  }
   if (eventName === 'step' && data) {
     try {
       return { type: 'step', step: JSON.parse(data) as AgentStep };

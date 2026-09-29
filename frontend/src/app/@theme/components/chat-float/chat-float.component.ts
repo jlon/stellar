@@ -15,7 +15,7 @@ import { NbToastrModule } from '@nebular/theme';
 import { NbToastrService } from '@nebular/theme';
 import { MarkdownModule } from 'ngx-markdown';
 import { AgentService, AgentSession, ChatActionRequest } from '../../../@core/data/agent.service';
-import { AgentChatService } from '../../../@core/data/agent-chat.service';
+import { AgentChatService, AgentTurnStatus } from '../../../@core/data/agent-chat.service';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
 import { AiIllustrationComponent } from '../ai-illustration/ai-illustration.component';
 import { Cluster } from '../../../@core/data/cluster.service';
@@ -173,6 +173,10 @@ export class ChatFloatComponent implements OnInit, OnDestroy {
     this.chatService.events()
       .pipe(takeUntil(this.destroy$))
       .subscribe((event) => {
+        if (event.type === 'started' && event.session_id) {
+          this.activeSessionId = event.session_id;
+          this.reloadSessions();
+        }
         // 自己发起的回合由 send() 的订阅维护实时文本；这里只接续全量页离开后的回合。
         if (this.sending || event.type !== 'done') {
           return;
@@ -228,6 +232,10 @@ export class ChatFloatComponent implements OnInit, OnDestroy {
 
   private syncActiveSession(sessionId: number | null): void {
     if (this.activeSessionId === sessionId) {
+      return;
+    }
+    if (this.sending && sessionId) {
+      this.activeSessionId = sessionId;
       return;
     }
     this.activeSessionId = sessionId;
@@ -405,7 +413,7 @@ export class ChatFloatComponent implements OnInit, OnDestroy {
           this.chatService.setActiveSession(nextSession);
         }
         // 收起态不预取完整转录，抽屉展开时再加载。
-        if (this.open && this.activeSessionId) {
+        if (this.open && this.activeSessionId && !this.sending) {
           this.loadTranscript();
         }
       },
@@ -472,7 +480,9 @@ export class ChatFloatComponent implements OnInit, OnDestroy {
       context: pageCtx,
     });
     const sub = this.chatService.events().subscribe((ev) => {
-      if (ev.type === 'delta' && ev.text) {
+      if (ev.type === 'started' && ev.session_id) {
+        this.activeSessionId = ev.session_id;
+      } else if (ev.type === 'delta' && ev.text) {
         reply.liveText = (reply.liveText ?? '') + ev.text;
       } else if (ev.type === 'phase') {
         reply.phase = ev.phase as 'reasoning' | 'answer';
@@ -610,5 +620,30 @@ export class ChatFloatComponent implements OnInit, OnDestroy {
         el.scrollTop = el.scrollHeight;
       }
     }, 0);
+  }
+
+  sessionStatus(sessionId: number): AgentTurnStatus {
+    const turn = this.chatService.getTurnState();
+    return turn.sessionId === sessionId ? turn.status : 'completed';
+  }
+
+  sessionStatusLabel(sessionId: number): string {
+    const labels: Record<AgentTurnStatus, string> = {
+      thinking: '思考中',
+      completed: '已完成',
+      failed: '回复失败',
+      stopped: '已停止',
+    };
+    return labels[this.sessionStatus(sessionId)];
+  }
+
+  sessionStatusIcon(sessionId: number): string {
+    const icons: Record<AgentTurnStatus, string> = {
+      thinking: 'loader-outline',
+      completed: 'checkmark-circle-2-outline',
+      failed: 'alert-circle-outline',
+      stopped: 'slash-outline',
+    };
+    return icons[this.sessionStatus(sessionId)];
   }
 }

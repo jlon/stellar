@@ -1,7 +1,10 @@
 //! 平台操作审计：记录增删改（不记查询），失败只打日志不阻断主流程。
 use crate::db::query as db_query;
 use sqlx::Pool;
+use std::time::Duration;
 use stellar_macros::app_db;
+
+const BEST_EFFORT_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// 一条操作审计记录。
 pub struct OpAuditEntry<'a> {
@@ -36,10 +39,12 @@ pub async fn log_op<DB: crate::db::AppDb>(
     Ok(())
 }
 
-/// fire-and-forget 包装：审计写失败只 warn，不断主流程。
+/// 有时限的 best-effort 包装：审计写失败或超时只 warn，不阻断主流程。
 #[app_db]
 pub async fn log_op_best_effort<DB: crate::db::AppDb>(pool: &Pool<DB>, entry: OpAuditEntry<'_>) {
-    if let Err(e) = log_op(pool, entry).await {
-        tracing::warn!("Failed to write op audit log: {}", e);
+    match tokio::time::timeout(BEST_EFFORT_TIMEOUT, log_op(pool, entry)).await {
+        Ok(Err(error)) => tracing::warn!("Failed to write op audit log: {}", error),
+        Err(_) => tracing::warn!("Timed out writing op audit log"),
+        Ok(Ok(())) => {},
     }
 }

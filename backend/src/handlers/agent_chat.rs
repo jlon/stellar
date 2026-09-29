@@ -105,7 +105,7 @@ pub async fn chat<DB: AppDb>(
     })))
 }
 
-/// POST /api/agent/chat/stream -- 步骤级 SSE 流式（事件：step/answer/done/error）。
+/// POST /api/agent/chat/stream -- 步骤级 SSE 流式（事件：started/step/answer/done/error）。
 /// 心跳由 axum KeepAlive 每 30s 发注释行；keep-alive 由响应流自身驱动，
 /// 连接关闭即自动终止，不存在独立心跳任务泄漏（Flink hotfix 77f03445a97/76594c573b8 教训）。
 #[app_db]
@@ -134,6 +134,9 @@ pub async fn stream_chat<DB: AppDb>(
     tokio::spawn(async move {
         while let Some(ev) = rx.recv().await {
             let (name, data) = match ev {
+                crate::services::ops_agent::ChatStreamEvent::Started { session_id } => {
+                    ("started", json!({ "session_id": session_id }).to_string())
+                },
                 crate::services::ops_agent::ChatStreamEvent::Step { step } => {
                     ("step", serde_json::to_string(&step).unwrap_or_default())
                 },

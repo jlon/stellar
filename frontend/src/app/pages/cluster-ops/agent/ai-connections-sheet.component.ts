@@ -295,13 +295,15 @@ export class AiConnectionsSheetComponent implements OnInit, OnDestroy {
   }
 
   test(provider: LLMProvider): void {
-    if (!this.canTest) {
+    if (!this.canTest || this.testingId !== null) {
       return;
     }
     this.testingId = provider.id;
+    this.changeDetectorRef.detectChanges();
     this.llmProviders.testConnection(provider.id).pipe(takeUntil(this.destroy$), timeout(20_000)).subscribe({
       next: (result) => {
         this.testingId = null;
+        this.changeDetectorRef.detectChanges();
         if (result.success) {
           this.toastr.success(`连接成功${result.latency_ms === undefined ? '' : `，延迟 ${result.latency_ms}ms`}`, '测试通过');
         } else {
@@ -310,6 +312,7 @@ export class AiConnectionsSheetComponent implements OnInit, OnDestroy {
       },
       error: (error) => {
         this.testingId = null;
+        this.changeDetectorRef.detectChanges();
         ErrorHandler.handleHttpError(error, this.toastr);
       },
     });

@@ -1,7 +1,7 @@
 import { ChangeDetectorRef, ElementRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { NbDialogRef, NbToastrService } from '@nebular/theme';
-import { BehaviorSubject, of } from 'rxjs';
+import { BehaviorSubject, of, Subject } from 'rxjs';
 
 import { AuthService } from '../../../../@core/data/auth.service';
 import { I18nService } from '../../../../@core/i18n/i18n.service';
@@ -62,7 +62,10 @@ describe('AiConnectionsSheetComponent', () => {
         },
         { provide: AuthService, useValue: { isSuperAdmin: () => false } },
         { provide: ConfirmDialogService, useValue: confirmDialog },
-        { provide: NbToastrService, useValue: { success: jasmine.createSpy('success') } },
+        {
+          provide: NbToastrService,
+          useValue: { success: jasmine.createSpy('success'), danger: jasmine.createSpy('danger') },
+        },
         { provide: I18nService, useValue: { instant: (value: string) => value } },
       ],
     });
@@ -142,6 +145,38 @@ describe('AiConnectionsSheetComponent', () => {
     component.test(provider);
 
     expect(llmProviders.testConnection).toHaveBeenCalledWith(provider.id);
+  });
+
+  it('keeps exactly one provider test busy until its request completes', () => {
+    const testResult$ = new Subject<{ success: boolean; message: string }>();
+    llmProviders.testConnection.and.returnValue(testResult$);
+    granted.add('api:llm:providers:test');
+    component.ngOnInit();
+
+    component.test(provider);
+    component.test({ ...provider, id: 2 });
+
+    expect(component.testingId).toBe(provider.id);
+    expect(llmProviders.testConnection).toHaveBeenCalledTimes(1);
+    expect(changeDetectorRef.detectChanges).toHaveBeenCalledTimes(1);
+
+    testResult$.next({ success: true, message: 'ok' });
+
+    expect(component.testingId).toBeNull();
+    expect(changeDetectorRef.detectChanges).toHaveBeenCalledTimes(2);
+  });
+
+  it('clears the busy state when a connection test fails', () => {
+    const testResult$ = new Subject<{ success: boolean; message: string }>();
+    llmProviders.testConnection.and.returnValue(testResult$);
+    granted.add('api:llm:providers:test');
+    component.ngOnInit();
+
+    component.test(provider);
+    testResult$.error(new Error('connection failed'));
+
+    expect(component.testingId).toBeNull();
+    expect(changeDetectorRef.detectChanges).toHaveBeenCalledTimes(2);
   });
 
   it('opens provider activation as a nested confirmation above the sheet', () => {

@@ -81,7 +81,11 @@
                     [title]="s.title || ('(无标题)' | translate)"
                     (click)="selectSession(s.id)"
                     >
-                    <span>{{ s.title || ('(无标题)' | translate) }}</span>
+                    <span class="history-session-title">{{ s.title || ('(无标题)' | translate) }}</span>
+                    <span class="history-session-status" [attr.data-state]="sessionStatus(s.id)">
+                      <nb-icon [icon]="sessionStatusIcon(s.id)" [class.float-spin]="sessionStatus(s.id) === 'thinking'" aria-hidden="true"></nb-icon>
+                      {{ sessionStatusLabel(s.id) | translate }}
+                    </span>
                   </button>
                 }
               } @else {

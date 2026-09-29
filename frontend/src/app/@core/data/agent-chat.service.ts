@@ -3,6 +3,13 @@ import { BehaviorSubject, Observable, Subject, Subscription } from 'rxjs';
 import { AgentService, ChatRequest, ChatStreamEvent } from './agent.service';
 import { NotificationService } from './notification.service';
 
+export type AgentTurnStatus = 'thinking' | 'completed' | 'failed' | 'stopped';
+
+export interface AgentTurnState {
+  sessionId: number | null;
+  status: AgentTurnStatus;
+}
+
 /**
  * 全局聊天回合通道（app 级单例）：
  *
@@ -21,8 +28,11 @@ export class AgentChatService {
   private turn$ = new Subject<ChatStreamEvent>();
   private turnSub: Subscription | null = null;
   private activeSessionSubject = new BehaviorSubject<number | null>(null);
+  private turnStateSubject = new BehaviorSubject<AgentTurnState>({ sessionId: null, status: 'completed' });
   /** 全量页与右侧抽屉共享的当前会话。 */
   readonly activeSession$ = this.activeSessionSubject.asObservable();
+  /** 当前全局回合的会话状态；历史会话默认视为已完成。 */
+  readonly turnState$ = this.turnStateSubject.asObservable();
   /** 任何会话 UI（全量页面 / 展开的浮窗）是否在前台。 */
   private uiFront = false;
   private running = false;
@@ -62,6 +72,10 @@ export class AgentChatService {
     return this.activeSessionSubject.value;
   }
 
+  getTurnState(): AgentTurnState {
+    return this.turnStateSubject.value;
+  }
+
   isRunning(): boolean {
     return this.running;
   }
@@ -71,6 +85,7 @@ export class AgentChatService {
     this.turnSub?.unsubscribe();
     this.turnSub = null;
     this.running = false;
+    this.setTurnState(this.getActiveSession(), 'stopped');
   }
 
   /** 发起一个回合（同一时间只允许一个回合在跑，多入口共用一条通道）。 */
@@ -81,11 +96,16 @@ export class AgentChatService {
     this.running = true;
     this.lastAnswer = '';
     this.turnSub?.unsubscribe();
+    this.setTurnState(req.session_id ?? this.getActiveSession(), 'thinking');
 
     this.turnSub = this.agentService.chatStream(req).subscribe({
       next: (ev: ChatStreamEvent) => {
+        if (ev.type === 'started' && ev.session_id) {
+          this.setActiveSession(ev.session_id);
+          this.setTurnState(ev.session_id, 'thinking');
+        }
         if (ev.type === 'error') {
-          this.finishWithError(ev.message ?? '诊断失败');
+          this.finishWithError(ev.message ?? '响应失败');
           return;
         }
         if (ev.type === 'answer' && ev.final_answer) {
@@ -93,7 +113,9 @@ export class AgentChatService {
         }
         this.turn$.next(ev);
         if (ev.type === 'done') {
-          this.setActiveSession(ev.session_id ?? this.getActiveSession());
+          const sessionId = ev.session_id ?? this.getActiveSession();
+          this.setActiveSession(sessionId);
+          this.setTurnState(sessionId, 'completed');
           this.running = false;
           this.turnSub = null;
           // 完成时才通知：用户若仍在前台（页面/浮窗展开）正在看答案，不打扰
@@ -104,7 +126,7 @@ export class AgentChatService {
                 : this.lastAnswer;
             const link = `/pages/cluster-ops/agent?session=${ev.session_id ?? ''}`;
             this.notificationService
-              .create('agent_chat_done', '智能助手诊断完成', body, link)
+              .create('agent_chat_done', '智能助手回复完成', body, link)
               .subscribe({ error: () => {} });
           }
         }
@@ -112,7 +134,7 @@ export class AgentChatService {
       error: (err) => this.finishWithError(err?.error?.message ?? err?.message ?? '请求失败'),
       complete: () => {
         if (this.running) {
-          this.finishWithError('诊断流意外中断，请重试');
+          this.finishWithError('回复流意外中断，请重试');
         }
       },
     });
@@ -125,18 +147,26 @@ export class AgentChatService {
     }
     this.running = false;
     this.turnSub = null;
+    this.setTurnState(this.getActiveSession(), 'failed');
     this.turn$.next({ type: 'error', message });
     // 失败也要通知（产品语义：完成或出错都需要触达）
     if (!this.uiFront) {
       this.notificationService
         .create(
           'agent_chat_error',
-          '智能助手诊断失败',
+          '智能助手回复失败',
           message.length > 120 ? message.slice(0, 120) + '…' : message,
           '/pages/cluster-ops/agent',
           'critical',
         )
         .subscribe({ error: () => {} });
+    }
+  }
+
+  private setTurnState(sessionId: number | null, status: AgentTurnStatus): void {
+    const current = this.turnStateSubject.value;
+    if (current.sessionId !== sessionId || current.status !== status) {
+      this.turnStateSubject.next({ sessionId, status });
     }
   }
 }

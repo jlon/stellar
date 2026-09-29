@@ -197,7 +197,23 @@ nb-accordion { display: block; margin-top: 0.9rem; }
   margin-top: 1rem;
 }
 
-.spin { animation: spin 1s linear infinite; }
+.spin {
+  display: inline-block;
+  animation: spin 0.8s linear infinite;
+}
+
+.connection-actions button[aria-busy='true'] {
+  background: var(--color-info-transparent-200) !important;
+  box-shadow: inset 0 0 0 1px var(--color-info-transparent-400);
+  color: var(--color-info-400) !important;
+}
+
+.connection-actions button[aria-busy='true'] nb-icon {
+  width: 0.875rem;
+  height: 0.875rem;
+  color: var(--color-info-400) !important;
+  font-size: 0.875rem;
+}
 
 @keyframes spin {
   to { transform: rotate(360deg); }

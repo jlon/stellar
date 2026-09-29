@@ -272,11 +272,37 @@
   line-height: 1.35;
   text-align: left;
 
-  span {
+  .history-session-title {
     display: block;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .history-session-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    margin-top: 0.18rem;
+    color: var(--color-success-default);
+    font-size: 0.68rem;
+    line-height: 1.2;
+
+    nb-icon {
+      font-size: 0.72rem;
+    }
+  }
+
+  .history-session-status[data-state='thinking'] {
+    color: var(--color-primary-500);
+  }
+
+  .history-session-status[data-state='failed'] {
+    color: var(--color-danger-default);
+  }
+
+  .history-session-status[data-state='stopped'] {
+    color: var(--text-hint-color);
   }
 
   &:hover,

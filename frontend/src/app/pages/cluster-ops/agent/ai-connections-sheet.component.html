@@ -74,7 +74,7 @@
                   </button>
                 }
                 @if (canTest) {
-                  <button nbButton ghost size="tiny" status="info" type="button" (click)="test(provider)" [disabled]="testingId === provider.id" [nbTooltip]="'测试连接' | translate" [attr.aria-label]="'测试连接' | translate">
+                  <button nbButton ghost size="tiny" status="info" type="button" (click)="test(provider)" [disabled]="testingId !== null" [attr.aria-busy]="testingId === provider.id" [nbTooltip]="'测试连接' | translate" [attr.aria-label]="'测试连接' | translate">
                     <nb-icon [icon]="testingId === provider.id ? 'loader-outline' : 'flash-outline'" [class.spin]="testingId === provider.id"></nb-icon>
                   </button>
                 }

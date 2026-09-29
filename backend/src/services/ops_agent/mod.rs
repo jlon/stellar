@@ -31,7 +31,10 @@ use crate::services::mysql_pool_manager::MySQLPoolManager;
 use crate::utils::{ApiError, ApiResult};
 
 use self::agent::OltpDiagnosisAgent;
-use self::context::{PageContext, build_system_message_with_context, render_snapshot};
+use self::context::{
+    PageContext, build_non_diagnostic_system_message, build_system_message_with_context,
+    render_snapshot, requires_cluster_evidence,
+};
 use self::tool::ToolContext;
 
 /// AI 会话通道（与智能问数 ask 共享会话存储，见 docs/agent/ai-common-design.md）。
@@ -53,10 +56,14 @@ pub struct ChatOutcome {
 }
 
 /// Streaming turn event (SSE payloads), emitted in order:
-/// `Step*` -> `Answer` -> `Done`（或任一阶段 `Error`）。
+/// `Started` -> `Step*` -> `Answer` -> `Done`（或任一阶段 `Error`）。
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ChatStreamEvent {
+    /// 会话与用户消息已落库，前端可立即把新会话标记为处理中。
+    Started {
+        session_id: i64,
+    },
     Step {
         step: AgentStep,
     },
@@ -243,26 +250,30 @@ impl<DB: AppDb> OpsAgentService<DB> {
             )
             .await;
 
-        let snapshot = match self
-            .metrics_collector_service
-            .get_latest_snapshot(cluster.id)
-            .await
-        {
-            Ok(s) => render_snapshot(cluster, s.as_ref()),
-            Err(_) => render_snapshot(cluster, None),
+        let (system, tools) = if !requires_cluster_evidence(message_text) {
+            (build_non_diagnostic_system_message(), Vec::new())
+        } else {
+            let snapshot = match self
+                .metrics_collector_service
+                .get_latest_snapshot(cluster.id)
+                .await
+            {
+                Ok(s) => render_snapshot(cluster, s.as_ref()),
+                Err(_) => render_snapshot(cluster, None),
+            };
+            let tool_ctx = Arc::new(ToolContext {
+                cluster: cluster.clone(),
+                pool: self.pool.clone(),
+                mysql_pool_manager: Arc::clone(&self.mysql_pool_manager),
+                audit_config: self.audit_config.clone(),
+                session_id,
+                user_id: request.user_id,
+                username: request.created_by.to_string(),
+            });
+            let tools = tools::create_tools(tool_ctx);
+            let system = build_system_message_with_context(&snapshot, &tools, request.page_context);
+            (system, tools)
         };
-
-        let tool_ctx = Arc::new(ToolContext {
-            cluster: cluster.clone(),
-            pool: self.pool.clone(),
-            mysql_pool_manager: Arc::clone(&self.mysql_pool_manager),
-            audit_config: self.audit_config.clone(),
-            session_id,
-            user_id: request.user_id,
-            username: request.created_by.to_string(),
-        });
-        let tools = tools::create_tools(tool_ctx);
-        let system = build_system_message_with_context(&snapshot, &tools, request.page_context);
         let agent =
             OltpDiagnosisAgent::new(ai::llm::ChatClient::new(provider), tools, self.max_tool_calls);
 
@@ -491,6 +502,7 @@ impl<DB: AppDb> OpsAgentService<DB> {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<ChatStreamEvent>();
         let session_id = prepared.session_id;
         let message_text = message_text.to_string();
+        let _ = tx.send(ChatStreamEvent::Started { session_id });
         // permit 随 turn 任务持有，同会话下一个提问须等本轮结束（Flink 排队语义）。
         let permit = match pre_permit {
             Some(p) => p,

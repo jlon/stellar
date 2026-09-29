@@ -1,6 +1,12 @@
 import { parseSseEvent } from './agent.service';
 
 describe('parseSseEvent', () => {
+  it('parses the persisted session id before streamed output begins', () => {
+    const event = parseSseEvent('event: started\ndata: {"session_id":42}');
+
+    expect(event).toEqual({ type: 'started', session_id: 42 });
+  });
+
   it('restores Markdown line breaks split into SSE data lines', () => {
     const event = parseSseEvent(
       [

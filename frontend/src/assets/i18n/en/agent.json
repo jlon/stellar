@@ -31,8 +31,10 @@
  "发送": "Send",
  "停止生成": "Stop generating",
  "智能助手诊断完成": "AI Assistant diagnosis complete",
+ "智能助手回复完成": "AI Assistant response complete",
  "请求失败": "Request failed",
  "智能助手诊断失败": "AI Assistant diagnosis failed",
+ "智能助手回复失败": "AI Assistant response failed",
  "响应无内容": "Empty response",
  "为什么最近查询变慢了？": "Why have queries become slow recently?",
  "这条慢查询到底慢在哪？": "Where exactly is this slow query spending time?",
@@ -76,6 +78,7 @@
  "磁盘快满了吗，还能撑多久？用表格呈现证据。": "Is the disk almost full? How long can it last? Present evidence in a table.",
  "请用 Markdown 回答：先写二级标题“打字测试”，再列": "Answer in Markdown: start with an H2 \"Typing test\", then list",
  "诊断过程": "Diagnostic activity",
+ "助手活动": "Assistant activity",
  "本轮进度": "Turn progress",
  "诊断证据": "Diagnostic evidence",
  "受控运维动作": "Controlled operations action",
@@ -86,6 +89,8 @@
  "正在执行": "Running",
  "正在形成诊断结论": "Forming the diagnosis",
  "正在建立诊断上下文": "Building diagnostic context",
+ "正在思考": "Thinking",
+ "正在处理上一条消息，请等待完成或停止当前回复": "The previous message is still being processed. Wait for it to finish or stop the current response.",
  "已完成": "Completed",
  "次取证": "evidence checks",
  "项失败": "failed",
@@ -127,5 +132,8 @@
  "条决策记录": "decision records",
  "正在取证复查": "Rechecking evidence",
  "复查证据": "Recheck evidence",
- "关闭事件": "Close incident"
+ "关闭事件": "Close incident",
+ "思考中": "Thinking",
+ "回复失败": "Response failed",
+ "已停止": "Stopped"
 }

@@ -38,7 +38,13 @@
                   maxlength="60"
                   />
               }
-              <div class="session-meta">{{ s.last_active_at | date: 'MM-dd HH:mm' }}</div>
+              <div class="session-meta">
+                <span class="session-status" [attr.data-state]="sessionStatus(s.id)">
+                  <nb-icon [icon]="sessionStatusIcon(s.id)" [class.spin]="sessionStatus(s.id) === 'thinking'" aria-hidden="true"></nb-icon>
+                  <span>{{ sessionStatusLabel(s.id) | translate }}</span>
+                </span>
+                <span class="session-time">{{ s.last_active_at | date: 'MM-dd HH:mm' }}</span>
+              </div>
             </div>
             @if (renamingId !== s.id) {
               <button
@@ -196,7 +202,7 @@
               </div>
             }
             <div class="msg-main" [class.assistant-col]="m.role === 'assistant'">
-              <!-- Agent Activity：只显示可审计的诊断活动，运行时展开、完成后收纳。 -->
+              <!-- 仅真实工具调用进入可审计活动；普通回复不伪装成诊断。 -->
               @if (m.role === 'assistant' && (m.streaming || timeline(m).length > 0)) {
                 <div class="trace" [class.working]="m.streaming">
                   @if (m.streaming) {
@@ -211,8 +217,8 @@
                       <span>{{ activitySummary(m) }}</span>
                     </button>
                   }
-                  @if (m.streaming || m.traceOpen) {
-                    <div class="trace-body" role="region" [attr.aria-label]="'诊断过程' | translate">
+                  @if (timeline(m).length > 0 && (m.streaming || m.traceOpen)) {
+                    <div class="trace-body" role="region" [attr.aria-label]="'助手活动' | translate">
                       @if (m.streaming) {
                         <div class="turn-stages" [attr.aria-label]="'本轮进度' | translate">
                           @for (stage of turnStages(m); track stage) {
@@ -223,7 +229,8 @@
                           }
                         </div>
                       }
-                      @for (t of timeline(m); track t; let i = $index) {
+                      <div class="trace-timeline">
+                        @for (t of timeline(m); track t; let i = $index) {
                         <div [id]="traceAnchorId(m, i)" class="trace-step" tabindex="-1" [class.result-open]="t.resultOpen" [class.running]="t.ok === undefined && t.kind === 'tool'" [class.error]="t.kind === 'error' || t.ok === false">
                           <nb-icon class="trace-icon" [class.err]="t.kind === 'error' || t.ok === false" [class.running]="t.ok === undefined && t.kind === 'tool'" [icon]="traceIcon(t)"></nb-icon>
                           <div class="trace-step-main">
@@ -267,7 +274,8 @@
                             }
                           </div>
                         </div>
-                      }
+                        }
+                      </div>
                     </div>
                   }
                 </div>
@@ -425,7 +433,7 @@
           </button>
         }
         @if (sending) {
-          <button class="stop-btn" (click)="stopTurn()" [title]="'停止生成' | translate">
+          <button class="stop-btn" (click)="stopTurn()" [title]="'停止生成' | translate" [attr.aria-label]="'停止生成' | translate">
             <nb-icon icon="stop-circle-outline"></nb-icon>
           </button>
         }

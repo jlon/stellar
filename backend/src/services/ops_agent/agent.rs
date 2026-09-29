@@ -131,7 +131,8 @@ impl OltpDiagnosisAgent {
 
         let mut steps = Vec::new();
         let mut usage_tokens: i64 = 0;
-        let tools_spec = tool_specs(&self.tools);
+        let tools_enabled = !self.tools.is_empty();
+        let tools_spec = tools_enabled.then(|| tool_specs(&self.tools));
 
         // 运行时工具护栏（借鉴 sxdevops/Ongrid 的"工具预算下沉后端"）：
         // 1) 同参重复调用拦截（模型可能重复查同一指标）；
@@ -160,7 +161,7 @@ impl OltpDiagnosisAgent {
             let completion = {
                 let progress = &progress;
                 self.llm
-                    .chat_stream(&messages, Some(&tools_spec), cancellation.clone(), |text| {
+                    .chat_stream(&messages, tools_spec.as_ref(), cancellation.clone(), |text| {
                         if let Some(tx) = progress {
                             let _ = tx.send(ProgressEvent::Delta(text));
                         }
@@ -171,7 +172,7 @@ impl OltpDiagnosisAgent {
             // 回合语义标记：有工具调用 => 思考段；纯文本 => 最终答案。
             // 前端据此把打字机缓冲归位（多工具轮不会把第二轮思考混入答案）。
             if let Some(tx) = &progress {
-                let phase = if completion.tool_calls.is_empty() {
+                let phase = if !tools_enabled || completion.tool_calls.is_empty() {
                     PhaseKind::Answer
                 } else {
                     PhaseKind::Reasoning
@@ -182,7 +183,7 @@ impl OltpDiagnosisAgent {
             // 工具回合的模型草稿不是可审计证据，也不应作为用户可见的 Chain-of-Thought
             // 持久化。会话记录只保留随后产生的结构化工具调用、结果与错误。
 
-            if completion.tool_calls.is_empty() {
+            if !tools_enabled || completion.tool_calls.is_empty() {
                 let answer = completion.content.unwrap_or_default().trim().to_string();
                 record(&mut steps, &progress, AgentStep::end());
                 return Ok(AgentResult { steps, final_answer: answer, usage_tokens });

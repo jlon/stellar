@@ -112,9 +112,41 @@
 }
 
 .session-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
   font-size: 0.7rem;
   color: var(--text-hint-color);
   margin-top: 0.12rem;
+}
+
+.session-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: 0;
+  white-space: nowrap;
+
+  nb-icon {
+    flex: 0 0 auto;
+    font-size: 0.78rem;
+  }
+}
+
+.session-status[data-state='thinking'] {
+  color: var(--color-primary-500);
+}
+
+.session-status[data-state='completed'] {
+  color: var(--color-success-default);
+}
+
+.session-status[data-state='failed'] {
+  color: var(--color-danger-default);
+}
+
+.session-status[data-state='stopped'] {
+  color: var(--text-hint-color);
 }
 
 .sessions-empty {
@@ -464,13 +496,20 @@
 }
 
 .trace-body {
-  margin: 0.25rem 0 0.1rem 0.55rem;
-  padding-left: 0.9rem;
-  border-left: 1px solid var(--border-basic-color-3);
+  margin: 0.25rem 0 0.1rem;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   animation: trace-reveal 0.2s ease-out;
+}
+
+.trace-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-left: 0.55rem;
+  padding-left: 0.9rem;
+  border-left: 1px solid var(--border-basic-color-3);
 }
 
 @keyframes trace-reveal {
@@ -887,8 +926,8 @@
   height: 2.2rem;
   border: none;
   border-radius: 50%;
-  background: var(--background-basic-color-3);
-  color: var(--text-basic-color);
+  background: var(--color-danger-500);
+  color: #fff;
   cursor: pointer;
   transition: background-color 0.18s ease, transform 0.15s ease;
   flex-shrink: 0;
@@ -896,7 +935,7 @@
 }
 
 .stop-btn:hover {
-  background: var(--color-danger-500);
+  background: var(--color-danger-600);
   color: #fff;
   transform: scale(1.04);
 }
@@ -1490,6 +1529,10 @@
     display: inline-flex;
     width: calc(50% - 0.2rem);
     vertical-align: top;
+  }
+
+  .session-time {
+    display: none;
   }
 
   .sessions-body nb-list {

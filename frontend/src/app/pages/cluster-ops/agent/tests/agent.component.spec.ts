@@ -245,7 +245,21 @@ describe('AgentComponent', () => {
 
     component.send();
 
-    expect(toastr.warning).toHaveBeenCalledWith('正在处理上一条消息，请等待完成或停止当前诊断', '智能助手');
+    expect(toastr.warning).toHaveBeenCalledWith('正在处理上一条消息，请等待完成或停止当前回复', '智能助手');
+  });
+
+  it('keeps a reply neutral until a real tool call appears', () => {
+    const plainReply = { role: 'assistant', content: '', steps: [], streaming: true } as any;
+    const toolReply = {
+      role: 'assistant',
+      content: '',
+      steps: [{ kind: 'tool', label: 'query_nodes', detail: '', duration_ms: 0, status: 'pending' }],
+      streaming: true,
+    } as any;
+
+    expect(component.activityLabel(plainReply)).toBe('正在思考');
+    expect(component.timeline(plainReply)).toEqual([]);
+    expect(component.activityLabel(toolReply)).toBe('正在执行：查询节点状态');
   });
 
   it('shows an error notification and ends the assistant placeholder on stream failure', () => {

@@ -1,2 +1,3 @@
+mod op_audit_test;
 mod resource_group_service_test;
 mod system_function_service_test;

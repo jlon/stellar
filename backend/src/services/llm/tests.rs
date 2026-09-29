@@ -270,10 +270,10 @@ mod repository_tests {
     }
 
     #[tokio::test]
-    async fn test_startup_rejects_legacy_plaintext_without_encryption_key() {
+    async fn test_startup_keeps_plaintext_when_encryption_is_disabled() {
         let pool = setup_test_db().await;
         let repo = LLMRepository::with_encryption_key(pool, "");
-        sqlx::query(
+        let provider_id = sqlx::query(
             "INSERT INTO llm_providers (name, display_name, api_base, model_name, api_key_encrypted) VALUES (?, ?, ?, ?, ?)",
         )
         .bind("legacy-without-key")
@@ -283,43 +283,47 @@ mod repository_tests {
         .bind("sk-legacy-key")
         .execute(repo.pool())
         .await
-        .expect("insert legacy provider");
+        .expect("insert legacy provider")
+        .last_insert_rowid();
 
-        let error = repo
-            .migrate_legacy_credentials()
+        assert_eq!(repo.migrate_legacy_credentials().await.expect("migrate"), 0);
+        let resolved = repo
+            .get_provider_for_use(provider_id)
             .await
-            .expect_err("legacy plaintext must require an encryption key");
-        assert!(matches!(error, LLMError::CredentialEncryptionUnavailable));
+            .expect("resolve provider")
+            .expect("provider exists");
+        assert_eq!(resolved.api_key(), "sk-legacy-key");
     }
 
     #[tokio::test]
-    async fn test_create_provider_rejects_missing_encryption_key() {
+    async fn test_create_provider_stores_plaintext_without_encryption_key() {
         let pool = setup_test_db().await;
         let repo = LLMRepository::with_encryption_key(pool, "");
 
-        let error = match repo
+        let provider = repo
             .create_provider(create_test_provider_request("unprotected-openai"))
             .await
-        {
-            Err(error) => error,
-            Ok(_) => panic!("provider credentials must not fall back to plaintext"),
-        };
-        assert!(matches!(error, LLMError::CredentialEncryptionUnavailable));
+            .expect("create provider");
+        assert_eq!(provider.api_key_encrypted.as_deref(), Some("sk-test-key-12345"));
+
+        let resolved = repo
+            .get_provider_for_use(provider.id)
+            .await
+            .expect("resolve provider")
+            .expect("provider exists");
+        assert_eq!(resolved.api_key(), "sk-test-key-12345");
     }
 
     #[tokio::test]
-    async fn test_create_provider_rejects_whitespace_encryption_key() {
+    async fn test_create_provider_treats_whitespace_encryption_key_as_disabled() {
         let pool = setup_test_db().await;
         let repo = LLMRepository::with_encryption_key(pool, " \t ");
 
-        let error = match repo
+        let provider = repo
             .create_provider(create_test_provider_request("whitespace-key-openai"))
             .await
-        {
-            Err(error) => error,
-            Ok(_) => panic!("whitespace must not become encryption key material"),
-        };
-        assert!(matches!(error, LLMError::CredentialEncryptionUnavailable));
+            .expect("create provider");
+        assert_eq!(provider.api_key_encrypted.as_deref(), Some("sk-test-key-12345"));
     }
 
     #[tokio::test]

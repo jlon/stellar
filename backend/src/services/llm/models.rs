@@ -341,7 +341,7 @@ pub enum LLMError {
     #[error("LLM service disabled")]
     Disabled,
 
-    #[error("AI 连接密钥不可用，请设置 APP_LLM_PROVIDER_ENCRYPTION_KEY")]
+    #[error("无法解密已加密的 AI 连接密钥，请设置 APP_LLM_PROVIDER_ENCRYPTION_KEY")]
     CredentialEncryptionUnavailable,
 }
 

@@ -69,9 +69,12 @@ impl<DB: AppDb> LLMRepository<DB> {
         .map_err(LLMError::from)
     }
 
-    /// Encrypt every pre-v1 credential before serving requests. This keeps
-    /// startup fail-closed when a legacy plaintext row exists without a key.
+    /// Encrypt every pre-v1 credential when credential encryption is enabled.
     pub async fn migrate_legacy_credentials(&self) -> Result<usize, LLMError> {
+        if !self.credential_cipher.is_enabled() {
+            return Ok(0);
+        }
+
         let providers = self.list_providers().await?;
         let mut migrated = 0;
 
@@ -357,9 +360,8 @@ impl<DB: AppDb> LLMRepository<DB> {
 
         let api_key = if LlmCredentialCipher::is_encrypted(&stored) {
             self.credential_cipher.decrypt(&stored)?
-        } else {
-            // Records created before credential encryption are upgraded only after
-            // a server key has been supplied; without it, fail closed.
+        } else if self.credential_cipher.is_enabled() {
+            // Upgrade plaintext records after credential encryption is enabled.
             let encrypted = self.credential_cipher.encrypt(&stored)?;
             db_query::query(
                 "UPDATE llm_providers SET api_key_encrypted = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -369,6 +371,8 @@ impl<DB: AppDb> LLMRepository<DB> {
             .execute(&self.pool)
             .await?;
             provider.api_key_encrypted = Some(encrypted);
+            stored
+        } else {
             stored
         };
 

@@ -16,7 +16,7 @@ import {
   ChatActionRequest,
   ChatActionView,
 } from '../../../@core/data/agent.service';
-import { AgentChatService } from '../../../@core/data/agent-chat.service';
+import { AgentChatService, AgentTurnStatus } from '../../../@core/data/agent-chat.service';
 import { ConfirmDialogService } from '../../../@core/services/confirm-dialog.service';
 import { AiIllustrationComponent } from '../../../@theme/components/ai-illustration/ai-illustration.component';
 import { ClusterContextService } from '../../../@core/data/cluster-context.service';
@@ -202,6 +202,10 @@ export class AgentComponent implements OnInit, OnDestroy {
 
     // 当前回合广播订阅（回合由全局服务持有，页面销毁不断连）
     this.turnEventsSub = this.chatService.events().subscribe((ev) => {
+      if (ev.type === 'started' && ev.session_id) {
+        this.activeSessionId = ev.session_id;
+        this.reloadSessions();
+      }
       if (!this.turnMessage) {
         return;
       }
@@ -508,6 +512,31 @@ export class AgentComponent implements OnInit, OnDestroy {
     return this.sessions.filter((s) => (s.title || '').toLowerCase().includes(q));
   }
 
+  sessionStatus(sessionId: number): AgentTurnStatus {
+    const turn = this.chatService.getTurnState();
+    return turn.sessionId === sessionId ? turn.status : 'completed';
+  }
+
+  sessionStatusLabel(sessionId: number): string {
+    const labels: Record<AgentTurnStatus, string> = {
+      thinking: '思考中',
+      completed: '已完成',
+      failed: '回复失败',
+      stopped: '已停止',
+    };
+    return labels[this.sessionStatus(sessionId)];
+  }
+
+  sessionStatusIcon(sessionId: number): string {
+    const icons: Record<AgentTurnStatus, string> = {
+      thinking: 'loader-outline',
+      completed: 'checkmark-circle-2-outline',
+      failed: 'alert-circle-outline',
+      stopped: 'slash-outline',
+    };
+    return icons[this.sessionStatus(sessionId)];
+  }
+
   /** 会话重命名（GPT 同款行内编辑）。 */
   renamingId: number | null = null;
   renameDraft = '';
@@ -777,7 +806,7 @@ export class AgentComponent implements OnInit, OnDestroy {
     }
     if (this.chatService.isRunning()) {
       this.toastr.warning(
-        this.i18n.instant('正在处理上一条消息，请等待完成或停止当前诊断'),
+        this.i18n.instant('正在处理上一条消息，请等待完成或停止当前回复'),
         this.i18n.instant('智能助手'),
       );
       return;
@@ -927,9 +956,9 @@ export class AgentComponent implements OnInit, OnDestroy {
       return `${this.i18n.instant('正在执行')}：${running.title}`;
     }
     if (m.phase === 'answer') {
-      return this.i18n.instant('正在形成诊断结论');
+      return this.i18n.instant('正在生成');
     }
-    return this.i18n.instant('正在建立诊断上下文');
+    return this.i18n.instant('正在思考');
   }
 
   activitySummary(m: ViewMessage): string {

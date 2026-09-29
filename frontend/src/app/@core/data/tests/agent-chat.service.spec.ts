@@ -40,7 +40,7 @@ describe('AgentChatService', () => {
     stream.complete();
 
     expect(service.isRunning()).toBeFalse();
-    expect(events).toEqual([{ type: 'error', message: '诊断流意外中断，请重试' }]);
+    expect(events).toEqual([{ type: 'error', message: '回复流意外中断，请重试' }]);
   });
 
   it('releases the global turn lock after a request error', () => {
@@ -80,5 +80,17 @@ describe('AgentChatService', () => {
     stream.next({ type: 'done', session_id: 42 });
 
     expect(service.getActiveSession()).toBe(42);
+  });
+
+  it('exposes the persisted session as thinking until the stream completes', () => {
+    service.start({ cluster_id: 1, message: '检查集群' });
+    stream.next({ type: 'started', session_id: 42 });
+
+    expect(service.getActiveSession()).toBe(42);
+    expect(service.getTurnState()).toEqual({ sessionId: 42, status: 'thinking' });
+
+    stream.next({ type: 'done', session_id: 42 });
+
+    expect(service.getTurnState()).toEqual({ sessionId: 42, status: 'completed' });
   });
 });

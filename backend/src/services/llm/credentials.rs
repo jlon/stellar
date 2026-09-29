@@ -1,4 +1,4 @@
-//! Server-side encryption for stored LLM provider API keys.
+//! Optional server-side encryption for stored LLM provider API keys.
 
 use aes_gcm::{
     Aes256Gcm, Nonce,
@@ -11,7 +11,7 @@ use super::LLMError;
 
 const CREDENTIAL_VERSION: &str = "v1:";
 
-/// Encrypts provider credentials with a key independent from the JWT signing key.
+/// Encrypts provider credentials when a key independent from the JWT signing key is configured.
 #[derive(Clone)]
 pub struct LlmCredentialCipher {
     key: Option<[u8; 32]>,
@@ -29,8 +29,14 @@ impl LlmCredentialCipher {
         Self { key }
     }
 
+    pub fn is_enabled(&self) -> bool {
+        self.key.is_some()
+    }
+
     pub fn encrypt(&self, plaintext: &str) -> Result<String, LLMError> {
-        let key = self.key.ok_or(LLMError::CredentialEncryptionUnavailable)?;
+        let Some(key) = self.key else {
+            return Ok(plaintext.to_string());
+        };
         let cipher = Aes256Gcm::new_from_slice(&key)
             .map_err(|_| LLMError::ApiError("Invalid LLM credential encryption key".to_string()))?;
         let nonce = Aes256Gcm::generate_nonce(&mut aes_gcm::aead::OsRng);
