@@ -13,6 +13,7 @@ import { I18nService } from '../../../../@core/i18n/i18n.service';
 import { ConfirmDialogService } from '../../../../@core/services/confirm-dialog.service';
 import { ActiveToggleRenderComponent } from '../active-toggle-render.component';
 import { MaterializedViewsComponent } from '../materialized-views.component';
+import { MvOpportunitiesSheetComponent } from '../mv-opportunities-sheet.component';
 
 describe('MaterializedViewsComponent', () => {
   let component: MaterializedViewsComponent;
@@ -35,11 +36,13 @@ describe('MaterializedViewsComponent', () => {
       read_at: '2026-09-28T00:00:00Z',
     })),
     createMaterializedView: jasmine.createSpy('createMaterializedView').and.returnValue(of({})),
+    previewMaterializedView: jasmine.createSpy('previewMaterializedView').and.returnValue(of({ ddl: 'CREATE MATERIALIZED VIEW analytics.sales_mv AS SELECT order_date, total FROM analytics.sales' })),
     refreshMaterializedView: jasmine.createSpy('refreshMaterializedView').and.returnValue(of({})),
     renameMaterializedView: jasmine.createSpy('renameMaterializedView').and.returnValue(of({})),
     getMaterializedView: jasmine.createSpy('getMaterializedView').and.returnValue(of(testView())),
   };
   const nodeService = {
+    getDatabases: jasmine.createSpy('getDatabases').and.returnValue(of(['analytics'])),
     getSchemaObjects: jasmine.createSpy('getSchemaObjects').and.returnValue(of([])),
     getSchemaObject: jasmine.createSpy('getSchemaObject').and.returnValue(of(testSchemaObject())),
   };
@@ -65,10 +68,13 @@ describe('MaterializedViewsComponent', () => {
     materializedViewService.getMaterializedViewDDL.calls.reset();
     materializedViewService.getDependencies.calls.reset();
     materializedViewService.createMaterializedView.calls.reset();
+    materializedViewService.previewMaterializedView.calls.reset();
     materializedViewService.refreshMaterializedView.calls.reset();
     materializedViewService.renameMaterializedView.calls.reset();
     materializedViewService.getMaterializedView.calls.reset();
     nodeService.getSchemaObjects.calls.reset();
+    nodeService.getSchemaObjects.and.returnValue(of([]));
+    nodeService.getDatabases.calls.reset();
     nodeService.getSchemaObject.calls.reset();
     toastrService.success.calls.reset();
     toastrService.warning.calls.reset();
@@ -110,6 +116,45 @@ describe('MaterializedViewsComponent', () => {
     expect(changeDetector.detectChanges).toHaveBeenCalled();
   });
 
+  it('opens creation in the standard side sheet and loads databases', () => {
+    const template = {} as TemplateRef<unknown>;
+    (component as unknown as { createDialogTemplate: TemplateRef<unknown> }).createDialogTemplate = template;
+    dialogService.open.and.returnValue({ close: jasmine.createSpy('close') });
+
+    component.openCreateDialog();
+
+    expect(dialogService.open).toHaveBeenCalledWith(template, jasmine.objectContaining({
+      dialogClass: 'side-sheet',
+      backdropClass: 'side-sheet-backdrop',
+      hasBackdrop: true,
+    }));
+    expect(nodeService.getDatabases).toHaveBeenCalled();
+    expect(component.createDatabases).toEqual(['analytics']);
+  });
+
+  it('allows retry when database discovery returns no options', () => {
+    nodeService.getDatabases.and.returnValue(of([]));
+    component.loadCreateDatabases();
+    expect(component.createDatabases).toEqual([]);
+    expect(component.createDatabasesLoading).toBeFalse();
+
+    nodeService.getDatabases.and.returnValue(of(['analytics']));
+    component.loadCreateDatabases();
+    expect(component.createDatabases).toEqual(['analytics']);
+  });
+
+  it('opens the read-only opportunity sheet from the MV toolbar', () => {
+    component.openOptimizationOpportunities();
+
+    expect(dialogService.open).toHaveBeenCalledWith(MvOpportunitiesSheetComponent, jasmine.objectContaining({
+      autoFocus: false,
+      backdropClass: 'side-sheet-backdrop',
+      closeOnBackdropClick: false,
+      closeOnEsc: true,
+      dialogClass: 'side-sheet',
+    }));
+  });
+
   it('does not open row details when the inline state control is clicked', () => {
     const toggle = new ActiveToggleRenderComponent();
     const event = { stopPropagation: jasmine.createSpy('stopPropagation') } as unknown as MouseEvent;
@@ -139,31 +184,144 @@ describe('MaterializedViewsComponent', () => {
     expect((component as any).normalizeTime(pickerValue)).toBe('2026-09-21T09:08');
   });
 
-  it('reports a successful create as a submitted task', () => {
+  it('reports a successful create as a completed operation', () => {
+    component.clusterId = 7;
     component.createDatabase = 'analytics';
     component.createName = 'sales_mv';
     component.createSourceDatabase = 'analytics';
     component.createSourceTable = 'sales';
-    component.createColumns = 'order_date, total';
+    component.createColumns = ['order_date', 'total'];
     spyOn(component, 'closeCreateDialog');
     spyOn(component, 'loadMaterializedViews');
 
+    component.previewMV();
+    expect(materializedViewService.previewMaterializedView).toHaveBeenCalledOnceWith(jasmine.objectContaining({
+      source_database: 'analytics', source_table: 'sales', columns: ['order_date', 'total'],
+    }));
+    expect(component.createStep).toBe('review');
     component.createMV();
 
-    expect(materializedViewService.createMaterializedView).toHaveBeenCalledOnceWith({
+    expect(materializedViewService.createMaterializedView).toHaveBeenCalledOnceWith(jasmine.objectContaining({
       database: 'analytics',
       name: 'sales_mv',
-      source_database: 'analytics',
-      source_table: 'sales',
-      columns: ['order_date', 'total'],
+      confirmed_ddl: 'CREATE MATERIALIZED VIEW analytics.sales_mv AS SELECT order_date, total FROM analytics.sales',
       schedule: { kind: 'manual' },
-    });
+    }));
     expect(toastrService.success).toHaveBeenCalledOnceWith(
-      '物化视图创建任务已提交',
-      '成功',
+      '物化视图已创建；首次刷新需单独发起。',
+      '创建成功',
     );
     expect(component.closeCreateDialog).toHaveBeenCalled();
     expect(component.loadMaterializedViews).toHaveBeenCalled();
+  });
+
+  it('ignores a preview response after the draft drawer closes', () => {
+    const pending = new Subject<{ ddl: string }>();
+    materializedViewService.previewMaterializedView.and.returnValue(pending);
+    component.createDatabase = 'analytics';
+    component.createName = 'daily_sales';
+    component.createMode = 'sql';
+    component.createQuerySql = 'SELECT id FROM orders';
+    component.createDialogRef = { close: jasmine.createSpy('close') };
+    component.previewMV();
+    component.closeCreateDialog();
+    pending.next({ ddl: 'stale ddl' });
+    expect(component.createStep).toBe('configure');
+    expect(component.createPreviewRequest).toBeNull();
+  });
+
+  it('loads only ordinary source tables and their columns for the create form', () => {
+    component.clusterId = 7;
+    component.activeCluster = { catalog: 'default_catalog' } as any;
+    nodeService.getSchemaObjects.and.returnValue(of([
+      { name: 'orders', object_kind: 'table', object_ref: 'orders-ref' },
+      { name: 'orders_mv', object_kind: 'materialized_view', object_ref: 'orders-mv-ref' },
+    ]));
+    nodeService.getSchemaObject.and.returnValue(of({
+      ...testSchemaObject(),
+      columns: [{
+        name: 'order_date',
+        data_type: 'date',
+        nullable: false,
+        default_value: null,
+        comment: null,
+        key: null,
+      }],
+    }));
+
+    component.onCreateSourceDatabaseChange('analytics');
+    component.onCreateSourceTableChange('orders');
+
+    expect(component.createDatabase).toBe('analytics');
+    expect(component.createSourceTables).toEqual([
+      { name: 'orders', object_kind: 'table', object_ref: 'orders-ref' },
+    ]);
+    expect(nodeService.getSchemaObject).toHaveBeenCalledOnceWith(7, 'orders-ref');
+    expect(component.createAvailableColumns).toEqual([{
+      name: 'order_date',
+      data_type: 'date',
+      nullable: false,
+      default_value: null,
+      comment: null,
+      key: null,
+    }]);
+    expect(changeDetector.detectChanges).toHaveBeenCalled();
+  });
+
+  it('ignores stale table metadata when selections change back', () => {
+    component.clusterId = 7;
+    const firstTables = new Subject<any[]>();
+    nodeService.getSchemaObjects.and.returnValues(firstTables, of([]), of([]));
+    component.onCreateSourceDatabaseChange('analytics');
+    component.onCreateSourceDatabaseChange('warehouse');
+    component.onCreateSourceDatabaseChange('analytics');
+    firstTables.next([{ name: 'stale', object_kind: 'table', object_ref: 'old' }]);
+    expect(component.createSourceTables).toEqual([]);
+    expect(component.createSourceTablesLoading).toBeFalse();
+  });
+
+  it('requires a fresh preview before creation and keeps validation visible', () => {
+    component.clusterId = 7;
+    component.createMV();
+    expect(component.createError).toBe('请先预览并确认实际执行的 DDL。');
+    component.previewMV();
+    expect(component.createError).toBe('请填写目标库与名称，并选择源表和列或输入 SELECT 查询。');
+    expect(materializedViewService.createMaterializedView).not.toHaveBeenCalled();
+  });
+
+  it('formats SQL for an active creation draft', async () => {
+    component.createDialogRef = { close: jasmine.createSpy('close') };
+    component.createQuerySql = 'select order_date,sum(amount) from orders group by order_date';
+    await component.formatCreateQuery();
+    expect(component.createQuerySql).toContain('SELECT');
+    expect(component.createQuerySql).toContain('sum(amount)');
+  });
+
+  it('previews a complex SELECT but never posts edited, unreviewed SQL', () => {
+    component.clusterId = 7;
+    component.createDatabase = 'analytics';
+    component.createName = 'daily_sales';
+    component.createMode = 'sql';
+    component.createQuerySql = 'SELECT day, SUM(amount) AS total FROM warehouse.orders GROUP BY day';
+    component.createPartitionBy = 'day';
+    component.createDistribution = 'hash';
+    component.createHashColumns = 'day';
+    component.createBuckets = '8';
+    component.createSortColumns = 'day';
+    component.createReplicationNum = '2';
+    component.previewMV();
+    expect(materializedViewService.previewMaterializedView).toHaveBeenCalledWith(jasmine.objectContaining({
+      cluster_id: 7,
+      query_sql: component.createQuerySql,
+      partition_by: 'day',
+      distribution: { kind: 'hash', columns: ['day'], buckets: 8 },
+      sort_columns: ['day'],
+      replication_num: 2,
+    }));
+    component.editCreateDraft();
+    component.createQuerySql = 'SELECT * FROM secret';
+    component.createMV();
+    expect(materializedViewService.createMaterializedView).not.toHaveBeenCalled();
   });
 
   it('submits a refresh only once while the request is in flight', () => {

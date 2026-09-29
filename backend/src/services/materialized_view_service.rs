@@ -417,12 +417,44 @@ impl MaterializedViewService {
         request: &CreateMaterializedViewRequest,
     ) -> ApiResult<String> {
         request.validate()?;
+        let build = if request.build_immediate { "IMMEDIATE" } else { "DEFERRED" };
+        let partition = request
+            .partition_by
+            .as_ref()
+            .map(|column| format!(" PARTITION BY `{column}`"))
+            .unwrap_or_default();
+        let distribution = request
+            .distribution
+            .as_ref()
+            .map(|distribution| distribution.sql_clause())
+            .unwrap_or_default();
+        let sort = if request.sort_columns.is_empty() {
+            String::new()
+        } else {
+            format!(
+                " ORDER BY ({})",
+                request
+                    .sort_columns
+                    .iter()
+                    .map(|col| format!("`{col}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        };
+        let properties = request
+            .replication_num
+            .map(|count| format!(" PROPERTIES (\"replication_num\" = \"{count}\")"))
+            .unwrap_or_default();
         Ok(format!(
-            "CREATE MATERIALIZED VIEW {} REFRESH DEFERRED {} AS SELECT {} FROM {}",
+            "CREATE MATERIALIZED VIEW {} REFRESH {} {}{}{}{}{} AS {}",
             request.reference().quoted_name(),
+            build,
             Self::create_refresh_schedule_clause(request.schedule),
-            request.selected_columns_sql(),
-            request.source_quoted_name(),
+            partition,
+            distribution,
+            sort,
+            properties,
+            request.select_sql()?,
         ))
     }
 

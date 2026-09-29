@@ -20,6 +20,18 @@
               ghost
               status="basic"
               size="small"
+              (click)="openOptimizationOpportunities()"
+              [disabled]="!clusterId"
+              [nbTooltip]="'查看 MV 优化机会' | translate"
+              [title]="'查看 MV 优化机会' | translate"
+              [attr.aria-label]="'查看 MV 优化机会' | translate">
+              <nb-icon icon="trending-up-outline"></nb-icon>
+            </button>
+            <button
+              nbButton
+              ghost
+              status="basic"
+              size="small"
               (click)="openCreateDialog()"
               [disabled]="!clusterId"
               [nbTooltip]="'创建物化视图' | translate"
@@ -265,71 +277,209 @@
 
 <!-- Create Dialog -->
 <ng-template #createDialog let-data let-ref="dialogRef">
-  <nb-card>
-    <nb-card-header>
-      <div class="d-flex justify-content-between align-items-center">
-        <h6>{{  '创建物化视图' | translate }}</h6>
-        <button nbButton ghost (click)="closeCreateDialog()">
-          <nb-icon icon="close-outline"></nb-icon>
-        </button>
-      </div>
+  <nb-card class="materialized-view-create-sheet" tabindex="-1" role="dialog" aria-labelledby="create-mv-title">
+    <nb-card-header class="mv-create-sheet__header">
+      <h6 id="create-mv-title">{{ '创建物化视图' | translate }}</h6>
+      <button class="icon-btn" type="button" (click)="closeCreateDialog()" [disabled]="creating"
+        [nbTooltip]="'关闭' | translate" [attr.aria-label]="'关闭' | translate">
+        <nb-icon icon="close-outline"></nb-icon>
+      </button>
     </nb-card-header>
-    <nb-card-body>
-      <nb-alert status="warning" class="mb-3">
-        <nb-icon icon="alert-triangle-outline"></nb-icon>
-        {{ '此入口创建单源表的异步投影 MV，并以延迟构建方式创建；首次刷新请在创建后单独发起。' | translate }}
-      </nb-alert>
-      <div class="row">
-        <div class="col-md-6 form-group">
-          <label class="label">{{ '物化视图数据库' | translate }}</label>
-          <input nbInput fullWidth [(ngModel)]="createDatabase" [disabled]="creating" autocomplete="off">
+    <form class="mv-create-sheet__form" (ngSubmit)="createStep === 'configure' ? previewMV() : createMV()" novalidate>
+      <nb-card-body class="mv-create-sheet__body">
+        <p class="mv-create-sheet__step">{{ (createStep === 'configure' ? '1 / 2 · 配置物化视图' : '2 / 2 · 核对并确认') | translate }}</p>
+        @if (createStep === 'configure') {
+        <p class="mv-create-sheet__notice text-hint">
+          <nb-icon icon="info-outline" aria-hidden="true"></nb-icon>
+          {{ '先配置定义，再预览由服务端生成的 DDL。' | translate }}
+        </p>
+        }
+      @if (createError) {
+        <nb-alert status="danger" role="alert">
+          {{ createError }}
+        </nb-alert>
+      }
+      @if (createStep === 'configure') {
+      <div class="mv-create-fields">
+        <div class="form-group">
+          <label class="label" for="create-mv-database">{{ '物化视图数据库' | translate }}</label>
+          <nb-select id="create-mv-database" size="small" fullWidth [(selected)]="createDatabase" [disabled]="creating || createDatabasesLoading" [placeholder]="'选择数据库' | translate">
+            @for (database of createDatabases; track database) {
+              <nb-option [value]="database">{{ database }}</nb-option>
+            }
+          </nb-select>
+          @if (createDatabasesLoading) {
+            <small class="text-hint">{{ '正在加载数据库…' | translate }}</small>
+          } @else if (!createDatabases.length) {
+            <small class="text-hint">{{ '暂无可用数据库。' | translate }}</small>
+            <button class="icon-btn" type="button" (click)="loadCreateDatabases()"
+              [nbTooltip]="'重新加载数据库' | translate" nbTooltipPlacement="top" [attr.aria-label]="'重新加载数据库' | translate">
+              <nb-icon icon="refresh-outline"></nb-icon>
+            </button>
+          }
         </div>
-        <div class="col-md-6 form-group">
-          <label class="label">{{ '物化视图名称' | translate }}</label>
-          <input nbInput fullWidth [(ngModel)]="createName" [disabled]="creating" autocomplete="off">
+        <div class="form-group">
+          <label class="label" for="create-mv-name">{{ '物化视图名称' | translate }}</label>
+          <input id="create-mv-name" name="createName" nbInput fieldSize="small" fullWidth [(ngModel)]="createName" [disabled]="creating" autocomplete="off" required>
         </div>
-        <div class="col-md-6 form-group">
-          <label class="label">{{ '源表数据库' | translate }}</label>
-          <input nbInput fullWidth [(ngModel)]="createSourceDatabase" [disabled]="creating" autocomplete="off">
+        <div class="form-group">
+          <label class="label" for="create-mv-mode">{{ '查询定义' | translate }}</label>
+          <nb-select id="create-mv-mode" size="small" fullWidth [(selected)]="createMode" [disabled]="previewing">
+            <nb-option value="guided">{{ '从单表选择投影列' | translate }}</nb-option>
+            <nb-option value="sql">{{ '编写 SELECT（关联、聚合、过滤）' | translate }}</nb-option>
+          </nb-select>
         </div>
-        <div class="col-md-6 form-group">
-          <label class="label">{{ '源表名称' | translate }}</label>
-          <input nbInput fullWidth [(ngModel)]="createSourceTable" [disabled]="creating" autocomplete="off">
+        @if (createMode === 'guided') {
+        <div class="form-group">
+          <label class="label" for="create-mv-source-database">{{ '源表数据库' | translate }}</label>
+          <nb-select id="create-mv-source-database" size="small" fullWidth [(selected)]="createSourceDatabase" (selectedChange)="onCreateSourceDatabaseChange($event)" [disabled]="creating || createDatabasesLoading" [placeholder]="'选择源表数据库' | translate">
+            @for (database of createDatabases; track database) {
+              <nb-option [value]="database">{{ database }}</nb-option>
+            }
+          </nb-select>
         </div>
-        <div class="col-12 form-group">
-          <label class="label">{{ '投影列' | translate }}</label>
-          <input nbInput fullWidth [(ngModel)]="createColumns" [disabled]="creating" autocomplete="off" [placeholder]="'使用逗号分隔列名' | translate">
+        <div class="form-group">
+          <label class="label" for="create-mv-source-table">{{ '源表名称' | translate }}</label>
+          <nb-select id="create-mv-source-table" size="small" fullWidth [(selected)]="createSourceTable" (selectedChange)="onCreateSourceTableChange($event)" [disabled]="creating || !createSourceDatabase || createSourceTablesLoading" [placeholder]="'选择源表' | translate">
+            @for (table of createSourceTables; track table.object_ref) {
+              <nb-option [value]="table.name">{{ table.name }}</nb-option>
+            }
+          </nb-select>
+          @if (createSourceTablesLoading) {
+            <small class="text-hint">{{ '正在加载源表…' | translate }}</small>
+          } @else if (createSourceDatabase && !createSourceTables.length) {
+            <small class="text-hint">{{ '该数据库没有可用的普通表。' | translate }}</small>
+          }
         </div>
-        <div class="col-md-4 form-group">
-          <label class="label">{{ '刷新策略' | translate }}</label>
-          <nb-select fullWidth [(selected)]="createSchedule" [disabled]="creating">
+        <div class="form-group">
+          <label class="label" for="create-mv-columns">{{ '投影列' | translate }}</label>
+          <nb-select id="create-mv-columns" size="small" fullWidth multiple [(selected)]="createColumns" [disabled]="creating || !createSourceTable || createColumnsLoading" [placeholder]="'选择一个或多个列' | translate">
+            @for (column of createAvailableColumns; track column.name) {
+              <nb-option [value]="column.name">{{ column.name }} ({{ column.data_type }})</nb-option>
+            }
+          </nb-select>
+          @if (createColumnsLoading) {
+            <small class="text-hint">{{ '正在加载列…' | translate }}</small>
+          }
+        </div>
+        } @else {
+          <div class="form-group">
+            <label class="label" for="create-mv-query">{{ 'SELECT 查询' | translate }}</label>
+            <textarea id="create-mv-query" name="createQuerySql" nbInput fullWidth rows="9"
+              [(ngModel)]="createQuerySql" [disabled]="previewing" autocomplete="off"
+              [placeholder]="'SELECT o.order_date, SUM(o.amount) AS total\nFROM warehouse.orders o\nGROUP BY o.order_date' | translate"></textarea>
+            <button type="button" class="icon-btn" (click)="formatCreateQuery()" [disabled]="previewing"
+              [nbTooltip]="'格式化 SELECT' | translate" nbTooltipPlacement="top" [attr.aria-label]="'格式化 SELECT' | translate">
+              <nb-icon icon="code-outline"></nb-icon>
+            </button>
+            <small class="text-hint">{{ '只接受单条只读 SELECT；表名建议写明数据库。注释会被移除；预览以实际执行语句为准。' | translate }}</small>
+          </div>
+        }
+        <div class="mv-create-sheet__section">{{ '构建与布局' | translate }}</div>
+        <div class="form-group">
+          <label class="label" for="create-mv-partition">{{ '分区结果列（可选）' | translate }}</label>
+          <input id="create-mv-partition" name="createPartitionBy" nbInput fieldSize="small" fullWidth
+            [(ngModel)]="createPartitionBy" [disabled]="previewing" autocomplete="off" [placeholder]="'例如 order_date' | translate">
+          <small class="text-hint">{{ '应为查询结果中的分区列；是否可映射到源表分区由引擎最终判断。' | translate }}</small>
+        </div>
+        <div class="form-group">
+          <label class="label" for="create-mv-distribution">{{ '数据分布' | translate }}</label>
+          <nb-select id="create-mv-distribution" size="small" fullWidth [(selected)]="createDistribution" [disabled]="previewing">
+            <nb-option value="default">{{ '引擎默认' | translate }}</nb-option>
+            <nb-option value="random">{{ '随机分布' | translate }}</nb-option>
+            <nb-option value="hash">{{ 'HASH 分布' | translate }}</nb-option>
+          </nb-select>
+        </div>
+        @if (createDistribution === 'hash') {
+          <div class="form-group">
+            <label class="label" for="create-mv-hash">{{ 'HASH 结果列（逗号分隔）' | translate }}</label>
+            <input id="create-mv-hash" name="createHashColumns" nbInput fieldSize="small" fullWidth
+              [(ngModel)]="createHashColumns" [disabled]="previewing" autocomplete="off" [placeholder]="'例如 order_date, region' | translate">
+          </div>
+        }
+        @if (createDistribution !== 'default') {
+          <div class="form-group">
+            <label class="label" for="create-mv-buckets">{{ '分桶数（可选，留空由引擎决定）' | translate }}</label>
+            <input id="create-mv-buckets" name="createBuckets" nbInput fieldSize="small" fullWidth type="number" min="1" max="1024"
+              [(ngModel)]="createBuckets" [disabled]="previewing">
+          </div>
+        }
+        @if (activeCluster?.cluster_type !== 'doris') {
+          <div class="form-group">
+            <label class="label" for="create-mv-sort">{{ '排序结果列（可选，逗号分隔）' | translate }}</label>
+            <input id="create-mv-sort" name="createSortColumns" nbInput fieldSize="small" fullWidth
+              [(ngModel)]="createSortColumns" [disabled]="previewing" autocomplete="off" [placeholder]="'例如 order_date' | translate">
+          </div>
+        }
+        <div class="form-group">
+          <label class="label" for="create-mv-replicas">{{ '副本数（可选，留空使用集群默认）' | translate }}</label>
+          <input id="create-mv-replicas" name="createReplicationNum" nbInput fieldSize="small" fullWidth type="number" min="1" max="10"
+            [(ngModel)]="createReplicationNum" [disabled]="previewing">
+        </div>
+        <div class="form-group">
+          <nb-checkbox name="createBuildImmediate" [(ngModel)]="createBuildImmediate" [disabled]="previewing">
+            {{ '创建后立即构建' | translate }}
+          </nb-checkbox>
+          @if (createBuildImmediate) {
+            <small class="text-hint d-block">{{ '可能触发大规模计算；创建操作会等待引擎确认。' | translate }}</small>
+          }
+        </div>
+        <div class="mv-create-sheet__section">{{ '后续刷新' | translate }}</div>
+        <div class="form-group">
+          <label class="label" for="create-mv-schedule">{{ '刷新策略' | translate }}</label>
+          <nb-select id="create-mv-schedule" size="small" fullWidth [(selected)]="createSchedule" [disabled]="creating">
             <nb-option value="manual">{{ '手动刷新' | translate }}</nb-option>
             <nb-option value="scheduled">{{ '定时刷新' | translate }}</nb-option>
           </nb-select>
         </div>
         @if (createSchedule === 'scheduled') {
-          <div class="col-md-4 form-group">
-            <label class="label">{{ '刷新间隔' | translate }}</label>
-            <input nbInput fullWidth type="number" min="1" max="8760" [(ngModel)]="createScheduleInterval" [disabled]="creating">
+          <div class="form-group">
+            <label class="label" for="create-mv-interval">{{ '刷新间隔' | translate }}</label>
+            <input id="create-mv-interval" name="createScheduleInterval" nbInput fieldSize="small" fullWidth type="number" min="1" max="8760" [(ngModel)]="createScheduleInterval" [disabled]="creating">
           </div>
-          <div class="col-md-4 form-group">
-            <label class="label">{{ '间隔单位' | translate }}</label>
-            <nb-select fullWidth [(selected)]="createScheduleUnit" [disabled]="creating">
+          <div class="form-group">
+            <label class="label" for="create-mv-unit">{{ '间隔单位' | translate }}</label>
+            <nb-select id="create-mv-unit" size="small" fullWidth [(selected)]="createScheduleUnit" [disabled]="creating">
               <nb-option value="hour">{{ '小时' | translate }}</nb-option>
               <nb-option value="day">{{ '天' | translate }}</nb-option>
             </nb-select>
           </div>
         }
       </div>
+      } @else {
+        <p class="mv-create-sheet__notice text-hint">
+          <nb-icon icon="info-outline" aria-hidden="true"></nb-icon>
+          {{ '查询已通过引擎 EXPLAIN；完整建视图语句将在确认后执行。' | translate }}
+        </p>
+        <div class="mv-create-sheet__review">
+          <p><strong>{{ createPreviewRequest?.database }}.{{ createPreviewRequest?.name }}</strong></p>
+          <pre><code>{{ createPreview }}</code></pre>
+          <p class="text-hint">{{ '请核对源表、聚合、分区、分布及刷新方式；创建前不会执行 DDL。' | translate }}</p>
+        </div>
+      }
     </nb-card-body>
-    <nb-card-footer>
-      <div class="d-flex justify-content-end gap-2">
-        <button type="button" class="icon-btn" (click="closeCreateDialog()" [disabled]="creating"
-          [nbTooltip]="'取消' | translate" nbTooltipPlacement="top" [aria-label]="'取消' | translate"><nb-icon icon="close-outline"></nb-icon></button>
-        <button type="button" class="icon-btn is-primary" (click="createMV()" [disabled]="creating"
-          [nbTooltip]="'创建' | translate" nbTooltipPlacement="top" [aria-label]="'创建' | translate"><nb-icon icon="checkmark-outline"></nb-icon></button>
-      </div>
-    </nb-card-footer>
+      <nb-card-footer class="mv-create-sheet__footer">
+        @if (createStep === 'configure') {
+          <button type="button" class="icon-btn" (click)="closeCreateDialog()" [disabled]="previewing"
+            [nbTooltip]="'取消' | translate" nbTooltipPlacement="top" [attr.aria-label]="'取消' | translate">
+            <nb-icon icon="close-outline"></nb-icon>
+          </button>
+          <button type="button" class="icon-btn is-primary" (click)="previewMV()" [disabled]="previewing || createDatabasesLoading"
+            [nbTooltip]="'校验并预览' | translate" nbTooltipPlacement="top" [attr.aria-label]="'校验并预览' | translate">
+            <nb-icon [icon]="previewing ? 'loader-outline' : 'eye-outline'" [class.spin]="previewing"></nb-icon>
+          </button>
+        } @else {
+          <button type="button" class="icon-btn" (click)="editCreateDraft()" [disabled]="creating"
+            [nbTooltip]="'返回修改' | translate" nbTooltipPlacement="top" [attr.aria-label]="'返回修改' | translate">
+            <nb-icon icon="arrow-back-outline"></nb-icon>
+          </button>
+          <button type="submit" class="icon-btn is-primary" [disabled]="creating"
+            [nbTooltip]="'确认创建' | translate" nbTooltipPlacement="top" [attr.aria-label]="'确认创建' | translate">
+            <nb-icon [icon]="creating ? 'loader-outline' : 'checkmark-outline'" [class.spin]="creating"></nb-icon>
+          </button>
+        }
+      </nb-card-footer>
+    </form>
   </nb-card>
 </ng-template>
 
@@ -675,15 +825,14 @@
               <div class="ddl-toolbar">
                 <span class="code-surface__label"><nb-icon icon="code-outline"></nb-icon>{{ '建表语句' | translate }}<code>SQL</code></span>
                 <button
-                  nbButton
-                  ghost
-                  size="tiny"
+                  class="icon-btn"
+                  type="button"
                   (click)="copyDDL()"
                   [disabled]="!mvDDL"
-                  [title]="'复制 DDL' | translate"
-                  >
+                  [nbTooltip]="'复制 DDL' | translate"
+                  nbTooltipPlacement="top"
+                  [attr.aria-label]="'复制 DDL' | translate">
                   <nb-icon icon="copy-outline"></nb-icon>
-                  {{ '复制' | translate }}
                 </button>
               </div>
               @if (!mvDDL) {
@@ -694,7 +843,6 @@
                   <markdown
                     class="sql-markdown markdown-body"
                     [data]="'```sql\n' + mvDDL + '\n```'"
-                    [clipboard]="true"
                   ></markdown>
                 </section>
               }
@@ -814,9 +962,9 @@
       </nb-card-body>
       <nb-card-footer>
         <div class="d-flex justify-content-end gap-2">
-          <button type="button" class="icon-btn" (click="closeRefreshDialog()" [disabled]="refreshing"
+          <button type="button" class="icon-btn" (click)="closeRefreshDialog()" [disabled]="refreshing"
             [nbTooltip]="'取消' | translate" nbTooltipPlacement="top" [aria-label]="'取消' | translate"><nb-icon icon="close-outline"></nb-icon></button>
-          <button type="button" class="icon-btn is-primary" (click="refreshMV()" [disabled]="refreshing"
+          <button type="button" class="icon-btn is-primary" (click)="refreshMV()" [disabled]="refreshing"
             [nbTooltip]="'刷新' | translate" nbTooltipPlacement="top" [aria-label]="'刷新' | translate"><nb-icon icon="checkmark-outline"></nb-icon></button>
         </div>
       </nb-card-footer>
@@ -920,9 +1068,9 @@
     </nb-card-body>
     <nb-card-footer>
       <div class="d-flex justify-content-end gap-2">
-        <button type="button" class="icon-btn" (click="closeEditDialog()" [disabled]="editing"
+        <button type="button" class="icon-btn" (click)="closeEditDialog()" [disabled]="editing"
           [nbTooltip]="'取消' | translate" nbTooltipPlacement="top" [aria-label]="'取消' | translate"><nb-icon icon="close-outline"></nb-icon></button>
-        <button type="button" class="icon-btn is-primary" (click="editMV()" [disabled]="editing"
+        <button type="button" class="icon-btn is-primary" (click)="editMV()" [disabled]="editing"
           [nbTooltip]="'保存' | translate" nbTooltipPlacement="top" [aria-label]="'保存' | translate"><nb-icon icon="checkmark-outline"></nb-icon></button>
       </div>
     </nb-card-footer>

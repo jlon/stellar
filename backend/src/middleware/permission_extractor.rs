@@ -33,13 +33,13 @@ pub fn extract_permission(method: &str, uri: &str) -> Option<(String, String)> {
 
     // Chat actions resource: /api/agent/chat-actions -- 对话内动作确认
     if segments.first() == Some(&"agent") && segments.get(1) == Some(&"chat-actions") {
-        return match (segments.len(), method, segments.get(2).copied()) {
+        return match (segments.len(), method, segments.get(3).copied()) {
             // 资源复用 "agent"（权限码 api:agent:chat-actions:*，与播种一致）
             (2, "GET", _) => Some(("agent".to_string(), "chat-actions:list".to_string())),
-            (3, "POST", Some("confirm")) => {
+            (4, "POST", Some("confirm")) => {
                 Some(("agent".to_string(), "chat-actions:confirm".to_string()))
             },
-            (3, "POST", Some("cancel")) => {
+            (4, "POST", Some("cancel")) => {
                 Some(("agent".to_string(), "chat-actions:cancel".to_string()))
             },
             _ => None,
@@ -470,6 +470,14 @@ fn extract_materialized_views_action(segments: &[&str], method: &str) -> Option<
             "GET" => Some("materialized_views".to_string()),
             "POST" => Some("materialized_views:create".to_string()),
             _ => None,
+        },
+        3 if method == "POST" && segments.get(2) == Some(&"preview") => {
+            Some("materialized_views:create".to_string())
+        },
+        // Opportunity evidence is read-only and contains no raw SQL, so it
+        // shares the existing MV detail permission instead of widening access.
+        3 if method == "GET" && segments.get(2) == Some(&"opportunities") => {
+            Some("materialized_views:get".to_string())
         },
         // Exact object identity: /materialized_views/:database/:name/:kind
         5 => match method {

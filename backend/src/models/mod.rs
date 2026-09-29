@@ -1,6 +1,7 @@
 pub mod cluster;
 pub mod load;
 pub mod materialized_view;
+pub mod mv_create;
 pub mod organization;
 pub mod permission;
 pub mod permission_request;
@@ -15,6 +16,7 @@ pub mod user;
 pub use cluster::*;
 pub use load::*;
 pub use materialized_view::*;
+pub use mv_create::*;
 pub use organization::*;
 pub use permission::*;
 pub use permission_request::*;

@@ -1,0 +1,131 @@
+<nb-card class="mv-opportunities-sheet" [nbSpinner]="loading" nbSpinnerStatus="primary" nbSpinnerMessage="加载中">
+  <nb-card-header>
+    <div class="mv-opportunities-sheet__header">
+      <h6>MV 优化机会</h6>
+      <div class="mv-opportunities-sheet__actions">
+        <nb-select
+          size="small"
+          [(selected)]="windowHours"
+          (selectedChange)="load()"
+          [disabled]="loading"
+          aria-label="审计时间范围">
+          @for (hours of windowOptions; track hours) {
+            <nb-option [value]="hours">最近 {{ hours }} 小时</nb-option>
+          }
+        </nb-select>
+        <button
+          nbButton
+          ghost
+          status="basic"
+          size="small"
+          (click)="load(true)"
+          [disabled]="loading"
+          nbTooltip="刷新"
+          title="刷新"
+          aria-label="刷新">
+          <nb-icon icon="refresh-outline"></nb-icon>
+        </button>
+        <button
+          nbButton
+          ghost
+          status="basic"
+          size="small"
+          (click)="close()"
+          nbTooltip="关闭"
+          title="关闭"
+          aria-label="关闭">
+          <nb-icon icon="close-outline"></nb-icon>
+        </button>
+      </div>
+    </div>
+  </nb-card-header>
+
+  <nb-card-body>
+    @if (error) {
+      <nb-alert status="danger">
+        <nb-icon icon="alert-triangle-outline"></nb-icon>
+        {{ error }}
+        <button nbButton ghost size="tiny" (click)="load()">重试</button>
+      </nb-alert>
+    } @else if (result; as opportunities) {
+      <section class="mv-opportunity-facts" aria-label="工作负载范围">
+        <div>
+          <span>时间范围</span>
+          <strong>{{ opportunities.window_hours }} 小时</strong>
+        </div>
+        <div>
+          <span>审计样本</span>
+          <strong>{{ opportunities.sampled_query_count | number }}</strong>
+        </div>
+        <div>
+          <span>候选数</span>
+          <strong>{{ opportunities.candidates.length }}</strong>
+        </div>
+      </section>
+
+      @for (warning of opportunities.warnings; track warning) {
+        <p class="mv-opportunity-note">
+          <nb-icon icon="info-outline"></nb-icon>
+          <span>{{ warning }}</span>
+        </p>
+      }
+
+      @if (!opportunities.supported) {
+        <div class="mv-opportunity-empty">
+          <nb-icon icon="slash-outline"></nb-icon>
+          <span>{{ opportunities.engine }} 当前没有可用的 MV 优化机会数据。</span>
+        </div>
+      } @else if (!opportunities.candidates.length && !loading) {
+        <div class="mv-opportunity-empty">
+          <nb-icon icon="bar-chart-outline"></nb-icon>
+          <span>当前范围内没有重复三次以上的单表聚合查询。</span>
+        </div>
+      } @else {
+        <section class="mv-opportunity-list" aria-label="MV 优化机会列表">
+          @for (candidate of opportunities.candidates; track candidate.sql_pattern) {
+            <article class="mv-opportunity">
+              <header>
+                <div>
+                  <span>来源表</span>
+                  <strong>{{ candidate.source_database }}.{{ candidate.source_table }}</strong>
+                </div>
+                <span class="mv-opportunity__count">{{ candidate.execution_count | number }} 次</span>
+              </header>
+              <dl>
+                <div>
+                  <dt>累计耗时</dt>
+                  <dd>{{ candidate.total_duration_ms | number }} ms</dd>
+                </div>
+                <div>
+                  <dt>平均耗时</dt>
+                  <dd>{{ candidate.average_duration_ms | number }} ms</dd>
+                </div>
+                <div>
+                  <dt>P95</dt>
+                  <dd>{{ candidate.p95_duration_ms | number }} ms</dd>
+                </div>
+              </dl>
+              <code [title]="candidate.sql_pattern">{{ candidate.sql_pattern }}</code>
+              <footer>
+                <span>{{ candidate.first_seen }} 至 {{ candidate.last_seen }}</span>
+                <button
+                  nbButton
+                  ghost
+                  status="basic"
+                  size="tiny"
+                  type="button"
+                  (click)="analyze(candidate)"
+                  [disabled]="loading || !!analyzingPattern"
+                  title="交给智能运维分析"
+                  aria-label="交给智能运维分析">
+                  <nb-icon [icon]="analyzingPattern === candidate.sql_pattern ? 'loader-outline' : 'flash-outline'"></nb-icon>
+                  智能分析
+                </button>
+              </footer>
+            </article>
+          }
+        </section>
+      }
+    }
+  </nb-card-body>
+</nb-card>

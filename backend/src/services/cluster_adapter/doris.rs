@@ -318,17 +318,40 @@ impl DorisAdapter {
         request: &CreateMaterializedViewRequest,
     ) -> ApiResult<String> {
         request.validate()?;
+        if !request.sort_columns.is_empty() {
+            return Err(crate::utils::ApiError::invalid_data(
+                "sort columns are only supported for StarRocks materialized views",
+            ));
+        }
         let schedule = match request.schedule {
             RefreshSchedule::Manual => "ON MANUAL".to_string(),
             RefreshSchedule::Scheduled { interval, unit } => {
                 format!("ON SCHEDULE EVERY {interval} {}", unit.sql_keyword())
             },
         };
+        let build = if request.build_immediate { "IMMEDIATE" } else { "DEFERRED" };
+        let partition = request
+            .partition_by
+            .as_ref()
+            .map(|column| format!(" PARTITION BY (`{column}`)"))
+            .unwrap_or_default();
+        let distribution = request
+            .distribution
+            .as_ref()
+            .map(|distribution| distribution.sql_clause())
+            .unwrap_or_default();
+        let properties = request
+            .replication_num
+            .map(|count| format!(" PROPERTIES (\"replication_num\" = \"{count}\")"))
+            .unwrap_or_default();
         Ok(format!(
-            "CREATE MATERIALIZED VIEW {} BUILD DEFERRED REFRESH AUTO {schedule} AS SELECT {} FROM {}",
+            "CREATE MATERIALIZED VIEW {} BUILD {} REFRESH AUTO {schedule}{}{}{} AS {}",
             request.reference().quoted_name(),
-            request.selected_columns_sql(),
-            request.source_quoted_name(),
+            build,
+            partition,
+            distribution,
+            properties,
+            request.select_sql()?,
         ))
     }
 
@@ -1122,6 +1145,18 @@ impl ClusterAdapter for DorisAdapter {
                 .ok_or_else(|| ApiError::not_found(reference.display_name()));
         }
         Ok(materialized_view.definition)
+    }
+
+    async fn preview_materialized_view(
+        &self,
+        request: &CreateMaterializedViewRequest,
+    ) -> ApiResult<String> {
+        let ddl = Self::create_materialized_view_sql(request)?;
+        self.mysql_client()
+            .await?
+            .query_raw(&format!("EXPLAIN {}", request.select_sql()?))
+            .await?;
+        Ok(ddl)
     }
 
     async fn create_materialized_view(

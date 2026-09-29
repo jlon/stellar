@@ -80,7 +80,13 @@ pub trait ClusterAdapter: Send + Sync {
     async fn get_materialized_view_ddl(&self, reference: &MaterializedViewRef)
     -> ApiResult<String>;
 
-    /// Create a constrained asynchronous materialized view from typed inputs.
+    /// Validate the definition with the engine without executing the MV DDL.
+    async fn preview_materialized_view(
+        &self,
+        request: &CreateMaterializedViewRequest,
+    ) -> ApiResult<String>;
+
+    /// Create an asynchronous materialized view from validated inputs.
     async fn create_materialized_view(
         &self,
         request: &CreateMaterializedViewRequest,

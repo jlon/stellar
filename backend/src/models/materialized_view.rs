@@ -1,6 +1,5 @@
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use utoipa::ToSchema;
 
 use crate::utils::{ApiError, ApiResult};
@@ -96,72 +95,6 @@ impl MaterializedView {
             name: self.name.clone(),
             kind: self.kind,
         }
-    }
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct CreateMaterializedViewRequest {
-    pub database: String,
-    pub name: String,
-    pub source_database: String,
-    pub source_table: String,
-    pub columns: Vec<String>,
-    pub schedule: RefreshSchedule,
-}
-
-impl CreateMaterializedViewRequest {
-    pub fn validate(&self) -> ApiResult<()> {
-        const MAX_COLUMNS: usize = 128;
-
-        let reference = self.reference();
-        reference.validate()?;
-        if reference.name.len() > 64
-            || !reference
-                .name
-                .chars()
-                .next()
-                .is_some_and(|character| character.is_ascii_alphabetic())
-        {
-            return Err(ApiError::invalid_data(
-                "materialized view name must start with a letter and be at most 64 characters",
-            ));
-        }
-        MaterializedViewRef::validate_identifier("source database", &self.source_database)?;
-        MaterializedViewRef::validate_identifier("source table", &self.source_table)?;
-        if self.columns.is_empty() || self.columns.len() > MAX_COLUMNS {
-            return Err(ApiError::invalid_data(
-                "materialized view must select between 1 and 128 columns",
-            ));
-        }
-        let mut columns = HashSet::new();
-        for column in &self.columns {
-            MaterializedViewRef::validate_identifier("source column", column)?;
-            if !columns.insert(column.to_ascii_lowercase()) {
-                return Err(ApiError::invalid_data("materialized view columns must be unique"));
-            }
-        }
-        self.schedule.validate()
-    }
-
-    pub fn reference(&self) -> MaterializedViewRef {
-        MaterializedViewRef {
-            database: self.database.clone(),
-            name: self.name.clone(),
-            kind: MaterializedViewKind::Async,
-        }
-    }
-
-    pub fn source_quoted_name(&self) -> String {
-        format!("`{}`.`{}`", self.source_database, self.source_table)
-    }
-
-    pub fn selected_columns_sql(&self) -> String {
-        self.columns
-            .iter()
-            .map(|column| format!("`{column}`"))
-            .collect::<Vec<_>>()
-            .join(", ")
     }
 }
 
@@ -323,6 +256,11 @@ impl RefreshIntervalUnit {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct MaterializedViewPreview {
+    pub ddl: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct MaterializedViewDDL {
     pub object: MaterializedViewRef,
     pub ddl: String,
@@ -384,4 +322,35 @@ pub struct MaterializedViewDependencies {
     pub warnings: Vec<String>,
     /// Time at which this bounded dependency response was assembled.
     pub read_at: DateTime<Utc>,
+}
+
+/// A bounded, evidence-backed opportunity to investigate an asynchronous
+/// StarRocks materialized view. It is not executable DDL or a benefit claim.
+#[derive(Debug, Serialize, ToSchema, Clone)]
+pub struct MaterializedViewOpportunity {
+    /// A query pattern with comments and literal values removed on the server.
+    pub sql_pattern: String,
+    pub source_database: String,
+    pub source_table: String,
+    pub execution_count: u64,
+    pub total_duration_ms: u64,
+    pub average_duration_ms: u64,
+    pub p95_duration_ms: u64,
+    pub first_seen: String,
+    pub last_seen: String,
+}
+
+/// Read-only workload evidence used to discover bounded MV opportunities.
+#[derive(Debug, Serialize, ToSchema, Clone)]
+pub struct MaterializedViewOpportunityResponse {
+    pub supported: bool,
+    pub engine: String,
+    pub source: String,
+    pub observed_at: DateTime<Utc>,
+    pub window_hours: i64,
+    pub sampled_query_count: usize,
+    /// The audit source or result list reached a configured upper bound.
+    pub truncated: bool,
+    pub candidates: Vec<MaterializedViewOpportunity>,
+    pub warnings: Vec<String>,
 }

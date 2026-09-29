@@ -90,6 +90,10 @@ mod frontend_profile_test;
 mod materialized_view_test;
 
 #[cfg(test)]
+#[path = "tests/mv_opportunity_test.rs"]
+mod mv_opportunity_test;
+
+#[cfg(test)]
 #[path = "tests/schema_explorer_test.rs"]
 mod schema_explorer_test;
 

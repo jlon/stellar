@@ -24,10 +24,12 @@ import { ConfirmDialogService } from '../../../@core/services/confirm-dialog.ser
 import { assignTableRows } from '../../../@core/utils/table-rows';
 import { ActiveToggleRenderComponent } from './active-toggle-render.component';
 import { BadgeRenderComponent, BadgeInfo } from './badge-render.component';
+import { MvOpportunitiesSheetComponent } from './mv-opportunities-sheet.component';
 import { FormsModule } from '@angular/forms';
 import * as dagre from 'dagre';
 import {
   NodeService,
+  SchemaColumn,
   SchemaObjectDetail,
   SchemaObjectKind,
   SchemaObjectSummary,
@@ -88,6 +90,9 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
   activeCluster: Cluster | null = null;
   loading = true;
   private destroy$ = new Subject<void>();
+  private createDialogClosed$ = new Subject<void>();
+  private createTablesRequest = 0;
+  private createColumnsRequest = 0;
   private detailRequest$ = new Subject<void>();
   private dependencyObjectRequest$ = new Subject<void>();
   private dependencyGraphCompact?: boolean;
@@ -182,11 +187,31 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
   createName = '';
   createSourceDatabase = '';
   createSourceTable = '';
-  createColumns = '';
+  createColumns: string[] = [];
   createSchedule: 'manual' | 'scheduled' = 'manual';
   createScheduleInterval = '1';
   createScheduleUnit: 'hour' | 'day' = 'hour';
+  createMode: 'guided' | 'sql' = 'guided';
+  createQuerySql = '';
+  createPartitionBy = '';
+  createDistribution: 'default' | 'random' | 'hash' = 'default';
+  createHashColumns = '';
+  createBuckets = '';
+  createSortColumns = '';
+  createReplicationNum = '';
+  createBuildImmediate = false;
+  createStep: 'configure' | 'review' = 'configure';
+  createPreview = '';
+  createPreviewRequest: CreateMaterializedViewRequest | null = null;
+  previewing = false;
   creating = false;
+  createError = '';
+  createDatabases: string[] = [];
+  createSourceTables: SchemaObjectSummary[] = [];
+  createAvailableColumns: SchemaColumn[] = [];
+  createDatabasesLoading = false;
+  createSourceTablesLoading = false;
+  createColumnsLoading = false;
 
   // Refresh form
   refreshMode: RefreshMode = 'async';
@@ -244,11 +269,12 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
         type: 'custom',
         width: '7%',
         renderComponent: BadgeRenderComponent,
-        componentInitFunction: (instance: BadgeRenderComponent) => {
+        componentInitFunction: (instance: BadgeRenderComponent, cell: any) => {
           instance.getBadge = (_value: any, row: MaterializedView) => ({
             status: row?.kind === 'rollup' ? 'primary' : 'info',
             label: row?.kind === 'rollup' ? '同步' : '异步',
           });
+          this.bindTableCell(instance, cell);
         },
       },
       refresh_type: {
@@ -256,7 +282,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
         type: 'custom',
         width: '9%',
         renderComponent: BadgeRenderComponent,
-        componentInitFunction: (instance: BadgeRenderComponent) => {
+        componentInitFunction: (instance: BadgeRenderComponent, cell: any) => {
           instance.getBadge = (value: string): BadgeInfo | null => {
             const map: Record<string, BadgeInfo> = {
               ASYNC: { status: 'success', label: this.i18n.instant('自动') },
@@ -266,6 +292,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
             };
             return map[value] ?? null;
           };
+          this.bindTableCell(instance, cell);
         },
       },
       is_active: {
@@ -273,10 +300,11 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
         type: 'custom',
         width: '12%',
         renderComponent: ActiveToggleRenderComponent,
-        componentInitFunction: (instance: any) => {
+        componentInitFunction: (instance: ActiveToggleRenderComponent, cell: any) => {
           instance.toggleActive.subscribe((rowData: any) => {
             this.toggleActiveState(rowData);
           });
+          this.bindTableCell(instance, cell);
         },
       },
       last_refresh_state: {
@@ -284,7 +312,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
         type: 'custom',
         width: '9%',
         renderComponent: BadgeRenderComponent,
-        componentInitFunction: (instance: BadgeRenderComponent) => {
+        componentInitFunction: (instance: BadgeRenderComponent, cell: any) => {
           instance.getBadge = (value: string, row: MaterializedView): BadgeInfo | null => {
             if (row?.kind === 'rollup') return null;
             const map: Record<string, BadgeInfo> = {
@@ -295,6 +323,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
             };
             return map[value] ?? null;
           };
+          this.bindTableCell(instance, cell);
         },
       },
       last_refresh_finished_time: {
@@ -323,15 +352,23 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
         type: 'custom',
         width: '8%',
         renderComponent: BadgeRenderComponent,
-        componentInitFunction: (instance: BadgeRenderComponent) => {
+        componentInitFunction: (instance: BadgeRenderComponent, cell: any) => {
           instance.getBadge = (_value: any, row: MaterializedView): BadgeInfo | null =>
             row?.last_refresh_error_message
               ? { status: 'danger', label: this.i18n.instant('错误'), tooltip: row.last_refresh_error_message }
               : null;
+          this.bindTableCell(instance, cell);
         },
       },
     },
   };
+
+  private bindTableCell(
+    renderer: { setCell(value: unknown, rowData: unknown): void },
+    cell: { getRawValue(): unknown; getRow(): { getData(): unknown } },
+  ): void {
+    renderer.setCell(cell.getRawValue(), cell.getRow().getData());
+  }
 
   ngOnInit() {
     // Only fire requests when a cluster is active (backend rejects clusterId=0 anyway)
@@ -359,6 +396,10 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy() {
+    this.createDialogClosed$.next();
+    this.createDialogClosed$.complete();
+    this.createDialogRef?.close();
+    this.createDialogRef = undefined;
     this.dependencyObjectRequest$.next();
     this.dependencyObjectRequest$.complete();
     this.detailRequest$.next();
@@ -601,59 +642,285 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
   }
 
   // Check if refresh action should be shown
-  openCreateDialog() {
-    this.createDatabase = this.selectedDatabase === 'all' ? '' : this.selectedDatabase;
-    this.createName = '';
-    this.createSourceDatabase = this.createDatabase;
-    this.createSourceTable = '';
-    this.createColumns = '';
-    this.createSchedule = 'manual';
-    this.createScheduleInterval = '1';
-    this.createScheduleUnit = 'hour';
-    this.creating = false;
-    this.createDialogRef = this.dialogService.open(this.createDialogTemplate, {
-      context: {},
+  openOptimizationOpportunities(): void {
+    this.dialogService.open(MvOpportunitiesSheetComponent, {
+      autoFocus: false,
+      backdropClass: 'side-sheet-backdrop',
+      closeOnBackdropClick: false,
+      closeOnEsc: true,
+      dialogClass: 'side-sheet',
     });
   }
 
-  closeCreateDialog() {
+  openCreateDialog(): void {
+    this.createDialogClosed$.next();
+    this.createDatabase = this.selectedDatabase === 'all' ? '' : this.selectedDatabase;
+    this.createName = '';
+    this.createSourceDatabase = '';
+    this.createSourceTable = '';
+    this.createColumns = [];
+    this.createSchedule = 'manual';
+    this.createScheduleInterval = '1';
+    this.createScheduleUnit = 'hour';
+    this.createMode = 'guided';
+    this.createQuerySql = '';
+    this.createPartitionBy = '';
+    this.createDistribution = 'default';
+    this.createHashColumns = '';
+    this.createBuckets = '';
+    this.createSortColumns = '';
+    this.createReplicationNum = '';
+    this.createBuildImmediate = false;
+    this.createStep = 'configure';
+    this.createPreview = '';
+    this.createPreviewRequest = null;
+    this.previewing = false;
+    this.creating = false;
+    this.createError = '';
+    this.createSourceTables = [];
+    this.createAvailableColumns = [];
+    this.createSourceTablesLoading = false;
+    this.createColumnsLoading = false;
+    this.loadCreateDatabases();
+    this.createDialogRef = this.dialogService.open(this.createDialogTemplate, {
+      autoFocus: false,
+      backdropClass: 'side-sheet-backdrop',
+      closeOnBackdropClick: false,
+      closeOnEsc: false,
+      dialogClass: 'side-sheet',
+      hasBackdrop: true,
+      hasScroll: true,
+    });
+  }
+
+  closeCreateDialog(): void {
+    this.createDialogClosed$.next();
     if (this.createDialogRef) {
       this.createDialogRef.close();
+      this.createDialogRef = undefined;
     }
   }
 
-  createMV() {
-    const columns = this.createColumns.split(',').map(column => column.trim()).filter(Boolean);
-    if (!this.createDatabase.trim() || !this.createName.trim() || !this.createSourceDatabase.trim()
-      || !this.createSourceTable.trim() || !columns.length) {
-      this.toastrService.warning(this.i18n.instant('请填写物化视图、源表和至少一个列'), this.i18n.instant('输入错误'));
+  onCreateSourceDatabaseChange(database: string): void {
+    const requestId = ++this.createTablesRequest;
+    ++this.createColumnsRequest;
+    this.createSourceDatabase = database;
+    this.createSourceTable = '';
+    this.createColumns = [];
+    this.createSourceTables = [];
+    this.createAvailableColumns = [];
+    this.createSourceTablesLoading = false;
+    this.createColumnsLoading = false;
+    this.createError = '';
+
+    if (!this.createDatabase) {
+      this.createDatabase = database;
+    }
+    if (!database || !this.clusterId) {
       return;
     }
 
+    const catalog = this.activeCluster?.catalog || 'default_catalog';
+    this.createSourceTablesLoading = true;
+    this.nodeService
+      .getSchemaObjects(this.clusterId, catalog, database)
+      .pipe(
+        takeUntil(this.createDialogClosed$),
+        takeUntil(this.destroy$),
+        timeout(20_000),
+        catchError((error) => {
+          if (requestId === this.createTablesRequest) {
+            this.createError = ErrorHandler.extractErrorMessage(error);
+          }
+          return of([] as SchemaObjectSummary[]);
+        }),
+      )
+      .subscribe((objects) => {
+        if (requestId === this.createTablesRequest) {
+          this.createSourceTables = objects.filter((object) => object.object_kind === 'table');
+          this.createSourceTablesLoading = false;
+          this.cdRef.detectChanges();
+        }
+      });
+  }
+
+  onCreateSourceTableChange(table: string): void {
+    const requestId = ++this.createColumnsRequest;
+    this.createSourceTable = table;
+    this.createColumns = [];
+    this.createAvailableColumns = [];
+    this.createColumnsLoading = false;
+    this.createError = '';
+
+    const source = this.createSourceTables.find((object) => object.name === table);
+    if (!source || !this.clusterId) {
+      return;
+    }
+
+    this.createColumnsLoading = true;
+    this.nodeService
+      .getSchemaObject(this.clusterId, source.object_ref)
+      .pipe(
+        takeUntil(this.createDialogClosed$),
+        takeUntil(this.destroy$),
+        timeout(20_000),
+        catchError((error) => {
+          if (requestId === this.createColumnsRequest) {
+            this.createError = ErrorHandler.extractErrorMessage(error);
+          }
+          return of(null);
+        }),
+      )
+      .subscribe((detail) => {
+        if (requestId === this.createColumnsRequest) {
+          this.createAvailableColumns = detail?.columns ?? [];
+          this.createColumnsLoading = false;
+          this.cdRef.detectChanges();
+        }
+      });
+  }
+
+  loadCreateDatabases(): void {
+    this.createDatabasesLoading = true;
+    this.createError = '';
+    this.nodeService
+      .getDatabases(this.activeCluster?.catalog)
+      .pipe(
+        takeUntil(this.createDialogClosed$),
+        takeUntil(this.destroy$),
+        timeout(20_000),
+        catchError((error) => {
+          this.createError = ErrorHandler.extractErrorMessage(error);
+          return of([] as string[]);
+        }),
+      )
+      .subscribe((databases) => {
+        this.createDatabases = databases;
+        this.createDatabasesLoading = false;
+        this.cdRef.detectChanges();
+      });
+  }
+
+  async formatCreateQuery(): Promise<void> {
+    const query = this.createQuerySql;
+    if (!query.trim()) return;
+    try {
+      const { format } = await import('sql-formatter');
+      if (!this.createDialogRef || this.createStep !== 'configure' || this.createQuerySql !== query) return;
+      this.createQuerySql = format(query, { language: 'mysql', tabWidth: 2, keywordCase: 'upper' });
+      this.cdRef.detectChanges();
+    } catch {
+      if (this.createDialogRef) this.createError = this.i18n.instant('SQL 格式化失败，请检查查询语法。');
+    }
+  }
+
+  private createRequest(): CreateMaterializedViewRequest | null {
+    if (!this.clusterId) {
+      this.createError = this.i18n.instant('当前没有可用集群，请切换集群后重试。');
+      return null;
+    }
+    if (!this.createDatabase || !this.createName.trim()
+      || (this.createMode === 'guided' && (!this.createSourceDatabase || !this.createSourceTable || !this.createColumns.length))
+      || (this.createMode === 'sql' && !this.createQuerySql.trim())) {
+      this.createError = this.i18n.instant('请填写目标库与名称，并选择源表和列或输入 SELECT 查询。');
+      return null;
+    }
+    if (!/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/.test(this.createName.trim())) {
+      this.createError = this.i18n.instant('物化视图名称必须以字母开头，仅含字母、数字和下划线，最多 64 个字符。');
+      return null;
+    }
     const interval = Number(this.createScheduleInterval);
     if (this.createSchedule === 'scheduled' && (!Number.isInteger(interval) || interval < 1 || interval > 8760)) {
-      this.toastrService.warning(this.i18n.instant('刷新间隔必须是 1 到 8760 之间的整数'), this.i18n.instant('输入错误'));
-      return;
+      this.createError = this.i18n.instant('刷新间隔必须是 1 到 8760 之间的整数。');
+      return null;
     }
-
-    const request: CreateMaterializedViewRequest = {
+    const buckets = String(this.createBuckets ?? '').trim() ? Number(this.createBuckets) : undefined;
+    if (buckets !== undefined && (!Number.isInteger(buckets) || buckets < 1 || buckets > 1024)) {
+      this.createError = this.i18n.instant('分桶数必须是 1 到 1024 之间的整数。');
+      return null;
+    }
+    const hashColumns = this.createHashColumns.split(',').map(column => column.trim()).filter(Boolean);
+    const sortColumns = this.createSortColumns.split(',').map(column => column.trim()).filter(Boolean);
+    const replicationNum = String(this.createReplicationNum ?? '').trim() ? Number(this.createReplicationNum) : undefined;
+    if (replicationNum !== undefined && (!Number.isInteger(replicationNum) || replicationNum < 1 || replicationNum > 10)) {
+      this.createError = this.i18n.instant('副本数必须是 1 到 10 之间的整数。');
+      return null;
+    }
+    if (this.createDistribution === 'hash' && !hashColumns.length) {
+      this.createError = this.i18n.instant('HASH 分布需填写至少一个结果列。');
+      return null;
+    }
+    return {
       database: this.createDatabase.trim(),
       name: this.createName.trim(),
-      source_database: this.createSourceDatabase.trim(),
-      source_table: this.createSourceTable.trim(),
-      columns,
+      cluster_id: this.clusterId,
+      ...(this.createMode === 'sql'
+        ? { query_sql: this.createQuerySql.trim() }
+        : { source_database: this.createSourceDatabase, source_table: this.createSourceTable, columns: [...this.createColumns] }),
+      ...(this.createPartitionBy.trim() ? { partition_by: this.createPartitionBy.trim() } : {}),
+      ...(this.createDistribution === 'default' ? {} : {
+        distribution: this.createDistribution === 'hash'
+          ? { kind: 'hash' as const, columns: hashColumns, buckets }
+          : { kind: 'random' as const, buckets },
+      }),
+      build_immediate: this.createBuildImmediate,
+      ...(sortColumns.length ? { sort_columns: sortColumns } : {}),
+      ...(replicationNum !== undefined ? { replication_num: replicationNum } : {}),
       schedule: this.createSchedule === 'manual'
         ? { kind: 'manual' }
         : { kind: 'scheduled', interval, unit: this.createScheduleUnit },
     };
+  }
 
+  previewMV(): void {
+    if (this.previewing || this.creating) return;
+    this.createError = '';
+    const request = this.createRequest();
+    if (!request) return;
+    this.previewing = true;
+    this.mvService.previewMaterializedView(request).pipe(takeUntil(this.createDialogClosed$), takeUntil(this.destroy$), timeout(30_000)).subscribe({
+      next: ({ ddl }) => {
+        this.createPreviewRequest = request;
+        this.createPreview = ddl;
+        this.createStep = 'review';
+        this.previewing = false;
+        this.cdRef.detectChanges();
+      },
+      error: (error) => {
+        this.createError = ErrorHandler.extractErrorMessage(error);
+        this.previewing = false;
+        this.cdRef.detectChanges();
+      },
+    });
+  }
+
+  editCreateDraft(): void {
+    this.createStep = 'configure';
+    this.createError = '';
+    this.createPreview = '';
+    this.createPreviewRequest = null;
+  }
+
+  createMV(): void {
+    if (this.creating) return;
+    if (!this.createPreviewRequest || !this.createPreview) {
+      this.createError = this.i18n.instant('请先预览并确认实际执行的 DDL。');
+      return;
+    }
+    const request = { ...this.createPreviewRequest, confirmed_ddl: this.createPreview };
+    this.createError = '';
     this.creating = true;
     this.mvService
       .createMaterializedView(request)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: () => {
-          this.toastrService.success(this.i18n.instant('物化视图创建任务已提交'), this.i18n.instant('成功'));
+          const message = request.build_immediate
+            ? '物化视图已创建，已触发首次构建；请查看刷新状态。'
+            : request.schedule.kind === 'scheduled'
+              ? '物化视图已创建；将按计划刷新，也可手动发起首次刷新。'
+              : '物化视图已创建；首次刷新需单独发起。';
+          this.toastrService.success(this.i18n.instant(message), this.i18n.instant('创建成功'));
           this.closeCreateDialog();
           this.loadMaterializedViews();
         },
@@ -661,10 +928,7 @@ export class MaterializedViewsComponent implements OnInit, OnDestroy {
           if (!this.authService.isAuthenticated()) {
             return;
           }
-          this.toastrService.danger(
-            ErrorHandler.extractErrorMessage(error),
-            '创建物化视图失败',
-          );
+          this.createError = ErrorHandler.extractErrorMessage(error);
           this.creating = false;
         },
       });

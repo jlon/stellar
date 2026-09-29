@@ -11,6 +11,27 @@ use crate::db::AppDb;
 use crate::middleware::OrgContext;
 use crate::utils::{ApiError, ApiResult};
 
+async fn require_materialized_view_create_permission<DB: AppDb>(
+    state: &AppState<DB>,
+    org_ctx: &OrgContext,
+) -> ApiResult<()> {
+    let organization_id = (!org_ctx.is_super_admin)
+        .then_some(org_ctx.organization_id)
+        .flatten();
+    let resource = crate::services::CasbinService::format_resource_key(organization_id, "clusters");
+    let allowed = state
+        .casbin_service
+        .enforce(org_ctx.user_id, &resource, "materialized_views:create")
+        .await?;
+    if allowed {
+        Ok(())
+    } else {
+        Err(ApiError::unauthorized(
+            "Permission denied: no access to clusters materialized_views:create",
+        ))
+    }
+}
+
 /// POST /api/agent/chat-actions/:id/confirm -- 用户确认 → 执行（单次）
 /// session 归属从动作行读取校验（不信任客户端传入）。
 #[app_db]
@@ -34,6 +55,9 @@ pub async fn confirm_chat_action<DB: AppDb>(
         .await
         .map_err(ApiError::not_found)?
         .ok_or_else(|| ApiError::not_found("会话不存在"))?;
+    if action.kind == "create_materialized_view" {
+        require_materialized_view_create_permission(&state, &org_ctx).await?;
+    }
     let cluster = state.cluster_service.get_cluster(meta.cluster_id).await?;
     let view = store
         .confirm(&cluster, &state.mysql_pool_manager, id, action.session_id, &org_ctx.username)

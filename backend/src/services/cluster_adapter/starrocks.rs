@@ -554,6 +554,19 @@ impl ClusterAdapter for StarRocksAdapter {
         mv_service.get_materialized_view_ddl(reference).await
     }
 
+    async fn preview_materialized_view(
+        &self,
+        request: &crate::models::CreateMaterializedViewRequest,
+    ) -> ApiResult<String> {
+        use crate::services::MaterializedViewService;
+        let ddl = MaterializedViewService::create_materialized_view_sql(request)?;
+        self.mysql_client()
+            .await?
+            .query_raw(&format!("EXPLAIN {}", request.select_sql()?))
+            .await?;
+        Ok(ddl)
+    }
+
     async fn create_materialized_view(
         &self,
         request: &crate::models::CreateMaterializedViewRequest,

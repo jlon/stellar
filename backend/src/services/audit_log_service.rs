@@ -136,6 +136,22 @@ pub struct AuditQueryRun {
     pub stmt: String,
 }
 
+/// A bounded audit-log sample kept inside backend services for workload analysis.
+/// Its statement must never be forwarded to an API response without redaction.
+#[derive(Debug, Clone)]
+pub struct AuditQuerySample {
+    pub database: String,
+    pub timestamp: String,
+    pub duration_ms: u64,
+    pub stmt: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct AuditQuerySamples {
+    pub samples: Vec<AuditQuerySample>,
+    pub truncated: bool,
+}
+
 /// Top table by access count (from audit logs)
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 
@@ -435,6 +451,74 @@ impl AuditLogService {
                 Some(AuditQueryRun { query_id, timestamp, time_ms, stmt })
             })
             .collect())
+    }
+
+    /// Read a bounded set of successful StarRocks query executions for a
+    /// server-side workload analysis. The query text remains internal to the
+    /// caller and must be redacted before presentation.
+    pub async fn get_starrocks_query_samples(
+        &self,
+        cluster: &Cluster,
+        hours: i64,
+        limit: usize,
+    ) -> ApiResult<AuditQuerySamples> {
+        use crate::models::cluster::ClusterType;
+        use crate::utils::ApiError;
+
+        if cluster.cluster_type != ClusterType::StarRocks {
+            return Err(ApiError::not_implemented(
+                "materialized view opportunities currently require StarRocks audit metadata",
+            ));
+        }
+
+        let hours = hours.clamp(1, 168);
+        let limit = limit.clamp(1, 10_000);
+        let (audit_table, time_field, query_time_field, is_query_field, _) =
+            self.get_audit_config(cluster);
+        let sql = format!(
+            "SELECT COALESCE(`db`, '') AS database_name, `{time_field}` AS observed_at, \
+             `{query_time_field}` AS duration_ms, `stmt` AS stmt \
+             FROM {audit_table} \
+             WHERE `{is_query_field}` = 1 \
+               AND `{time_field}` >= DATE_SUB(NOW(), INTERVAL {hours} HOUR) \
+               AND `state` IN ('EOF', 'OK') \
+               AND `{query_time_field}` > 0 \
+             ORDER BY `{time_field}` DESC LIMIT {limit}"
+        );
+
+        let pool = self.mysql_pool_manager.get_pool(cluster).await?;
+        let mysql_client = MySQLClient::from_pool(pool).with_timeout(cluster_timeout(cluster));
+        let (columns, rows) = mysql_client.query_raw(&sql).await?;
+        let truncated = rows.len() >= limit;
+        let mut column_index = HashMap::new();
+        for (index, column) in columns.iter().enumerate() {
+            column_index.insert(column.to_ascii_lowercase(), index);
+        }
+
+        let samples = rows
+            .into_iter()
+            .filter_map(|row| {
+                let stmt = row_field(&column_index, &row, "stmt").trim().to_string();
+                let duration_ms = row_field(&column_index, &row, "duration_ms")
+                    .trim()
+                    .parse::<f64>()
+                    .ok()?
+                    .max(0.0)
+                    .round() as u64;
+                (!stmt.is_empty() && duration_ms > 0).then(|| AuditQuerySample {
+                    database: row_field(&column_index, &row, "database_name")
+                        .trim()
+                        .to_string(),
+                    timestamp: row_field(&column_index, &row, "observed_at")
+                        .trim()
+                        .to_string(),
+                    duration_ms,
+                    stmt,
+                })
+            })
+            .collect::<Vec<_>>();
+
+        Ok(AuditQuerySamples { truncated, samples })
     }
 
     pub async fn get_slow_queries(

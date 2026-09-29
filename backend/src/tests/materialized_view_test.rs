@@ -127,6 +127,10 @@ fn materialized_view_routes_require_existing_specific_permissions() {
         Some(("clusters".to_string(), "materialized_views:create".to_string()))
     );
     assert_eq!(
+        extract_permission("POST", "/api/clusters/materialized_views/preview"),
+        Some(("clusters".to_string(), "materialized_views:create".to_string()))
+    );
+    assert_eq!(
         extract_permission(
             "PUT",
             "/api/clusters/materialized_views/analytics/daily_sales/async/refresh-schedule"
@@ -174,6 +178,7 @@ fn create_request_rejects_sql_fragments_and_duplicate_columns() {
     let unsafe_source = serde_json::from_value::<CreateMaterializedViewRequest>(json!({
         "database": "analytics",
         "name": "daily_sales",
+        "cluster_id": 1,
         "source_database": "warehouse",
         "source_table": "orders; DROP DATABASE analytics",
         "columns": ["order_date"],
@@ -185,6 +190,7 @@ fn create_request_rejects_sql_fragments_and_duplicate_columns() {
     let duplicate_columns = serde_json::from_value::<CreateMaterializedViewRequest>(json!({
         "database": "analytics",
         "name": "daily_sales",
+        "cluster_id": 1,
         "source_database": "warehouse",
         "source_table": "orders",
         "columns": ["order_date", "ORDER_DATE"],
@@ -192,6 +198,67 @@ fn create_request_rejects_sql_fragments_and_duplicate_columns() {
     }))
     .expect("request shape should deserialize");
     assert!(duplicate_columns.validate().is_err());
+}
+
+#[test]
+fn advanced_mv_query_previews_joins_aggregates_and_layout_in_both_engines() {
+    let request: CreateMaterializedViewRequest = serde_json::from_value(json!({
+        "database": "analytics", "name": "daily_sales", "cluster_id": 1,
+        "query_sql": "SELECT o.order_date, c.region, SUM(o.amount) AS total FROM warehouse.orders o JOIN warehouse.customers c ON o.customer_id = c.id GROUP BY o.order_date, c.region",
+        "partition_by": "order_date",
+        "distribution": { "kind": "hash", "columns": ["region"], "buckets": 8 },
+        "build_immediate": true,
+        "sort_columns": ["order_date"],
+        "replication_num": 2,
+        "schedule": { "kind": "scheduled", "interval": 2, "unit": "hour" }
+    })).unwrap();
+    let starrocks = MaterializedViewService::create_materialized_view_sql(&request).unwrap();
+    assert!(starrocks.contains("REFRESH IMMEDIATE SCHEDULE EVERY (INTERVAL 2 HOUR) PARTITION BY `order_date` DISTRIBUTED BY HASH(`region`) BUCKETS 8 ORDER BY (`order_date`) PROPERTIES (\"replication_num\" = \"2\") AS SELECT"));
+    assert!(DorisAdapter::create_materialized_view_sql(&request).is_err());
+    let doris: CreateMaterializedViewRequest = serde_json::from_value(json!({
+        "database": "analytics", "name": "daily_sales", "cluster_id": 1, "query_sql": "SELECT order_date, SUM(amount) AS total FROM warehouse.orders GROUP BY order_date",
+        "partition_by": "order_date", "distribution": { "kind": "hash", "columns": ["order_date"], "buckets": 8 },
+        "replication_num": 2, "build_immediate": true,
+        "schedule": { "kind": "scheduled", "interval": 2, "unit": "hour" }
+    })).unwrap();
+    let doris = DorisAdapter::create_materialized_view_sql(&doris).unwrap();
+    assert!(doris.contains("BUILD IMMEDIATE REFRESH AUTO ON SCHEDULE EVERY 2 HOUR PARTITION BY (`order_date`) DISTRIBUTED BY HASH(`order_date`) BUCKETS 8 PROPERTIES (\"replication_num\" = \"2\") AS SELECT"));
+    assert!(starrocks.contains("JOIN warehouse.customers"));
+    assert!(starrocks.contains("SUM(o.amount) AS total"));
+}
+
+#[test]
+fn create_request_requires_active_cluster_binding() {
+    let request: CreateMaterializedViewRequest = serde_json::from_value(json!({
+        "database":"analytics", "name":"daily_sales", "query_sql":"SELECT id FROM t",
+        "schedule":{"kind":"manual"}
+    }))
+    .unwrap();
+    assert!(request.validate().is_err());
+}
+
+#[test]
+fn advanced_mv_query_rejects_writes_and_unsafe_layout() {
+    for sql in [
+        "SELECT * FROM t; DROP DATABASE analytics",
+        "SELECT * INTO OUTFILE '/tmp/out' FROM t",
+        "WITH x AS (DELETE FROM t RETURNING id) SELECT id FROM x",
+        "SELECT * FROM t FOR UPDATE",
+    ] {
+        let request: CreateMaterializedViewRequest = serde_json::from_value(json!({
+            "database":"analytics", "name":"daily_sales", "cluster_id":1, "query_sql":sql,
+            "schedule":{"kind":"manual"}
+        }))
+        .unwrap();
+        assert!(request.validate().is_err(), "unsafe SQL accepted: {sql}");
+    }
+    let request: CreateMaterializedViewRequest = serde_json::from_value(json!({
+        "database":"analytics", "name":"daily_sales", "cluster_id":1, "query_sql":"SELECT id FROM t",
+        "distribution":{"kind":"hash", "columns":["id; DROP TABLE t"], "buckets":8},
+        "schedule":{"kind":"manual"}
+    }))
+    .unwrap();
+    assert!(request.validate().is_err());
 }
 
 #[test]
@@ -290,6 +357,7 @@ fn create_request() -> CreateMaterializedViewRequest {
     serde_json::from_value(json!({
         "database": "analytics",
         "name": "daily_sales",
+        "cluster_id": 1,
         "source_database": "warehouse",
         "source_table": "orders",
         "columns": ["order_date", "amount"],
@@ -302,6 +370,7 @@ fn scheduled_create_request() -> CreateMaterializedViewRequest {
     serde_json::from_value(json!({
         "database": "analytics",
         "name": "daily_sales",
+        "cluster_id": 1,
         "source_database": "warehouse",
         "source_table": "orders",
         "columns": ["order_date", "amount"],

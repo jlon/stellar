@@ -2,7 +2,7 @@ use chrono::Utc;
 
 use crate::{
     handlers::agent_chat::validate_chat_cluster_access,
-    middleware::OrgContext,
+    middleware::{OrgContext, permission_extractor::extract_permission},
     models::{Cluster, ClusterType, DeploymentMode},
 };
 
@@ -41,4 +41,16 @@ fn explicit_chat_cluster_is_scoped_to_the_requesting_organization() {
     assert!(validate_chat_cluster_access(&cluster(Some(7)), &org_context(Some(7), false)).is_ok());
     assert!(validate_chat_cluster_access(&cluster(Some(8)), &org_context(Some(7), false)).is_err());
     assert!(validate_chat_cluster_access(&cluster(Some(8)), &org_context(Some(7), true)).is_ok());
+}
+
+#[test]
+fn chat_action_routes_require_action_specific_permissions() {
+    assert_eq!(
+        extract_permission("POST", "/api/agent/chat-actions/42/confirm"),
+        Some(("agent".to_string(), "chat-actions:confirm".to_string()))
+    );
+    assert_eq!(
+        extract_permission("POST", "/api/agent/chat-actions/42/cancel"),
+        Some(("agent".to_string(), "chat-actions:cancel".to_string()))
+    );
 }

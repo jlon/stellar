@@ -59,10 +59,12 @@ use stellar::{AppState, handlers, middleware, services};
         handlers::frontend::get_frontend_profile,
 
         handlers::materialized_view::list_materialized_views,
+        handlers::materialized_view::list_materialized_view_opportunities,
         handlers::materialized_view::get_materialized_view,
         handlers::materialized_view::get_materialized_view_ddl,
         handlers::materialized_view::get_materialized_view_dependencies,
         handlers::materialized_view::create_materialized_view,
+        handlers::materialized_view::preview_materialized_view,
         handlers::materialized_view::delete_materialized_view,
         handlers::materialized_view::refresh_materialized_view,
         handlers::materialized_view::cancel_refresh_materialized_view,
@@ -185,6 +187,8 @@ use stellar::{AppState, handlers, middleware, services};
             models::MaterializedViewRef,
             models::MaterializedViewKind,
             models::CreateMaterializedViewRequest,
+            models::MaterializedViewPreview,
+            models::MvDistribution,
             models::RefreshMaterializedViewRequest,
             models::RefreshMode,
             models::PartitionRange,
@@ -197,6 +201,8 @@ use stellar::{AppState, handlers, middleware, services};
             models::RefreshIntervalUnit,
             models::MaterializedViewDDL,
             models::MaterializedViewDependencies,
+            models::MaterializedViewOpportunity,
+            models::MaterializedViewOpportunityResponse,
             models::MaterializedViewDependency,
             models::DependencyObject,
             models::DependencyEvidence,
@@ -781,6 +787,14 @@ where
             "/api/clusters/materialized_views",
             get(handlers::materialized_view::list_materialized_views)
                 .post(handlers::materialized_view::create_materialized_view),
+        )
+        .route(
+            "/api/clusters/materialized_views/preview",
+            post(handlers::materialized_view::preview_materialized_view),
+        )
+        .route(
+            "/api/clusters/materialized_views/opportunities",
+            get(handlers::materialized_view::list_materialized_view_opportunities),
         )
         .route(
             "/api/clusters/materialized_views/:database/:name/:kind",

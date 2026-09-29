@@ -1240,6 +1240,9 @@ export class AgentComponent implements OnInit, OnDestroy {
       const scope = String(action.params.scope ?? 'global').toUpperCase();
       return `SET ${scope} ${String(action.params.key ?? '')} = ${String(action.params.value ?? '')}`;
     }
+    if (action.kind === 'create_materialized_view') {
+      return String(action.params.confirmed_ddl ?? '服务端生成的 DDL 不可用');
+    }
     return action.title;
   }
 
@@ -1249,6 +1252,10 @@ export class AgentComponent implements OnInit, OnDestroy {
     }
     if (action.kind === 'update_variable') {
       return `${this.i18n.instant('集群变量')}：${String(action.params.scope ?? 'global').toUpperCase()}.${String(action.params.key ?? '-')}`;
+    }
+    if (action.kind === 'create_materialized_view') {
+      const request = this.materializedViewRequest(action);
+      return `${this.i18n.instant('目标物化视图')}：${String(request.database ?? '-')}.${String(request.name ?? '-')}`;
     }
     return this.i18n.instant('当前集群');
   }
@@ -1262,6 +1269,14 @@ export class AgentComponent implements OnInit, OnDestroy {
         { label: this.i18n.instant('作用域'), value: String(action.params.scope ?? 'global').toUpperCase() },
         { label: this.i18n.instant('变量'), value: String(action.params.key ?? '-') },
         { label: this.i18n.instant('新值'), value: String(action.params.value ?? '-') },
+      ];
+    }
+    if (action.kind === 'create_materialized_view') {
+      const request = this.materializedViewRequest(action);
+      return [
+        { label: this.i18n.instant('构建方式'), value: request.build_immediate ? '立即构建' : '延迟构建' },
+        { label: this.i18n.instant('刷新'), value: this.materializedViewSchedule(request.schedule) },
+        { label: this.i18n.instant('物理布局'), value: this.materializedViewLayout(request) },
       ];
     }
     return Object.entries(action.params).map(([label, value]) => ({
@@ -1295,6 +1310,33 @@ export class AgentComponent implements OnInit, OnDestroy {
   private actionDeadline(action: ChatActionView): Date {
     const value = action.expires_at.includes('T') ? action.expires_at : action.expires_at.replace(' ', 'T');
     return new Date(value.endsWith('Z') ? value : `${value}Z`);
+  }
+
+  private materializedViewRequest(action: ChatActionView): Record<string, unknown> {
+    const request = action.params.request;
+    return request && typeof request === 'object' && !Array.isArray(request)
+      ? request as Record<string, unknown>
+      : {};
+  }
+
+  private materializedViewSchedule(value: unknown): string {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return '-';
+    }
+    const schedule = value as Record<string, unknown>;
+    if (schedule.kind === 'manual') {
+      return '手动';
+    }
+    return `每 ${String(schedule.interval ?? '-')} ${String(schedule.unit ?? '-')}`;
+  }
+
+  private materializedViewLayout(request: Record<string, unknown>): string {
+    const distribution = request.distribution;
+    if (!distribution || typeof distribution !== 'object' || Array.isArray(distribution)) {
+      return '引擎默认';
+    }
+    const layout = distribution as Record<string, unknown>;
+    return layout.kind === 'hash' ? `HASH (${String(layout.buckets ?? '自动')} 桶)` : '随机分布';
   }
 
   private isActionExpired(action: ChatActionView): boolean {

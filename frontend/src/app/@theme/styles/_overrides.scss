@@ -233,10 +233,20 @@
     overflow: hidden;
   }
 
+  .cdk-overlay-pane.side-sheet:has(.mv-opportunities-sheet) {
+    width: 44rem;
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100vh !important;
+    max-height: 100dvh !important;
+    overflow: hidden;
+  }
+
   .load-detail-sheet,
   .materialized-view-detail-sheet,
   .frontend-detail-sheet,
   .backend-detail-sheet,
+  .mv-opportunities-sheet,
   .load-import-dialog {
     display: flex !important;
     flex-direction: column;
@@ -254,7 +264,8 @@
   .frontend-detail-sheet > nb-card-header,
   .frontend-detail-sheet > nb-card-footer,
   .backend-detail-sheet > nb-card-header,
-  .backend-detail-sheet > nb-card-footer {
+  .backend-detail-sheet > nb-card-footer,
+  .mv-opportunities-sheet > nb-card-header {
     display: block;
     flex: 0 0 auto;
     padding: 1rem clamp(1rem, 2vw, 1.5rem);
@@ -263,7 +274,8 @@
   .load-detail-sheet > nb-card-body,
   .materialized-view-detail-sheet > nb-card-body,
   .frontend-detail-sheet > nb-card-body,
-  .backend-detail-sheet > nb-card-body {
+  .backend-detail-sheet > nb-card-body,
+  .mv-opportunities-sheet > nb-card-body {
     display: block;
     flex: 1 1 auto;
     min-height: 0;

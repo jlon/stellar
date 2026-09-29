@@ -552,7 +552,7 @@ POST /api/clusters/{cluster_id}/ask/messages/{message_id}/feedback
    问数 SQL 执行慢时，自动拉取 Profile 并调用现有规则引擎诊断。
 
 2. **物化视图推荐**  
-   高频问法或慢查询命中相同聚合模式时，提示创建物化视图。
+   M2.1 已提供只读机会识别：对 StarRocks 审计日志中的重复单表聚合查询按脱敏 SQL 模式聚合，展示执行次数、累计耗时、平均值、P95、来源表和观察时间。它不生成或执行 MV DDL，不将刷新成功或查询计划变化声明为收益；联接、子查询、CTE、集合运算、非聚合语句和 Doris 均明确不产出候选。
 
 3. **集群负载保护**  
    查询前读取当前运行查询数、BE 存活、磁盘、Compaction Score。集群压力大时提示延迟执行。
@@ -620,7 +620,7 @@ POST /api/clusters/{cluster_id}/ask/messages/{message_id}/feedback
 - 敏感字段禁用。
 - 行列权限联动。
 - Profile 自动诊断。
-- 物化视图推荐。
+- MV 候选审核、受控创建和创建后工作负载观测；已交付的 M2.1 仅覆盖只读机会识别。
 - 大查询风险评分。
 
 验收：
@@ -628,6 +628,7 @@ POST /api/clusters/{cluster_id}/ask/messages/{message_id}/feedback
 - “收入 / GMV / 订单数”等指标口径统一。
 - 无权限字段不会进入 Prompt。
 - 慢问数 SQL 能自动产出 Profile 诊断建议。
+- MV 候选必须显示来源查询模式、采样边界、风险与观察时间；没有足够证据时不允许输出可执行 DDL 或收益结论。
 
 ---
 

@@ -64,13 +64,49 @@ export interface MaterializedViewDependencies {
   read_at: string;
 }
 
+export interface MaterializedViewOpportunity {
+  sql_pattern: string;
+  source_database: string;
+  source_table: string;
+  execution_count: number;
+  total_duration_ms: number;
+  average_duration_ms: number;
+  p95_duration_ms: number;
+  first_seen: string;
+  last_seen: string;
+}
+
+export interface MaterializedViewOpportunityResponse {
+  supported: boolean;
+  engine: string;
+  source: string;
+  observed_at: string;
+  window_hours: number;
+  sampled_query_count: number;
+  truncated: boolean;
+  candidates: MaterializedViewOpportunity[];
+  warnings: string[];
+}
+
 export interface CreateMaterializedViewRequest {
   database: string;
   name: string;
-  source_database: string;
-  source_table: string;
-  columns: string[];
+  cluster_id?: number;
+  source_database?: string;
+  source_table?: string;
+  columns?: string[];
+  query_sql?: string;
+  partition_by?: string;
+  distribution?: { kind: 'random' | 'hash'; columns?: string[]; buckets?: number };
+  build_immediate?: boolean;
+  sort_columns?: string[];
+  replication_num?: number;
+  confirmed_ddl?: string;
   schedule: RefreshSchedule;
+}
+
+export interface MaterializedViewPreview {
+  ddl: string;
 }
 
 export interface PartitionValue {
@@ -108,6 +144,20 @@ export class MaterializedViewService {
 
   getDependencies(reference: MaterializedViewRef): Observable<MaterializedViewDependencies> {
     return this.api.get<MaterializedViewDependencies>(`${this.objectPath(reference)}/dependencies`);
+  }
+
+  getOptimizationOpportunities(
+    hours: number,
+    refresh = false,
+  ): Observable<MaterializedViewOpportunityResponse> {
+    return this.api.get<MaterializedViewOpportunityResponse>(
+      '/clusters/materialized_views/opportunities',
+      { hours, refresh },
+    );
+  }
+
+  previewMaterializedView(request: CreateMaterializedViewRequest): Observable<MaterializedViewPreview> {
+    return this.api.post('/clusters/materialized_views/preview', request);
   }
 
   createMaterializedView(request: CreateMaterializedViewRequest): Observable<unknown> {

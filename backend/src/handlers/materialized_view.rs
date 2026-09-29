@@ -19,6 +19,7 @@ use crate::{
     },
     services::{
         create_adapter,
+        mv_opportunity_service::MaterializedViewOpportunityService,
         op_audit::{OpAuditEntry, log_op_best_effort},
     },
     utils::ApiResult,
@@ -33,6 +34,13 @@ pub struct ListMVParams {
 pub struct CancelRefreshParams {
     #[serde(default)]
     pub force: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OpportunityQueryParams {
+    pub hours: Option<i64>,
+    #[serde(default)]
+    pub refresh: bool,
 }
 
 type MaterializedViewPath = (String, String, MaterializedViewKind);
@@ -73,6 +81,36 @@ macro_rules! audit_materialized_view_write {
         )
         .await
     };
+}
+
+/// GET /api/clusters/materialized_views/opportunities
+#[utoipa::path(
+    get,
+    path = "/api/clusters/materialized_views/opportunities",
+    params(
+        ("hours" = Option<i64>, Query, description = "Audit-log window in hours (1-168, default 24)"),
+        ("refresh" = bool, Query, description = "Bypass the 5-minute opportunity cache")
+    ),
+    responses((status = 200, description = "Bounded, read-only MV workload opportunities", body = crate::models::MaterializedViewOpportunityResponse)),
+    security(("bearer_auth" = [])),
+    tag = "Materialized Views"
+)]
+#[app_db]
+pub async fn list_materialized_view_opportunities(
+    State(state): State<Arc<AppState<DB>>>,
+    axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
+    Query(params): Query<OpportunityQueryParams>,
+) -> ApiResult<Json<crate::models::MaterializedViewOpportunityResponse>> {
+    let cluster = active_cluster!(state, org_ctx);
+    let service = MaterializedViewOpportunityService::new(
+        state.mysql_pool_manager.clone(),
+        state.audit_config.clone(),
+    );
+    Ok(Json(
+        service
+            .discover(&cluster, params.hours, params.refresh)
+            .await?,
+    ))
 }
 
 /// GET /api/clusters/materialized_views
@@ -167,6 +205,35 @@ pub async fn get_materialized_view_dependencies(
     ))
 }
 
+/// POST /api/clusters/materialized_views/preview
+#[utoipa::path(
+    post,
+    path = "/api/clusters/materialized_views/preview",
+    request_body = CreateMaterializedViewRequest,
+    responses((status = 200, body = crate::models::MaterializedViewPreview)),
+    security(("bearer_auth" = [])),
+    tag = "Materialized Views"
+)]
+#[app_db]
+pub async fn preview_materialized_view(
+    State(state): State<Arc<AppState<DB>>>,
+    axum::extract::Extension(org_ctx): axum::extract::Extension<crate::middleware::OrgContext>,
+    Json(request): Json<CreateMaterializedViewRequest>,
+) -> ApiResult<Json<crate::models::MaterializedViewPreview>> {
+    request.validate()?;
+    let cluster = active_cluster!(state, org_ctx);
+    let requested_cluster = request
+        .cluster_id
+        .ok_or_else(|| crate::utils::ApiError::invalid_data("active cluster id is required"))?;
+    if requested_cluster != cluster.id {
+        return Err(crate::utils::ApiError::invalid_data("active cluster changed; review again"));
+    }
+    let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
+    Ok(Json(crate::models::MaterializedViewPreview {
+        ddl: adapter.preview_materialized_view(&request).await?,
+    }))
+}
+
 /// POST /api/clusters/materialized_views
 #[utoipa::path(
     post,
@@ -185,7 +252,22 @@ pub async fn create_materialized_view(
     request.validate()?;
     let target = request.reference().display_name();
     let cluster = active_cluster!(state, org_ctx);
+    let requested_cluster = request
+        .cluster_id
+        .ok_or_else(|| crate::utils::ApiError::invalid_data("active cluster id is required"))?;
+    if requested_cluster != cluster.id {
+        return Err(crate::utils::ApiError::invalid_data("active cluster changed; review again"));
+    }
     let adapter = create_adapter(cluster, state.mysql_pool_manager.clone());
+    let confirmed = request.confirmed_ddl.as_ref().ok_or_else(|| {
+        crate::utils::ApiError::invalid_data("materialized view requires a reviewed DDL preview")
+    })?;
+    let preview = adapter.preview_materialized_view(&request).await?;
+    if confirmed != &preview {
+        return Err(crate::utils::ApiError::invalid_data(
+            "materialized view preview has changed; review again",
+        ));
+    }
     adapter.create_materialized_view(&request).await?;
     audit_materialized_view_write!(state, org_ctx, "materialized_views:create", &target);
     Ok((StatusCode::CREATED, Json(json!({ "message": "Materialized view created successfully" }))))

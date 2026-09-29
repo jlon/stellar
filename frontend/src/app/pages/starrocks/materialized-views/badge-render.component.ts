@@ -43,6 +43,12 @@ export class BadgeRenderComponent implements OnInit, OnChanges {
     }
   }
 
+  setCell(value: any, rowData: any): void {
+    this.value = value;
+    this.rowData = rowData;
+    this.updateBadge();
+  }
+
   private updateBadge(): void {
     try {
       this.badge = this.rowData ? this.getBadge(this.value, this.rowData) : null;

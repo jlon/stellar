@@ -14,6 +14,7 @@ pub mod llm;
 pub mod load_service;
 pub mod materialized_view_service;
 pub mod metrics_collector_service;
+pub mod mv_opportunity_service;
 pub mod mysql_client;
 pub mod mysql_pool_manager;
 pub mod notification_service;

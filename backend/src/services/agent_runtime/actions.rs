@@ -5,19 +5,45 @@
 //! 2. 确认单次执行（confirmIsSingleShot），重复确认幂等拒绝
 //! 3. TTL 过期后不可执行
 //!
-//! 场景：所有执行走 MySQLClient 协议通道（与 handlers/query.rs / variables.rs 同通道），
-//! 参数校验防 SQL 注入：本模块只允许白名单字符。
+//! 场景：变量和查询动作走 MySQLClient，物化视图通过受控集群适配器执行；
+//! 统一只接受结构化参数，禁止调用方拼接任意 SQL。
 
+use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::models::CreateMaterializedViewRequest;
 use crate::models::cluster::Cluster;
 use crate::services::cluster_timeout;
+use crate::services::create_adapter;
 use crate::services::mysql_client::MySQLClient;
 use crate::services::mysql_pool_manager::MySQLPoolManager;
 use sqlx::Row;
 
 /// 动作类型白名单
-pub const ACTION_KINDS: [&str; 2] = ["kill_query", "update_variable"];
+pub const ACTION_KINDS: [&str; 3] = ["kill_query", "update_variable", "create_materialized_view"];
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CreateMaterializedViewAction {
+    request: CreateMaterializedViewRequest,
+    confirmed_ddl: String,
+}
+
+fn materialized_view_action(params: &Value) -> Result<CreateMaterializedViewAction, String> {
+    let action: CreateMaterializedViewAction =
+        serde_json::from_value(params.clone()).map_err(|_| "物化视图创建参数不合法".to_string())?;
+    action
+        .request
+        .validate()
+        .map_err(|error| error.to_string())?;
+    if action.request.query_sql.is_none() {
+        return Err("智能运维只能提交自定义 SELECT 物化视图草案".to_string());
+    }
+    if action.confirmed_ddl.is_empty() || action.confirmed_ddl.len() > 30_000 {
+        return Err("物化视图 DDL 审阅内容不合法".to_string());
+    }
+    Ok(action)
+}
 
 /// 校验动作参数；通过则返回动作标题（用于确认卡片展示）。
 pub fn validate_params(kind: &str, params: &Value) -> Result<String, String> {
@@ -74,6 +100,10 @@ pub fn validate_params(kind: &str, params: &Value) -> Result<String, String> {
             }
             Ok(format!("SET {} {} = {}", scope.to_uppercase(), key, value))
         },
+        "create_materialized_view" => {
+            let action = materialized_view_action(params)?;
+            Ok(format!("创建物化视图 {}.{}", action.request.database, action.request.name))
+        },
         other => Err(format!("未知动作类型: {}（白名单: {}）", other, ACTION_KINDS.join(", "))),
     }
 }
@@ -113,6 +143,26 @@ pub async fn execute_action(
                 .to_uppercase();
             let sql = format!("SET {} {} = {}", scope, key, value);
             execute_sql(cluster, mysql_pool_manager, &sql).await
+        },
+        "create_materialized_view" => {
+            let action = materialized_view_action(params)?;
+            if action.request.cluster_id != Some(cluster.id) {
+                return Err("集群已变化，需重新生成并确认物化视图 DDL".to_string());
+            }
+            let adapter =
+                create_adapter(cluster.clone(), std::sync::Arc::new(mysql_pool_manager.clone()));
+            let preview = adapter
+                .preview_materialized_view(&action.request)
+                .await
+                .map_err(|error| error.to_string())?;
+            if preview != action.confirmed_ddl {
+                return Err("物化视图 DDL 已变化，需重新审阅".to_string());
+            }
+            adapter
+                .create_materialized_view(&action.request)
+                .await
+                .map_err(|error| error.to_string())?;
+            Ok(format!("物化视图已创建：{}.{}", action.request.database, action.request.name))
         },
         other => Err(format!("未知动作类型: {}", other)),
     }
@@ -222,5 +272,27 @@ mod tests {
     #[test]
     fn unknown_kind_rejected() {
         assert!(validate_params("drop_table", &json!({})).is_err());
+    }
+
+    #[test]
+    fn materialized_view_action_requires_valid_server_review_package() {
+        let action = json!({
+            "request": {
+                "cluster_id": 1,
+                "database": "analytics",
+                "name": "daily_sales",
+                "query_sql": "SELECT day, SUM(amount) AS total FROM orders GROUP BY day",
+                "schedule": { "kind": "manual" }
+            },
+            "confirmed_ddl": "CREATE MATERIALIZED VIEW `analytics`.`daily_sales` AS SELECT"
+        });
+        assert_eq!(
+            validate_params("create_materialized_view", &action).unwrap(),
+            "创建物化视图 analytics.daily_sales"
+        );
+
+        let mut invalid = action;
+        invalid["confirmed_ddl"] = json!("");
+        assert!(validate_params("create_materialized_view", &invalid).is_err());
     }
 }
