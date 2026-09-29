@@ -57,6 +57,12 @@ export const MENU_ITEMS: NbMenuItem[] = [
         data: { permission: 'menu:queries:profiles' },
       } as NbMenuItem & { data?: { permission: string } },
       {
+        title: '物化视图',
+        icon: { icon: 'cube-outline', status: 'info' },
+        link: '/pages/starrocks/materialized-views',
+        data: { permission: 'menu:materialized-views' },
+      } as NbMenuItem & { data?: { permission: string } },
+      {
         title: '审计日志',
         icon: { icon: 'archive-outline', status: 'primary' },
         link: '/pages/starrocks/queries/audit-logs',
@@ -75,12 +81,6 @@ export const MENU_ITEMS: NbMenuItem[] = [
     icon: { icon: 'upload-outline', status: 'primary' },
     link: '/pages/starrocks/loads',
     data: { permission: 'menu:loads' },
-  } as NbMenuItem & { data?: { permission: string } },
-  {
-    title: '物化视图',
-    icon: { icon: 'cube-outline', status: 'info' },
-    link: '/pages/starrocks/materialized-views',
-    data: { permission: 'menu:materialized-views' },
   } as NbMenuItem & { data?: { permission: string } },
   {
     title: '集群运维',

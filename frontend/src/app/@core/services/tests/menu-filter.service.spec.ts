@@ -50,4 +50,11 @@ describe('MenuFilterService', () => {
     }));
     expect((assistant as any).data.permission).toBe('menu:agent');
   });
+
+  it('nests materialized views under query management', () => {
+    const queryManagement = MENU_ITEMS.find((item) => item.title === '查询管理');
+
+    expect(queryManagement?.children?.some((item) => item.title === '物化视图')).toBeTrue();
+    expect(MENU_ITEMS.some((item) => item.title === '物化视图')).toBeFalse();
+  });
 });
