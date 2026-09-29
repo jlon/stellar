@@ -96,6 +96,29 @@ async fn fresh_migrations_provision_secure_permission_requests_and_new_feature_a
         .unwrap();
         assert_eq!(permitted_roles, ["admin", "super_admin"], "{permission}");
     }
+
+    let frontend_diagnostic_parent: String = sqlx::query_scalar(
+        "SELECT parent.code FROM permissions child \
+         JOIN permissions parent ON parent.id = child.parent_id \
+         WHERE child.code = 'api:clusters:frontends:diagnose'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(frontend_diagnostic_parent, "menu:nodes:frontends");
+
+    let schema_permissions: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM permissions child \
+         JOIN permissions parent ON parent.id = child.parent_id \
+         WHERE child.code IN ( \
+             'api:clusters:schema:list', 'api:clusters:schema:get', \
+             'api:clusters:schema:refresh', 'api:clusters:schema:dependencies' \
+         ) AND parent.code = 'menu:queries:execution'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(schema_permissions, 4);
 }
 
 #[tokio::test]

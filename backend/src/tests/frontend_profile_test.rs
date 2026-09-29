@@ -16,7 +16,7 @@ use base64::Engine as _;
 use chrono::Utc;
 use sha2::Digest as _;
 use sqlx::sqlite::SqlitePoolOptions;
-use std::{borrow::Cow, sync::Arc};
+use std::sync::Arc;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
@@ -320,60 +320,16 @@ fn profile_proxy_url_uses_only_the_discovered_fe_authority() {
 }
 
 #[tokio::test]
-async fn profile_audit_migration_seeds_access_permission_and_persists_reads() {
+async fn initial_schema_seeds_profile_access_permission_and_persists_reads() {
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await
         .expect("create test database");
-    let all_migrations = sqlx::migrate!("./migrations/sqlite");
-    let profile_migration = all_migrations
-        .iter()
-        .find(|migration| migration.version == 20260918000000)
-        .cloned()
-        .expect("frontend profile migration");
-    let prior_migrations = sqlx::migrate::Migrator {
-        migrations: Cow::Owned(
-            all_migrations
-                .iter()
-                .filter(|migration| migration.version < profile_migration.version)
-                .cloned()
-                .collect(),
-        ),
-        ignore_missing: true,
-        locking: false,
-        no_tx: false,
-    };
-    prior_migrations
+    sqlx::migrate!("./migrations/sqlite")
         .run(&pool)
         .await
-        .expect("run migrations before frontend profiles");
-    let organization_id: i64 =
-        sqlx::query_scalar("SELECT id FROM organizations WHERE code = 'default_org'")
-            .fetch_one(&pool)
-            .await
-            .expect("default organization");
-    sqlx::query(
-        "INSERT INTO roles (code, name, description, is_system, organization_id) VALUES (?, ?, ?, ?, ?)",
-    )
-    .bind("org_admin_existing")
-    .bind("Existing organization admin")
-    .bind("")
-    .bind(false)
-    .bind(organization_id)
-    .execute(&pool)
-    .await
-    .expect("create existing organization admin role");
-    let profile_migrations = sqlx::migrate::Migrator {
-        migrations: Cow::Owned(vec![profile_migration]),
-        ignore_missing: true,
-        locking: false,
-        no_tx: false,
-    };
-    profile_migrations
-        .run(&pool)
-        .await
-        .expect("run frontend profile migration");
+        .expect("run initial schema");
 
     let permission_exists: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM permissions WHERE code = 'api:clusters:frontends:diagnose'",
@@ -387,12 +343,12 @@ async fn profile_audit_migration_seeds_access_permission_and_persists_reads() {
          JOIN roles r ON r.id = rp.role_id \
          JOIN permissions p ON p.id = rp.permission_id \
          WHERE p.code = 'api:clusters:frontends:diagnose' \
-           AND r.code IN ('admin', 'super_admin', 'org_admin_existing')",
+           AND r.code IN ('admin', 'super_admin')",
     )
     .fetch_one(&pool)
     .await
     .expect("query diagnostic role grants");
-    assert_eq!(permitted_roles, 3);
+    assert_eq!(permitted_roles, 2);
 
     record_frontend_profile_access(
         &pool,

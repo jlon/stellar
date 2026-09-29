@@ -106,3 +106,53 @@ async fn unknown_initial_checksum_remains_rejected() {
 
     let _ = std::fs::remove_file(path);
 }
+
+#[tokio::test]
+async fn consolidated_migration_records_are_removed_before_validation() {
+    let path = std::env::temp_dir().join(format!(
+        "stellar-consolidated-migrations-{}-{}.db",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("system clock after Unix epoch")
+            .as_nanos(),
+    ));
+    let url = format!("sqlite://{}", path.display());
+
+    let pool = db::create_pool::<Sqlite>(&url)
+        .await
+        .expect("apply initial schema");
+    sqlx::query("UPDATE _sqlx_migrations SET checksum = ? WHERE version = 0")
+        .bind(<Sqlite as AppDb>::initial_schema_compatibility_checksums()[2])
+        .execute(&pool)
+        .await
+        .expect("restore pre-consolidation checksum");
+    for version in [20260918000000_i64, 20260918000001_i64] {
+        sqlx::query(
+            "INSERT INTO _sqlx_migrations (version, description, success, checksum, execution_time) \
+             VALUES (?, ?, TRUE, ?, 0)",
+        )
+        .bind(version)
+        .bind("consolidated migration")
+        .bind(vec![0_u8; 48])
+        .execute(&pool)
+        .await
+        .expect("insert legacy migration record");
+    }
+    drop(pool);
+
+    let pool = db::create_pool::<Sqlite>(&url)
+        .await
+        .expect("reconcile consolidated migration records");
+    let remaining: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM _sqlx_migrations \
+         WHERE version IN (20260918000000, 20260918000001)",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("count consolidated migration records");
+    assert_eq!(remaining, 0);
+
+    drop(pool);
+    let _ = std::fs::remove_file(path);
+}

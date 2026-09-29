@@ -26,6 +26,8 @@ use sqlx::{Database, Pool, migrate::Migrate};
 pub use dialect::{RowsAffected, SqlDialect};
 pub use query::{query, query_as, query_scalar};
 
+const CONSOLIDATED_MIGRATION_VERSIONS: [i64; 2] = [20260918000000, 20260918000001];
+
 /// 业务代码统一使用的数据库后端约束。
 ///
 /// 能力打包：
@@ -129,6 +131,7 @@ where
     })?;
 
     reconcile_initial_schema_checksum::<DB>(&pool).await?;
+    reconcile_consolidated_migration_records::<DB>(&pool).await?;
     tracing::debug!("Running database migrations...");
     DB::migrations().run(&pool).await.map_err(|e| {
         let hint = migration_hint(&e);
@@ -179,6 +182,26 @@ where
                 "Reconciled known version 0 schema checksum before running consolidated migrations"
             );
         }
+    }
+    Ok(())
+}
+
+/// Removes only successful migration records whose SQL is now part of version 0.
+async fn reconcile_consolidated_migration_records<DB: AppDb>(pool: &Pool<DB>) -> anyhow::Result<()>
+where
+    for<'c> &'c mut <DB as Database>::Connection: sqlx::Executor<'c, Database = DB>,
+    for<'q> i64: sqlx::Encode<'q, DB> + sqlx::Type<DB>,
+    for<'q> bool: sqlx::Encode<'q, DB> + sqlx::Type<DB>,
+{
+    let result =
+        query::<DB>("DELETE FROM _sqlx_migrations WHERE version IN (?, ?) AND success = ?")
+            .bind(CONSOLIDATED_MIGRATION_VERSIONS[0])
+            .bind(CONSOLIDATED_MIGRATION_VERSIONS[1])
+            .bind(true)
+            .execute(pool)
+            .await?;
+    if result.rows_affected() > 0 {
+        tracing::warn!("Removed migration records now included in the consolidated initial schema");
     }
     Ok(())
 }

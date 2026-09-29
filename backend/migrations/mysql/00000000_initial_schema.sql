@@ -1725,15 +1725,15 @@ INSERT IGNORE INTO permissions (code, name, type, resource, action, description)
 
 UPDATE permissions
 SET parent_id = (SELECT _t.id FROM (SELECT id FROM permissions WHERE code = 'menu:agent') AS _t)
-WHERE code IN ('api:agent:chat-actions:confirm', 'api:agent:chat-actions:cancel');
+WHERE code IN ('api:agent:chat-actions:list', 'api:agent:chat-actions:confirm', 'api:agent:chat-actions:cancel');
 
 INSERT IGNORE INTO role_permissions (role_id, permission_id)
 SELECT (SELECT id FROM roles WHERE code='admin'), id FROM permissions
-WHERE code IN ('api:agent:chat-actions:confirm', 'api:agent:chat-actions:cancel');
+WHERE code IN ('api:agent:chat-actions:list', 'api:agent:chat-actions:confirm', 'api:agent:chat-actions:cancel');
 
 INSERT IGNORE INTO role_permissions (role_id, permission_id)
 SELECT (SELECT id FROM roles WHERE code='super_admin'), id FROM permissions
-WHERE code IN ('api:agent:chat-actions:confirm', 'api:agent:chat-actions:cancel');
+WHERE code IN ('api:agent:chat-actions:list', 'api:agent:chat-actions:confirm', 'api:agent:chat-actions:cancel');
 
 -- ---------- 原 20260911000013_add_message_feedback.sql ----------
 -- 回答点赞/点踩：用户对单条 assistant 消息的反馈（GPT 同款）
@@ -1873,3 +1873,69 @@ WHERE code = 'api:clusters:backends:diagnose';
 INSERT IGNORE INTO role_permissions (role_id, permission_id)
 SELECT (SELECT id FROM roles WHERE code = 'super_admin'), id FROM permissions
 WHERE code = 'api:clusters:backends:diagnose';
+
+-- ---------- Frontend Profile diagnostics ----------
+CREATE TABLE IF NOT EXISTS frontend_profile_access_logs (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    username VARCHAR(100) NOT NULL,
+    organization_id BIGINT,
+    cluster_id BIGINT NOT NULL,
+    cluster_name VARCHAR(200) NOT NULL,
+    frontend_name VARCHAR(200) NOT NULL,
+    frontend_host VARCHAR(255) NOT NULL,
+    http_port INTEGER NOT NULL,
+    action VARCHAR(16) NOT NULL,
+    profile_filename VARCHAR(255),
+    outcome VARCHAR(16) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_frontend_profile_access_cluster_time (cluster_id, created_at),
+    KEY idx_frontend_profile_access_user_time (user_id, created_at)
+);
+
+INSERT IGNORE INTO permissions (code, name, type, resource, action, description)
+VALUES (
+    'api:clusters:frontends:diagnose',
+    'Frontend节点诊断',
+    'api',
+    'clusters',
+    'frontends:diagnose',
+    'GET /api/clusters/frontends/profiles'
+);
+UPDATE permissions
+SET parent_id = (SELECT _t.id FROM (SELECT id FROM permissions WHERE code = 'menu:nodes:frontends') AS _t)
+WHERE code = 'api:clusters:frontends:diagnose';
+INSERT IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code = 'admin'), id FROM permissions
+WHERE code = 'api:clusters:frontends:diagnose';
+INSERT IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code = 'super_admin'), id FROM permissions
+WHERE code = 'api:clusters:frontends:diagnose';
+INSERT IGNORE INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id
+FROM roles r
+JOIN permissions p ON p.code = 'api:clusters:frontends:diagnose'
+WHERE r.code LIKE 'org_admin_%';
+
+-- ---------- Schema Explorer permissions ----------
+INSERT IGNORE INTO permissions (code, name, type, resource, action, description) VALUES
+('api:clusters:schema:list', '浏览Schema对象', 'api', 'clusters', 'schema:list', 'GET /api/clusters/:cluster_id/schema/objects'),
+('api:clusters:schema:get', '查看Schema对象详情', 'api', 'clusters', 'schema:get', 'GET /api/clusters/:cluster_id/schema/objects/:object_ref'),
+('api:clusters:schema:refresh', '刷新Schema对象', 'api', 'clusters', 'schema:refresh', 'POST /api/clusters/:cluster_id/schema/objects/:object_ref/refresh'),
+('api:clusters:schema:dependencies', '查看Schema对象依赖', 'api', 'clusters', 'schema:dependencies', 'GET /api/clusters/:cluster_id/schema/objects/:object_ref/dependencies');
+
+UPDATE permissions
+SET parent_id = (SELECT _t.id FROM (SELECT id FROM permissions WHERE code = 'menu:queries:execution') AS _t)
+WHERE code IN ('api:clusters:schema:list', 'api:clusters:schema:get', 'api:clusters:schema:refresh', 'api:clusters:schema:dependencies');
+
+INSERT IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code = 'admin'), id FROM permissions
+WHERE code IN ('api:clusters:schema:list', 'api:clusters:schema:get', 'api:clusters:schema:refresh', 'api:clusters:schema:dependencies');
+INSERT IGNORE INTO role_permissions (role_id, permission_id)
+SELECT (SELECT id FROM roles WHERE code = 'super_admin'), id FROM permissions
+WHERE code IN ('api:clusters:schema:list', 'api:clusters:schema:get', 'api:clusters:schema:refresh', 'api:clusters:schema:dependencies');
+INSERT IGNORE INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id
+FROM roles r
+JOIN permissions p ON p.code IN ('api:clusters:schema:list', 'api:clusters:schema:get', 'api:clusters:schema:refresh', 'api:clusters:schema:dependencies')
+WHERE r.code LIKE 'org_admin_%';
