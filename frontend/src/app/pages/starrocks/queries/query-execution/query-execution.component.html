@@ -665,11 +665,15 @@
                         <div class="node-icon">
                           <nb-icon [icon]="node.icon || 'folder-outline'"></nb-icon>
                         </div>
-                        <span
-                          class="node-text"
-                          [nbTooltip]="node.data?.schemaReadAt ? ('对象详情读取于 ' + (node.data?.schemaReadAt | date:'yyyy-MM-dd HH:mm:ss')) : ''">
-                          {{ node.name }}
-                        </span>
+                        @if (node.data?.schemaReadAt) {
+                          <span
+                            class="node-text"
+                            [nbTooltip]="'对象详情读取于 ' + (node.data?.schemaReadAt | date:'yyyy-MM-dd HH:mm:ss')">
+                            {{ node.name }}
+                          </span>
+                        } @else {
+                          <span class="node-text">{{ node.name }}</span>
+                        }
                         @switch (node.data?.tableType) {
                           @case ('VIEW') {
                             <span class="node-badge node-badge-view">VIEW</span>
